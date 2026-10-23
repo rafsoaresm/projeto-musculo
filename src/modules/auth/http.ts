@@ -1,0 +1,84 @@
+import type { createAuth } from "./factory";
+
+/** Public boundary: strict browser origin, endpoint allowlist and rate-limit fallback. */
+export async function handleAuthRequest(
+  auth: ReturnType<typeof createAuth>,
+  request: Request,
+  routeEndpoint?: string,
+) {
+  const path =
+    routeEndpoint ??
+    new URL(request.url).pathname.slice(auth.options.basePath!.length + 1);
+  const allowed = new Set([
+    "sign-up/email",
+    "sign-in/email",
+    "sign-out",
+    "get-session",
+  ]);
+  const responseHeaders = { "Cache-Control": "private, no-store" };
+  if (!allowed.has(path))
+    return new Response(null, { status: 404, headers: responseHeaders });
+  if (request.method !== (path === "get-session" ? "GET" : "POST"))
+    return new Response(null, { status: 405, headers: responseHeaders });
+  // Require Origin even for initial login without a cookie (login CSRF).
+  if (
+    request.method === "POST" &&
+    request.headers.get("origin") !== auth.options.baseURL
+  ) {
+    return Response.json(
+      { message: "Origem não autorizada." },
+      { status: 403, headers: responseHeaders },
+    );
+  }
+  const headers = new Headers(request.headers);
+  // Webflow's edge must overwrite CF-Connecting-IP. If absent, use one shared
+  // bucket rather than silently disabling production rate limiting.
+  if (!headers.has("cf-connecting-ip"))
+    headers.set("cf-connecting-ip", "127.0.0.1");
+  // Next/OpenNext and workerd may use different Request constructors. Passing
+  // the foreign object as input can stringify it to "[object Request]".
+  // Reconstruct using primitive URL + bounded body, preserving cookies/Origin.
+  let body: Uint8Array<ArrayBuffer> | undefined;
+  if (request.method === "POST") {
+    const reader = request.body?.getReader();
+    const chunks: Uint8Array[] = [];
+    let length = 0;
+    if (reader) {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        length += value.byteLength;
+        if (length > 16384) {
+          await reader.cancel();
+          return new Response(null, { status: 413, headers: responseHeaders });
+        }
+        chunks.push(value);
+      }
+    }
+    body = new Uint8Array(length);
+    let offset = 0;
+    for (const chunk of chunks) {
+      body.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+  }
+  // Next strips basePath from the Request URL in some runtimes. Route params
+  // identify the allowlisted endpoint; reconstruct the library's mounted URL.
+  const url = new URL(auth.options.baseURL as string);
+  url.pathname = `${auth.options.basePath}/${path}`;
+  url.search = new URL(request.url).search;
+  const response = await auth.handler(
+    new Request(url.toString(), {
+      method: request.method,
+      headers,
+      body,
+    }),
+  );
+  const outputHeaders = new Headers(response.headers);
+  outputHeaders.set("Cache-Control", "private, no-store");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: outputHeaders,
+  });
+}

@@ -23,6 +23,7 @@
 
 ```sh
 npm ci
+npm run auth:setup:local
 npm run db:migrate:local
 npm run db:check:local
 npm run dev
@@ -60,9 +61,9 @@ Para verificar subcaminho, passe `BASE_URL=/treinador` no build, preview, smoke 
 ## Publicar e ver as tabelas
 
 1. Conectar `rafsoaresm/projeto-musculo`, branch `main`, à aplicação Webflow Cloud; usar a raiz do repositório e Next.js.
-2. Disparar o deploy do commit atualizado pelo Webflow. Se a integração já estiver ativa, um push no branch conectado pode disparar o deploy automaticamente.
-3. O Webflow provisiona `DB` e aplica `migrations/0001_foundation.sql` no ambiente de destino. O diretório `.wrangler` local não é o banco de produção e não será enviado ao Git.
-4. Na aplicação Webflow, abrir o ambiente → **Storage** → **DB**. Conferir as tabelas e o registro `0001_foundation` em `app_schema_versions`.
+2. Configurar `AUTH_SECRET` e `AUTH_ORIGIN` no ambiente Webflow; `BASE_URL` deve corresponder ao mount path no build (vazio na raiz). Consultar `AUTENTICACAO.md`. Disparar o deploy do commit atualizado pelo Webflow. Se a integração já estiver ativa, um push no branch conectado pode disparar o deploy automaticamente.
+3. O Webflow provisiona `DB` e aplica as migrations pendentes de `migrations/` (0001 e 0002 nesta versão) no ambiente de destino. O diretório `.wrangler` local não é o banco de produção e não será enviado ao Git.
+4. Na aplicação Webflow, abrir o ambiente → **Storage** → **DB**. Conferir as tabelas e o registro `0002_identity_and_onboarding` em `app_schema_versions`.
 5. Verificar `api/health` no caminho real do app: HTTP 200, `storage: webflow_sqlite` e `persistence: available`. Se houver 503, consultar os logs internos de binding/migration sem expor detalhes em resposta pública.
 
 O comando de build do app continua `npm run build`; `build:cloud` serve para validar o bundle OpenNext localmente. Não usar `wrangler deploy` como substituto de publicação no Webflow.
@@ -71,6 +72,6 @@ O comando de build do app continua `npm run build`; `build:cloud` serve para val
 
 Não há senha, URL ou token de banco a inserir. Bindings são por ambiente; preservar nomes/IDs existentes ao evoluir o projeto. Após um deploy, migrations são imutáveis; alterações futuras devem ser aditivas. Não usar scripts `--remote` de uma conta Cloudflare independente para manipular recursos gerenciados pelo Webflow.
 
-A autenticação de usuários finais ainda será implementada. O health check confirma a migration, não login, privacidade ponta a ponta ou prescrição persistida. Object Storage para fotos/PDFs e políticas de acesso serão adicionados quando suas jornadas forem construídas.
+Cadastro, login e logout foram implementados com Better Auth no SQLite nativo. O health informa `authentication: configured` quando a configuração básica existe; isso não comprova login remoto ou prontidão operacional. A migração e os fluxos precisam ser testados na origem privada Webflow. Object Storage para fotos/PDFs e políticas de acesso serão adicionados quando suas jornadas forem construídas.
 
 Snapshot/publicação do ambiente Codex, push no GitHub e deploy no Webflow são operações diferentes. Processos de desenvolvimento precisam reiniciar após restaurar uma máquina.

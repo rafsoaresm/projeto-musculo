@@ -15,7 +15,7 @@ export default function PlanningPage() {
             treinos.
           </p>
         </div>
-        <span className="pill orange-pill">Rascunho estrutural</span>
+        <span className="pill brand-pill">Rascunho estrutural</span>
       </div>
       <Planner />
     </>

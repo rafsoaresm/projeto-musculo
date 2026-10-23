@@ -5,7 +5,7 @@
 - Use npm com `package-lock.json`, TypeScript estrito e módulos em `src/modules`. Regras de negócio ficam fora dos componentes React.
 - Runtime alvo: Workers via OpenNext. Não depender de disco persistente, processo em background, binário nativo ou servidor Node sempre ativo. Node no build não equivale a Node completo em produção.
 - Persistência é SQLite nativo do Webflow Cloud, via binding DB e migrations em `migrations/`. Não usar Supabase/PostgreSQL. Após deploy, migrations são imutáveis; novas alterações exigem migrations aditivas.
-- Não introduzir credenciais ou dados reais no cliente. Variáveis `NEXT_PUBLIC_*` são públicas. O binding DB só é acessado no servidor; o app ainda não possui login.
+- Não introduzir credenciais ou dados reais no cliente. Variáveis `NEXT_PUBLIC_*` são públicas. O binding DB só é acessado no servidor; o app usa Better Auth sobre SQLite nativo; sessões e bloqueios são verificados no servidor.
 - D1 não tem RLS. Tenant e identidade vêm da sessão verificada no servidor; nunca de payload ou cabeçalho livre. Use repositories com filtro de organização, vínculo e revogação em cada consulta. Responsabilidade técnica e origens privadas separadas continuam obrigatórias.
 - Prescrição e execução são entidades distintas. Revisão entregue é imutável; IA nunca aprova ou libera treino. Não preencher lacunas com números ou referências inventadas.
 - Mantenha SaaS, receita do profissional e comissões SaaS separados. Comissão é recorrente sobre pagamento SaaS confirmado, com idempotência por fato financeiro.

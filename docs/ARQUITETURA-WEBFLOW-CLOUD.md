@@ -6,7 +6,7 @@ O usuário confirmou duas decisões: hospedagem no Webflow Cloud Apps e tabelas 
 
 - Next.js/React com OpenNext para o runtime Workers do Webflow.
 - **SQLite gerenciado pelo Webflow**, acessado pela API D1 via binding `DB`.
-- SQL versionado manualmente em `migrations/`; um ORM não é necessário para esta primeira fatia.
+- SQL versionado manualmente em `migrations/`; Drizzle é usado somente pelo adapter Better Auth; repositories de domínio usam SQL parametrizado.
 - Object Storage nativo para futuros arquivos/PDFs, com autorização antes da entrega. KV poderá ser usado para caches adequados, não como livro financeiro ou fonte de revogação imediata.
 
 Referências oficiais consultadas nesta revisão:
@@ -30,13 +30,13 @@ flowchart TB
   DB --> J[Outbox + consumidor durável a selecionar]
 ```
 
-Esta base é um app na raiz do repositório, com módulos internos. Sites e portal serão separados por origem quando implementados. Rotas diferentes no mesmo host não isolam dados privados dos scripts de marketing. O app inicial não tem dados pessoais nem login.
+Esta base é um app na raiz do repositório, com módulos internos. Sites e portal serão separados por origem quando implementados. Rotas diferentes no mesmo host não isolam dados privados dos scripts de marketing. O painel agora tem login e dados de alunos. Deve ser publicado em origem privada dedicada, sem scripts de marketing. O portal separado ainda será implementado.
 
 ## Modelo inicial
 
 | Tabela | Papel |
 |---|---|
-| users | Identidade interna e bloqueio; autenticação/sessões ainda serão implementadas |
+| users | Identidade interna e bloqueio; mesmo ID da identidade Better Auth após onboarding |
 | organizations | Tenant e fuso de atendimento |
 | memberships | Papel por organização e revogação |
 | professionals | Profissional vinculado a membership da mesma organização |
@@ -45,7 +45,7 @@ Esta base é um app na raiz do repositório, com módulos internos. Sites e port
 | student_access | Vínculo explícito entre login e cadastro de aluno |
 | app_schema_versions | Versão necessária para a prontidão do banco |
 
-IDs são textos gerados pelo servidor (UUIDs na futura aplicação). Datas usam UTC ISO-8601; o calendário usa timezone IANA. Foreign keys compostas impedem cruzar organização, aluno e profissional. Futuros valores monetários serão inteiros em centavos e percentuais em pontos-base.
+IDs de domínio são UUIDs gerados pelo servidor. As identidades Better Auth usam IDs próprios. Datas usam UTC ISO-8601; o calendário usa timezone IANA. Foreign keys compostas impedem cruzar organização, aluno e profissional. Futuros valores monetários serão inteiros em centavos e percentuais em pontos-base.
 
 As migrations Supabase da primeira proposta nunca foram aplicadas remotamente nem publicadas e foram substituídas antes do primeiro envio da base. A partir do primeiro deploy, não editar/remover migrations aplicadas: acrescentar novas migrations.
 
@@ -55,7 +55,7 @@ SQLite/D1 não oferece as policies RLS do PostgreSQL. O binding autoriza o **ser
 
 `src/db/students.ts` exige contexto de usuário/organização e restringe cada consulta por organização e vínculo ativo. Um proprietário, comercial, financeiro ou operador de suporte não recebe acesso técnico universal. As consultas reavaliam revogação e bloqueio da identidade; os valores são parâmetros SQL, não concatenação de input.
 
-O futuro middleware/serviço de autenticação deve derivar `AuthenticatedContext` de sessão validada e organização resolvida. Nunca construir esse contexto a partir de `userId`, `organizationId`, headers livres ou JSON enviados pelo navegador. Os testes fornecem identidades controladas e ainda não comprovam login real. Não existem rotas públicas de alunos nesta fatia. O acesso bruto ao binding é privilegiado e deve permanecer em código do servidor; não há uma segunda camada RLS se um futuro desenvolvedor contornar o repository.
+`requireIdentity` e `requireWorkspace` derivam `AuthenticatedContext` de sessão validada e organização resolvida. Nunca construir esse contexto a partir de `userId`, `organizationId`, headers livres ou JSON enviados pelo navegador. Os testes de autorização fornecem identidades controladas; os novos testes de autenticação e navegador também exercitam contas, cookies, sessões, logout e onboarding reais. As páginas e ações de alunos autenticam cada acesso. O acesso bruto ao binding é privilegiado e deve permanecer em código do servidor; não há uma segunda camada RLS se um futuro desenvolvedor contornar o repository.
 
 Use operações D1 suportadas como `batch()` para efeitos que devem ser atômicos. O teste de rollback verifica que uma falha de foreign key desfaz todo o batch. Não importar transações PostgreSQL, funções `auth.uid()`, `service_role`, extensions ou pgvector para SQLite.
 
@@ -73,3 +73,11 @@ Use operações D1 suportadas como `batch()` para efeitos que devem ser atômico
 O runtime Workers não é um servidor Node permanente. Não persistir em disco de produção nem depender de promises que continuam após a resposta. Jobs/PDF devem usar execução durável cuja disponibilidade no Webflow será validada; não presumir que todo produto Cloudflare está exposto.
 
 A montagem `basePath`/`assetPrefix` é configurada pelo builder Webflow; links usam `next/link`. Domínios compartilhados por tenants, TLS, login cross-domain, Puck e Object Storage privado ainda precisam de prova no ambiente remoto. O provisionamento nativo do DB não resolve essas fronteiras.
+
+## Identidade e onboarding — versão 0.2
+
+Better Auth usa as tabelas `auth_user`, `auth_session`, `auth_account`, `auth_verification` e `auth_rate_limit` no mesmo binding DB. Drizzle adapta SQLite/D1; `transaction: false` evita BEGIN interativo incompatível. O cadastro de credencial é gerido pela biblioteca e não tem a atomicidade multioperação dos batches de domínio; falhas parciais de criação de conta devem ser verificadas em homologação antes de abrir cadastros públicos.
+
+A migration 0002 acrescenta essas tabelas, `organization_provisioning` (provisionamento único por identidade) e `audit_events`. A 0001 permanece inalterada. Organização, membership OWNER, profissional e auditoria usam `DB.batch`; aluno, atribuição ao profissional autenticado e auditoria também. Sem vínculo técnico ativo, não há escrita. Um OWNER sem atribuição continua sem acesso universal a alunos.
+
+A organização ativa vem da primeira membership ativa ordenada pelo servidor. Esta fatia cria um espaço por identidade; seleção de múltiplos espaços e convites ainda não possuem interface. E-mails ainda não são verificados e nunca autorizam vínculo automático com aluno ou organização. Ver [autenticação](AUTENTICACAO.md) para limites e operação.

@@ -34,7 +34,7 @@ export default function ProjectPage() {
             <div className="roadmap-header">
               <span className="epic-id">{item.id}</span>
               <span
-                className={`pill ${item.status === "Planejado" ? "neutral" : "orange-pill"}`}
+                className={`pill ${item.status === "Planejado" ? "neutral" : "brand-pill"}`}
               >
                 {item.status}
               </span>

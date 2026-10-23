@@ -22,7 +22,7 @@ export default function Home() {
             A base para conectar seu atendimento, seus treinos e seus alunos.
           </p>
         </div>
-        <span className="pill neutral">Fundação · versão 0.1</span>
+        <span className="pill neutral">Acesso e alunos · versão 0.2</span>
       </div>
       <section className="hero-card">
         <div className="hero-copy">
@@ -70,7 +70,7 @@ export default function Home() {
       </section>
       <section className="quick-grid" aria-label="Princípios do produto">
         <article className="feature-card">
-          <span className="icon-tile orange">
+          <span className="icon-tile brand-tile">
             <CalendarRange size={21} />
           </span>
           <h3>Planejamento por fases</h3>
@@ -88,12 +88,12 @@ export default function Home() {
           </span>
           <h3>Atendimento conectado</h3>
           <p>
-            Da avaliação à execução, com responsabilidades definidas e histórico
-            por aluno.
+            Seu espaço de atendimento, com cadastro de alunos e vínculo com o
+            profissional responsável.
           </p>
-          <span className="small-state">
-            <CircleDashed size={14} /> Próximas etapas
-          </span>
+          <Link href="/alunos">
+            Acessar meus alunos <ArrowRight size={16} />
+          </Link>
         </article>
         <article className="feature-card">
           <span className="icon-tile violet">
@@ -123,7 +123,7 @@ export default function Home() {
           <span className="step-number current">01</span>
           <h3>Estruturar</h3>
           <p>Fundação, contratos e ciclos.</p>
-          <span className="pill orange-pill">Em desenvolvimento</span>
+          <span className="pill brand-pill">Em desenvolvimento</span>
         </div>
         <div className="journey-step">
           <span className="step-number">02</span>
@@ -147,11 +147,11 @@ export default function Home() {
       <section className="foundation-note">
         <Route size={25} />
         <div>
-          <h3>Você está na primeira etapa.</h3>
+          <h3>Seu espaço de atendimento já pode começar.</h3>
           <p>
-            O planejador já calcula ciclos e permite exportar um rascunho.
-            Cadastro, login e entrega de treinos serão integrados nas próximas
-            etapas.
+            Crie sua conta, organize seu espaço e cadastre o primeiro aluno. O
+            planejador calcula ciclos e exporta rascunhos; avaliações e entrega
+            de treinos serão integradas nas próximas etapas.
           </p>
         </div>
         <span>

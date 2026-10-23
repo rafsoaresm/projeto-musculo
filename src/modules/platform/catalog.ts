@@ -12,8 +12,8 @@ export const capabilities = [
     title: "Identidade e organizações",
     description:
       "Vínculos, profissionais responsáveis, isolamento e acesso aos dados do aluno.",
-    status: "Base de dados inicial",
-    next: "Implementar login e convites usando as tabelas nativas do Webflow Cloud; validar revogação em homologação.",
+    status: "Acesso e primeiro aluno",
+    next: "Conta, sessão, organização, aluno e auditoria implementados. Faltam convites, verificação de e-mail, recuperação e gestão de equipe.",
   },
   {
     id: "E2",

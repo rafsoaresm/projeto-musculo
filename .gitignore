@@ -4,6 +4,7 @@ node_modules/
 .wrangler/
 .webflow/
 .env*
+.dev.vars*
 !.env.example
 *.tsbuildinfo
 next-env.d.ts

@@ -12,6 +12,7 @@ if (basePath && !/^\/[a-zA-Z0-9/_-]+$/.test(basePath)) {
 if (basePath.endsWith("/")) throw new Error("BASE_URL não pode terminar em /.");
 
 const config: NextConfig = {
+  env: { NEXT_PUBLIC_BASE_PATH: basePath },
   basePath,
   assetPrefix: process.env.ASSETS_PREFIX || basePath,
   poweredByHeader: false,

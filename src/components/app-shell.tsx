@@ -9,10 +9,12 @@ import {
   Layers3,
   LayoutDashboard,
   ShieldCheck,
+  Users,
 } from "lucide-react";
 
 const navigation = [
   { href: "/", label: "Visão geral", icon: LayoutDashboard },
+  { href: "/alunos", label: "Alunos", icon: Users },
   { href: "/planejamento", label: "Planejamento", icon: CalendarRange },
   { href: "/projeto", label: "Mapa do produto", icon: Layers3 },
 ];
@@ -40,8 +42,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="workspace">
           <span className="workspace-avatar">TP</span>
           <div>
-            <strong>Espaço de construção</strong>
-            <small>Fundação do produto</small>
+            <strong>Seu atendimento</strong>
+            <small>Planejar e acompanhar</small>
           </div>
         </div>
         <p className="nav-label">WORKSPACE</p>
@@ -50,12 +52,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Link
               key={href}
               href={href}
-              aria-current={pathname === href ? "page" : undefined}
-              className={pathname === href ? "nav-link active" : "nav-link"}
+              aria-current={
+                pathname === href ||
+                (href === "/alunos" && pathname.startsWith("/alunos/"))
+                  ? "page"
+                  : undefined
+              }
+              className={
+                pathname === href ||
+                (href === "/alunos" && pathname.startsWith("/alunos/"))
+                  ? "nav-link active"
+                  : "nav-link"
+              }
             >
               <Icon size={19} />
               {label}
-              {pathname === href && <span className="nav-dot" />}
+              {(pathname === href ||
+                (href === "/alunos" && pathname.startsWith("/alunos/"))) && (
+                <span className="nav-dot" />
+              )}
             </Link>
           ))}
         </nav>
@@ -71,7 +86,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </Link>
         </div>
         <div className="sidebar-footer">
-          <span className="status-dot" /> Base inicial <span>v0.1</span>
+          <span className="status-dot" /> Acesso e alunos <span>v0.2</span>
         </div>
       </aside>
       <div className="main-column">

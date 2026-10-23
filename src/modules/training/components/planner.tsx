@@ -289,7 +289,7 @@ export function Planner() {
             </>
           ) : (
             <div className="summary-empty">
-              <span className="icon-tile orange">
+              <span className="icon-tile brand-tile">
                 <CalendarDays size={29} />
               </span>
               <h2>Seu ciclo começa aqui.</h2>
@@ -314,7 +314,7 @@ export function Planner() {
               <p className="eyebrow">VISUALIZAÇÃO DO RASCUNHO</p>
               <h2>Sequência dos mesociclos</h2>
             </div>
-            <span className="pill orange-pill">
+            <span className="pill brand-pill">
               Revisão profissional necessária
             </span>
           </div>
