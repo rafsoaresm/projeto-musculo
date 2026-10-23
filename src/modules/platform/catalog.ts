@@ -12,8 +12,8 @@ export const capabilities = [
     title: "Identidade e organizações",
     description:
       "Vínculos, profissionais responsáveis, isolamento e acesso aos dados do aluno.",
-    status: "Acesso e primeiro aluno",
-    next: "Conta, sessão, organização, aluno e auditoria implementados. Faltam convites, verificação de e-mail, recuperação e gestão de equipe.",
+    status: "Acessos por papel",
+    next: "Conta, sessão, organização, aluno, gestor da plataforma e convite de aluno implementados. Faltam verificação de e-mail, recuperação de senha, convites de equipe e gestão de equipe.",
   },
   {
     id: "E2",
@@ -36,8 +36,8 @@ export const capabilities = [
     title: "Portal do aluno",
     description:
       "Treino liberado, execução, check-ins e evolução na marca do profissional.",
-    status: "Planejado",
-    next: "Criar app em origem privada separada e fechar a jornada de acompanhamento.",
+    status: "Convite e área inicial",
+    next: "Convite de uso único e a área do aluno com o vínculo existem. Faltam origem privada separada, treino liberado, execução e evolução.",
   },
   {
     id: "E5",

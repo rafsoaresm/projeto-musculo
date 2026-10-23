@@ -3,6 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 const mount = (process.env.BASE_URL || "").replace(/\/$/, "");
 export default defineConfig({
   testDir: "./tests/e2e",
+  globalSetup: "./tests/e2e/global-setup.ts",
   fullyParallel: true,
   workers: 2,
   reporter: "list",
@@ -15,7 +16,21 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   projects: [
-    { name: "desktop", use: { ...devices["Desktop Chrome"] } },
-    { name: "mobile", use: { ...devices["Pixel 7"] } },
+    {
+      name: "desktop",
+      testIgnore: /gestor\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "mobile",
+      testIgnore: /gestor\.spec\.ts/,
+      use: { ...devices["Pixel 7"] },
+    },
+    // The first manager activates once per database, so this runs a single time.
+    {
+      name: "gestor",
+      testMatch: /gestor\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"] },
+    },
   ],
 });

@@ -1,30 +1,46 @@
-# Evidências de validação — identidade visual e acesso, v0.2
+# Evidências de validação — papéis, convite e azul sólido, v0.3
 
-A aplicação usa SQLite nativo do Webflow via binding DB. A referência visual original foi preservada byte a byte em `referencias/04-TOKENS-VISUAIS.md`; instruções no anexo não foram tratadas como pedidos de execução. A migration 0001 permanece inalterada.
+Tudo abaixo foi executado **localmente** em 23/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. A migration 0001 e a 0002 permanecem inalteradas; a 0003 é aditiva.
 
 ## Código e banco
 
-- Instalação com versões fixadas e lockfile atualizado; Better Auth 1.7.12, adapter Drizzle e Inter local.
-- `npm run check`: ESLint, TypeScript e 58 testes, sem skipped.
-- 26 casos de calendário/contratos e 17 de isolamento D1 da fundação preservados.
-- 15 novos casos de autenticação/onboarding: hash de senha, cookie Secure/HttpOnly/SameSite/path, sessão válida/expirada, cookie forjado, senha incorreta, logout com replay, origem inválida/ausente, allowlist/método, limite de corpo, limite de tentativas persistido, montagem, provisionamento único/concorrente, isolamento de escrita, papéis comercial/financeiro, revogação/bloqueio e rollback quando a auditoria falha. Alguns casos exercitam mais de uma propriedade.
-- Migrations 0001 e 0002 aplicadas no SQLite local por Wrangler. Nova execução confirmou nenhuma migration pendente; ambas as versões foram consultadas em `app_schema_versions`.
-- Nenhum segredo local de autenticação encontrado nos assets públicos gerados.
+- `npm run check`: ESLint e TypeScript sem erros e **101 testes, nenhum ignorado**: 17 de isolamento D1, 15 de identidade, 26 de periodização, 31 de papéis e 12 de contrato de navegação/fixtures.
+- Os 31 testes de `tests/roles.test.ts` usam D1 real (Miniflare) com as três migrations e cobrem:
+  - **Gestor:** ativação recusada sem token configurado, com token curto ou errado; exatamente um gestor sob concorrência; token inerte depois; e-mail e papel de proprietário não concedem o papel; revogado ou bloqueado perde o acesso na hora.
+  - **Escopo do gestor:** vê organizações e contagens; o resultado serializado não contém nome de aluno; `studentsFor` e a criação de convite não funcionam para ele em nenhuma organização; bloqueio e restabelecimento com auditoria; não bloqueia a si mesmo, outro gestor ou quem não é da organização; a auditoria do gestor lista só ações de plataforma.
+  - **Convite:** só o profissional com vínculo técnico ativo cria (dono sem atribuição, outro profissional, papel comercial, outro tenant e cliente são recusados); só o hash é guardado; novo link invalida o pendente; token malformado, desconhecido, expirado, revogado ou reutilizado não vincula; dois aceites simultâneos têm um único vencedor; identidade bloqueada não aceita; um aluno não ganha segundo login ativo; o cliente vê apenas o próprio registro e só na própria organização; revogar encerra o acesso na requisição seguinte; um cliente com duas organizações não as mistura.
+  - **Áreas:** combinações de papéis por identidade, revogação de vínculo e distinção entre cliente revogado e login novo.
+- Migrations 0001, 0002 e 0003 aplicadas no SQLite local por Wrangler (`db:migrate:local`); a saúde consulta `0003_roles_and_access`.
+- `npm run build:cloud` (bundle OpenNext/Workers) concluído sem erro na raiz e em `/treinador`.
 
-## Interface e runtime Workers
+## Navegador (Playwright, Worker local)
 
-O build Next/OpenNext usa o runtime alvo workerd e o binding D1 local. O teste de navegador revelou duas diferenças importantes em relação a Node: objetos Request de construtores distintos e remoção do mount path pelo Next. O handler reconstrói a requisição por URL, corpo limitado e endpoint validado; isso evita depender de `instanceof Request` ou do caminho externo intacto.
+15 cenários aprovados na raiz **e** 15 em `/treinador` (30 execuções), sem testes ignorados: desktop e celular (Pixel 7) para cada cenário comum, e um cenário do gestor em projeto próprio, porque a ativação é única por banco (o `globalSetup` revoga gestores do **banco local** antes de cada rodada).
 
-Foram aprovados oito cenários na raiz e oito em `/treinador` (16 no total), além de builds e smoke em ambas as montagens. A matriz de navegador contempla oito cenários por montagem (desktop e celular): navegação, planejador/exportação/invalidação, validação das fases e fluxo de conta → organização → aluno → logout → novo login. O fluxo também abre uma segunda organização e tenta acessar a URL do aluno da primeira. Dados e persistência são reais no SQLite local, usando apenas contas fictícias.
+| Cenário | O que prova |
+|---|---|
+| Entrada, navegação e layout | Três áreas apresentadas, sem rolagem horizontal, módulo planejado mostra "Ainda não disponível", 404 em módulo inexistente, sem erro de página |
+| Planejador (2 cenários) | Fases independentes, exportação do rascunho, invalidação do resultado, 12 fases — agora atrás de login |
+| Conta, organização e aluno | Persistência após sair e entrar; outra organização não abre o aluno por URL; endereços antigos (`/alunos`) redirecionam e exigem sessão; `no-store` |
+| Convite e cliente | Link gerado uma vez, cliente cria acesso e aceita, não alcança `/profissional`, `/gestor` nem o registro do profissional; link usado vira "Convite indisponível"; revogação encerra o acesso na requisição seguinte |
+| Visitante e profissional comum | Áreas privadas devolvem a tela de entrada; profissional sem papel de gestor não vê o painel do gestor |
+| Gestor | Ativação com código errado e certo; segundo gestor recusado; organização listada sem nome de aluno no HTML; bloquear e restabelecer valem na próxima requisição do profissional; ações na auditoria; sem área de profissional |
+| Demonstração | Três visões, troca de área, prescrição bloqueada por triagem, revisão entregue sem botão de aprovar, treino do aluno sem persistência após recarregar, áreas reais continuam exigindo login |
 
-O harness usa endereços de teste separados no header de edge somente no Worker local, para não compartilhar os limites de tentativa entre execuções concorrentes. O rate limiter é testado separadamente contra SQLite. Essa configuração não é uma prova da proteção de headers pelo edge remoto.
+O teste de convite encontrou um defeito real antes da entrega: o botão "Revogar acesso" virava botão de envio dentro do mesmo clique e revogava sem confirmação. Foi corrigido separando os elementos e o cenário passou a exigir a confirmação.
 
-Smoke HTTP verifica páginas, assets, schema disponível, ausência de cache na saúde e 404. As páginas privadas retornam `no-store`, conferido no navegador. Capturas da home desktop e cadastro a 375px foram inspecionadas; Inter é a fonte computada e não houve overflow horizontal. A navegação inferior deixa espaço de rolagem para os formulários.
+O smoke HTTP verifica páginas públicas, assets, o retorno das áreas privadas à tela de entrada, `/alunos` e a saúde, na raiz e em `/treinador`.
+
+## Interface
+
+Capturas inspecionadas em desktop (1440px) e celular (390px) das três áreas reais, da entrada, do convite e da demonstração. Conferido: azul sólido sem gradiente em botões, menu, marca e destaques; tabelas viram cartões no celular; barra inferior com **Menu**; faixa de demonstração; ausência de rolagem horizontal. Contrastes calculados em [DESIGN-SYSTEM.md](DESIGN-SYSTEM.md). Não houve auditoria por leitor de tela.
 
 ## Fronteiras da evidência
 
-São testes locais, não comprovação de deploy/CI remota ou homologação na conta Webflow. Confirmar no ambiente privado: DB provisionado, migrations, AUTH_SECRET, AUTH_ORIGIN, mount path, cookies HTTPS, limite de CPU do plano e sobrescrita de CF-Connecting-IP pelo edge.
-
-O health consulta a versão do schema e informa se a configuração básica de autenticação existe. Não valida envio de e-mail, recuperação, convites, prescrição persistida nem prontidão operacional.
-
-Continuam pendentes e-mail verificado, recuperação de senha, convites, gestão de equipe/revogação pela interface, auditoria de acesso completa, avaliação e prescrição persistida, aprovação/entrega, portal separado, Storage privado, jobs/PDF, editor, integrações e pagamentos. O cadastro de credenciais da biblioteca usa operações sequenciais em D1; falhas parciais precisam de homologação antes de abrir o cadastro operacional. Os batches de domínio são atômicos.
+- Não validado: deploy na conta Webflow, DB provisionado, migrations remotas, `AUTH_SECRET`/`AUTH_ORIGIN`/`PLATFORM_SETUP_TOKEN` no ambiente, cookies HTTPS, limite de CPU, sobrescrita de `CF-Connecting-IP` pelo edge, e a leitura de `DEMO_MODE` no runtime remoto.
+- O envio de e-mail não existe: o link de convite é copiado pelo profissional.
+- O portal usa a mesma origem do painel. Isso é uma etapa intermediária e **não** atende à separação de origem exigida antes de dados reais de alunos.
+- A demonstração usa dados fictícios e não é evidência de Avaliações, Prescrição, treino liberado, execução, Meu Site, cobrança ou afiliados: esses módulos continuam planejados.
+- O cadastro de credenciais da biblioteca usa operações sequenciais em D1; falhas parciais ainda precisam de homologação antes de abrir o cadastro operacional. Os batches do domínio (inclusive convite e ativação do gestor) são atômicos e testados.
+- O harness envia endereços de teste separados no cabeçalho de edge só no Worker local, para não compartilhar limites de tentativa entre execuções. O limitador é testado à parte contra SQLite.
+- Continuam pendentes: e-mail verificado, recuperação de senha, convites e gestão de equipe, conceder o papel de gestor pela interface, auditoria de login e leitura, avaliação e prescrição persistidas, aprovação/entrega, Storage privado, jobs/PDF, editor, integrações e pagamentos.

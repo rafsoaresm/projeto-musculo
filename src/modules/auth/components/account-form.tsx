@@ -4,10 +4,49 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-export function AccountForm({ signup = false }: { signup?: boolean }) {
+type Audience = "profissional" | "aluno";
+
+const copy = {
+  login: {
+    eyebrow: "ACESSO",
+    heading: "Bom ter você de volta.",
+    text: "Entre para continuar. Você será levado à sua área.",
+    submit: "Entrar",
+  },
+  profissional: {
+    eyebrow: "PROFISSIONAL",
+    heading: "Comece pelo seu cuidado.",
+    text: "Crie sua conta profissional para organizar seus alunos.",
+    submit: "Criar minha conta",
+  },
+  aluno: {
+    eyebrow: "CONVITE",
+    heading: "Crie seu acesso.",
+    text: "Use um e-mail e uma senha para entrar na sua área do aluno.",
+    submit: "Criar meu acesso",
+  },
+} as const;
+
+export function AccountForm({
+  signup = false,
+  audience = "profissional",
+  redirectTo = "/acesso",
+  switchTo,
+}: {
+  signup?: boolean;
+  audience?: Audience;
+  /** An internal path chosen by the page, never by a query string. */
+  redirectTo?: string;
+  switchTo?: { href: string; label: string };
+}) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const text = signup ? copy[audience] : copy.login;
+  const alternate = switchTo ?? {
+    href: signup ? "/entrar" : "/cadastro",
+    label: signup ? "Já tenho uma conta" : "Criar uma conta profissional",
+  };
   async function submit(event: React.SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     setPending(true);
@@ -38,7 +77,7 @@ export function AccountForm({ signup = false }: { signup?: boolean }) {
         );
         return;
       }
-      router.push("/alunos");
+      router.push(redirectTo);
       router.refresh();
     } catch {
       setError("Não foi possível conectar. Tente novamente.");
@@ -48,13 +87,9 @@ export function AccountForm({ signup = false }: { signup?: boolean }) {
   }
   return (
     <section className="account-card">
-      <p className="eyebrow">SEU ESPAÇO DE ATENDIMENTO</p>
-      <h1>{signup ? "Comece pelo seu cuidado." : "Bom ter você de volta."}</h1>
-      <p>
-        {signup
-          ? "Crie sua conta profissional para organizar seus alunos."
-          : "Entre para continuar o acompanhamento dos seus alunos."}
-      </p>
+      <p className="eyebrow">{text.eyebrow}</p>
+      <h1>{text.heading}</h1>
+      <p>{text.text}</p>
       <form className="stack-form" onSubmit={submit}>
         {signup && (
           <label>
@@ -101,11 +136,11 @@ export function AccountForm({ signup = false }: { signup?: boolean }) {
           </p>
         )}
         <button className="button primary" disabled={pending}>
-          {pending ? "Aguarde…" : signup ? "Criar minha conta" : "Entrar"}
+          {pending ? "Aguarde…" : text.submit}
         </button>
       </form>
-      <Link className="account-link" href={signup ? "/entrar" : "/cadastro"}>
-        {signup ? "Já tenho uma conta" : "Criar uma conta profissional"}
+      <Link className="account-link" href={alternate.href}>
+        {alternate.label}
       </Link>
     </section>
   );

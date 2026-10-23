@@ -1,30 +1,66 @@
 import { randomBytes } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 
-// Local-only credentials. Never print secrets or replace existing configuration.
-let secret = randomBytes(48).toString("base64url");
-for (const file of [".dev.vars", ".env.local"]) {
-  try {
-    const content = await readFile(file, "utf8");
-    const existing = content.match(/^AUTH_SECRET=(.+)$/m);
-    if (existing) secret = existing[1];
-  } catch (error) {
-    if (error.code !== "ENOENT") throw error;
-  }
-}
-for (const [file, origin] of [
+// Local-only credentials. Never print secrets or replace existing values.
+// Missing keys are appended to existing files, so older setups keep working.
+const files = [
   [".dev.vars", "http://127.0.0.1:8787"],
   [".env.local", "http://127.0.0.1:3000"],
-]) {
+];
+const generated = {
+  AUTH_SECRET: () => randomBytes(48).toString("base64url"),
+  PLATFORM_SETUP_TOKEN: () => randomBytes(48).toString("base64url"),
+};
+const fixed = { DEMO_MODE: "true" };
+
+async function read(file) {
   try {
+    return await readFile(file, "utf8");
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    return null;
+  }
+}
+const value = (content, key) => content?.match(new RegExp(`^${key}=(.+)$`, "m"))?.[1];
+
+// Reuse a value already present in any local file so both runtimes agree.
+const shared = {};
+for (const key of Object.keys(generated)) {
+  for (const [file] of files) {
+    shared[key] ??= value(await read(file), key);
+  }
+  shared[key] ??= generated[key]();
+}
+
+for (const [file, origin] of files) {
+  const current = await read(file);
+  const wanted = { ...shared, AUTH_ORIGIN: origin, ...fixed };
+  if (current === null) {
+    const body = Object.entries(wanted)
+      .map(([key, val]) => `${key}=${val}`)
+      .join("\n");
     await writeFile(
       file,
-      `# LOCAL ONLY. Configure independent secrets in Webflow.\nAUTH_SECRET=${secret}\nAUTH_ORIGIN=${origin}\n`,
+      `# LOCAL ONLY. Configure independent secrets in Webflow.\n${body}\n`,
       { flag: "wx", mode: 0o600 },
     );
-    console.log(`Created ${file} (local only; value hidden).`);
-  } catch (error) {
-    if (error.code !== "EEXIST") throw error;
-    console.log(`Preserved ${file}.`);
+    console.log(`Created ${file} (local only; values hidden).`);
+    continue;
   }
+  const missing = Object.entries(wanted).filter(
+    ([key]) => value(current, key) === undefined,
+  );
+  if (missing.length === 0) {
+    console.log(`Preserved ${file}.`);
+    continue;
+  }
+  const suffix = missing.map(([key, val]) => `${key}=${val}`).join("\n");
+  await writeFile(
+    file,
+    `${current.endsWith("\n") ? current : `${current}\n`}${suffix}\n`,
+    { mode: 0o600 },
+  );
+  console.log(
+    `Updated ${file}: added ${missing.map(([key]) => key).join(", ")} (values hidden).`,
+  );
 }

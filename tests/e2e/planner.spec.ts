@@ -1,30 +1,48 @@
 import { test, expect } from "@playwright/test";
 import { readFile } from "node:fs/promises";
+import {
+  createProfessional,
+  localIP,
+  noHorizontalOverflow,
+} from "./helpers";
 
-test("navigation and responsive layout render without application errors", async ({
+test("entry page, navigation and responsive layout render without application errors", async ({
   page,
 }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
+  await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
   await page.goto("./");
   await expect(
     page.getByRole("heading", { name: "Um método. Todo o percurso." }),
   ).toBeVisible();
+  // The three areas are always presented, each with its own entry.
+  for (const area of [
+    "Gestor da ferramenta",
+    "Profissional de educação física",
+    "Cliente (aluno)",
+  ])
+    await expect(page.getByRole("heading", { name: area })).toBeVisible();
+  await noHorizontalOverflow(page);
+  await page.goto("./projeto");
+  await expect(
+    page.getByRole("heading", { name: "O produto, por inteiro." }),
+  ).toBeVisible();
+
+  await createProfessional(page, "Estúdio navegação");
   await expect(
     page.getByRole("link", { name: "Visão geral", exact: true }),
   ).toHaveAttribute("aria-current", "page");
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-  ).toBe(true);
-  await page.getByRole("link", { name: "Explorar planejamento" }).click();
+  await noHorizontalOverflow(page);
+  await page.goto("./profissional/periodizacao");
+  await expect(page.getByRole("heading", { name: "Periodização" })).toBeVisible();
+  // A module that is in the structure but not built says so, honestly.
+  await page.goto("./profissional/meu-site");
+  await expect(page.getByRole("heading", { name: "Meu Site" })).toBeVisible();
+  await expect(page.getByText("Ainda não disponível")).toBeVisible();
+  await page.goto("./profissional/nao-existe");
   await expect(
-    page.getByRole("heading", { name: "Planejamento de ciclos" }),
-  ).toBeVisible();
-  await page.getByRole("link", { name: "Mapa do produto" }).click();
-  await expect(
-    page.getByRole("heading", { name: "O produto, por inteiro." }),
+    page.getByRole("heading", { name: "Página não encontrada." }),
   ).toBeVisible();
   expect(errors).toEqual([]);
 });
@@ -32,7 +50,10 @@ test("navigation and responsive layout render without application errors", async
 test("calculates independent phases, exports the actual draft and invalidates stale results", async ({
   page,
 }) => {
-  await page.goto("./planejamento");
+  await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
+  await createProfessional(page, "Estúdio planejador");
+  await page.goto("./profissional/periodizacao");
+  await page.waitForLoadState("networkidle");
   await page.getByLabel("Data de início").fill("2026-10-26");
   await page.getByLabel("Microciclos (semanas)").selectOption("3");
   await page.getByLabel("Sessões por semana").selectOption("2");
@@ -75,7 +96,10 @@ test("calculates independent phases, exports the actual draft and invalidates st
 test("requires a date and offers all twelve independently configurable phases", async ({
   page,
 }) => {
-  await page.goto("./planejamento");
+  await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
+  await createProfessional(page, "Estúdio fases");
+  await page.goto("./profissional/periodizacao");
+  await page.waitForLoadState("networkidle");
   await page.getByRole("button", { name: "Calcular planejamento" }).click();
   expect(
     await page
@@ -87,9 +111,5 @@ test("requires a date and offers all twelve independently configurable phases", 
   await page.getByLabel("Divisão de treinos").selectOption("Full Body");
   await page.getByRole("button", { name: "Fase 01", exact: true }).click();
   await expect(page.getByLabel("Divisão de treinos")).toHaveValue("ABC");
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-  ).toBe(true);
+  await noHorizontalOverflow(page);
 });
