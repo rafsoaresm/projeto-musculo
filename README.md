@@ -13,21 +13,27 @@ npm run db:migrate:local
 npm run dev
 ```
 
+`auth:setup:local` também cria o código de ativação do gestor (`PLATFORM_SETUP_TOKEN`, em `.dev.vars`/`.env.local`) e liga `DEMO_MODE`. Para ver a ferramenta pelos três papéis: abra `/demonstracao`, ou crie um profissional em `/cadastro`, convide um aluno e ative o gestor em `/gestor/ativar`.
+
 O binding `DB` em `wrangler.json` fornece o banco. Não é necessário criar conta externa, token ou URL de banco. No desenvolvimento, os dados ficam em `.wrangler/state`; na publicação, o Webflow cria o recurso por ambiente e aplica as migrations. O identificador `local-trainer-prescription` é apenas local; o Webflow atribui o ID real no deploy.
 
 ## O que existe
 
-- Identidade visual App Personal: Inter local, azul/ciano, componentes arredondados, navegação móvel e contraste adaptado.
+- **Três áreas por papel**: gestor da ferramenta (`/gestor`), profissional de educação física (`/profissional`) e cliente/aluno (`/aluno`), cada uma com menu e autorização próprios. Menu do handoff V2; módulos ainda inexistentes aparecem como "Em breve". Veja [estrutura e papéis](docs/ESTRUTURA-E-PAPEIS.md).
+- **Demonstração** (`/demonstracao`, `DEMO_MODE=true`): as três áreas com dados fictícios, sem criar conta.
+- Identidade visual em **azul sólido**, sem degradê: Inter local, componentes arredondados, navegação móvel e contraste AA ([design system](docs/DESIGN-SYSTEM.md)).
 - Cadastro profissional, login, logout e sessões persistidas via Better Auth + SQLite nativo.
 - Provisionamento de organização e profissional; cadastro/lista/detalhe de alunos com atribuição técnica e auditoria atômicas.
-- Interface responsiva com visão geral, mapa de produto e planejador.
+- Convite de aluno de uso único (hash no banco, expiração, revogação) e área do aluno inicial.
+- Ativação única do gestor com `PLATFORM_SETUP_TOKEN`; o gestor lista organizações, bloqueia/restabelece acessos e consulta a auditoria, sem ver dados de alunos.
+- Interface responsiva com visão geral, mapa de produto e planejador de periodização.
 - Planejador de 3/6/12 fases, 3–6 semanas, 1–7 sessões por semana, splits e duração real. Exportação JSON versionada como `DRAFT`.
-- Tabelas nativas iniciais: `users`, `organizations`, `memberships`, `professionals`, `students`, `care_assignments`, `student_access` e controle de versão do schema.
+- Tabelas nativas: `users`, `organizations`, `memberships`, `professionals`, `students`, `care_assignments`, `student_access`, `platform_admins`, `student_invites`, `access_audit_events` e controle de versão do schema.
 - Repositories de leitura com organização, vínculo técnico/aluno, revogação e bloqueio de identidade em cada consulta.
 - `/api/health` consulta de verdade a versão do schema no binding `DB`; retorna 503 se o banco/migration não estiver disponível.
 - Configuração Next/OpenNext, testes e CI para raiz/subcaminho.
 
-O planejador ainda não grava prescrições no banco. Convites, verificação de e-mail, recuperação de senha, avaliação, aprovação/entrega, portal, sites, financeiro e integrações continuam no roadmap. Páginas e ações de alunos exigem sessão validada e contexto derivado no servidor.
+O planejador ainda não grava prescrições no banco. Verificação de e-mail, recuperação de senha, envio de e-mails, avaliação, prescrição, aprovação/entrega, treino no portal, sites, financeiro e integrações continuam no roadmap. Cada página e ação exige sessão validada e papel derivado no servidor.
 
 ## Validar
 
@@ -50,8 +56,9 @@ Para o navegador, execute `npx playwright install chromium` ou use `PLAYWRIGHT_C
 ## Estrutura
 
 ```text
-src/app/                 páginas, handlers e health check
-src/modules/             autenticação, onboarding e planejador
+src/app/                 rotas por área: (publico), gestor, profissional, aluno, demonstracao, api
+src/components/          moldura por papel, componentes de interface
+src/modules/             auth, plataforma (navegação por papel), gestor, convites, portal, demo, planejador
 src/db/                  binding do servidor e repositories autorizados
 migrations/              migrations SQLite aplicadas pelo Webflow
 cloudflare-env.d.ts       tipos do binding DB
@@ -63,11 +70,13 @@ docs/referencias/        documentos originais e referência visual preservados
 
 ## Documentação
 
+- [Estrutura por papéis e conciliação com o handoff V2](docs/ESTRUTURA-E-PAPEIS.md)
 - [Arquitetura atual](docs/ARQUITETURA-WEBFLOW-CLOUD.md)
+- [Design system](docs/DESIGN-SYSTEM.md)
 - [Banco e publicação no Webflow](docs/WEBFLOW-CLOUD.md)
 - [Roadmap](docs/ROADMAP-IMPLEMENTACAO.md)
 - [Evidências de validação](docs/VALIDACAO.md)
 
-**Próxima fatia:** verificação de e-mail, recuperação e convites de uso único; depois avaliação e prescrição persistida com revisão profissional. A etapa atual não fecha o piloto operacional.
+**Próxima fatia:** verificação de e-mail, recuperação de senha e envio de e-mails; depois avaliação e prescrição persistida com revisão profissional. A etapa atual não fecha o piloto operacional.
 
-No Webflow, configure `AUTH_SECRET` (aleatória, ao menos 32 caracteres) e `AUTH_ORIGIN` (origem HTTPS privada, sem caminho). Em subcaminho, configure `BASE_URL` no build. Veja [configuração de acesso](docs/AUTENTICACAO.md) e [decisões visuais](docs/DESIGN-SYSTEM.md).
+No Webflow, configure `AUTH_SECRET` (aleatória, ao menos 32 caracteres), `AUTH_ORIGIN` (origem HTTPS privada, sem caminho) e `PLATFORM_SETUP_TOKEN` (32+ caracteres, para ativar o primeiro gestor). `DEMO_MODE=true` é opcional. Em subcaminho, configure `BASE_URL` no build. Veja [configuração de acesso](docs/AUTENTICACAO.md) e [decisões visuais](docs/DESIGN-SYSTEM.md).

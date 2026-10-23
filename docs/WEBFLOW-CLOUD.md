@@ -61,9 +61,9 @@ Para verificar subcaminho, passe `BASE_URL=/treinador` no build, preview, smoke 
 ## Publicar e ver as tabelas
 
 1. Conectar `rafsoaresm/projeto-musculo`, branch `main`, à aplicação Webflow Cloud; usar a raiz do repositório e Next.js.
-2. Configurar `AUTH_SECRET` e `AUTH_ORIGIN` no ambiente Webflow; `BASE_URL` deve corresponder ao mount path no build (vazio na raiz). Consultar `AUTENTICACAO.md`. Disparar o deploy do commit atualizado pelo Webflow. Se a integração já estiver ativa, um push no branch conectado pode disparar o deploy automaticamente.
-3. O Webflow provisiona `DB` e aplica as migrations pendentes de `migrations/` (0001 e 0002 nesta versão) no ambiente de destino. O diretório `.wrangler` local não é o banco de produção e não será enviado ao Git.
-4. Na aplicação Webflow, abrir o ambiente → **Storage** → **DB**. Conferir as tabelas e o registro `0002_identity_and_onboarding` em `app_schema_versions`.
+2. Configurar `AUTH_SECRET` e `AUTH_ORIGIN` no ambiente Webflow; `BASE_URL` deve corresponder ao mount path no build (vazio na raiz). Defina também `PLATFORM_SETUP_TOKEN` (ativação do gestor) e, se quiser a demonstração, `DEMO_MODE=true`. Consultar `AUTENTICACAO.md`. Disparar o deploy do commit atualizado pelo Webflow. Se a integração já estiver ativa, um push no branch conectado pode disparar o deploy automaticamente.
+3. O Webflow provisiona `DB` e aplica as migrations pendentes de `migrations/` (0001, 0002 e 0003 nesta versão) no ambiente de destino. O diretório `.wrangler` local não é o banco de produção e não será enviado ao Git.
+4. Na aplicação Webflow, abrir o ambiente → **Storage** → **DB**. Conferir as tabelas e o registro `0003_roles_and_access` em `app_schema_versions`.
 5. Verificar `api/health` no caminho real do app: HTTP 200, `storage: webflow_sqlite` e `persistence: available`. Se houver 503, consultar os logs internos de binding/migration sem expor detalhes em resposta pública.
 
 O comando de build do app continua `npm run build`; `build:cloud` serve para validar o bundle OpenNext localmente. Não usar `wrangler deploy` como substituto de publicação no Webflow.

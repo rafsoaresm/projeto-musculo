@@ -44,10 +44,19 @@ Esta base é um app na raiz do repositório, com módulos internos. Sites e port
 | care_assignments | Responsabilidade técnica explícita |
 | student_access | Vínculo explícito entre login e cadastro de aluno |
 | app_schema_versions | Versão necessária para a prontidão do banco |
+| platform_admins | Gestor da ferramenta (0003). Sem vínculo técnico com alunos |
+| student_invites | Convite de uso único do aluno; só o hash do token (0003) |
+| access_audit_events | Auditoria de acessos: gestor, bloqueios, convites, revogações (0003) |
 
 IDs de domínio são UUIDs gerados pelo servidor. As identidades Better Auth usam IDs próprios. Datas usam UTC ISO-8601; o calendário usa timezone IANA. Foreign keys compostas impedem cruzar organização, aluno e profissional. Futuros valores monetários serão inteiros em centavos e percentuais em pontos-base.
 
 As migrations Supabase da primeira proposta nunca foram aplicadas remotamente nem publicadas e foram substituídas antes do primeiro envio da base. A partir do primeiro deploy, não editar/remover migrations aplicadas: acrescentar novas migrations.
+
+## Áreas por papel — versão 0.3
+
+A aplicação tem três áreas (`/gestor`, `/profissional`, `/aluno`) mais a demonstração opcional. O papel de cada identidade é recalculado no servidor a cada requisição (`src/db/surfaces.ts`): gestor = `platform_admins` ativo; profissional = `memberships` ativa; cliente = `student_access` ativo. Layouts só desenham a moldura; cada página e ação chama `requirePlatformAdmin`, `requireWorkspace` ou `requireStudent`. Detalhes, matriz e conciliação com o handoff V2 em [ESTRUTURA-E-PAPEIS.md](ESTRUTURA-E-PAPEIS.md).
+
+O gestor opera sobre organizações e contagens. Ele não tem `memberships` nem `care_assignments`, então `studentsFor` e os repositories de atendimento nunca devolvem alunos a ele. O portal do aluno continua na mesma origem do painel nesta fatia; a separação de origem segue obrigatória antes de dados reais de alunos.
 
 ## Autorização sem RLS
 
@@ -81,3 +90,7 @@ Better Auth usa as tabelas `auth_user`, `auth_session`, `auth_account`, `auth_ve
 A migration 0002 acrescenta essas tabelas, `organization_provisioning` (provisionamento único por identidade) e `audit_events`. A 0001 permanece inalterada. Organização, membership OWNER, profissional e auditoria usam `DB.batch`; aluno, atribuição ao profissional autenticado e auditoria também. Sem vínculo técnico ativo, não há escrita. Um OWNER sem atribuição continua sem acesso universal a alunos.
 
 A organização ativa vem da primeira membership ativa ordenada pelo servidor. Esta fatia cria um espaço por identidade; seleção de múltiplos espaços e convites ainda não possuem interface. E-mails ainda não são verificados e nunca autorizam vínculo automático com aluno ou organização. Ver [autenticação](AUTENTICACAO.md) para limites e operação.
+
+## Papéis e convites — versão 0.3
+
+A migration 0003 é aditiva (0001 e 0002 permanecem iguais). `access_audit_events` valida a ação no código e não por `CHECK`, para que novos eventos não exijam reconstruir a tabela. O aceite de convite e a ativação do gestor usam `DB.batch` com `changes()` para encadear efeitos de forma atômica; os testes cobrem concorrência, reenvio, expiração e revogação. A ativação do primeiro gestor depende de `PLATFORM_SETUP_TOKEN` e só funciona enquanto não houver gestor ativo.

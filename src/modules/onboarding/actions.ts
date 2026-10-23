@@ -20,8 +20,8 @@ export async function setupWorkspace(
   } catch {
     return "Não foi possível criar o espaço. Atualize a página e tente novamente.";
   }
-  revalidatePath("/alunos");
-  redirect("/alunos");
+  revalidatePath("/profissional");
+  redirect("/profissional");
 }
 export async function addStudent(
   _previous: string,
@@ -38,6 +38,6 @@ export async function addStudent(
   } catch {
     return "Não foi possível cadastrar. Verifique seu vínculo de atendimento e tente novamente.";
   }
-  revalidatePath("/alunos");
-  redirect(`/alunos/${id}`);
+  revalidatePath("/profissional/alunos");
+  redirect(`/profissional/alunos/${id}`);
 }

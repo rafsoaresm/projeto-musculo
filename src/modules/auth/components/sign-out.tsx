@@ -1,14 +1,30 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-export function SignOut() {
+import { LogOut } from "lucide-react";
+
+export function SignOut({
+  redirectTo = "/entrar",
+  variant = "button",
+}: {
+  /** An internal path chosen by the page. */
+  redirectTo?: string;
+  /** "nav" is a menu row, "topbar" a small button, "button" the default. */
+  variant?: "button" | "nav" | "topbar";
+}) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState(false);
   const router = useRouter();
   return (
     <>
       <button
-        className="button secondary"
+        className={
+          variant === "nav"
+            ? "nav-link subtle sign-out"
+            : variant === "topbar"
+              ? "button secondary small"
+              : "button secondary"
+        }
         disabled={pending}
         onClick={async () => {
           setPending(true);
@@ -23,7 +39,7 @@ export function SignOut() {
               },
             );
             if (!response.ok) throw new Error();
-            router.push("/entrar");
+            router.push(redirectTo);
             router.refresh();
           } catch {
             setError(true);
@@ -32,10 +48,13 @@ export function SignOut() {
           }
         }}
       >
-        {pending ? "Saindo…" : "Sair"}
+        {variant === "nav" && <LogOut size={17} />}
+        <span>{pending ? "Saindo…" : "Sair"}</span>
       </button>
       {error && (
-        <span role="alert">Não foi possível sair. Tente novamente.</span>
+        <span role="alert" className="small form-error-inline">
+          Não foi possível sair. Tente novamente.
+        </span>
       )}
     </>
   );

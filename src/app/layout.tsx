@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { AppShell } from "@/components/app-shell";
 import "@fontsource/inter/latin-400.css";
 import "@fontsource/inter/latin-700.css";
 import "./globals.css";
@@ -21,9 +20,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="pt-BR">
-      <body>
-        <AppShell>{children}</AppShell>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

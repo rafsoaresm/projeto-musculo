@@ -1,39 +1,62 @@
-/* Source: docs/referencias/04-TOKENS-VISUAIS.md. Accessible extensions below. */
+/*
+ * Visual tokens: flat blue, no gradients.
+ * Origin: docs/referencias/04-TOKENS-VISUAIS.md (App Personal). The original
+ * brand blue #009EE2 and the cyan/gradient pair were replaced on 2026-10-23 by
+ * a single solid blue. Radii and Inter come from the original reference.
+ * Every color below was checked for WCAG AA contrast (docs/DESIGN-SYSTEM.md
+ * lists the pairs). Change the brand blue in ONE place: --color-primary and
+ * its two companions.
+ */
 :root {
-  --color-primary: #009ee2;
-  --color-accent: #00fffa;
-  --color-background: #fafafa;
+  /* Brand: one solid blue. White text on --color-primary is 4.87:1. */
+  --color-primary: #0077b6;
+  --color-primary-strong: #005f92;
+  --color-primary-soft: #e8f3fa;
+  --color-primary-line: #b5d6ea;
+
+  /* Neutrals */
+  --color-background: #f5f7f9;
   --color-surface: #fff;
-  --color-text: #6f6f6f;
-  --color-neutral: #d7d7d7;
-  --color-home-dark: #1d1d1d;
-  --gradient-primary: linear-gradient(90deg, #00fffa 0%, #009ee2 100%);
-  --font-family: "Inter", sans-serif;
+  --color-ink: #1f2933;
+  --color-text: #4a5560;
+  --color-muted: #5a6470;
+  --color-line: #d7dde3;
+  --color-line-strong: #b8c1ca;
+
+  /* Semantic states (text/background pairs are AA) */
+  --color-success: #1b6e3c;
+  --color-success-soft: #e6f4ea;
+  --color-warning: #8a5a00;
+  --color-warning-soft: #fff4d6;
+  --color-warning-line: #e8c36a;
+  --color-error: #a52434;
+  --color-error-soft: #fff2f3;
+
+  --color-on-primary: #fff;
+  --color-focus: #005f92;
+
+  /* Demonstration banner: neutral dark, never a role color. */
+  --color-demo: #1f2933;
+  --color-on-demo: #fff;
+
+  --font-family: "Inter", system-ui, sans-serif;
+
   --radius-xs: 5px;
   --radius-card: 15px;
   --radius-md: 20px;
   --radius-input: 30px;
   --radius-button: 50px;
-  --shadow-button: 5px 5px 10px rgba(2, 88, 125, 0.25);
-  --shadow-card: 5px 5px 10px rgba(215, 215, 215, 0.25);
-  --shadow-nav: 5px 2px 10px rgba(215, 215, 215, 0.4);
+
+  /* Flat: no colored glow. Cards rely on a border plus a hairline shadow. */
+  --shadow-card: 0 1px 2px rgba(31, 41, 51, 0.05);
+  --shadow-nav: 0 -1px 0 var(--color-line);
+
+  --space-xs: 6px;
   --space-sm: 10px;
-  --space-md: 15px;
-  --space-lg: 20px;
-  --space-xl: 30px;
-  /* Proposed accessibility/state tokens, not extracted Figma styles. */
-  --color-link: #006b99;
-  --color-on-gradient: #082a37;
-  --color-primary-soft: #e6f7ff;
-  --color-focus: #006b99;
-  --color-error: #a52434;
-  --color-error-surface: #fff2f3;
-  --canvas: var(--color-background);
-  --ink: var(--color-text);
-  --muted: var(--color-text);
-  --line: var(--color-neutral);
-  --brand: var(--color-link);
-  --brand-light: var(--color-primary-soft);
-  --green: #326656;
-  --radius: var(--radius-card);
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+
+  --sidebar-width: 264px;
+  --content-max: 1280px;
 }

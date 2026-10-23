@@ -15,8 +15,26 @@ const config: NextConfig = {
   env: { NEXT_PUBLIC_BASE_PATH: basePath },
   basePath,
   assetPrefix: process.env.ASSETS_PREFIX || basePath,
+  // The documented local origin is 127.0.0.1; without this the dev server blocks its own HMR.
+  allowedDevOrigins: ["127.0.0.1"],
   poweredByHeader: false,
   reactStrictMode: true,
+  // Addresses from before the split by role keep working (basePath is added).
+  async redirects() {
+    return [
+      { source: "/alunos", destination: "/profissional/alunos", permanent: false },
+      {
+        source: "/alunos/:path*",
+        destination: "/profissional/alunos/:path*",
+        permanent: false,
+      },
+      {
+        source: "/planejamento",
+        destination: "/profissional/periodizacao",
+        permanent: false,
+      },
+    ];
+  },
   async headers() {
     return [
       {

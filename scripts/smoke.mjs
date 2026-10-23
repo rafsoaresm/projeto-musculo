@@ -4,8 +4,13 @@ const origin = process.env.SMOKE_ORIGIN || "http://127.0.0.1:3000";
 const mount = (process.env.BASE_URL || "").replace(/\/$/, "");
 for (const [path, expected] of [
   ["/", "Um método. Todo o percurso."],
-  ["/planejamento", "Planejamento de ciclos"],
+  ["/entrar", "Bom ter você de volta."],
   ["/projeto", "O produto, por inteiro."],
+  // Each private area answers an anonymous visitor with the sign-in page.
+  ["/gestor", "Bom ter você de volta."],
+  ["/profissional", "Bom ter você de volta."],
+  ["/aluno", "Bom ter você de volta."],
+  ["/alunos", "Bom ter você de volta."],
 ]) {
   const response = await fetch(`${origin}${mount}${path}`);
   assert.equal(response.status, 200, path);
