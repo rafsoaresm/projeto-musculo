@@ -1,0 +1,47 @@
+{
+  "name": "trainer-prescription",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0 <25"
+  },
+  "scripts": {
+    "dev": "next dev --hostname 0.0.0.0",
+    "build": "next build",
+    "start": "next start --hostname 0.0.0.0",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm run lint && npm run typecheck && npm test",
+    "build:cloud": "opennextjs-cloudflare build",
+    "preview:cloud": "opennextjs-cloudflare preview",
+    "smoke": "node scripts/smoke.mjs",
+    "test:e2e": "playwright test",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "db:check:local": "wrangler d1 execute DB --local --command \"SELECT version FROM app_schema_versions;\""
+  },
+  "dependencies": {
+    "lucide-react": "1.61.0",
+    "next": "16.4.3",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "server-only": "0.0.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261023.1",
+    "@opennextjs/cloudflare": "1.20.13",
+    "@playwright/test": "1.64.1",
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.3",
+    "miniflare": "5.20261019.2-beta",
+    "typescript": "5.9.3",
+    "vitest": "5.0.5",
+    "wrangler": "^4.148.0"
+  }
+}

@@ -1,0 +1,17 @@
+node_modules/
+.next/
+.open-next/
+.wrangler/
+.webflow/
+.env*
+!.env.example
+*.tsbuildinfo
+next-env.d.ts
+coverage/
+test-results/
+playwright-report/
+*.log
+.DS_Store
+clouduser.next.config.*
+next.config.webflow.ts
+webflow-loader.ts

@@ -1,0 +1,36 @@
+import type { NextConfig } from "next";
+import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
+
+// Use the same local D1 state as Wrangler migrations and Worker preview.
+initOpenNextCloudflareForDev();
+
+const rawBasePath = process.env.BASE_URL || "";
+const basePath = rawBasePath === "/" ? "" : rawBasePath;
+if (basePath && !/^\/[a-zA-Z0-9/_-]+$/.test(basePath)) {
+  throw new Error("BASE_URL deve ser um caminho, como /treinador.");
+}
+if (basePath.endsWith("/")) throw new Error("BASE_URL não pode terminar em /.");
+
+const config: NextConfig = {
+  basePath,
+  assetPrefix: process.env.ASSETS_PREFIX || basePath,
+  poweredByHeader: false,
+  reactStrictMode: true,
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "X-Frame-Options", value: "DENY" },
+          {
+            key: "Permissions-Policy",
+            value: "camera=(), microphone=(), geolocation=()",
+          },
+        ],
+      },
+    ];
+  },
+};
+export default config;

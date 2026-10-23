@@ -1,0 +1,45 @@
+name: Validate foundation
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        mount: ["", "/treinador"]
+    env:
+      BASE_URL: ${{ matrix.mount }}
+      NEXT_TELEMETRY_DISABLED: "1"
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run db:migrate:local
+      - run: npm run build:cloud
+      - run: npx playwright install --with-deps chromium
+      - name: Start local Worker and verify application
+        shell: bash
+        run: |
+          npm run preview:cloud > /tmp/trainer-worker.log 2>&1 &
+          worker_pid=$!
+          trap 'kill "$worker_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..60}; do
+            if curl --fail --silent "http://127.0.0.1:8787${BASE_URL}/api/health" > /dev/null; then break; fi
+            if ! kill -0 "$worker_pid" 2>/dev/null; then cat /tmp/trainer-worker.log; exit 1; fi
+            sleep 1
+          done
+          SMOKE_ORIGIN=http://127.0.0.1:8787 npm run smoke
+          npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: failure-${{ strategy.job-index }}
+          path: test-results/
