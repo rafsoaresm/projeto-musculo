@@ -1,6 +1,6 @@
 {
   "name": "trainer-prescription",
-  "version": "0.14.0",
+  "version": "0.14.1",
   "private": true,
   "type": "module",
   "engines": {
@@ -16,7 +16,7 @@
     "test:watch": "vitest",
     "check": "npm run lint && npm run typecheck && npm test",
     "build:cloud": "opennextjs-cloudflare build",
-    "preview:cloud": "opennextjs-cloudflare preview",
+    "preview:cloud": "opennextjs-cloudflare preview -c wrangler.photos.json",
     "smoke": "node scripts/smoke.mjs",
     "test:e2e": "playwright test",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",

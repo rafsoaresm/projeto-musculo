@@ -5,6 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { requireWorkspace } from "@/modules/auth/server";
 import { studentsFor } from "@/db/students";
 import { assessmentsFor } from "@/db/assessments";
+import { photoStorageAvailable } from "@/db/binding";
 import { profilesFor } from "@/db/student-profile";
 import { ageOn } from "@/modules/ficha/contracts";
 import { PageHeading } from "@/components/ui";
@@ -47,7 +48,7 @@ export default async function Assessment({
       />
       {detail.state === "DRAFT" ? (
         <section className="panel">
-          <AssessmentForm detail={detail} minor={minor} />
+          <AssessmentForm detail={detail} minor={minor} storageReady={await photoStorageAvailable()} />
         </section>
       ) : (
         <AssessmentView detail={detail} />
