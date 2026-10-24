@@ -1,6 +1,20 @@
-# Evidências de validação — v0.12 (postura e movimento) sobre a base 0.3
+# Evidências de validação — v0.13 (evolução das avaliações) sobre a base 0.3
 
-Tudo abaixo foi executado **localmente** em 23/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0010 são aditivas.
+Tudo abaixo foi executado **localmente** em 23/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0010 são aditivas. A 0.13 não tem migration nova.
+
+## Fatia 0.13: evolução das avaliações
+
+O documento mestre pede gráficos e evolução histórica dos indicadores (seção 7.2) e comparação entre avaliações (seção 8). Só leitura sobre o que a 0.10 e a 0.12 já gravam: sem migration, sem campo novo.
+
+- **Tela:** `/profissional/alunos/<id>/evolucao`, ligada pelo painel de avaliações do aluno. Só profissional com vínculo técnico ativo; as demais identidades recebem lista vazia no repositório e 404 na página.
+- **Séries:** a mesma medida (tipo, nome sem distinguir maiúsculas e acentos, lado e unidade) vira uma série ao longo das avaliações registradas, na ordem do documento (frequência cardíaca, pressão, cintura, gordura) e depois as medidas do próprio profissional. Lado ou unidade diferente é outra série. Um valor que não é número simples (pressão `120/80`, "14 repetições") aparece na tabela e **não é desenhado**.
+- **Gráfico:** uma linha de 2 px com marcadores, três a seis guias em números redondos (passos de 1, 2 ou 5), o último valor rotulado e a distância real em dias no eixo do tempo (duas datas próximas ficam próximas). Só aparece com duas ou mais medições numéricas. É suplemento: todo valor também está na tabela "Ver os valores". O ponteiro, o foco e as setas do teclado mostram a mesma leitura (valor e data). Cor única da marca, sem legenda, porque é uma série por gráfico.
+- **Comparação:** para cada par de avaliações seguidas, o que difere na triagem (item marcado ou não), na postura (achado marcado ou não) e no movimento (de um resultado para outro, sendo "sem linha" igual a não avaliado), com as palavras do documento. **Não há "melhorou", "piorou" nem "resolvido"**: um teste de que mostra isso falha se essas palavras entrarem na comparação. Os indicadores não entram na comparação porque estão nos gráficos.
+- **Linha do tempo:** data, tipo (inicial ou reavaliação) e situação da triagem de cada avaliação, com ligação para ela.
+- **Limites de leitura:** até as 24 avaliações registradas mais recentes por aluno (o repositório aceita até 100). Rascunho nunca entra.
+- **Testes:** `tests/evolution.test.ts` (8): agrupamento e ordem das séries, lado e unidade que não se misturam, comparação nas palavras do documento, silêncio quando nada difere e ausência de palavras que julgam, e a geometria do gráfico (distância real em dias, valores maiores mais altos, guias redondas, série plana sem dividir por zero). `tests/assessments.test.ts` (+2 = 26): o histórico só traz registradas, do mais antigo ao mais novo, com indicadores, postura e movimento, limite pelos mais novos, vazio para as oito identidades sem vínculo e depois de revogar. Mutações deliberadas (eixo por posição em vez de data, chave de série sem lado e unidade, padrão de "não avaliado", histórico sem o vínculo, histórico com rascunho) fizeram testes falharem.
+- **Navegador:** duas avaliações com meses de diferença; com uma só não há gráfico nem comparação; com duas aparecem as séries unidas apesar de maiúsculas diferentes, o gráfico com foco e setas lendo os mesmos valores da tabela, o valor que não é número só na tabela, e a comparação com as palavras do documento. Outra organização recebe 404. Desktop e celular, na raiz e em `/treinador`. Capturas conferidas.
+- **Fora desta fatia:** fotos lado a lado, séries de pressão arterial separadas em sistólica e diastólica, metas, e qualquer interpretação dos valores.
 
 ## Fatia 0.12: postura e movimento nas avaliações
 
@@ -121,7 +135,7 @@ Cobre **só a estrutura do ciclo** (fases, semanas, sessões, divisão e calend�
 
 ## Código e banco
 
-- `npm run check`: ESLint e TypeScript sem erros e **200 testes, nenhum ignorado**: 17 de isolamento D1, 15 de identidade, 26 de periodização, 31 de papéis, 12 de contrato de navegação/fixtures, 5 de caminho de montagem, 9 de planos salvos, 9 de biblioteca, 21 de prescrição, 16 de aprovação, entrega, situação da triagem e documento entregue, 7 de ficha, 24 de avaliações e 8 de PDF.
+- `npm run check`: ESLint e TypeScript sem erros e **210 testes, nenhum ignorado**: 17 de isolamento D1, 15 de identidade, 26 de periodização, 31 de papéis, 12 de contrato de navegação/fixtures, 5 de caminho de montagem, 9 de planos salvos, 9 de biblioteca, 21 de prescrição, 16 de aprovação, entrega, situação da triagem e documento entregue, 7 de ficha, 26 de avaliações, 8 de PDF e 8 de evolução.
 - Os 31 testes de `tests/roles.test.ts` usam D1 real (Miniflare) com as três migrations e cobrem:
   - **Gestor:** ativação recusada sem token configurado, com token curto ou errado; exatamente um gestor sob concorrência; token inerte depois; e-mail e papel de proprietário não concedem o papel; revogado ou bloqueado perde o acesso na hora.
   - **Escopo do gestor:** vê organizações e contagens; o resultado serializado não contém nome de aluno; `studentsFor` e a criação de convite não funcionam para ele em nenhuma organização; bloqueio e restabelecimento com auditoria; não bloqueia a si mesmo, outro gestor ou quem não é da organização; a auditoria do gestor lista só ações de plataforma.
@@ -132,13 +146,14 @@ Cobre **só a estrutura do ciclo** (fases, semanas, sessões, divisão e calend�
 
 ## Navegador (Playwright, Worker local)
 
-29 execuções aprovadas na raiz **e** 29 em `/treinador` (58), sem testes ignorados (a correção do cadastro, abaixo, foi validada antes com 15 execuções e a variável de build de caminho vazia): desktop e celular (Pixel 7) para cada cenário comum, e um cenário do gestor em projeto próprio, porque a ativação é única por banco (o `globalSetup` revoga gestores do **banco local** antes de cada rodada).
+31 execuções aprovadas na raiz **e** 31 em `/treinador` (62), sem testes ignorados (a correção do cadastro, abaixo, foi validada antes com 15 execuções e a variável de build de caminho vazia): desktop e celular (Pixel 7) para cada cenário comum, e um cenário do gestor em projeto próprio, porque a ativação é única por banco (o `globalSetup` revoga gestores do **banco local** antes de cada rodada).
 
 | Cenário | O que prova |
 |---|---|
 | Entrada, navegação e layout | Três áreas apresentadas, sem rolagem horizontal, módulo planejado mostra "Ainda não disponível", 404 em módulo inexistente, sem erro de página |
 | Planejador (2 cenários) | Fases independentes, exportação do rascunho, invalidação do resultado, 12 fases — agora atrás de login |
 | Biblioteca de exercícios | 64 do sistema, filtros, cópia, criação, revisão de vídeo em duas gravações, isolamento entre organizações (seção da fatia 0.5a) |
+| Evolução das avaliações | Séries unidas, gráfico com foco e setas, valor que não é número só na tabela, comparação sem palavras que julgam, 404 para outra organização (seção da fatia 0.13) |
 | PDF do plano | Baixar só depois de entregar, profissional e aluno recebem o mesmo arquivo, 404 para outro aluno, sem sessão não recebe (seção da fatia 0.11, dentro do cenário de entrega) |
 | Avaliações e triagem | Seis itens do documento, postura e movimento com os itens e a escala do documento (seção da fatia 0.12), registro sem marcas exige confirmação, indicador inválido não apaga o digitado, registrada somente leitura, revisão com base, alerta sem revisão bloqueia aprovar e entregar, outra organização recebe 404 (seção da fatia 0.10) |
 | Ficha do aluno | Erro mantém o digitado, salva e persiste, resumo sem expor conteúdo, menor sinalizado, isolamento entre organizações (seção da fatia 0.9) |

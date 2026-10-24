@@ -439,3 +439,43 @@ describe("posture and movement of an assessment", () => {
     await db.prepare("DELETE FROM assessments WHERE id = ?1").bind(started.id).run();
   });
 });
+
+describe("the history of a student's assessments", () => {
+  const owner = "tech-a2";
+  it("lists the recorded ones, oldest first, with metrics, posture and movement, and never a draft", async () => {
+    const api = assessmentsFor(db, scope(owner));
+    await recordedFor("st-2", { assessedOn: "2026-11-29", metrics: [{ metricType: "WAIST", value: "88,5" }, { metricType: "CUSTOM", name: "Sentar e levantar", value: "14 reps", side: "BOTH" }] }, day(29), owner);
+    const draft = await api.startDraft("st-2", day(30));
+    if (draft.status !== "started") throw new Error(draft.status);
+    await api.saveDraft(draft.id, { assessedOn: "2026-11-30", metrics: [{ metricType: "WAIST", value: "80" }] }, day(30));
+
+    const history = await api.history("st-2");
+    expect(history.map((entry) => entry.assessedOn)).toEqual(["2026-11-10", "2026-11-28", "2026-11-29"]);
+    expect(history.some((entry) => entry.id === draft.id)).toBe(false);
+    // What the 11-28 record holds (posture and movement) and what the 11-29 one holds (metrics).
+    expect(history[1].posture.findings).toEqual(["ANTERIOR.HEAD_TILT"]);
+    expect(history[1].movement).toEqual([{ test: "SQUAT", grade: "MODERATE", notes: null }]);
+    expect(history[2].metrics.map((m) => [m.name, m.valueText, m.valueNumber, m.side])).toEqual([
+      ["Cintura", "88,5", 88.5, null],
+      ["Sentar e levantar", "14 reps", null, "BOTH"],
+    ]);
+    expect(history[0]).toMatchObject({ riskStatus: "REVIEW_REQUIRED", reviewed: true });
+    expect(history[0].flags.chestPain).toBe(true);
+    // The newest N, still oldest first.
+    expect((await api.history("st-2", 2)).map((entry) => entry.assessedOn)).toEqual(["2026-11-28", "2026-11-29"]);
+    // A draft and its rows can be dropped; a recorded assessment cannot.
+    await db.prepare("DELETE FROM assessment_metrics WHERE assessment_id = ?1").bind(draft.id).run();
+    await db.prepare("DELETE FROM assessments WHERE id = ?1").bind(draft.id).run();
+  });
+
+  it("is empty for anyone without an active technical assignment", async () => {
+    for (const [user, org] of [["tech-a", "org-a"], ["owner-a", "org-a"], ["commercial-a", "org-a"], ["client-1", "org-a"], ["mgr-1", "org-a"], ["tech-b", "org-b"], ["tech-b", "org-a"], ["stranger", "org-a"]])
+      expect(await assessmentsFor(db, scope(user, org)).history("st-2"), `${user}/${org}`).toEqual([]);
+    expect(await assessmentsFor(db, scope(owner)).history("st-1")).toEqual([]);
+    expect(await assessmentsFor(db, scope(owner)).history("st-b")).toEqual([]);
+    await db.prepare("UPDATE care_assignments SET revoked_at = '2026-12-01T00:00:00.000Z' WHERE student_id = 'st-2'").run();
+    expect(await assessmentsFor(db, scope(owner)).history("st-2")).toEqual([]);
+    await db.prepare("UPDATE care_assignments SET revoked_at = NULL WHERE student_id = 'st-2'").run();
+    expect((await assessmentsFor(db, scope(owner)).history("st-2")).length).toBe(3);
+  });
+});

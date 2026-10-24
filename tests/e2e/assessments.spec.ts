@@ -262,3 +262,106 @@ test("an alert without a review holds the approval and the delivery until the pr
   await page.getByRole("button", { name: "Entregar ao aluno" }).click();
   await expect(page.getByRole("heading", { name: "Entregue ao aluno" })).toBeVisible();
 });
+
+const daysAgo = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+const brazilian = (iso: string) => iso.split("-").reverse().join("/");
+
+test("the evolution shows each measure over time and what differs between two assessments, without judging", async ({
+  page,
+  browser,
+  baseURL,
+}) => {
+  await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
+  await createProfessional(page, "Estúdio da evolução");
+  const studentURL = await addStudent(page, "Aluno da evolução");
+  const first = daysAgo(60);
+  const second = daysAgo(0);
+
+  // The first assessment, dated two months ago.
+  await page.getByRole("button", { name: "Iniciar avaliação" }).click();
+  await page.getByLabel("Data da avaliação").fill(first);
+  await page.getByRole("group", { name: "Vista anterior" }).getByLabel("Valgo aparente de joelhos").check();
+  await page.getByRole("button", { name: "Adicionar indicador" }).click();
+  await page.getByRole("group", { name: "Indicador 1" }).getByLabel("Valor").fill("70");
+  await page.getByRole("button", { name: "Adicionar indicador" }).click();
+  const waist = page.getByRole("group", { name: "Indicador 2" });
+  await waist.getByLabel("Tipo").selectOption("WAIST");
+  await waist.getByLabel("Valor").fill("90");
+  await page.getByRole("button", { name: "Adicionar indicador" }).click();
+  const custom = page.getByRole("group", { name: "Indicador 3" });
+  await custom.getByLabel("Tipo").selectOption("CUSTOM");
+  await custom.getByLabel("Nome da medida ou do teste").fill("Sentar e levantar");
+  await custom.getByLabel("Valor").fill("12 repetições");
+  await page.getByLabel(/Perguntei ao aluno sobre os seis itens/).check();
+  await page.getByRole("button", { name: "Registrar avaliação" }).click();
+  await expect(page.getByRole("heading", { name: `Avaliação de ${brazilian(first)}`, exact: true })).toBeVisible();
+
+  // With one assessment there is nothing to compare yet, and no chart (a line needs two points).
+  await page.goto(`${studentURL}/evolucao`);
+  await expect(page.getByRole("heading", { name: "Evolução de Aluno da evolução" })).toBeVisible();
+  await expect(page.getByText("Uma medição: 70 bpm", { exact: false })).toBeVisible();
+  await expect(page.getByRole("group", { name: /^Gráfico:/ })).toHaveCount(0);
+  await expect(page.getByText("Há uma avaliação só.", { exact: false })).toBeVisible();
+
+  // The reassessment, today.
+  await page.goto(studentURL);
+  await page.getByRole("button", { name: "Iniciar reavaliação" }).click();
+  await page.getByRole("group", { name: "Agachamento" }).getByRole("combobox").selectOption("MILD");
+  await page.getByRole("button", { name: "Adicionar indicador" }).click();
+  await page.getByRole("group", { name: "Indicador 1" }).getByLabel("Valor").fill("64");
+  await page.getByRole("button", { name: "Adicionar indicador" }).click();
+  const waist2 = page.getByRole("group", { name: "Indicador 2" });
+  await waist2.getByLabel("Tipo").selectOption("WAIST");
+  await waist2.getByLabel("Valor").fill("88,5");
+  await page.getByRole("button", { name: "Adicionar indicador" }).click();
+  const custom2 = page.getByRole("group", { name: "Indicador 3" });
+  await custom2.getByLabel("Tipo").selectOption("CUSTOM");
+  await custom2.getByLabel("Nome da medida ou do teste").fill("sentar e LEVANTAR");
+  await custom2.getByLabel("Valor").fill("14 repetições");
+  await page.getByLabel(/Perguntei ao aluno sobre os seis itens/).check();
+  await page.getByRole("button", { name: "Registrar avaliação" }).click();
+  await expect(page.getByRole("heading", { name: `Avaliação de ${brazilian(second)}`, exact: true })).toBeVisible();
+
+  await page.getByRole("link", { name: "Voltar às avaliações" }).click();
+  await page.getByRole("link", { name: "Ver a evolução ao longo do tempo" }).click();
+  await expect(page.getByRole("heading", { name: "Evolução de Aluno da evolução" })).toBeVisible();
+  await expect(page.getByText("2 avaliações registradas", { exact: false })).toBeVisible();
+  await noHorizontalOverflow(page);
+
+  // The same measure is one series across both assessments, in the order of the master document.
+  const heartRate = page.getByRole("group", { name: "Frequência cardíaca de repouso", exact: true });
+  await expect(heartRate).toContainText(`Primeira: 70 bpm em ${brazilian(first)}. Última: 64 bpm em ${brazilian(second)}.`);
+  const chart = heartRate.getByRole("group", { name: /^Gráfico: Frequência cardíaca de repouso/ });
+  await expect(chart).toBeVisible();
+  // Focus and arrow keys read the same values as the table.
+  await chart.focus();
+  await expect(chart.getByRole("status")).toContainText("64 bpm");
+  await page.keyboard.press("ArrowLeft");
+  await expect(chart.getByRole("status")).toContainText("70 bpm");
+  await expect(chart.getByRole("status")).toContainText(brazilian(first));
+  await heartRate.getByText("Ver os valores").click();
+  await expect(heartRate.getByRole("row", { name: new RegExp(`${brazilian(first)}.*70 bpm`) })).toBeVisible();
+  await expect(heartRate.getByRole("row", { name: new RegExp(`${brazilian(second)}.*64 bpm`) })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Cintura", exact: true })).toContainText("Última: 88,5 cm");
+  await expect(page.getByRole("group", { name: "Cintura", exact: true }).getByRole("group", { name: /^Gráfico:/ })).toBeVisible();
+  // Case does not split a measure, and a value that is not a plain number is listed, not drawn.
+  const sit = page.getByRole("group", { name: "Sentar e levantar", exact: true });
+  await expect(sit).toContainText("Última: 14 repetições");
+  await expect(sit.getByRole("group", { name: /^Gráfico:/ })).toHaveCount(0);
+  await expect(page.getByRole("group", { name: "Sentar e levantar", exact: true })).toHaveCount(1);
+
+  // What differs, in the words of the document, and nothing that judges.
+  const changes = page.locator("section", { hasText: "O que mudou entre avaliações" });
+  await expect(changes).toContainText(`De ${brazilian(first)} para ${brazilian(second)}`);
+  await expect(changes).toContainText("Postura: Vista anterior: Valgo aparente de joelhos. Não marcado agora.");
+  await expect(changes).toContainText("Movimento: Agachamento. De não avaliado para limitação leve.");
+  await expect(changes).not.toContainText(/melhor|pior|resolvid|agrav/i);
+  await expect(heartRate).not.toContainText(/melhor|pior|resolvid|agrav/i);
+
+  // Another organization cannot open the history by address.
+  const other = await newActor(browser, baseURL);
+  await createProfessional(other.page, "Outro estúdio da evolução");
+  const response = await other.page.goto(`${studentURL}/evolucao`);
+  expect(response?.status()).toBe(404);
+  await other.context.close();
+});

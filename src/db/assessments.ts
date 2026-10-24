@@ -63,6 +63,32 @@ export interface AssessmentDetail extends AssessmentSummary {
   movement: MovementRow[];
   reviews: ReviewRow[];
 }
+export interface FindingRow {
+  area: "POSTURE" | "MOVEMENT";
+  item: string;
+  grade: string | null;
+  notes: string | null;
+}
+/** Marked findings in the order of the master document, and only the tests that were recorded. */
+export function shapeFindings(rows: FindingRow[]): Pick<AssessmentDetail, "posture" | "movement"> {
+  return {
+    posture: {
+      findings: POSTURE_KEYS.filter((key) => rows.some((f) => f.area === "POSTURE" && f.item === key)),
+      notes: rows.find((f) => f.area === "POSTURE" && f.item === POSTURE_NOTES_ITEM)?.notes ?? null,
+    },
+    movement: MOVEMENT_KEYS.flatMap((test) => {
+      const found = rows.find((f) => f.area === "MOVEMENT" && f.item === test);
+      return found ? [{ test, grade: found.grade as MovementGrade, notes: found.notes }] : [];
+    }),
+  };
+}
+
+/** A recorded assessment as the evolution view reads it: no reviews, no drafts. */
+export type AssessmentSnapshot = Pick<
+  AssessmentDetail,
+  "id" | "assessedOn" | "kind" | "riskStatus" | "reviewed" | "flags" | "posture" | "movement" | "metrics"
+>;
+
 /**
  * SQL scalar: id of the newest recorded assessment of a student (by assessment date, then by
  * when it was recorded). Arguments are SQL expressions for the organization and the student.
@@ -193,7 +219,7 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
              WHERE f.organization_id = ?1 AND f.assessment_id = ?2 ORDER BY f.rowid`,
           )
           .bind(organizationId, assessmentId)
-          .all<{ area: "POSTURE" | "MOVEMENT"; item: string; grade: string | null; notes: string | null }>(),
+          .all<FindingRow>(),
         db
           .prepare(
             `SELECT r.reviewer_user_id AS reviewerUserId, p.display_name AS reviewerName,
@@ -223,18 +249,75 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
         screeningNotes: row.screeningNotes,
         notes: row.notes,
         metrics: metrics.results,
-        posture: {
-          findings: POSTURE_KEYS.filter((key) =>
-            findings.results.some((f) => f.area === "POSTURE" && f.item === key),
-          ),
-          notes: findings.results.find((f) => f.area === "POSTURE" && f.item === POSTURE_NOTES_ITEM)?.notes ?? null,
-        },
-        movement: MOVEMENT_KEYS.flatMap((test) => {
-          const found = findings.results.find((f) => f.area === "MOVEMENT" && f.item === test);
-          return found ? [{ test, grade: found.grade as MovementGrade, notes: found.notes }] : [];
-        }),
+        ...shapeFindings(findings.results),
         reviews: reviews.results,
       };
+    },
+
+    /**
+     * The recorded assessments of a student, oldest first, with everything the evolution view
+     * compares. Only the newest `limit` are read. Drafts never appear.
+     */
+    async history(studentId: string, limit = 24): Promise<AssessmentSnapshot[]> {
+      const rows = (
+        await db
+          .prepare(
+            `SELECT ${summaryColumns},
+               ${SCREENING_ITEMS.map((item) => `a.${item.column} AS ${item.key}`).join(", ")}
+             FROM assessments a
+             WHERE a.organization_id = ?1 AND a.student_id = ?3 AND a.state = 'RECORDED'
+               AND ${reachStudent}
+             ORDER BY a.assessed_on DESC, a.recorded_at DESC LIMIT ?4`,
+          )
+          .bind(organizationId, userId, studentId, Math.max(1, Math.min(limit, 100)))
+          .all<AssessmentSummary & Record<ScreeningKey, number>>()
+      ).results.reverse();
+      if (rows.length === 0) return [];
+      // The ids below came from the gated query above.
+      const ids = JSON.stringify(rows.map((row) => row.id));
+      const [metrics, findings] = await Promise.all([
+        db
+          .prepare(
+            `SELECT m.assessment_id AS assessmentId, m.metric_type AS metricType, m.name,
+               m.value_text AS valueText, m.value_number AS valueNumber, m.unit, m.side, m.notes
+             FROM assessment_metrics m
+             WHERE m.organization_id = ?1 AND m.assessment_id IN (SELECT value FROM json_each(?2))
+             ORDER BY m.assessment_id, m.position`,
+          )
+          .bind(organizationId, ids)
+          .all<MetricRow & { assessmentId: string }>(),
+        db
+          .prepare(
+            `SELECT f.assessment_id AS assessmentId, f.area, f.item, f.grade, f.notes
+             FROM assessment_findings f
+             WHERE f.organization_id = ?1 AND f.assessment_id IN (SELECT value FROM json_each(?2))
+             ORDER BY f.rowid`,
+          )
+          .bind(organizationId, ids)
+          .all<FindingRow & { assessmentId: string }>(),
+      ]);
+      return rows.map((row) => ({
+        id: row.id,
+        assessedOn: row.assessedOn,
+        kind: row.kind,
+        riskStatus: row.riskStatus,
+        reviewed: Boolean(row.reviewed),
+        flags: Object.fromEntries(
+          SCREENING_ITEMS.map((item) => [item.key, Boolean(row[item.key])]),
+        ) as Record<ScreeningKey, boolean>,
+        metrics: metrics.results
+          .filter((metric) => metric.assessmentId === row.id)
+          .map((metric) => ({
+            metricType: metric.metricType,
+            name: metric.name,
+            valueText: metric.valueText,
+            valueNumber: metric.valueNumber,
+            unit: metric.unit,
+            side: metric.side,
+            notes: metric.notes,
+          })),
+        ...shapeFindings(findings.results.filter((finding) => finding.assessmentId === row.id)),
+      }));
     },
 
     /** Opens a draft dated today. One open draft per student: asking again returns it. */
