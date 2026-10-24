@@ -53,6 +53,8 @@ Esta base é um app na raiz do repositório, com módulos internos. Sites e port
 | assessments | Avaliação datada (inicial ou reavaliação): seis itens de triagem e `risk_status` que o banco amarra às marcas. Rascunho editável; registrada é imutável por gatilhos (0009) |
 | assessment_metrics | Indicadores da avaliação: texto digitado, valor numérico quando simples, unidade e lado. Mudam só em rascunho (0009) |
 | assessment_reviews | Revisão do alerta pelo profissional, só de acréscimo, com a base escrita por ele. Não apaga o alerta (0009) |
+| workout_sessions, session_exercises, session_sets | O diário do aluno: um registro por treino e dia, apontando para a revisão entregue e para os exercícios prescritos; nada é copiado de volta para a prescrição. Congela por gatilho com relato de dor ou depois da leitura do profissional (0012) |
+| session_acknowledgements | A leitura do profissional sobre um registro (quem, quando, anotação): só se acrescenta, nunca se muda (0012) |
 | assessment_photos | Índice das fotos de postura (quatro vistas por avaliação): a imagem fica no Object Storage (`PHOTOS`), nunca no banco nem em endereço público; congela com a avaliação (0011) |
 | assessment_findings | Achados posturais marcados e testes de movimento com a escala do documento; só linhas registradas, congeladas com a avaliação (0010) |
 | student_profiles | Ficha do aluno (dado pessoal e de saúde): uma linha por aluno, só profissional com vínculo técnico (0008) |

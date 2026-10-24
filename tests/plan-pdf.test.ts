@@ -4,6 +4,7 @@ import type { StudentExercise, StudentTrainingPlan } from "@/db/student-plan";
 import { pdfFileName, planFingerprint, printable, renderPlanPdf, safeLink, wrap } from "@/modules/pdf/plan-pdf";
 
 const exercise = (name: string, extra: Partial<StudentExercise> = {}): StudentExercise => ({
+  id: `ex-${name}`,
   name,
   videoUrl: "https://www.youtube.com/results?search_query=agachamento",
   videoStatus: "SEARCH_LINK",

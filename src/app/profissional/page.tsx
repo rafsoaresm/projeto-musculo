@@ -6,18 +6,21 @@ import { studentsFor } from "@/db/students";
 import { studentAccessFor } from "@/db/student-access";
 import { plansFor } from "@/db/plans";
 import { assessmentsFor } from "@/db/assessments";
+import { executionFor } from "@/db/workout-sessions";
 import { Kpi, PageHeading, Pill } from "@/components/ui";
+import { formatCalendarDate } from "@/modules/training/format";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Visão geral" };
 
 export default async function ProfessionalHome() {
   const { db, context, workspace, user } = await requireWorkspace();
-  const [students, access, plans, assessments] = await Promise.all([
+  const [students, access, plans, assessments, painPending] = await Promise.all([
     studentsFor(db, context).list(),
     studentAccessFor(db, context).statuses(),
     plansFor(db, context).overview(),
     assessmentsFor(db, context).overview(),
+    executionFor(db, context).painPending(),
   ]);
   const alerts = assessments.filter((row) => row.riskStatus === "REVIEW_REQUIRED" && !row.reviewed).length;
   const assessed = assessments.some((row) => row.assessmentId !== null);
@@ -91,7 +94,27 @@ export default async function ProfessionalHome() {
           value={alerts}
           hint={alerts > 0 ? "Triagem com alerta sem revisão registrada" : undefined}
         />
+        <Kpi
+          label="Relatos de dor sem leitura"
+          value={painPending.length}
+          hint={painPending.length > 0 ? "Registros de treino com dor ou desconforto" : undefined}
+        />
       </div>
+      {painPending.length > 0 && (
+        <section className="panel" aria-labelledby="dor-pendente">
+          <p className="eyebrow">RELATOS DE DOR</p>
+          <h2 id="dor-pendente">Registros de treino com dor ou desconforto sem leitura</h2>
+          <ul className="plan-list">
+            {painPending.slice(0, 8).map((row) => (
+              <li key={row.sessionId}>
+                <Link className="account-link" href={`/profissional/alunos/${row.studentId}/execucao/${row.sessionId}`}>
+                  {row.studentName} · treino {row.workoutLabel} de {formatCalendarDate(row.performedOn)}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       <section className="panel">
         <p className="eyebrow">PRÓXIMOS PASSOS</p>
         <h2>Do cadastro ao acompanhamento</h2>

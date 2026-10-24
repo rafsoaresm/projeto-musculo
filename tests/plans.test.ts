@@ -363,7 +363,8 @@ describe("access that ends", () => {
   });
 
   it("keeps plans out of every other table a student or manager can read", async () => {
-    // The only places that mention plans are the plan tables themselves.
+    // The only places that mention plans are the plan tables themselves and the student's log of a
+    // delivered revision, which points at it and copies nothing back.
     const tables = await db
       .prepare(
         `SELECT name FROM sqlite_master WHERE type = 'table'
@@ -374,6 +375,7 @@ describe("access that ends", () => {
       "plan_revisions",
       "prescribed_exercises",
       "training_plan_events",
+      "workout_sessions",
     ]);
   });
 });
