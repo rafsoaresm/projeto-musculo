@@ -73,6 +73,7 @@ export default async function PlanRevision({
         portal={access?.access ?? "NONE"}
         studentHref={`/profissional/alunos/${student.id}`}
         screening={screening}
+        pdfHref={`/profissional/alunos/${student.id}/planos/${planId}/${revisionId}/pdf`}
       />
     ) : null;
   const editor = (

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Download } from "lucide-react";
 import { Pill } from "@/components/ui";
 import type { StudentPhase, StudentTrainingPlan } from "@/db/student-plan";
 import { describeDose } from "@/modules/prescricao/describe";
@@ -21,9 +22,12 @@ export function phaseStanding(phase: StudentPhase, today: string) {
 export function StudentTraining({
   plan,
   today = todayInBrazil(),
+  pdfHref,
 }: {
   plan: StudentTrainingPlan;
   today?: string;
+  /** The PDF of this delivered revision, when the page can offer it. */
+  pdfHref?: string;
 }) {
   const current = plan.phases.find((phase) => phaseStanding(phase, today) === "CURRENT");
   return (
@@ -33,6 +37,13 @@ export function StudentTraining({
         {formatCalendarDate(plan.endDate)}
       </p>
       <h2 id={`plano-${plan.planId}`}>{plan.title}</h2>
+      {pdfHref && (
+        <p>
+          <Link className="button secondary small" href={pdfHref} download prefetch={false}>
+            <Download size={16} /> Baixar PDF do treino
+          </Link>
+        </p>
+      )}
       {today < plan.startDate && (
         <p className="muted">
           O ciclo começa em {formatCalendarDate(plan.startDate)}.

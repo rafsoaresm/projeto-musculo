@@ -57,6 +57,8 @@ Esta base é um app na raiz do repositório, com módulos internos. Sites e port
 | prescribed_exercises | Exercício prescrito numa revisão: instantâneo de nome e vídeo, dose em texto livre, origem. Só muda em rascunho (0006) |
 | exercises | Biblioteca: `organization_id` nulo é o sistema (somente leitura, seed de 64); senão pertence à organização. `name_key` calculado no código decide duplicidade (0005) |
 
+O PDF do plano entregue (0.11) não tem tabela: `src/modules/pdf/plan-pdf.ts` o gera sob demanda com pdf-lib, a partir da revisão entregue (imutável). Cada download grava `PLAN_PDF_DOWNLOADED` em `access_audit_events`. Nenhum arquivo é guardado, porque o Worker não tem disco persistente.
+
 IDs de domínio são UUIDs gerados pelo servidor. As identidades Better Auth usam IDs próprios. Datas usam UTC ISO-8601; o calendário usa timezone IANA. Foreign keys compostas impedem cruzar organização, aluno e profissional. Futuros valores monetários serão inteiros em centavos e percentuais em pontos-base.
 
 As migrations Supabase da primeira proposta nunca foram aplicadas remotamente nem publicadas e foram substituídas antes do primeiro envio da base. A partir do primeiro deploy, não editar/remover migrations aplicadas: acrescentar novas migrations.
