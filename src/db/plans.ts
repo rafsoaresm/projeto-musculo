@@ -6,6 +6,7 @@ import {
 } from "@/modules/training/contracts";
 import { buildPeriodization } from "@/modules/training/periodization";
 import { workoutSlots } from "@/modules/prescricao/summary";
+import { latestRecordedSql, screeningStanding, unreviewedAlertSql } from "./assessments";
 import {
   activeUser,
   assertContext,
@@ -82,6 +83,14 @@ export type ApproveOutcome =
   | { status: "approved" }
   | { status: "below_target"; below: number }
   | { status: "screening_acknowledgement_required" }
+  /** The newest assessment is an alert with no recorded review: "Revisão obrigatória antes da entrega." */
+  | { status: "review_required"; assessedOn: string }
+  /** A new assessment was recorded while this one was being approved. Read it and try again. */
+  | { status: "screening_changed" }
+  | { status: "not_found" };
+export type DeliverOutcome =
+  | { status: "delivered" }
+  | { status: "review_required"; assessedOn: string }
   | { status: "not_found" };
 export type NewRevisionResult =
   | { status: "created"; revisionId: string }
@@ -113,6 +122,9 @@ export function plansFor(
        JOIN students s ON s.organization_id = tp.organization_id AND s.id = tp.student_id
        WHERE tp.organization_id = ${revision}.organization_id AND tp.id = ${revision}.plan_id
          AND ${activeUser("?2")} AND ${technicalAccessExists("s", "?2")})`;
+  // The student of the plan that a revision row belongs to.
+  const studentOf = `(SELECT tp.student_id FROM training_plans tp
+    WHERE tp.organization_id = plan_revisions.organization_id AND tp.id = plan_revisions.plan_id)`;
   // Recorded only when the statement right before it changed a row.
   const eventAfterChange = (
     action: string,
@@ -421,9 +433,11 @@ export function plansFor(
 
     /**
      * READY to APPROVED, an act of the professional. It needs every workout at or above its
-     * target (the target can be changed in a draft, never filled in here) and the
-     * professional's acknowledgement that no screening is registered for the student. That
-     * acknowledgement is not a clearance: it is only recorded as what was known at the time.
+     * target (the target can be changed in a draft, never filled in here) and a screening
+     * standing: a clear assessment, an alert with the professional's recorded review, or the
+     * professional's acknowledgement that no assessment is registered for the student. An alert
+     * without a review blocks approval. None of these is a clinical clearance: it is only
+     * recorded, with the assessment behind it, as what was known at the time.
      */
     async approve(
       planId: string,
@@ -447,26 +461,44 @@ export function plansFor(
         (slot) => (byWorkout.get(`${slot.phaseIndex}|${slot.label}`) ?? 0) < slot.target,
       ).length;
       if (below > 0) return { status: "below_target", below };
-      if (!acknowledgement.screeningNotRecorded)
+      const standing = await screeningStanding(db, organizationId, detail.plan.studentId);
+      if (standing?.risk === "REVIEW_REQUIRED" && !standing.reviewed)
+        return { status: "review_required", assessedOn: standing.assessedOn };
+      if (!standing && !acknowledgement.screeningNotRecorded)
         return { status: "screening_acknowledgement_required" };
+      const screening = !standing
+        ? "NOT_RECORDED"
+        : standing.risk === "CLEAR"
+          ? "CLEAR"
+          : "REVIEW_REQUIRED_REVIEWED";
       const stamp = now.toISOString();
       const results = await db.batch([
         db
           .prepare(
             `UPDATE plan_revisions
              SET state = 'APPROVED', approved_at = ?3, approved_by_user_id = ?2,
-               approval_screening = 'NOT_RECORDED', updated_at = ?3
+               approval_screening = ?6, approval_assessment_id = ?7, updated_at = ?3
              WHERE organization_id = ?1 AND id = ?4 AND plan_id = ?5 AND state = 'READY'
-               AND ${revisionGate("plan_revisions")}`,
+               AND ${revisionGate("plan_revisions")}
+               AND ${latestRecordedSql("plan_revisions.organization_id", studentOf)} IS ?7`,
           )
-          .bind(organizationId, userId, stamp, revisionId, planId),
+          .bind(organizationId, userId, stamp, revisionId, planId, screening, standing?.assessmentId ?? null),
         eventAfterChange("APPROVED", revisionId, stamp),
       ]);
-      return results[0].meta.changes > 0 ? { status: "approved" } : { status: "not_found" };
+      if (results[0].meta.changes > 0) return { status: "approved" };
+      // Nothing changed: either the screening moved under us or the revision is not ours any more.
+      const still = await this.findRevision(planId, revisionId);
+      return still?.revision.state === "READY"
+        ? { status: "screening_changed" }
+        : { status: "not_found" };
     },
 
-    /** APPROVED to DELIVERED: the student can see exactly this revision from now on. */
-    async deliver(planId: string, revisionId: string, now = new Date()): Promise<boolean> {
+    /**
+     * APPROVED to DELIVERED: the student can see exactly this revision from now on. Delivery is
+     * refused while the student's newest assessment is an alert nobody has reviewed, also when
+     * that assessment was recorded after the approval.
+     */
+    async deliver(planId: string, revisionId: string, now = new Date()): Promise<DeliverOutcome> {
       const stamp = now.toISOString();
       const results = await db.batch([
         db
@@ -474,12 +506,20 @@ export function plansFor(
             `UPDATE plan_revisions
              SET state = 'DELIVERED', delivered_at = ?3, delivered_by_user_id = ?2, updated_at = ?3
              WHERE organization_id = ?1 AND id = ?4 AND plan_id = ?5 AND state = 'APPROVED'
-               AND ${revisionGate("plan_revisions")}`,
+               AND ${revisionGate("plan_revisions")}
+               AND NOT ${unreviewedAlertSql("plan_revisions.organization_id", studentOf)}`,
           )
           .bind(organizationId, userId, stamp, revisionId, planId),
         eventAfterChange("DELIVERED", revisionId, stamp),
       ]);
-      return results[0].meta.changes > 0;
+      if (results[0].meta.changes > 0) return { status: "delivered" };
+      const detail = await this.findRevision(planId, revisionId);
+      if (detail?.revision.state === "APPROVED") {
+        const standing = await screeningStanding(db, organizationId, detail.plan.studentId);
+        if (standing?.risk === "REVIEW_REQUIRED" && !standing.reviewed)
+          return { status: "review_required", assessedOn: standing.assessedOn };
+      }
+      return { status: "not_found" };
     },
 
     /**

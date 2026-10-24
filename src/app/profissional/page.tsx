@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, Check, Hourglass } from "lucide-react";
+import { ArrowRight, Check } from "lucide-react";
 import { requireWorkspace } from "@/modules/auth/server";
 import { studentsFor } from "@/db/students";
 import { studentAccessFor } from "@/db/student-access";
 import { plansFor } from "@/db/plans";
+import { assessmentsFor } from "@/db/assessments";
 import { Kpi, PageHeading, Pill } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -12,16 +13,20 @@ export const metadata: Metadata = { title: "Visão geral" };
 
 export default async function ProfessionalHome() {
   const { db, context, workspace, user } = await requireWorkspace();
-  const [students, access, plans] = await Promise.all([
+  const [students, access, plans, assessments] = await Promise.all([
     studentsFor(db, context).list(),
     studentAccessFor(db, context).statuses(),
     plansFor(db, context).overview(),
+    assessmentsFor(db, context).overview(),
   ]);
+  const alerts = assessments.filter((row) => row.riskStatus === "REVIEW_REQUIRED" && !row.reviewed).length;
+  const assessed = assessments.some((row) => row.assessmentId !== null);
   const drafts = plans.filter((plan) => plan.state === "DRAFT");
   const pending = drafts.filter((plan) => plan.below > 0).length;
   const active = access.filter((s) => s.access === "ACTIVE").length;
   const invited = access.filter((s) => s.access === "INVITED").length;
   const firstStudent = students[0];
+  const delivered = plans.some((plan) => plan.state === "DELIVERED");
   const steps = [
     {
       done: students.length > 0,
@@ -48,6 +53,22 @@ export default async function ProfessionalHome() {
         : "/profissional/periodizacao",
       cta: firstStudent ? "Criar um plano" : "Abrir periodização",
     },
+    {
+      done: assessed,
+      title: "Registrar a avaliação e a triagem",
+      text: "A triagem e os indicadores ficam como registros com data. Qualquer sinal marcado pede a sua revisão antes da entrega.",
+      href: firstStudent
+        ? `/profissional/alunos/${firstStudent.id}/avaliacoes`
+        : "/profissional/avaliacoes",
+      cta: "Abrir avaliações",
+    },
+    {
+      done: delivered,
+      title: "Aprovar e entregar o plano",
+      text: "Aprovar e entregar são dois atos seus. O aluno só vê a revisão entregue, e ela não muda mais.",
+      href: "/profissional/prescricao",
+      cta: "Ver os planos",
+    },
   ];
   return (
     <>
@@ -64,6 +85,11 @@ export default async function ProfessionalHome() {
           label="Planos em rascunho"
           value={drafts.length}
           hint={pending > 0 ? `${pending} com treinos abaixo do alvo` : undefined}
+        />
+        <Kpi
+          label="Revisões obrigatórias pendentes"
+          value={alerts}
+          hint={alerts > 0 ? "Triagem com alerta sem revisão registrada" : undefined}
         />
       </div>
       <section className="panel">
@@ -87,21 +113,6 @@ export default async function ProfessionalHome() {
               </Link>
             </li>
           ))}
-          <li className="planned">
-            <span className="step-mark" aria-hidden="true">
-              <Hourglass size={14} />
-            </span>
-            <div>
-              <h3>
-                Avaliar, aprovar e entregar <Pill tone="warning">Em breve</Pill>
-              </h3>
-              <p>
-                Avaliações com triagem, aprovação e entrega do plano ao aluno
-                ainda não existem. A prescrição manual já está disponível, e
-                nada do que falta é simulado aqui.
-              </p>
-            </div>
-          </li>
         </ol>
       </section>
     </>

@@ -8,6 +8,7 @@ import { plansFor } from "@/db/plans";
 import { exercisesFor } from "@/db/exercises";
 import { studentAccessFor } from "@/db/student-access";
 import { prescriptionFor } from "@/db/prescription";
+import { assessmentsFor } from "@/db/assessments";
 import { PageHeading, Pill } from "@/components/ui";
 import { Planner } from "@/modules/training/components/planner";
 import {
@@ -18,7 +19,7 @@ import {
 import { PlanReadOnly } from "@/modules/planos/plan-readonly";
 import { stateLabel } from "@/modules/planos/labels";
 import { PrescriptionEditor } from "@/modules/prescricao/prescription-editor";
-import { ApprovalPanel } from "@/modules/planos/approval-panel";
+import { ApprovalPanel, type ScreeningInfo } from "@/modules/planos/approval-panel";
 import { progressOf } from "@/modules/prescricao/summary";
 
 export const dynamic = "force-dynamic";
@@ -38,11 +39,24 @@ export default async function PlanRevision({
   if (!detail || detail.plan.studentId !== student.id) notFound();
   const { revision } = detail;
   const label = stateLabel(revision.state);
-  const [items, library, access] = await Promise.all([
+  const [items, library, access, standing] = await Promise.all([
     prescriptionFor(db, context).list(planId, revisionId),
     exercisesFor(db, context).list(),
     studentAccessFor(db, context).statusOf(student.id),
+    assessmentsFor(db, context).standing(student.id),
   ]);
+  const screening: ScreeningInfo = !standing
+    ? { kind: "NONE" }
+    : {
+        kind:
+          standing.risk === "CLEAR"
+            ? "CLEAR"
+            : standing.reviewed
+              ? "REVIEWED"
+              : "BLOCKED",
+        assessedOn: standing.assessedOn,
+        href: `/profissional/alunos/${student.id}/avaliacoes/${standing.assessmentId}`,
+      };
   const progress = progressOf(revision.schedule, items);
   const decision =
     revision.state === "READY" ||
@@ -58,6 +72,7 @@ export default async function PlanRevision({
         deliveredAt={revision.deliveredAt}
         portal={access?.access ?? "NONE"}
         studentHref={`/profissional/alunos/${student.id}`}
+        screening={screening}
       />
     ) : null;
   const editor = (

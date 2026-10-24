@@ -2,8 +2,20 @@
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { Notice, Pill, formatDateTime } from "@/components/ui";
+import { NOT_CLEARANCE_TEXT, REVIEW_REQUIRED_TEXT } from "@/modules/avaliacoes/contracts";
+import { formatCalendarDate } from "@/modules/training/format";
 import type { PlanActionResult } from "./actions";
 import { approveRevision, deliverRevision } from "./actions";
+
+/**
+ * What the newest recorded assessment of the student says. Serializable: the page builds it on
+ * the server from the repository. CLEAR is "no item marked", never a clinical clearance.
+ */
+export type ScreeningInfo =
+  | { kind: "NONE" }
+  | { kind: "CLEAR"; assessedOn: string; href: string }
+  | { kind: "REVIEWED"; assessedOn: string; href: string }
+  | { kind: "BLOCKED"; assessedOn: string; href: string };
 
 /**
  * The professional's decision on a closed revision: approve, then deliver. Both are acts of a
@@ -20,6 +32,7 @@ export function ApprovalPanel({
   deliveredAt,
   portal,
   studentHref,
+  screening,
 }: {
   planId: string;
   revisionId: string;
@@ -30,8 +43,11 @@ export function ApprovalPanel({
   deliveredAt: string | null;
   portal: "ACTIVE" | "INVITED" | "NONE";
   studentHref: string;
+  screening: ScreeningInfo;
 }) {
   const [ack, setAck] = useState(false);
+  const blocked = screening.kind === "BLOCKED";
+  const needsAck = screening.kind === "NONE";
   const [error, setError] = useState("");
   const [pending, startTransition] = useTransition();
   const run = (task: () => Promise<PlanActionResult>) =>
@@ -73,30 +89,26 @@ export function ApprovalPanel({
               <p role="status">
                 <Pill tone="success">Alvo atendido em todos os treinos</Pill>
               </p>
-              <Notice tone="warning">
-                <p>
-                  <strong>Triagem não registrada.</strong> Ainda não existe
-                  avaliação com triagem para este aluno nesta ferramenta. Isso
-                  não significa ausência de riscos.
-                </p>
-              </Notice>
-              <label className="check-row">
-                <input
-                  type="checkbox"
-                  checked={ack}
-                  onChange={(event) => setAck(event.target.checked)}
-                />
-                Confirmo que não há triagem registrada e que verifiquei o
-                histórico e as limitações deste aluno por conta própria antes
-                de aprovar.
-              </label>
+              <ScreeningNote screening={screening} assessmentsHref={`${studentHref}/avaliacoes`} />
+              {needsAck && (
+                <label className="check-row">
+                  <input
+                    type="checkbox"
+                    checked={ack}
+                    onChange={(event) => setAck(event.target.checked)}
+                  />
+                  Confirmo que não há triagem registrada e que verifiquei o
+                  histórico e as limitações deste aluno por conta própria antes
+                  de aprovar.
+                </label>
+              )}
             </>
           )}
           <button
             type="button"
             className="button primary"
-            disabled={pending || below > 0 || !ack}
-            onClick={() => run(() => approveRevision(planId, revisionId, ack))}
+            disabled={pending || below > 0 || blocked || (needsAck && !ack)}
+            onClick={() => run(() => approveRevision(planId, revisionId, needsAck && ack))}
           >
             {pending ? "Aprovando…" : "Aprovar revisão"}
           </button>
@@ -109,10 +121,13 @@ export function ApprovalPanel({
             {approvedAt && <> em {formatDateTime(approvedAt)}.</>} O aluno ainda
             não vê este plano.
           </p>
+          {blocked && (
+            <ScreeningNote screening={screening} assessmentsHref={`${studentHref}/avaliacoes`} />
+          )}
           <button
             type="button"
             className="button primary"
-            disabled={pending}
+            disabled={pending || blocked}
             onClick={() => run(() => deliverRevision(planId, revisionId))}
           >
             {pending ? "Entregando…" : "Entregar ao aluno"}
@@ -127,6 +142,20 @@ export function ApprovalPanel({
             revisão não muda mais. Para alterar o treino, crie uma nova
             revisão: o aluno continua vendo esta até você entregar a nova.
           </p>
+          {blocked && (
+            <Notice tone="warning">
+              <p>
+                <strong>{REVIEW_REQUIRED_TEXT}</strong> A avaliação de{" "}
+                {formatCalendarDate(screening.assessedOn)} foi registrada com
+                alerta e este treino já foi entregue. Registre a sua revisão
+                {" "}
+                <Link className="account-link" href={screening.href}>
+                  na avaliação
+                </Link>{" "}
+                e decida se o plano precisa de uma nova revisão.
+              </p>
+            </Notice>
+          )}
           {portal !== "ACTIVE" && (
             <p className="small muted">
               {portal === "INVITED"
@@ -141,5 +170,57 @@ export function ApprovalPanel({
         </>
       )}
     </section>
+  );
+}
+
+/** The screening line of the approval step, in the words the product commits to. */
+function ScreeningNote({
+  screening,
+  assessmentsHref,
+}: {
+  screening: ScreeningInfo;
+  assessmentsHref: string;
+}) {
+  if (screening.kind === "NONE")
+    return (
+      <Notice tone="warning">
+        <p>
+          <strong>Triagem não registrada.</strong> Ainda não existe avaliação
+          com triagem para este aluno nesta ferramenta. Isso não significa
+          ausência de riscos.{" "}
+          <Link className="account-link" href={assessmentsHref}>
+            Registrar uma avaliação
+          </Link>
+        </p>
+      </Notice>
+    );
+  if (screening.kind === "BLOCKED")
+    return (
+      <Notice tone="warning">
+        <p>
+          <strong>{REVIEW_REQUIRED_TEXT}</strong> A avaliação de{" "}
+          {formatCalendarDate(screening.assessedOn)} tem triagem com alerta e
+          ainda não tem revisão sua registrada.{" "}
+          <Link className="account-link" href={screening.href}>
+            Registrar a revisão
+          </Link>
+        </p>
+      </Notice>
+    );
+  return (
+    <p role="status">
+      <Pill tone={screening.kind === "CLEAR" ? "neutral" : "brand"}>
+        {screening.kind === "CLEAR"
+          ? "Nenhum sinal marcado na triagem"
+          : "Alerta da triagem com revisão registrada"}
+      </Pill>{" "}
+      <span className="small muted">
+        Avaliação de {formatCalendarDate(screening.assessedOn)}.
+        {screening.kind === "CLEAR" ? ` ${NOT_CLEARANCE_TEXT}` : ""}{" "}
+        <Link className="account-link" href={screening.href}>
+          Abrir a avaliação
+        </Link>
+      </span>
+    </p>
   );
 }

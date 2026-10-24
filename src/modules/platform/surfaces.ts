@@ -199,14 +199,13 @@ const profissional: NavGroup[] = [
         status: "available",
         primary: true,
       },
-      planned("avaliacoes", "Avaliações", "clipboard", {
-        epic: "E2",
-        reference: "Handoff V2, seções 4.2 e 4.3",
-        summary:
-          "Triagem, indicadores, postura e movimento como registros históricos de cada aluno. Qualquer sinal de triagem coloca a avaliação em revisão necessária. A ferramenta descreve, nunca diagnostica.",
-        needs:
-          "Persistência das avaliações no SQLite e o instrumento de triagem validado com o responsável técnico.",
-      }),
+      {
+        slug: "avaliacoes",
+        label: "Avaliações",
+        icon: "clipboard",
+        status: "available",
+        primary: true,
+      },
       {
         slug: "periodizacao",
         label: "Periodização",

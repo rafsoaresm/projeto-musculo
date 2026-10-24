@@ -1,6 +1,7 @@
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import type { D1Database } from "@cloudflare/workers-types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { assessmentsFor } from "@/db/assessments";
 import { plansFor } from "@/db/plans";
 import { prescriptionFor } from "@/db/prescription";
 import { exercisesFor } from "@/db/exercises";
@@ -20,7 +21,7 @@ const input = (target = 3) => ({
   })),
 });
 const slot = (phaseIndex: number) => ({ phaseIndex, workoutLabel: FB });
-const at = (minute: number) => new Date(`2026-11-10T10:${String(minute).padStart(2, "0")}:00Z`);
+const at = (minute: number) => new Date(Date.UTC(2026, 10, 10, 10, 0, 0) + minute * 60_000);
 
 /** A plan whose three Full Body workouts all have `count` exercises. */
 async function newPlan(student = "st-1", count = 3, target = 3, owner = "tech-a") {
@@ -165,10 +166,10 @@ describe("approving and delivering", () => {
     // Approving twice does nothing, and an approved revision is not yet delivered.
     expect((await plans.approve(plan.planId, next.revisionId, { screeningNotRecorded: true })).status).toBe("not_found");
     expect(await clientSees(plan.planId)).toBe(false);
-    expect(await plans.deliver(plan.planId, plan.revisionId, at(6))).toBe(false); // the READY one is not approved
-    expect(await plans.deliver(plan.planId, next.revisionId, at(6))).toBe(true);
+    expect(await plans.deliver(plan.planId, plan.revisionId, at(6))).toEqual({ status: "not_found" }); // the READY one is not approved
+    expect(await plans.deliver(plan.planId, next.revisionId, at(6))).toEqual({ status: "delivered" });
     expect(await clientSees(plan.planId)).toBe(true);
-    expect(await plans.deliver(plan.planId, next.revisionId, at(7))).toBe(false);
+    expect(await plans.deliver(plan.planId, next.revisionId, at(7))).toEqual({ status: "not_found" });
     expect((await stateOf(next.revisionId)).deliveredAt).toBe(at(6).toISOString());
   });
 
@@ -192,12 +193,12 @@ describe("approving and delivering", () => {
     for (const [user, org] of [["tech-a2", "org-a"], ["owner-a", "org-a"], ["commercial-a", "org-a"], ["client-1", "org-a"], ["mgr-1", "org-a"], ["tech-b", "org-b"], ["tech-b", "org-a"], ["stranger", "org-a"]]) {
       const other = plansFor(db, scope(user, org));
       expect((await other.approve(plan.planId, plan.revisionId, { screeningNotRecorded: true })).status, user).toBe("not_found");
-      expect(await other.deliver(plan.planId, plan.revisionId), user).toBe(false);
+      expect(await other.deliver(plan.planId, plan.revisionId), user).toEqual({ status: "not_found" });
     }
     expect((await stateOf(plan.revisionId)).state).toBe("READY");
     await plans.approve(plan.planId, plan.revisionId, { screeningNotRecorded: true });
     for (const user of ["tech-a2", "owner-a", "commercial-a", "client-1", "mgr-1"])
-      expect(await plansFor(db, scope(user)).deliver(plan.planId, plan.revisionId), user).toBe(false);
+      expect(await plansFor(db, scope(user)).deliver(plan.planId, plan.revisionId), user).toEqual({ status: "not_found" });
     expect((await stateOf(plan.revisionId)).state).toBe("APPROVED");
   });
 
@@ -282,5 +283,113 @@ describe("what the client sees", () => {
     expect(await studentTrainingFor(db, "client-1", "st-1")).toEqual([]);
     await db.prepare("UPDATE users SET disabled_at = NULL WHERE id = 'client-1'").run();
     expect((await studentTrainingFor(db, "client-1", "st-1")).length).toBeGreaterThan(0);
+  });
+});
+
+describe("the screening standing behind an approval", () => {
+  const owner = "tech-a2"; // professional of st-2
+  const api = () => assessmentsFor(db, scope(owner));
+  const approvedRow = async (revisionId: string) =>
+    (await db.prepare("SELECT approval_screening AS screening, approval_assessment_id AS assessmentId FROM plan_revisions WHERE id = ?1").bind(revisionId).first<{ screening: string | null; assessmentId: string | null }>())!;
+  // The assessment date is the day of `input.assessedOn`; later days are newer assessments.
+  async function assess(input: { assessedOn: string } & Record<string, unknown>) {
+    const when = new Date(`${input.assessedOn}T12:00:00Z`);
+    const started = await api().startDraft("st-2", when);
+    if (started.status !== "started") throw new Error(started.status);
+    await api().saveDraft(started.id, input, when);
+    await api().record(started.id, { screeningAsked: true }, when);
+    return started.id;
+  }
+  async function readyPlan() {
+    const plan = await newPlan("st-2", 3, 3, owner);
+    await plansFor(db, scope(owner)).markReady(plan.planId, plan.revisionId);
+    return plan;
+  }
+
+  it("blocks approval and delivery on an alert nobody reviewed, and says why", async () => {
+    const plans = plansFor(db, scope(owner));
+    const plan = await readyPlan();
+    const alert = await assess({ assessedOn: "2026-10-01", chestPain: true });
+    expect(await plans.approve(plan.planId, plan.revisionId, { screeningNotRecorded: true }, at(21))).toEqual({ status: "review_required", assessedOn: "2026-10-01" });
+    expect((await stateOf(plan.revisionId)).state).toBe("READY");
+
+    // A review with a basis releases the block. It never turns the alert into 'clear'.
+    expect(await api().addReview(alert, "Atestado médico recebido", at(22))).toBe(true);
+    expect(await plans.approve(plan.planId, plan.revisionId, { screeningNotRecorded: false }, at(23))).toEqual({ status: "approved" });
+    expect(await approvedRow(plan.revisionId)).toEqual({ screening: "REVIEW_REQUIRED_REVIEWED", assessmentId: alert });
+    expect((await api().get(alert))?.riskStatus).toBe("REVIEW_REQUIRED");
+    expect(await plans.deliver(plan.planId, plan.revisionId, at(24))).toEqual({ status: "delivered" });
+  });
+
+  it("records a clear assessment as such, without asking for the acknowledgement", async () => {
+    const plans = plansFor(db, scope(owner));
+    const plan = await readyPlan();
+    const clear = await assess({ assessedOn: "2026-10-02" });
+    expect(await plans.approve(plan.planId, plan.revisionId, { screeningNotRecorded: false }, at(31))).toEqual({ status: "approved" });
+    expect(await approvedRow(plan.revisionId)).toEqual({ screening: "CLEAR", assessmentId: clear });
+    expect(await plans.deliver(plan.planId, plan.revisionId, at(32))).toEqual({ status: "delivered" });
+  });
+
+  it("holds delivery when an alert is recorded after the approval, until it is reviewed", async () => {
+    const plans = plansFor(db, scope(owner));
+    const plan = await readyPlan();
+    expect((await plans.approve(plan.planId, plan.revisionId, { screeningNotRecorded: false }, at(40))).status).toBe("approved");
+    const approvedWith = await approvedRow(plan.revisionId); // CLEAR from the previous test
+    expect(approvedWith.screening).toBe("CLEAR");
+    const alert = await assess({ assessedOn: "2026-10-03", dizzinessFainting: true });
+    expect(await plans.deliver(plan.planId, plan.revisionId, at(42))).toEqual({ status: "review_required", assessedOn: "2026-10-03" });
+    expect((await stateOf(plan.revisionId)).state).toBe("APPROVED");
+    expect(await clientSees(plan.planId, "client-2", "st-2")).toBe(false);
+    await api().addReview(alert, "Aluno avaliado por cardiologista", at(43));
+    expect(await plans.deliver(plan.planId, plan.revisionId, at(44))).toEqual({ status: "delivered" });
+    // What approval recorded is not rewritten by the later assessment.
+    expect(await approvedRow(plan.revisionId)).toEqual(approvedWith);
+  });
+
+  it("follows the newest assessment: a later clear one ends the block, a later alert starts it", async () => {
+    const plans = plansFor(db, scope(owner));
+    const plan = await readyPlan();
+    await assess({ assessedOn: "2026-10-04", recentSurgery: true });
+    expect((await plans.approve(plan.planId, plan.revisionId, { screeningNotRecorded: true }, at(51))).status).toBe("review_required");
+    const clear = await assess({ assessedOn: "2026-10-05" });
+    expect((await plans.approve(plan.planId, plan.revisionId, { screeningNotRecorded: false }, at(53))).status).toBe("approved");
+    expect((await approvedRow(plan.revisionId)).assessmentId).toBe(clear);
+  });
+
+  it("does not let a stale reading approve: the update re-checks the newest assessment itself", async () => {
+    const plan = await readyPlan();
+    // An alert gets recorded between the repository reading the standing and writing the approval.
+    let injected = false;
+    const racing = new Proxy(db, {
+      get(target, property) {
+        const value = Reflect.get(target, property) as unknown;
+        if (property !== "batch") return typeof value === "function" ? value.bind(target) : value;
+        return async (statements: Parameters<D1Database["batch"]>[0]) => {
+          if (!injected) {
+            injected = true;
+            await assess({ assessedOn: "2026-10-06", exertionPain: true });
+          }
+          return target.batch(statements);
+        };
+      },
+    });
+    const result = await plansFor(racing, scope(owner)).approve(plan.planId, plan.revisionId, { screeningNotRecorded: true }, at(61));
+    expect(injected).toBe(true);
+    // The newer alert was not part of what the professional saw, so nothing was approved.
+    expect(result).toEqual({ status: "screening_changed" });
+    expect((await stateOf(plan.revisionId)).state).toBe("READY");
+    // Read again, the same situation is a plain block.
+    expect(await plansFor(db, scope(owner)).approve(plan.planId, plan.revisionId, { screeningNotRecorded: true }, at(62))).toEqual({ status: "review_required", assessedOn: "2026-10-06" });
+  });
+
+  it("freezes the recorded standing of an approval against direct SQL", async () => {
+    const plans = plansFor(db, scope(owner));
+    const plan = await readyPlan();
+    // st-2 now has an unreviewed alert from the previous test: review it first.
+    const standing = (await api().standing("st-2"))!;
+    if (!standing.reviewed) await api().addReview(standing.assessmentId, "Revisado", at(70));
+    expect((await plans.approve(plan.planId, plan.revisionId, { screeningNotRecorded: false }, at(71))).status).toBe("approved");
+    await expect(db.prepare("UPDATE plan_revisions SET approval_screening = 'CLEAR' WHERE id = ?1").bind(plan.revisionId).run()).rejects.toThrow(/PLAN_REVISION_FROZEN/);
+    await expect(db.prepare("UPDATE plan_revisions SET approval_assessment_id = NULL WHERE id = ?1").bind(plan.revisionId).run()).rejects.toThrow(/PLAN_REVISION_FROZEN/);
   });
 });

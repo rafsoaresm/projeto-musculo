@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
 import { requireWorkspace } from "@/modules/auth/server";
 import { plansFor } from "@/db/plans";
+import { REVIEW_REQUIRED_TEXT } from "@/modules/avaliacoes/contracts";
+import { formatCalendarDate } from "@/modules/training/format";
 
 /** What the browser gets back. A message is shown as is, so it holds no plan data. */
 export type PlanActionResult = { error?: string } | void;
@@ -100,8 +102,9 @@ export async function createRevision(
 }
 
 /**
- * Approval is the professional's act. The checkbox is the acknowledgement that no screening is
- * registered for this student; it is stored as what was known, never as a clearance.
+ * Approval is the professional's act. The checkbox is the acknowledgement that no assessment is
+ * registered for this student; it is stored as what was known, never as a clearance. When there
+ * is one, the repository reads it: an alert without a recorded review blocks the approval.
  */
 export async function approveRevision(
   planId: string,
@@ -119,6 +122,10 @@ export async function approveRevision(
       };
     if (result.status === "screening_acknowledgement_required")
       return { error: "Confirme o aviso sobre a triagem para aprovar." };
+    if (result.status === "review_required")
+      return { error: `${REVIEW_REQUIRED_TEXT} Registre a revisão na avaliação de ${formatCalendarDate(result.assessedOn)}.` };
+    if (result.status === "screening_changed")
+      return { error: "Uma avaliação foi registrada enquanto você aprovava. Recarregue a página e confira a triagem." };
     if (result.status === "not_found")
       return { error: "Esta revisão não está pronta para aprovação." };
   } catch (error) {
@@ -133,7 +140,10 @@ export async function deliverRevision(
 ): Promise<PlanActionResult> {
   const { db, context } = await requireWorkspace();
   try {
-    if (!(await plansFor(db, context).deliver(planId, revisionId)))
+    const result = await plansFor(db, context).deliver(planId, revisionId);
+    if (result.status === "review_required")
+      return { error: `${REVIEW_REQUIRED_TEXT} Registre a revisão na avaliação de ${formatCalendarDate(result.assessedOn)}.` };
+    if (result.status === "not_found")
       return { error: "Esta revisão não está aprovada para entrega." };
   } catch (error) {
     return { error: messageFor(error) };

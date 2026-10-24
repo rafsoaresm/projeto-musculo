@@ -47,6 +47,6 @@ O DB continua nativo; não há URL de banco externo. Migrations 0001 e 0002 são
 - Auditoria cobre criação de organização/aluno, ativação do gestor, bloqueios, convites e revogação de acesso. Não é ainda uma trilha de login, leitura e alterações.
 - Há testes de revogação no banco. O profissional revoga o acesso do aluno e o gestor bloqueia identidades pela interface; revogação de membros de equipe ainda é pendente.
 - Drizzle/Better Auth usa operações sequenciais para credenciais porque D1 não aceita transações interativas. Testar recuperação de falhas parciais de cadastro antes de liberar acesso operacional. Batches do domínio são atômicos e têm teste de rollback.
-- O planejador segue exportando rascunhos sem associá-los ao aluno. Avaliação, revisão, aprovação e entrega são a próxima fatia de atendimento.
+- O planejador segue exportando rascunhos sem associá-los ao aluno. Avaliações, planos salvos, aprovação e entrega usam a mesma regra: só profissional com vínculo técnico ativo, reavaliada em cada consulta.
 
 Esta entrega permite experimentar os três papéis com dados fictícios em homologação; não fecha E1 nem o piloto operacional.
