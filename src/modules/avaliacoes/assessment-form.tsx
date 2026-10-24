@@ -62,10 +62,13 @@ function draftsFrom(detail: AssessmentDetail): MetricDraft[] {
 export function AssessmentForm({
   detail,
   minor,
+  storageReady,
 }: {
   detail: AssessmentDetail;
   /** The student is known to be under 18: photos are not accepted. */
   minor: boolean;
+  /** The photo storage is provisioned in this environment. */
+  storageReady: boolean;
 }) {
   const [assessedOn, setAssessedOn] = useState(detail.assessedOn);
   const [flags, setFlags] = useState(detail.flags);
@@ -270,6 +273,7 @@ export function AssessmentForm({
         assessmentId={detail.id}
         photos={detail.photos}
         minor={minor}
+        storageReady={storageReady}
       />
 
       <fieldset>

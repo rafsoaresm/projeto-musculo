@@ -14,3 +14,13 @@ export async function getPhotoBucket() {
   if (!env.PHOTOS) throw new Error("PHOTO_STORAGE_UNAVAILABLE");
   return env.PHOTOS;
 }
+
+/** Whether the photo storage is provisioned in this environment. Never throws. */
+export async function photoStorageAvailable(): Promise<boolean> {
+  try {
+    const { env } = await getCloudflareContext({ async: true });
+    return Boolean(env.PHOTOS);
+  } catch {
+    return false;
+  }
+}

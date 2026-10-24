@@ -9,8 +9,11 @@ declare global {
     /** "true" enables the fictional-data demonstration area. Off by default. */
     DEMO_MODE?: string;
     DB: D1Database;
-    /** Private object storage for the postural photos. Read only through authorized routes. */
-    PHOTOS: R2Bucket;
+    /**
+     * Private object storage for the postural photos, read only through authorized routes. Absent
+     * where the Object Storage is not provisioned: the app then offers no photo upload.
+     */
+    PHOTOS?: R2Bucket;
   }
 }
 

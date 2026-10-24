@@ -35,11 +35,13 @@ export function PhotosFieldset({
   assessmentId,
   photos,
   minor,
+  storageReady,
 }: {
   studentId: string;
   assessmentId: string;
   photos: PhotoIndexRow[];
   minor: boolean;
+  storageReady: boolean;
 }) {
   const router = useRouter();
   const mountPath = useMountPath();
@@ -109,7 +111,15 @@ export function PhotosFieldset({
         atendimento. Depois que a avaliação for registrada, as fotos não mudam.
         A ferramenta remove os dados do aparelho (posição, data e modelo) antes de guardar.
       </p>
-      {minor ? (
+      {!storageReady ? (
+        <Notice tone="warning">
+          <p>
+            <strong>Fotos indisponíveis neste ambiente.</strong> O armazenamento privado de arquivos
+            ainda não foi ativado para este app, então a ferramenta não aceita fotos. O resto da
+            avaliação funciona normalmente.
+          </p>
+        </Notice>
+      ) : minor ? (
         <Notice tone="warning">
           <p>
             <strong>Menor de idade.</strong> Pela data de nascimento da ficha, este aluno tem menos de 18
@@ -146,7 +156,7 @@ export function PhotosFieldset({
               ) : (
                 <div className="posture-photo empty">Sem foto</div>
               )}
-              {!minor && (
+              {storageReady && !minor && (
                 <>
                   <input
                     ref={(element) => {

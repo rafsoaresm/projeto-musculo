@@ -15,7 +15,7 @@
 }
 ```
 
-Para as fotos de postura (0.14), `wrangler.json` também declara o armazenamento de objetos nativo (R2):
+Para as fotos de postura (0.14), o app usa o armazenamento de objetos nativo (R2) pelo binding `PHOTOS`. **O `wrangler.json` publicado não o declara**: o primeiro deploy com ele foi recusado pelo Webflow na etapa "Processing 1 R2 bucket(s)", sem mensagem de erro, também numa segunda tentativa. Sem o binding, o app mostra "Fotos indisponíveis neste ambiente" e a rota de fotos responde 503; nada mais depende dele. O bucket está declarado em `wrangler.photos.json`, usado pelo preview local (`npm run preview:cloud`), pelo `next dev` e pelo CI, que simulam o R2 em `.wrangler/state`:
 
 ```json
 {
@@ -23,7 +23,7 @@ Para as fotos de postura (0.14), `wrangler.json` também declara o armazenamento
 }
 ```
 
-O Webflow conecta o app ao bucket no deploy, como faz com o banco. Depois da publicação, conferir na aba **Storage** que o bucket existe e que **não há endereço público**: as fotos só devem ser lidas pela rota autenticada do app. Localmente o `wrangler` simula o bucket em `.wrangler/state`. `cloudflare-env.d.ts` declara o tipo `PHOTOS` e `src/db/binding.ts` o entrega por requisição. Limites informados pelo Webflow: 100 MB e 20 s por requisição; o app limita cada foto a 5 MB.
+**Para ligar em produção:** confirmar no painel do Webflow Cloud (ou com o suporte) que o Object Storage está ativo para a conta e o plano, copiar o bloco acima para `wrangler.json` e publicar. Depois do deploy, conferir na aba **Storage** que o bucket existe e **não tem endereço público** (as fotos só devem sair pela rota autenticada do app) e subir uma foto de teste. Limites informados pelo Webflow: 100 MB e 20 s por requisição; o app limita cada foto a 5 MB. `cloudflare-env.d.ts` declara `PHOTOS` como opcional e `src/db/binding.ts` o entrega por requisição.
 
 `database_id` acima é um identificador local, não uma conexão de produção. Conforme a [documentação Webflow](https://developers.webflow.com/webflow-cloud/storing-data/sqlite), o Webflow atribui o identificador real e provisiona o recurso no deploy. Depois da publicação, conferir o recurso atribuído na aba **Storage**. Não criar um banco avulso na conta Cloudflare nem configurar Supabase para este app.
 

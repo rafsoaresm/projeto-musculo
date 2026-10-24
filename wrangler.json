@@ -3,15 +3,16 @@
   "name": "trainer-prescription",
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-10-23",
-  "compatibility_flags": ["nodejs_compat"],
-  "assets": { "binding": "ASSETS", "directory": ".open-next/assets" },
-  "observability": { "enabled": true },
-  "r2_buckets": [
-    {
-      "binding": "PHOTOS",
-      "bucket_name": "trainer-prescription-photos"
-    }
+  "compatibility_flags": [
+    "nodejs_compat"
   ],
+  "assets": {
+    "binding": "ASSETS",
+    "directory": ".open-next/assets"
+  },
+  "observability": {
+    "enabled": true
+  },
   "d1_databases": [
     {
       "binding": "DB",

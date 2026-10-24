@@ -1,8 +1,10 @@
 import type { NextConfig } from "next";
 import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
 
-// Use the same local D1 state as Wrangler migrations and Worker preview.
-initOpenNextCloudflareForDev();
+// Use the same local D1 state as Wrangler migrations and Worker preview. The local configuration
+// also has the photo bucket; the one the platform deploys (wrangler.json) has it only once the
+// Object Storage is enabled for the account.
+initOpenNextCloudflareForDev({ configPath: "wrangler.photos.json" });
 
 const rawBasePath = process.env.BASE_URL || "";
 const basePath = rawBasePath === "/" ? "" : rawBasePath;
