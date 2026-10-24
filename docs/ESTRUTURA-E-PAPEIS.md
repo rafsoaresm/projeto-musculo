@@ -39,9 +39,10 @@ Uma mesma conta pode ter mais de uma área (por exemplo, gestor e profissional).
 /gestor/[módulo]          planejados: planos-saas, afiliados, templates, biblioteca-global, integracoes
 
 /profissional             visão geral            /profissional/alunos[/novo|/id]
+/profissional/biblioteca[/novo|/id]
 /profissional/periodizacao        /profissional/alunos/[id]/planos/novo
                           /profissional/alunos/[id]/planos/[planId]/[revisionId]
-/profissional/[módulo]    planejados: avaliacoes, prescricao, biblioteca, fontes, meu-site, leads, configuracoes
+/profissional/[módulo]    planejados: avaliacoes, prescricao, fontes, meu-site, leads, configuracoes
 
 /aluno                    início                 /aluno/[módulo]   planejados: treino, evolucao, check-in, documentos, mensagens, conta
 
@@ -78,7 +79,7 @@ Correspondência com os papéis do handoff V2:
 | Avaliações | `/profissional/avaliacoes` | Planejado | E2 |
 | Periodização | `/profissional/periodizacao` | Disponível: planejador avulso (sem salvar) e **planos salvos por aluno** em `/profissional/alunos/<id>/planos/...`, com revisões e estado Rascunho / Estrutura pronta. Só a estrutura do ciclo; sem exercícios nem aprovação | E2 |
 | Prescrição | `/profissional/prescricao` | Planejado (**prévia** na demonstração) | E2 |
-| Biblioteca de exercícios | `/profissional/biblioteca` | Planejado | E2 |
+| Biblioteca de exercícios | `/profissional/biblioteca` | Disponível: 64 exercícios do sistema (somente leitura, vídeos são links de busca) e exercícios próprios da organização | E2 |
 | Fontes técnicas | `/profissional/fontes` | Planejado | E7 |
 | Meu Site (editor, páginas, domínios, SEO, publicações) | `/profissional/meu-site` | Planejado, um único item por ora | E3 |
 | Leads | `/profissional/leads` | Planejado | E3 |

@@ -1,11 +1,26 @@
 "use client";
-import { useActionState } from "react";
+import { useActionState, useTransition } from "react";
 import { setupWorkspace, addStudent } from "./actions";
+
+/**
+ * Sends the form from onSubmit instead of the `action` prop. React 19 resets a
+ * form after its action runs, which erased the typed text whenever the server
+ * refused it.
+ */
+function useKeepingSubmit(action: (data: FormData) => void) {
+  const [, startTransition] = useTransition();
+  return (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    startTransition(() => action(data));
+  };
+}
 
 export function WorkspaceForm({ name }: { name: string }) {
   const [error, action, pending] = useActionState(setupWorkspace, "");
+  const submit = useKeepingSubmit(action);
   return (
-    <form action={action} className="stack-form">
+    <form onSubmit={submit} className="stack-form">
       <label>
         Nome do espaço
         <input
@@ -44,8 +59,9 @@ export function WorkspaceForm({ name }: { name: string }) {
 }
 export function StudentForm() {
   const [error, action, pending] = useActionState(addStudent, "");
+  const submit = useKeepingSubmit(action);
   return (
-    <form action={action} className="stack-form">
+    <form onSubmit={submit} className="stack-form">
       <label>
         Nome do aluno
         <input

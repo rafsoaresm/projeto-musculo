@@ -227,14 +227,12 @@ const profissional: NavGroup[] = [
   {
     label: "CONHECIMENTO",
     items: [
-      planned("biblioteca", "Biblioteca de exercícios", "book", {
-        epic: "E2",
-        reference: "Handoff V2, seção 6.3",
-        summary:
-          "Biblioteca global curada e biblioteca própria do profissional. A semente de 64 exercícios do documento mestre distingue link de busca de vídeo validado.",
-        needs:
-          "Modelagem dos exercícios e músculos e a curadoria dos vídeos.",
-      }),
+      {
+        slug: "biblioteca",
+        label: "Biblioteca de exercícios",
+        icon: "book",
+        status: "available",
+      },
       planned("fontes", "Fontes técnicas", "library", {
         epic: "E7",
         reference: "Handoff V2, seção 7",

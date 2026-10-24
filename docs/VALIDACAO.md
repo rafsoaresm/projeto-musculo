@@ -2,6 +2,18 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001, 0002 e 0003 permanecem inalteradas; a 0004 é aditiva.
 
+## Fatia 0.5a: biblioteca de exercícios
+
+Biblioteca do sistema com os **64 exercícios do documento mestre** (seção 50: nome, categoria, nível e o link inicial de vídeo) e biblioteca própria de cada organização. Nada além disso foi acrescentado: não há músculos, equipamentos, progressões nem vídeos curados, porque o documento não os fornece.
+
+- **Banco:** migration 0005 (`exercises`), aditiva. Linhas do sistema têm `organization_id` nulo e IDs estáveis `sys-001` a `sys-064`. A chave `name_key` (minúsculas, acentos mantidos, espaços colapsados) é calculada no código porque o `lower()` do SQLite ignora acentos; ela decide duplicidade e busca. Índice único parcial: dois exercícios ativos não repetem o nome na mesma biblioteca; uma cópia de exercício do sistema pode manter o nome.
+- **Vídeo:** os links do documento são buscas do YouTube e ficam marcados como **link de busca, não vídeo revisado**. Só YouTube e Vimeo, https, sem usuário/senha/porta, até 500 caracteres; outros provedores dependem de política definida. "Vídeo revisado" é decisão do profissional: nunca no cadastro, só ao salvar de novo com o mesmo link e a caixa marcada; trocar o link desfaz a revisão; link de busca nunca é revisado.
+- **Acesso (`src/db/exercises.ts`):** só membros técnicos ativos (dono, gerente, técnico) leem a biblioteca; sistema é somente leitura; editar, arquivar e restaurar valem só para exercícios da própria organização. Membro comercial ou financeiro, login de aluno, gestor da plataforma, identidade bloqueada e vínculo revogado não veem nada. Editar um exercício não reescreve prescrição: a prescrição guarda o próprio nome e vídeo.
+- **Testes de D1 (`tests/exercises.test.ts`, 9):** seed íntegro (64, categorias 5/16/14/8/9/8/4, todos como link de busca); acesso por papel; revogação e bloqueio cortam na hora; validação recusa categoria inventada, `http`, `javascript:`, host fora da lista, usuário/senha, porta, link e notas enormes e campo extra; duplicidade ignora caixa e acento; estados do vídeo; arquivar/restaurar; cópia do sistema; busca com `%` e `_` como texto. Mutações deliberadas (liberar o papel comercial; remover a visibilidade por organização) fizeram os testes falharem. O filtro de organização no `UPDATE` é defesa em profundidade: o `find` anterior já barra outra organização, então nenhuma mutação externa o alcança.
+- **Navegador (`tests/e2e/library.spec.ts`):** 64 exercícios, filtros, cópia, edição, link recusado, criação, revisão de vídeo em duas gravações, duplicidade, outra organização sem acesso nem por endereço, arquivar e restaurar. Desktop e celular.
+- **Defeito encontrado e corrigido nesta fatia:** o React 19 reinicia um formulário depois da ação. Isso apagava o texto digitado quando o servidor recusava, e devolvia o seletor de categoria à primeira opção depois de salvar. Os formulários passaram a enviar por `onSubmit` (inclusive os de espaço e de aluno, que tinham a perda de texto em erro); o teste de navegador confere a categoria depois de salvar.
+- **Limites:** não validado no Webflow. A biblioteca do sistema não tem tela de gestão: corrigir ou ampliar o seed exige nova migration (a biblioteca técnica do gestor continua planejada). Os vídeos continuam sem curadoria.
+
 ## Fatia 0.4: planos de periodização salvos
 
 Cobre **só a estrutura do ciclo** (fases, semanas, sessões, divisão e calendário), salva por aluno em revisões. Não há exercícios, prescrição, aprovação, entrega nem PDF.
