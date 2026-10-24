@@ -47,6 +47,13 @@ export function AssessmentsPanel({
           ))}
         </ul>
       )}
+      {recorded.length > 0 && (
+        <p>
+          <Link className="account-link" href={`/profissional/alunos/${studentId}/evolucao`}>
+            Ver a evolução ao longo do tempo
+          </Link>
+        </p>
+      )}
       {draft ? (
         <Link className="button primary small" href={`/profissional/alunos/${studentId}/avaliacoes/${draft.id}`}>
           Continuar o rascunho

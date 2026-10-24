@@ -6,14 +6,20 @@ O escopo completo está em [`referencias/02-ROADMAP-E-HANDOFF.md`](referencias/0
 |---|---|---|
 | E0 — viabilidade | Configuração Next/OpenNext e binding DB nativo | Deploy na conta, múltiplos hosts, login, Storage privado, job/PDF e Puck |
 | E1 — fundação | Conta/sessão, organização, aluno, autorização e auditoria em SQLite. **Três áreas por papel** (gestor, profissional, aluno), ativação única do gestor, bloqueio de acesso e convite de aluno de uso único | E-mail verificado, recuperação, convites e gestão de equipe, conceder o papel de gestor pela interface e homologação remota |
-| E2 — atendimento | Planejador determinístico e exportação. **Planos de periodização salvos por aluno**, com revisões e estado Rascunho / Estrutura pronta (0.4). **Biblioteca de exercícios** com o seed de 64 do documento mestre e biblioteca por organização (0.5a). **Prescrição manual** por mesociclo sobre o rascunho (0.6), com painel de pendências e cópia de mesociclo (0.7). **Aprovação e entrega** com imutabilidade no banco (0.8). **Ficha do aluno** (0.9). **Avaliações com triagem e indicadores** (0.10), ligadas à aprovação e à entrega. **PDF do plano entregue** (0.11). **Postura e movimento** nas avaliações (0.12), sem fotos | Fotos de postura (dependem de armazenamento privado), geração com pendências; conferir o instrumento de triagem com o responsável técnico |
+| E2 — atendimento | Planejador determinístico e exportação. **Planos de periodização salvos por aluno**, com revisões e estado Rascunho / Estrutura pronta (0.4). **Biblioteca de exercícios** com o seed de 64 do documento mestre e biblioteca por organização (0.5a). **Prescrição manual** por mesociclo sobre o rascunho (0.6), com painel de pendências e cópia de mesociclo (0.7). **Aprovação e entrega** com imutabilidade no banco (0.8). **Ficha do aluno** (0.9). **Avaliações com triagem e indicadores** (0.10), ligadas à aprovação e à entrega. **PDF do plano entregue** (0.11). **Postura e movimento** nas avaliações (0.12), sem fotos. **Evolução das avaliações** (0.13): séries dos indicadores e comparação | Fotos de postura (dependem de armazenamento privado), geração com pendências; conferir o instrumento de triagem com o responsável técnico |
 | E3 — sites/CRM | Planejado | Editor, preview, releases, domínios e conversão idempotente |
 | E4 — portal | Parcial: convite de uso único, área do aluno e **treino entregue** (0.8) | Origem privada separada, execução e evolução; fecha piloto operacional |
 | E5 — gestão/marketing | Planejado | CRM completo, agenda, contratos, recebimentos e conectores |
 | E6 — SaaS/afiliados | Planejado | Inbox/outbox, conciliação, recorrência, ajustes e repasses |
 | E7 — evoluções | Planejado | RAG com armazenamento compatível, progressão assistida e booking |
 
-## Fatia entregue: postura e movimento (0.12)
+## Fatia entregue: evolução das avaliações (0.13)
+
+1. Implementado: `/profissional/alunos/<id>/evolucao`, só leitura, sem migration: séries dos indicadores ao longo do tempo (gráfico quando há duas medições numéricas, tabela sempre), linha do tempo da triagem e comparação entre avaliações seguidas na triagem, na postura e no movimento.
+2. Princípio: descreve e não julga. Nenhuma mudança é chamada de melhora, piora ou resolução.
+3. **Em aberto:** metas e faixas de referência (dependem do responsável técnico), pressão separada em sistólica e diastólica, comparação de fotos.
+
+## Fatia anterior: postura e movimento (0.12)
 
 1. Implementado: migration 0010 (`assessment_findings`), com os 18 itens posturais das três vistas (seção 8) e os 9 testes de movimento com a escala de cinco níveis (seção 9), dentro da avaliação, congelados com ela.
 2. Mantido do documento: só os seis itens da triagem geram revisão obrigatória. Postura e movimento descrevem, não bloqueiam; "interrompido por dor/desconforto" aparece em destaque, sem criar alerta.
