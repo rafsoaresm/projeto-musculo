@@ -287,14 +287,13 @@ const aluno: NavGroup[] = [
         status: "available",
         primary: true,
       },
-      planned("treino", "Treino atual", "dumbbell", {
-        epic: "E4",
-        reference: "Projeto consolidado, seção 9",
-        summary:
-          "O treino liberado pelo seu profissional, com exercícios, séries, descanso e vídeo. Só aparece depois que o profissional aprova e entrega.",
-        needs:
-          "Prescrição persistida, aprovação e entrega de uma revisão imutável.",
-      }, true),
+      {
+        slug: "treino",
+        label: "Treino atual",
+        icon: "dumbbell",
+        status: "available",
+        primary: true,
+      },
       planned("evolucao", "Evolução", "chart", {
         epic: "E4",
         reference: "Projeto consolidado, seção 9",

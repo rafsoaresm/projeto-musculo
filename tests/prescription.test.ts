@@ -1,6 +1,5 @@
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import type { D1Database } from "@cloudflare/workers-types";
-import { readFile } from "node:fs/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { plansFor } from "@/db/plans";
 import { exercisesFor } from "@/db/exercises";
@@ -8,6 +7,7 @@ import { prescriptionFor, type PrescribedItem } from "@/db/prescription";
 import { MAX_PER_WORKOUT } from "@/modules/prescricao/contracts";
 import { progressOf, workoutSlots } from "@/modules/prescricao/summary";
 import { buildPeriodization } from "@/modules/training/periodization";
+import { ALL_MIGRATIONS, migrate } from "./helpers/migrate";
 
 // Real local D1 with the six migrations. Identities are rows, as the server
 // derives them from a verified session.
@@ -29,25 +29,6 @@ const A1 = { phaseIndex: 1, workoutLabel: "A" };
 const B1 = { phaseIndex: 1, workoutLabel: "B" };
 const A2 = { phaseIndex: 2, workoutLabel: "A" };
 
-async function migrate(database: D1Database) {
-  for (const file of [
-    "0001_foundation.sql",
-    "0002_identity_and_onboarding.sql",
-    "0003_roles_and_access.sql",
-    "0004_training_plans.sql",
-    "0005_exercise_library.sql",
-    "0006_prescribed_exercises.sql",
-  ]) {
-    const sql = await readFile(new URL(`../migrations/${file}`, import.meta.url), "utf8");
-    await database.batch(
-      sql
-        .replace(/^--.*$/gm, "")
-        .split(";")
-        .filter((statement) => statement.trim())
-        .map((statement) => database.prepare(statement)),
-    );
-  }
-}
 
 const itemsRaw = () =>
   db
@@ -77,7 +58,7 @@ beforeAll(async () => {
     }),
   );
   db = await mf.getD1Database("DB");
-  await migrate(db);
+  await migrate(db, ALL_MIGRATIONS);
   const people = ["owner-a", "tech-a", "tech-a2", "commercial-a", "owner-b", "tech-b", "client-1", "mgr-1"];
   await db.batch([
     ...people.map((id) =>

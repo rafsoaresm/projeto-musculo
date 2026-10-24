@@ -62,7 +62,7 @@ test("a client enters only by invitation and reaches nothing but the own area", 
   await expect(
     client.page.getByRole("heading", { name: "Treino atual" }),
   ).toBeVisible();
-  await expect(client.page.getByText("Ainda não disponível")).toBeVisible();
+  await expect(client.page.getByText("Nenhum treino liberado ainda.")).toBeVisible();
 
   // The same link never works twice, for anyone.
   const stranger = await newActor(browser, baseURL);

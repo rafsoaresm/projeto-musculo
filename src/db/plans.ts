@@ -42,6 +42,8 @@ export interface PlanRevisionSummary {
   totalSessions: number;
   updatedAt: string;
   readyAt: string | null;
+  approvedAt: string | null;
+  deliveredAt: string | null;
 }
 export interface PlanSummary {
   id: string;
@@ -76,6 +78,11 @@ export interface PlanOverviewRow {
   /** Workouts with fewer exercises than the target. A pending item, never filled in. */
   below: number;
 }
+export type ApproveOutcome =
+  | { status: "approved" }
+  | { status: "below_target"; below: number }
+  | { status: "screening_acknowledgement_required" }
+  | { status: "not_found" };
 export type NewRevisionResult =
   | { status: "created"; revisionId: string }
   | { status: "draft_open" }
@@ -138,7 +145,8 @@ export function plansFor(
              r.id AS revisionId, r.revision_number AS revisionNumber, r.state,
              r.start_date AS startDate, r.end_date AS endDate,
              r.total_weeks AS totalWeeks, r.total_sessions AS totalSessions,
-             r.updated_at AS updatedAt, r.ready_at AS readyAt
+             r.updated_at AS updatedAt, r.ready_at AS readyAt,
+             r.approved_at AS approvedAt, r.delivered_at AS deliveredAt
            FROM training_plans p
            JOIN plan_revisions r
              ON r.organization_id = p.organization_id AND r.plan_id = p.id
@@ -169,6 +177,8 @@ export function plansFor(
           totalSessions: row.totalSessions,
           updatedAt: row.updatedAt,
           readyAt: row.readyAt,
+          approvedAt: row.approvedAt,
+          deliveredAt: row.deliveredAt,
         });
         plans.set(row.planId, plan);
       }
@@ -236,6 +246,7 @@ export function plansFor(
              r.start_date AS startDate, r.end_date AS endDate,
              r.total_weeks AS totalWeeks, r.total_sessions AS totalSessions,
              r.updated_at AS updatedAt, r.ready_at AS readyAt,
+             r.approved_at AS approvedAt, r.delivered_at AS deliveredAt,
              r.based_on_revision_id AS basedOnRevisionId,
              r.input_json AS inputJson, r.schedule_json AS scheduleJson
            FROM training_plans p
@@ -268,6 +279,8 @@ export function plansFor(
           totalSessions: row.totalSessions,
           updatedAt: row.updatedAt,
           readyAt: row.readyAt,
+          approvedAt: row.approvedAt,
+          deliveredAt: row.deliveredAt,
           basedOnRevisionId: row.basedOnRevisionId,
           input: periodizationInputSchema.parse(JSON.parse(row.inputJson)),
           schedule: JSON.parse(row.scheduleJson) as PeriodizationSchedule,
@@ -402,6 +415,69 @@ export function plansFor(
           )
           .bind(organizationId, userId, stamp, revisionId, planId),
         eventAfterChange("MARKED_READY", revisionId, stamp),
+      ]);
+      return results[0].meta.changes > 0;
+    },
+
+    /**
+     * READY to APPROVED, an act of the professional. It needs every workout at or above its
+     * target (the target can be changed in a draft, never filled in here) and the
+     * professional's acknowledgement that no screening is registered for the student. That
+     * acknowledgement is not a clearance: it is only recorded as what was known at the time.
+     */
+    async approve(
+      planId: string,
+      revisionId: string,
+      acknowledgement: { screeningNotRecorded: boolean },
+      now = new Date(),
+    ): Promise<ApproveOutcome> {
+      const detail = await this.findRevision(planId, revisionId);
+      if (!detail || detail.revision.state !== "READY") return { status: "not_found" };
+      // A READY revision is frozen, so these counts cannot change before the update below.
+      const counts = await db
+        .prepare(
+          `SELECT phase_index AS p, workout_label AS w, COUNT(*) AS n
+           FROM prescribed_exercises WHERE organization_id = ?1 AND revision_id = ?2
+           GROUP BY phase_index, workout_label`,
+        )
+        .bind(organizationId, revisionId)
+        .all<{ p: number; w: string; n: number }>();
+      const byWorkout = new Map(counts.results.map((c) => [`${c.p}|${c.w}`, c.n]));
+      const below = workoutSlots(detail.revision.schedule).filter(
+        (slot) => (byWorkout.get(`${slot.phaseIndex}|${slot.label}`) ?? 0) < slot.target,
+      ).length;
+      if (below > 0) return { status: "below_target", below };
+      if (!acknowledgement.screeningNotRecorded)
+        return { status: "screening_acknowledgement_required" };
+      const stamp = now.toISOString();
+      const results = await db.batch([
+        db
+          .prepare(
+            `UPDATE plan_revisions
+             SET state = 'APPROVED', approved_at = ?3, approved_by_user_id = ?2,
+               approval_screening = 'NOT_RECORDED', updated_at = ?3
+             WHERE organization_id = ?1 AND id = ?4 AND plan_id = ?5 AND state = 'READY'
+               AND ${revisionGate("plan_revisions")}`,
+          )
+          .bind(organizationId, userId, stamp, revisionId, planId),
+        eventAfterChange("APPROVED", revisionId, stamp),
+      ]);
+      return results[0].meta.changes > 0 ? { status: "approved" } : { status: "not_found" };
+    },
+
+    /** APPROVED to DELIVERED: the student can see exactly this revision from now on. */
+    async deliver(planId: string, revisionId: string, now = new Date()): Promise<boolean> {
+      const stamp = now.toISOString();
+      const results = await db.batch([
+        db
+          .prepare(
+            `UPDATE plan_revisions
+             SET state = 'DELIVERED', delivered_at = ?3, delivered_by_user_id = ?2, updated_at = ?3
+             WHERE organization_id = ?1 AND id = ?4 AND plan_id = ?5 AND state = 'APPROVED'
+               AND ${revisionGate("plan_revisions")}`,
+          )
+          .bind(organizationId, userId, stamp, revisionId, planId),
+        eventAfterChange("DELIVERED", revisionId, stamp),
       ]);
       return results[0].meta.changes > 0;
     },

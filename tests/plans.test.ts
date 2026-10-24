@@ -1,9 +1,9 @@
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import type { D1Database } from "@cloudflare/workers-types";
-import { readFile } from "node:fs/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { plansFor } from "@/db/plans";
 import { buildPeriodization } from "@/modules/training/periodization";
+import { ALL_MIGRATIONS, migrate } from "./helpers/migrate";
 
 // Real local D1 with the four migrations. Identities are rows, as the server
 // derives them from a verified session.
@@ -25,28 +25,6 @@ const input = (count = 3, startDate = "2026-11-02", split = "ABC") => ({
   phases: phases(count, split),
 });
 
-async function migrate(database: D1Database) {
-  for (const file of [
-    "0001_foundation.sql",
-    "0002_identity_and_onboarding.sql",
-    "0003_roles_and_access.sql",
-    "0004_training_plans.sql",
-    "0005_exercise_library.sql",
-    "0006_prescribed_exercises.sql",
-  ]) {
-    const sql = await readFile(
-      new URL(`../migrations/${file}`, import.meta.url),
-      "utf8",
-    );
-    await database.batch(
-      sql
-        .replace(/^--.*$/gm, "")
-        .split(";")
-        .filter((statement) => statement.trim())
-        .map((statement) => database.prepare(statement)),
-    );
-  }
-}
 
 const counts = async () =>
   (await db
@@ -68,7 +46,7 @@ beforeAll(async () => {
     }),
   );
   db = await mf.getD1Database("DB");
-  await migrate(db);
+  await migrate(db, ALL_MIGRATIONS);
   const people = [
     "owner-a",
     "tech-a",

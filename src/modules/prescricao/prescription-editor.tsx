@@ -7,6 +7,7 @@ import type { PeriodizationSchedule } from "@/modules/training/contracts";
 import { workoutLabels } from "@/modules/training/periodization";
 import { CATEGORIES } from "@/modules/biblioteca/contracts";
 import { videoLabel } from "@/modules/biblioteca/labels";
+import { describeDose } from "./describe";
 import { progressOf, type WorkoutProgress } from "./summary";
 import {
   addExercise,
@@ -25,25 +26,7 @@ export interface LibraryOption {
   category: string;
 }
 
-/** What the professional typed, in one line. Empty fields are simply left out. */
-export function describeItem(item: PrescribedItem): string {
-  const parts: string[] = [];
-  const dose = [item.sets && `${item.sets} séries`, item.reps && `${item.reps} repetições`]
-    .filter(Boolean)
-    .join(" × ");
-  if (dose) parts.push(dose);
-  if (item.loadInstruction) parts.push(`carga: ${item.loadInstruction}`);
-  if (item.cadence) parts.push(`cadência ${item.cadence}`);
-  const rest = [item.restSeconds !== null ? `${item.restSeconds} s` : null, item.restText]
-    .filter(Boolean)
-    .join(" · ");
-  if (rest) parts.push(`descanso ${rest}`);
-  if (item.rirMin !== null && item.rirMax !== null)
-    parts.push(item.rirMin === item.rirMax ? `RIR ${item.rirMin}` : `RIR ${item.rirMin} a ${item.rirMax}`);
-  else if (item.rirMin !== null) parts.push(`RIR a partir de ${item.rirMin}`);
-  else if (item.rirMax !== null) parts.push(`RIR até ${item.rirMax}`);
-  return parts.join(" · ");
-}
+export const describeItem = describeDose;
 
 const STATUS: Record<WorkoutProgress["status"], { text: string; tone: "warning" | "success" | "neutral" }> = {
   BELOW: { text: "Abaixo do alvo", tone: "warning" },

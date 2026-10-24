@@ -18,10 +18,10 @@ export function PlansPanel({
       <p className="eyebrow">PERIODIZAÇÃO</p>
       <h2 id="planos-aluno">Planos salvos</h2>
       <p className="muted">
-        Cada plano guarda o ciclo e os exercícios em revisões. &quot;Estrutura
-        pronta&quot; significa que o calendário foi validado e a revisão deixou
-        de ser editável, exercícios incluídos. Não é aprovação, e o aluno não
-        recebe nada por aqui.
+        Cada plano guarda o ciclo e os exercícios em revisões, que seguem
+        Rascunho, Estrutura pronta, Aprovada e Entregue. Só uma revisão
+        entregue aparece para o aluno, e ela nunca muda: alterações viram uma
+        nova revisão.
       </p>
       {plans.length === 0 ? (
         <p>Este aluno ainda não tem plano salvo.</p>

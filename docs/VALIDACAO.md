@@ -1,6 +1,18 @@
-# Evidências de validação — v0.7 (painel de prescrição) sobre a base 0.3
+# Evidências de validação — v0.8 (aprovação e entrega) sobre a base 0.3
 
-Tudo abaixo foi executado **localmente** em 23/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004, 0005 e 0006 são aditivas.
+Tudo abaixo foi executado **localmente** em 23/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0007 são aditivas.
+
+## Fatia 0.8: aprovação, entrega e treino na área do aluno
+
+Fecha o ciclo do piloto no que existe hoje: o profissional aprova, entrega, e o aluno vê **exatamente** a revisão entregue. Continua sem execução do treino pelo aluno, sem triagem e sem PDF.
+
+- **Estados:** Rascunho, Estrutura pronta, Aprovada e Entregue, sempre para a frente e um passo por vez. Aprovar e entregar são atos do profissional com vínculo técnico ativo; nada é automático e nenhuma regra ou IA aprova ou libera.
+- **Aprovação:** exige revisão pronta, **nenhum treino abaixo do alvo** (a pendência nunca é preenchida: o caminho é uma nova revisão que complete os exercícios ou ajuste o alvo) e a confirmação do **aviso de triagem**. Sem instrumento de triagem, o aviso diz "triagem não registrada" e que isso não significa ausência de riscos; a confirmação fica gravada como `approval_screening = NOT_RECORDED`, que é o que se sabia na hora e **não é liberação clínica**. Quando a triagem existir, o histórico continua legível.
+- **Imutabilidade no banco (migration 0007):** gatilhos recusam qualquer alteração de conteúdo de uma revisão que saiu de rascunho, qualquer estado que não seja o passo seguinte, reescrever os fatos de aprovação e entrega e apagar revisão, além de inserir, alterar ou remover exercícios de revisão fechada. Valem para escrita direta no SQL, não só para o código. O `wrangler` que o Webflow usa no deploy aplicou a migration com os 7 gatilhos localmente.
+- **Área do aluno (`/aluno/treino`, `/aluno`):** só revisões entregues, só do aluno com vínculo ativo do próprio login (os alunos vêm dos vínculos verificados, nunca do endereço), a mais recente de cada plano. Mostra fases (a atual em destaque), treinos e exercícios com a dose digitada. Rascunho, pronta e aprovada não aparecem; nota da biblioteca, autoria e dados internos não fazem parte do que é lido.
+- **Testes de D1 (`tests/approval.test.ts`, 7):** gatilhos contra escrita direta; aprovação recusada abaixo do alvo, sem o aviso e fora do estado certo; quatro identidades de profissional sem vínculo, dono, comercial, aluno, gestor e outra organização recusadas; nova revisão a partir de uma entregue sem tocar a original; o aluno vê só entregues, não vê nada de outro aluno, de profissional, de gestor ou de estranho, perde o acesso ao revogar o vínculo ou bloquear a identidade, e a nova entrega substitui a anterior. Mutações deliberadas (aprovar abaixo do alvo, ler revisões não entregues, ignorar a revogação) fizeram os testes falharem.
+- **Navegador (`tests/e2e/delivery.spec.ts`):** profissional monta o plano, aluno aceita o convite e não vê nada, aprovação exige o aviso, aprovada ainda não aparece, entregue aparece com a dose, nova revisão em rascunho não aparece, revogar fecha o treino. Desktop e celular, na raiz e em `/treinador`.
+- **Limites:** não validado no Webflow. Sem execução pelo aluno, sem PDF, sem notificação ao aluno (nem e-mail: aguarda a AWS), sem desfazer entrega (uma entrega só é superada por outra), sem triagem. A mesma origem serve painel e portal, o que continua não atendendo à separação exigida antes de dados reais.
 
 ## Fatia 0.7: painel de Prescrição e cópia de mesociclo
 
@@ -50,24 +62,25 @@ Cobre **só a estrutura do ciclo** (fases, semanas, sessões, divisão e calend�
 
 ## Código e banco
 
-- `npm run check`: ESLint e TypeScript sem erros e **145 testes, nenhum ignorado**: 17 de isolamento D1, 15 de identidade, 26 de periodização, 31 de papéis, 12 de contrato de navegação/fixtures, 5 de caminho de montagem, 9 de planos salvos, 9 de biblioteca e 21 de prescrição.
+- `npm run check`: ESLint e TypeScript sem erros e **152 testes, nenhum ignorado**: 17 de isolamento D1, 15 de identidade, 26 de periodização, 31 de papéis, 12 de contrato de navegação/fixtures, 5 de caminho de montagem, 9 de planos salvos, 9 de biblioteca, 21 de prescrição e 7 de aprovação e entrega.
 - Os 31 testes de `tests/roles.test.ts` usam D1 real (Miniflare) com as três migrations e cobrem:
   - **Gestor:** ativação recusada sem token configurado, com token curto ou errado; exatamente um gestor sob concorrência; token inerte depois; e-mail e papel de proprietário não concedem o papel; revogado ou bloqueado perde o acesso na hora.
   - **Escopo do gestor:** vê organizações e contagens; o resultado serializado não contém nome de aluno; `studentsFor` e a criação de convite não funcionam para ele em nenhuma organização; bloqueio e restabelecimento com auditoria; não bloqueia a si mesmo, outro gestor ou quem não é da organização; a auditoria do gestor lista só ações de plataforma.
   - **Convite:** só o profissional com vínculo técnico ativo cria (dono sem atribuição, outro profissional, papel comercial, outro tenant e cliente são recusados); só o hash é guardado; novo link invalida o pendente; token malformado, desconhecido, expirado, revogado ou reutilizado não vincula; dois aceites simultâneos têm um único vencedor; identidade bloqueada não aceita; um aluno não ganha segundo login ativo; o cliente vê apenas o próprio registro e só na própria organização; revogar encerra o acesso na requisição seguinte; um cliente com duas organizações não as mistura.
   - **Áreas:** combinações de papéis por identidade, revogação de vínculo e distinção entre cliente revogado e login novo.
-- Migrations 0001 a 0006 aplicadas no SQLite local por Wrangler (`db:migrate:local`); a saúde consulta `0006_prescribed_exercises`.
+- Migrations 0001 a 0007 aplicadas no SQLite local por Wrangler (`db:migrate:local`); a saúde consulta `0007_approval_and_delivery`.
 - `npm run build:cloud` (bundle OpenNext/Workers) concluído sem erro na raiz e em `/treinador`.
 
 ## Navegador (Playwright, Worker local)
 
-21 execuções aprovadas na raiz **e** 21 em `/treinador` (42), sem testes ignorados (a correção do cadastro, abaixo, foi validada antes com 15 execuções e a variável de build de caminho vazia): desktop e celular (Pixel 7) para cada cenário comum, e um cenário do gestor em projeto próprio, porque a ativação é única por banco (o `globalSetup` revoga gestores do **banco local** antes de cada rodada).
+23 execuções aprovadas na raiz **e** 23 em `/treinador` (46), sem testes ignorados (a correção do cadastro, abaixo, foi validada antes com 15 execuções e a variável de build de caminho vazia): desktop e celular (Pixel 7) para cada cenário comum, e um cenário do gestor em projeto próprio, porque a ativação é única por banco (o `globalSetup` revoga gestores do **banco local** antes de cada rodada).
 
 | Cenário | O que prova |
 |---|---|
 | Entrada, navegação e layout | Três áreas apresentadas, sem rolagem horizontal, módulo planejado mostra "Ainda não disponível", 404 em módulo inexistente, sem erro de página |
 | Planejador (2 cenários) | Fases independentes, exportação do rascunho, invalidação do resultado, 12 fases — agora atrás de login |
 | Biblioteca de exercícios | 64 do sistema, filtros, cópia, criação, revisão de vídeo em duas gravações, isolamento entre organizações (seção da fatia 0.5a) |
+| Aprovação, entrega e treino do aluno | Aviso de triagem obrigatório, aprovar, entregar, o aluno só vê o entregue, nova revisão em rascunho invisível, revogação fecha (seção da fatia 0.8) |
 | Prescrição manual | Adicionar, editar, reordenar, duplicar, remover, copiar treino, estrutura recusada, revisão fechada, nova revisão com os exercícios (seção da fatia 0.6) |
 | Planos salvos | Salvar, reabrir, marcar pronto, nova revisão e isolamento entre organizações (detalhes na seção da fatia 0.4) |
 | Conta, organização e aluno | Persistência após sair e entrar; outra organização não abre o aluno por URL; endereços antigos (`/alunos`) redirecionam e exigem sessão; `no-store` |
@@ -107,4 +120,4 @@ Capturas inspecionadas em desktop (1440px) e celular (390px) das três áreas re
 - A demonstração usa dados fictícios e não é evidência de Avaliações, Prescrição, treino liberado, execução, Meu Site, cobrança ou afiliados: esses módulos continuam planejados.
 - O cadastro de credenciais da biblioteca usa operações sequenciais em D1; falhas parciais ainda precisam de homologação antes de abrir o cadastro operacional. Os batches do domínio (inclusive convite e ativação do gestor) são atômicos e testados.
 - O harness envia endereços de teste separados no cabeçalho de edge só no Worker local, para não compartilhar limites de tentativa entre execuções. O limitador é testado à parte contra SQLite.
-- Continuam pendentes: e-mail verificado, recuperação de senha, convites e gestão de equipe, conceder o papel de gestor pela interface, auditoria de login e leitura, avaliação e prescrição persistidas (só a estrutura do ciclo é salva), aprovação/entrega, Storage privado, jobs/PDF, editor, integrações e pagamentos.
+- Continuam pendentes: e-mail verificado, recuperação de senha, convites e gestão de equipe, conceder o papel de gestor pela interface, auditoria de login e leitura, avaliação e triagem, execução do treino pelo aluno, Storage privado, jobs/PDF, editor, integrações e pagamentos.

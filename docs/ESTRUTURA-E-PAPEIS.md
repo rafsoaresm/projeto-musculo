@@ -20,7 +20,7 @@ Versão 0.3 · 23/10/2026. Esta revisão aplica o `TRAINER_PRESCRIPTION_HANDOFF_
 | Papel no banco | `platform_admins` | `memberships` ativa + `professionals` | `student_access` ativo |
 | Vê | Organizações, profissionais, contagens, auditoria de acessos | Os alunos com quem tem vínculo técnico, periodização, convites | Somente o próprio vínculo e o que for liberado |
 | Nunca vê | Nomes, avaliações, treinos e fotos de alunos | Alunos de outros profissionais ou organizações | Qualquer outro aluno, profissional ou organização |
-| Ações reais hoje | Listar organizações, bloquear/restabelecer um acesso, auditar | Cadastrar aluno, convidar/revogar acesso, planejar ciclos | Aceitar convite, ver o próprio acompanhamento |
+| Ações reais hoje | Listar organizações, bloquear/restabelecer um acesso, auditar | Cadastrar aluno, convidar/revogar acesso, planejar e prescrever, aprovar e entregar | Aceitar convite, ver o treino entregue |
 
 Uma mesma conta pode ter mais de uma área (por exemplo, gestor e profissional). `/acesso` encaminha quem tem uma só e oferece a escolha a quem tem várias; a barra superior troca de área.
 
@@ -44,7 +44,8 @@ Uma mesma conta pode ter mais de uma área (por exemplo, gestor e profissional).
                           /profissional/alunos/[id]/planos/[planId]/[revisionId]
 /profissional/[módulo]    planejados: avaliacoes, prescricao, fontes, meu-site, leads, configuracoes
 
-/aluno                    início                 /aluno/[módulo]   planejados: treino, evolucao, check-in, documentos, mensagens, conta
+/aluno                    início                 /aluno/treino
+/aluno/[módulo]           planejados: evolucao, check-in, documentos, mensagens, conta
 
 /demonstracao[/gestor|/profissional|/aluno ...]   somente com DEMO_MODE=true
 /api/health  /api/auth/*
@@ -87,7 +88,8 @@ Correspondência com os papéis do handoff V2:
 | Gestor: organizações, auditoria | `/gestor/...` | Disponível | E1 |
 | Gestor: planos e cobrança, afiliados, templates, biblioteca, integrações | `/gestor/...` | Planejado | E3, E5, E6, E7 |
 | Aluno: início | `/aluno` | Disponível: vínculo e estado do treino | E4 |
-| Aluno: treino, evolução, check-in, documentos, mensagens, conta | `/aluno/...` | Planejado (**prévia** do treino na demonstração) | E4 |
+| Aluno: treino atual | `/aluno/treino` | Disponível: a revisão entregue de cada plano, somente leitura (**prévia** com execução na demonstração) | E4 |
+| Aluno: evolução, check-in, documentos, mensagens, conta | `/aluno/...` | Planejado | E4 |
 
 A fonte única desse menu é `src/modules/platform/surfaces.ts`, com teste de contrato (`tests/navigation.test.ts`): todo módulo planejado precisa ter épico, resumo e o que falta.
 

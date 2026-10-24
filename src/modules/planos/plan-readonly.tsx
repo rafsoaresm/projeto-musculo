@@ -13,9 +13,11 @@ import type { PlanActionResult } from "./actions";
  * so what was validated stays exactly as it was.
  */
 export function PlanReadOnly({
+  state,
   schedule,
   createRevision,
 }: {
+  state: string;
   schedule: PeriodizationSchedule;
   createRevision: () => Promise<PlanActionResult>;
 }) {
@@ -28,9 +30,14 @@ export function PlanReadOnly({
         <Info size={19} />
         <p>
           A estrutura e os exercícios desta revisão foram fechados e não podem
-          mais ser alterados. Isto não é aprovação nem liberação: o aluno não
-          recebe este plano. Para mudar algo, crie uma nova revisão a partir
-          dela, que leva os exercícios junto.
+          mais ser alterados.{" "}
+          {state === "DELIVERED"
+            ? "O aluno vê esta revisão."
+            : state === "APPROVED"
+              ? "Ela está aprovada, mas o aluno só a vê depois da entrega."
+              : "Ainda não é aprovação nem liberação: o aluno não recebe este plano."}{" "}
+          Para mudar algo, crie uma nova revisão a partir dela, que leva os
+          exercícios junto.
         </p>
       </div>
       <div className="planner-layout">
