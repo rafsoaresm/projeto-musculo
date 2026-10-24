@@ -58,6 +58,24 @@ export interface PlanRevisionDetail {
     schedule: PeriodizationSchedule;
   };
 }
+/** One plan, with its newest revision and how far the prescription is from its targets. */
+export interface PlanOverviewRow {
+  planId: string;
+  title: string;
+  studentId: string;
+  studentName: string;
+  revisionId: string;
+  revisionNumber: number;
+  state: PlanState;
+  startDate: string;
+  endDate: string;
+  totalWeeks: number;
+  updatedAt: string;
+  exercises: number;
+  workouts: number;
+  /** Workouts with fewer exercises than the target. A pending item, never filled in. */
+  below: number;
+}
 export type NewRevisionResult =
   | { status: "created"; revisionId: string }
   | { status: "draft_open" }
@@ -155,6 +173,56 @@ export function plansFor(
         plans.set(row.planId, plan);
       }
       return [...plans.values()];
+    },
+
+    /**
+     * The newest revision of every plan of the students this user reaches through an
+     * active technical assignment. Open drafts come first, then the most recent.
+     */
+    async overview(limit = 200): Promise<PlanOverviewRow[]> {
+      const rows = await db
+        .prepare(
+          `SELECT p.id AS planId, p.title, s.id AS studentId, s.display_name AS studentName,
+             r.id AS revisionId, r.revision_number AS revisionNumber, r.state,
+             r.start_date AS startDate, r.end_date AS endDate, r.total_weeks AS totalWeeks,
+             r.updated_at AS updatedAt, r.schedule_json AS scheduleJson
+           FROM training_plans p
+           JOIN students s ON s.organization_id = p.organization_id AND s.id = p.student_id
+           JOIN plan_revisions r ON r.organization_id = p.organization_id AND r.plan_id = p.id
+           WHERE p.organization_id = ?1 AND ${activeUser("?2")} AND ${technicalAccessExists("s", "?2")}
+             AND r.revision_number =
+               (SELECT MAX(x.revision_number) FROM plan_revisions x WHERE x.plan_id = p.id)
+           ORDER BY CASE r.state WHEN 'DRAFT' THEN 0 ELSE 1 END, r.updated_at DESC
+           LIMIT ?3`,
+        )
+        .bind(organizationId, userId, limit)
+        .all<Omit<PlanOverviewRow, "exercises" | "workouts" | "below"> & { scheduleJson: string }>();
+      if (rows.results.length === 0) return [];
+      // The ids come from the gated query above, so counting them needs no second gate.
+      const counts = await db
+        .prepare(
+          `SELECT pe.revision_id AS revisionId, pe.phase_index AS p, pe.workout_label AS w,
+             COUNT(*) AS n
+           FROM prescribed_exercises pe
+           WHERE pe.organization_id = ?1 AND pe.revision_id IN (SELECT value FROM json_each(?2))
+           GROUP BY pe.revision_id, pe.phase_index, pe.workout_label`,
+        )
+        .bind(organizationId, JSON.stringify(rows.results.map((row) => row.revisionId)))
+        .all<{ revisionId: string; p: number; w: string; n: number }>();
+      const byWorkout = new Map(
+        counts.results.map((c) => [`${c.revisionId}|${c.p}|${c.w}`, c.n]),
+      );
+      return rows.results.map(({ scheduleJson, ...row }) => {
+        const slots = workoutSlots(JSON.parse(scheduleJson) as PeriodizationSchedule);
+        const countOf = (slot: { phaseIndex: number; label: string }) =>
+          byWorkout.get(`${row.revisionId}|${slot.phaseIndex}|${slot.label}`) ?? 0;
+        return {
+          ...row,
+          exercises: slots.reduce((total, slot) => total + countOf(slot), 0),
+          workouts: slots.length,
+          below: slots.filter((slot) => countOf(slot) < slot.target).length,
+        };
+      });
     },
 
     async findRevision(

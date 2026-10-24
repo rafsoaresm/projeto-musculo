@@ -10,6 +10,7 @@ import { videoLabel } from "@/modules/biblioteca/labels";
 import { progressOf, type WorkoutProgress } from "./summary";
 import {
   addExercise,
+  copyMesocycle,
   copyWorkout,
   duplicateItem,
   moveItems,
@@ -71,6 +72,8 @@ export function PrescriptionEditor({
 }) {
   const [phase, setPhase] = useState(0);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [copyFromPhase, setCopyFromPhase] = useState("");
   const [pending, startTransition] = useTransition();
   const progress = progressOf(schedule, items);
   const below = progress.filter((slot) => slot.status === "BELOW").length;
@@ -80,6 +83,7 @@ export function PrescriptionEditor({
     startTransition(async () => {
       const result = await task();
       setError(result?.error ?? "");
+      setNotice(result?.notice ?? "");
       if (!result?.error) done?.();
     });
   }
@@ -120,6 +124,54 @@ export function PrescriptionEditor({
         <p className="error-message" role="alert">
           {error}
         </p>
+      )}
+      {notice && (
+        <p className="small muted" role="status">
+          {notice}
+        </p>
+      )}
+      {!readOnly && !items.some((item) => item.phaseIndex === current.index) && (
+        <div className="copy-phase">
+          {schedule.phases
+            .filter((other) => items.some((item) => item.phaseIndex === other.index))
+            .length > 0 && (
+            <>
+              <label>
+                Copiar o mesociclo de outra fase
+                <select
+                  value={copyFromPhase}
+                  onChange={(event) => setCopyFromPhase(event.target.value)}
+                >
+                  <option value="">Escolha…</option>
+                  {schedule.phases
+                    .filter((other) => other.index !== current.index)
+                    .filter((other) => items.some((item) => item.phaseIndex === other.index))
+                    .map((other) => (
+                      <option key={other.index} value={other.index}>
+                        Fase {String(other.index).padStart(2, "0")} (
+                        {items.filter((item) => item.phaseIndex === other.index).length}{" "}
+                        exercícios)
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                className="button secondary small"
+                disabled={pending || !copyFromPhase}
+                onClick={() =>
+                  run(
+                    () =>
+                      copyMesocycle(planId, revisionId, Number(copyFromPhase), current.index),
+                    () => setCopyFromPhase(""),
+                  )
+                }
+              >
+                Copiar mesociclo
+              </button>
+            </>
+          )}
+        </div>
       )}
       <div className="workout-grid">
         {workoutLabels(current.split).map((label) => (

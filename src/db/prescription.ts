@@ -385,6 +385,85 @@ export function prescriptionFor(
       return results[0].meta.changes > 0;
     },
 
+    /**
+     * Copies the exercises of a whole mesocycle into another mesocycle that has NO exercises
+     * yet, workout by workout under the same letter. Letters the destination does not have
+     * are reported, not forced into another workout.
+     */
+    async copyPhase(
+      planId: string,
+      revisionId: string,
+      fromPhase: number,
+      toPhase: number,
+      now = new Date(),
+    ): Promise<
+      | { status: "saved"; copied: number; skipped: string[] }
+      | {
+          status:
+            | "not_found"
+            | "invalid_target"
+            | "empty_source"
+            | "no_common_workouts"
+            | "destination_not_empty";
+        }
+    > {
+      const schedule = await api.openDraft(planId, revisionId);
+      if (!schedule) return { status: "not_found" };
+      const slots = workoutSlots(schedule);
+      const labelsOf = (phase: number) =>
+        slots.filter((slot) => slot.phaseIndex === phase).map((slot) => slot.label);
+      if (fromPhase === toPhase || !labelsOf(fromPhase).length || !labelsOf(toPhase).length)
+        return { status: "invalid_target" };
+      const items = await api.list(planId, revisionId);
+      const fromItems = items.filter((item) => item.phaseIndex === fromPhase);
+      if (fromItems.length === 0) return { status: "empty_source" };
+      if (items.some((item) => item.phaseIndex === toPhase))
+        return { status: "destination_not_empty" };
+      const usedLabels = [...new Set(fromItems.map((item) => item.workoutLabel))];
+      const destinationLabels = labelsOf(toPhase);
+      const common = usedLabels.filter((label) => destinationLabels.includes(label));
+      if (common.length === 0) return { status: "no_common_workouts" };
+      const stamp = now.toISOString();
+      try {
+        const results = await db.batch([
+          db
+            .prepare(
+              `INSERT INTO prescribed_exercises
+                 (id, organization_id, revision_id, phase_index, workout_label, position,
+                  exercise_id, name, video_url, video_status, sets, reps, load_instruction,
+                  cadence, rest_seconds, rest_text, rir_min, rir_max, notes, origin,
+                  created_by_user_id, created_at, updated_at)
+               SELECT lower(hex(randomblob(16))), src.organization_id, src.revision_id, ?6,
+                 src.workout_label, src.position, src.exercise_id, src.name, src.video_url,
+                 src.video_status, src.sets, src.reps, src.load_instruction, src.cadence,
+                 src.rest_seconds, src.rest_text, src.rir_min, src.rir_max, src.notes,
+                 'PROFESSIONAL', ?2, ?7, ?7
+               FROM prescribed_exercises src
+               WHERE src.organization_id = ?1 AND src.revision_id = ?4 AND src.phase_index = ?5
+                 AND src.workout_label IN (SELECT value FROM json_each(?8))
+                 AND NOT EXISTS (SELECT 1 FROM prescribed_exercises d
+                                   WHERE d.revision_id = ?4 AND d.phase_index = ?6)
+                 AND ${open}`,
+            )
+            .bind(
+              organizationId, userId, planId, revisionId, fromPhase, toPhase, stamp,
+              JSON.stringify(common),
+            ),
+          eventAfterChange(planId, revisionId, stamp),
+        ]);
+        return results[0].meta.changes > 0
+          ? {
+              status: "saved",
+              copied: results[0].meta.changes,
+              skipped: usedLabels.filter((label) => !destinationLabels.includes(label)),
+            }
+          : { status: "not_found" };
+      } catch (error) {
+        if (isUnique(error)) return { status: "destination_not_empty" };
+        throw error;
+      }
+    },
+
     /** Copies a whole workout into an EMPTY one, so nothing the professional wrote is overwritten. */
     async copyWorkout(
       planId: string,

@@ -214,14 +214,13 @@ const profissional: NavGroup[] = [
         status: "available",
         primary: true,
       },
-      planned("prescricao", "Prescrição", "dumbbell", {
-        epic: "E2",
-        reference: "Handoff V2, seção 6",
-        summary:
-          "Uma aba por mesociclo, exercícios editáveis e a origem de cada campo (sistema, IA ou profissional). Prescrição e execução são entidades distintas. O rascunho nunca é entregue sem a aprovação do profissional. A prescrição manual já existe dentro de cada plano salvo do aluno (Alunos, aluno, Planos salvos); esta tela vai reunir todas.",
-        needs:
-          "Avaliação persistida com a triagem, geração com pendências, e o fluxo de revisão, aprovação e entrega.",
-      }, true),
+      {
+        slug: "prescricao",
+        label: "Prescrição",
+        icon: "dumbbell",
+        status: "available",
+        primary: true,
+      },
     ],
   },
   {

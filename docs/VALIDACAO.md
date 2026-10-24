@@ -1,6 +1,17 @@
-# Evidências de validação — v0.6 (prescrição manual) sobre a base 0.3
+# Evidências de validação — v0.7 (painel de prescrição) sobre a base 0.3
 
 Tudo abaixo foi executado **localmente** em 23/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004, 0005 e 0006 são aditivas.
+
+## Fatia 0.7: painel de Prescrição e cópia de mesociclo
+
+Sem migration nova: usa as tabelas da 0004 a 0006.
+
+- **Painel (`/profissional/prescricao`):** a revisão mais recente de cada plano dos alunos que o profissional alcança por vínculo técnico ativo, com rascunhos abertos primeiro. Mostra aluno, plano, revisão e estado, período, total de exercícios e **pendências**: quantos treinos estão abaixo do alvo. Não aprova nem libera nada. A visão geral ganhou "Planos em rascunho", e o passo "planejar o ciclo" passa a contar como concluído quando existe plano.
+- **Pendência sem preencher:** abaixo do alvo continua sendo só uma contagem. O painel nunca completa exercícios.
+- **Cópia de mesociclo:** copia os exercícios de uma fase para outra fase **sem nenhum exercício**, treino a treino sob a mesma letra, com novos IDs. Letras que a fase de destino não tem (por exemplo, C numa fase AB) não são forçadas em outro treino: a tela informa quais ficaram de fora. Destino com exercícios, origem vazia, fase igual ou inexistente, e revisão fechada são recusados.
+- **Testes de D1:** 5 novos em `tests/prescription.test.ts` (21 no arquivo): o painel lista só a revisão mais nova, ordena rascunhos primeiro, conta exercícios e pendências, não mostra nada a quem não tem vínculo (oito identidades) e some quando o vínculo é revogado; a cópia de mesociclo cobre cópia com novos IDs, divisões diferentes, recusas e acesso.
+- **Navegador:** o cenário de prescrição agora também copia um mesociclo inteiro, confere o painel e a visão geral. Desktop e celular, na raiz e em `/treinador`.
+- **Limites:** não validado no Webflow. O painel mostra no máximo os 200 planos mais recentes. Sem arrastar e soltar, sem regeneração com diff, sem presets, sem aprovação ou entrega.
 
 ## Fatia 0.6: prescrição manual sobre o rascunho
 
@@ -39,7 +50,7 @@ Cobre **só a estrutura do ciclo** (fases, semanas, sessões, divisão e calend�
 
 ## Código e banco
 
-- `npm run check`: ESLint e TypeScript sem erros e **140 testes, nenhum ignorado**: 17 de isolamento D1, 15 de identidade, 26 de periodização, 31 de papéis, 12 de contrato de navegação/fixtures, 5 de caminho de montagem, 9 de planos salvos, 9 de biblioteca e 16 de prescrição.
+- `npm run check`: ESLint e TypeScript sem erros e **145 testes, nenhum ignorado**: 17 de isolamento D1, 15 de identidade, 26 de periodização, 31 de papéis, 12 de contrato de navegação/fixtures, 5 de caminho de montagem, 9 de planos salvos, 9 de biblioteca e 21 de prescrição.
 - Os 31 testes de `tests/roles.test.ts` usam D1 real (Miniflare) com as três migrations e cobrem:
   - **Gestor:** ativação recusada sem token configurado, com token curto ou errado; exatamente um gestor sob concorrência; token inerte depois; e-mail e papel de proprietário não concedem o papel; revogado ou bloqueado perde o acesso na hora.
   - **Escopo do gestor:** vê organizações e contagens; o resultado serializado não contém nome de aluno; `studentsFor` e a criação de convite não funcionam para ele em nenhuma organização; bloqueio e restabelecimento com auditoria; não bloqueia a si mesmo, outro gestor ou quem não é da organização; a auditoria do gestor lista só ações de plataforma.

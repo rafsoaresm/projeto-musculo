@@ -1794,3 +1794,13 @@ label.check input {
     grid-template-columns: 1fr;
   }
 }
+.copy-phase {
+  display: grid;
+  gap: 12px;
+  margin: 8px 0 4px;
+  justify-items: start;
+  max-width: 420px;
+}
+.copy-phase > label {
+  width: 100%;
+}

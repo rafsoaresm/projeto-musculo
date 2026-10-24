@@ -477,3 +477,123 @@ describe("trail", () => {
     expect(JSON.stringify(rows.results)).not.toContain("joelho");
   });
 });
+
+describe("overview of plans and pending prescription", () => {
+  it("lists only the newest revision of the plans the user reaches, open drafts first", async () => {
+    // tech-a2 reaches only st-2, so nothing from the tests above shows up.
+    const mineB = (user: string, org = "org-a") => plansFor(db, scope(user, org)).overview();
+    const rx = prescriptionFor(db, scope("tech-a2"));
+    const plans = plansFor(db, scope("tech-a2"));
+    expect(await mineB("tech-a2")).toEqual([]);
+
+    const first = (await plans.create("st-2", { title: "Primeiro", input: input(3, "ABC", 3) }))!;
+    for (const name of ["a", "b", "c"]) await rx.add(first.planId, first.revisionId, A1, { customName: name });
+    await rx.add(first.planId, first.revisionId, B1, { customName: "d" });
+    await plans.markReady(first.planId, first.revisionId);
+    const second = (await plans.create("st-2", { title: "Segundo", input: input(3, "AB", 3) }))!;
+
+    let rows = await mineB("tech-a2");
+    // The open draft comes first even though the other plan is older.
+    expect(rows.map((r) => [r.title, r.state, r.revisionNumber])).toEqual([
+      ["Segundo", "DRAFT", 1],
+      ["Primeiro", "READY", 1],
+    ]);
+    expect(rows[0]).toMatchObject({ studentId: "st-2", studentName: "Student Two", exercises: 0, workouts: 6, below: 6 });
+    // 9 workouts (3 phases x ABC); A of phase 1 met its target of 3, B has 1 of 3.
+    expect(rows[1]).toMatchObject({ exercises: 4, workouts: 9, below: 8 });
+    expect(rows[1].totalWeeks).toBe(12);
+
+    // A newer revision replaces the older one in the list, and carries its own counts.
+    const next = (await plans.newRevisionFrom(first.planId, first.revisionId)) as { revisionId: string };
+    await rx.add(first.planId, next.revisionId, A2, { customName: "e" });
+    rows = await mineB("tech-a2");
+    expect(rows.filter((r) => r.planId === first.planId)).toHaveLength(1);
+    expect(rows.find((r) => r.planId === first.planId)).toMatchObject({
+      revisionNumber: 2, state: "DRAFT", exercises: 5, below: 8,
+    });
+    expect(second.planId).not.toBe(first.planId);
+
+    // Nobody else sees any of it.
+    for (const [user, org] of [
+      ["tech-a", "org-a"], ["owner-a", "org-a"], ["commercial-a", "org-a"],
+      ["client-1", "org-a"], ["mgr-1", "org-a"], ["tech-b", "org-b"], ["tech-b", "org-a"], ["stranger", "org-a"],
+    ]) {
+      const seen = await mineB(user, org);
+      expect(seen.some((r) => r.studentId === "st-2"), `${user}/${org}`).toBe(false);
+    }
+  });
+
+  it("stops listing a student's plans when the assignment is revoked", async () => {
+    const plans = plansFor(db, scope("tech-a2"));
+    expect((await plans.overview()).length).toBeGreaterThan(0);
+    await db.prepare("UPDATE care_assignments SET revoked_at = '2026-11-01T00:00:00.000Z' WHERE student_id = 'st-2'").run();
+    expect(await plans.overview()).toEqual([]);
+    await db.prepare("UPDATE care_assignments SET revoked_at = NULL WHERE student_id = 'st-2'").run();
+    expect((await plans.overview()).length).toBeGreaterThan(0);
+  });
+});
+
+describe("copying a whole mesocycle", () => {
+  const mixed = {
+    startDate: "2026-11-02",
+    phases: [
+      { weeks: 4, sessionsPerWeek: 3, split: "ABC", exercisesPerSession: 3 },
+      { weeks: 4, sessionsPerWeek: 2, split: "AB", exercisesPerSession: 3 },
+      { weeks: 4, sessionsPerWeek: 3, split: "ABC", exercisesPerSession: 3 },
+    ],
+  };
+  it("copies workout by workout into a phase with no exercises, under new ids", async () => {
+    const plan = await newPlan();
+    const api = prescriptionFor(db, scope("tech-a"));
+    await api.add(plan.planId, plan.revisionId, A1, { exerciseId: "sys-001" }, { sets: "3", reps: "10" });
+    await api.add(plan.planId, plan.revisionId, A1, { customName: "Meu" }, { notes: "x" });
+    await api.add(plan.planId, plan.revisionId, B1, { customName: "Do B" });
+    expect(await api.copyPhase(plan.planId, plan.revisionId, 1, 2)).toEqual({ status: "saved", copied: 3, skipped: [] });
+    const items = await mine(plan);
+    const second = items.filter((i) => i.phaseIndex === 2);
+    expect(second.map((i) => [i.workoutLabel, i.name, i.sets, i.position])).toEqual([
+      ["A", "Agachamento goblet", "3", 1], ["A", "Meu", null, 2], ["B", "Do B", null, 1],
+    ]);
+    expect(new Set(items.map((i) => i.id)).size).toBe(items.length);
+    // Editing the copy leaves the source phase as it was.
+    await api.update(plan.planId, plan.revisionId, second[0].id, { sets: "9" });
+    expect(((await mine(plan)).find((i) => i.phaseIndex === 1 && i.position === 1 && i.workoutLabel === "A"))?.sets).toBe("3");
+    // Nothing already prescribed is overwritten.
+    expect((await api.copyPhase(plan.planId, plan.revisionId, 1, 2)).status).toBe("destination_not_empty");
+    expect((await api.copyPhase(plan.planId, plan.revisionId, 2, 1)).status).toBe("destination_not_empty");
+    expect((await api.copyPhase(plan.planId, plan.revisionId, 3, 1)).status).toBe("empty_source");
+    expect((await api.copyPhase(plan.planId, plan.revisionId, 1, 1)).status).toBe("invalid_target");
+    expect((await api.copyPhase(plan.planId, plan.revisionId, 1, 9)).status).toBe("invalid_target");
+    expect((await api.copyPhase(plan.planId, plan.revisionId, 0, 3)).status).toBe("invalid_target");
+  });
+
+  it("reports workouts the destination does not have instead of forcing them elsewhere", async () => {
+    const created = (await plansFor(db, scope("tech-a")).create("st-1", { title: "Misto", input: mixed }))!;
+    const api = prescriptionFor(db, scope("tech-a"));
+    await api.add(created.planId, created.revisionId, A1, { customName: "No A" });
+    await api.add(created.planId, created.revisionId, { phaseIndex: 1, workoutLabel: "C" }, { customName: "No C" });
+    // Phase 2 is AB: only A comes along and C is reported.
+    expect(await api.copyPhase(created.planId, created.revisionId, 1, 2)).toEqual({ status: "saved", copied: 1, skipped: ["C"] });
+    expect((await mine(created)).filter((i) => i.phaseIndex === 2).map((i) => [i.workoutLabel, i.name])).toEqual([["A", "No A"]]);
+    // Phase 3 is ABC, and a source with only C has nothing in common with an AB destination.
+    await api.add(created.planId, created.revisionId, { phaseIndex: 3, workoutLabel: "C" }, { customName: "Só C" });
+    const onlyC = (await plansFor(db, scope("tech-a")).create("st-1", { title: "Só C", input: mixed }))!;
+    await api.add(onlyC.planId, onlyC.revisionId, { phaseIndex: 1, workoutLabel: "C" }, { customName: "C" });
+    expect((await api.copyPhase(onlyC.planId, onlyC.revisionId, 1, 2)).status).toBe("no_common_workouts");
+    expect((await mine(onlyC)).filter((i) => i.phaseIndex === 2)).toEqual([]);
+  });
+
+  it("is refused for anyone without access and for a closed revision", async () => {
+    const plan = await newPlan();
+    const api = prescriptionFor(db, scope("tech-a"));
+    await api.add(plan.planId, plan.revisionId, A1, { customName: "X" });
+    const before = await itemsRaw();
+    for (const [user, org] of [["tech-a2", "org-a"], ["owner-a", "org-a"], ["commercial-a", "org-a"], ["client-1", "org-a"], ["mgr-1", "org-a"], ["tech-b", "org-b"]]) {
+      expect((await prescriptionFor(db, scope(user, org)).copyPhase(plan.planId, plan.revisionId, 1, 2)).status, user).toBe("not_found");
+    }
+    expect(await itemsRaw()).toEqual(before);
+    await plansFor(db, scope("tech-a")).markReady(plan.planId, plan.revisionId);
+    expect((await api.copyPhase(plan.planId, plan.revisionId, 1, 2)).status).toBe("not_found");
+    expect(await itemsRaw()).toEqual(before);
+  });
+});
