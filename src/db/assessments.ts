@@ -1,4 +1,5 @@
 import type { D1Database, D1PreparedStatement } from "@cloudflare/workers-types";
+import type { PhotoView } from "@/modules/avaliacoes/photos";
 import {
   MOVEMENT_KEYS,
   parseAssessment,
@@ -46,6 +47,11 @@ export interface ReviewRow {
   basis: string;
   reviewedAt: string;
 }
+/** The photos of an assessment as an index: which views have one. The image is never here. */
+export interface PhotoIndexRow {
+  view: PhotoView;
+  createdAt: string;
+}
 export interface MovementRow {
   test: MovementKey;
   grade: MovementGrade;
@@ -61,6 +67,7 @@ export interface AssessmentDetail extends AssessmentSummary {
   posture: { findings: PostureKey[]; notes: string | null };
   /** Only the tests that were recorded. A test with no row was not assessed. */
   movement: MovementRow[];
+  photos: PhotoIndexRow[];
   reviews: ReviewRow[];
 }
 export interface FindingRow {
@@ -86,7 +93,7 @@ export function shapeFindings(rows: FindingRow[]): Pick<AssessmentDetail, "postu
 /** A recorded assessment as the evolution view reads it: no reviews, no drafts. */
 export type AssessmentSnapshot = Pick<
   AssessmentDetail,
-  "id" | "assessedOn" | "kind" | "riskStatus" | "reviewed" | "flags" | "posture" | "movement" | "metrics"
+  "id" | "assessedOn" | "kind" | "riskStatus" | "reviewed" | "flags" | "posture" | "movement" | "metrics" | "photos"
 >;
 
 /**
@@ -203,7 +210,7 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
           notes: string | null;
         }>();
       if (!row) return null;
-      const [metrics, findings, reviews] = await Promise.all([
+      const [metrics, findings, photoRows, reviews] = await Promise.all([
         db
           .prepare(
             `SELECT m.metric_type AS metricType, m.name, m.value_text AS valueText,
@@ -220,6 +227,15 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
           )
           .bind(organizationId, assessmentId)
           .all<FindingRow>(),
+        db
+          .prepare(
+            `SELECT p.view, p.created_at AS createdAt FROM assessment_photos p
+             WHERE p.organization_id = ?1 AND p.assessment_id = ?2
+             ORDER BY CASE p.view WHEN 'ANTERIOR' THEN 1 WHEN 'LATERAL_LEFT' THEN 2
+               WHEN 'LATERAL_RIGHT' THEN 3 ELSE 4 END`,
+          )
+          .bind(organizationId, assessmentId)
+          .all<PhotoIndexRow>(),
         db
           .prepare(
             `SELECT r.reviewer_user_id AS reviewerUserId, p.display_name AS reviewerName,
@@ -250,6 +266,7 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
         notes: row.notes,
         metrics: metrics.results,
         ...shapeFindings(findings.results),
+        photos: photoRows.results,
         reviews: reviews.results,
       };
     },
@@ -275,7 +292,7 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
       if (rows.length === 0) return [];
       // The ids below came from the gated query above.
       const ids = JSON.stringify(rows.map((row) => row.id));
-      const [metrics, findings] = await Promise.all([
+      const [metrics, findings, photoRows] = await Promise.all([
         db
           .prepare(
             `SELECT m.assessment_id AS assessmentId, m.metric_type AS metricType, m.name,
@@ -295,6 +312,16 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
           )
           .bind(organizationId, ids)
           .all<FindingRow & { assessmentId: string }>(),
+        db
+          .prepare(
+            `SELECT p.assessment_id AS assessmentId, p.view, p.created_at AS createdAt
+             FROM assessment_photos p
+             WHERE p.organization_id = ?1 AND p.assessment_id IN (SELECT value FROM json_each(?2))
+             ORDER BY CASE p.view WHEN 'ANTERIOR' THEN 1 WHEN 'LATERAL_LEFT' THEN 2
+               WHEN 'LATERAL_RIGHT' THEN 3 ELSE 4 END`,
+          )
+          .bind(organizationId, ids)
+          .all<PhotoIndexRow & { assessmentId: string }>(),
       ]);
       return rows.map((row) => ({
         id: row.id,
@@ -317,6 +344,9 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
             notes: metric.notes,
           })),
         ...shapeFindings(findings.results.filter((finding) => finding.assessmentId === row.id)),
+        photos: photoRows.results
+          .filter((photo) => photo.assessmentId === row.id)
+          .map((photo) => ({ view: photo.view, createdAt: photo.createdAt })),
       }));
     },
 

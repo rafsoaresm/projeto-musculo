@@ -4,6 +4,8 @@ import type { AssessmentSnapshot } from "@/db/assessments";
 import { formatCalendarDate } from "@/modules/training/format";
 import { buildSeries, changesBetween, seriesTitle } from "./evolution";
 import { MetricChart } from "./metric-chart";
+import { PhotoImage } from "./photo-image";
+import { PHOTO_VIEWS } from "./photos";
 import { ScreeningPill } from "./screening-pill";
 
 const AREA_LABEL = { SCREENING: "Triagem", POSTURE: "Postura", MOVEMENT: "Movimento" } as const;
@@ -103,6 +105,41 @@ export function EvolutionView({
           );
         })}
       </section>
+
+      {history.some((assessment) => assessment.photos.length > 0) && (
+        <section className="panel" aria-labelledby="fotos-evolucao">
+          <p className="eyebrow">FOTOS</p>
+          <h2 id="fotos-evolucao">Fotos da postura ao longo do tempo</h2>
+          <p className="muted">
+            Registro visual, não diagnóstico. Cada linha é uma vista, da mais antiga para a mais recente, com as
+            últimas quatro avaliações que têm foto. As fotos só aparecem para você.
+          </p>
+          {PHOTO_VIEWS.map((view) => {
+            const shots = history
+              .filter((assessment) => assessment.photos.some((photo) => photo.view === view.key))
+              .slice(-4);
+            return shots.length === 0 ? null : (
+              <div key={view.key} role="group" aria-label={`Fotos ${view.label.toLowerCase()}`}>
+                <h3>{view.label}</h3>
+                <div className="photo-grid">
+                  {shots.map((assessment) => (
+                    <figure key={assessment.id} className="photo-slot">
+                      <PhotoImage
+                        studentId={studentId}
+                        assessmentId={assessment.id}
+                        view={view.key}
+                        stamp={assessment.photos.find((photo) => photo.view === view.key)?.createdAt ?? ""}
+                        alt={`Foto ${view.label.toLowerCase()} de ${formatCalendarDate(assessment.assessedOn)}`}
+                      />
+                      <figcaption>{formatCalendarDate(assessment.assessedOn)}</figcaption>
+                    </figure>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </section>
+      )}
 
       <section className="panel" aria-labelledby="linha-do-tempo">
         <p className="eyebrow">TRIAGEM</p>

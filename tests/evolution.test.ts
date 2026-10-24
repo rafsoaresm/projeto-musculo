@@ -12,7 +12,7 @@ const metric = (metricType: string, name: string, valueText: string, extra: Reco
 });
 const snapshot = (id: string, assessedOn: string, extra: Partial<AssessmentSnapshot> = {}): AssessmentSnapshot => ({
   id, assessedOn, kind: "REASSESSMENT", riskStatus: "CLEAR", reviewed: false, flags: { ...noFlags },
-  posture: { findings: [], notes: null }, movement: [], metrics: [], ...extra,
+  posture: { findings: [], notes: null }, movement: [], metrics: [], photos: [], ...extra,
 });
 
 describe("series of measures over time", () => {

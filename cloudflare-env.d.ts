@@ -1,4 +1,4 @@
-import type { D1Database } from "@cloudflare/workers-types";
+import type { D1Database, R2Bucket } from "@cloudflare/workers-types";
 
 declare global {
   interface CloudflareEnv {
@@ -9,6 +9,8 @@ declare global {
     /** "true" enables the fictional-data demonstration area. Off by default. */
     DEMO_MODE?: string;
     DB: D1Database;
+    /** Private object storage for the postural photos. Read only through authorized routes. */
+    PHOTOS: R2Bucket;
   }
 }
 

@@ -28,6 +28,7 @@ O binding `DB` em `wrangler.json` fornece o banco. Não é necessário criar con
 - Ativação única do gestor com `PLATFORM_SETUP_TOKEN`; o gestor lista organizações, bloqueia/restabelece acessos e consulta a auditoria, sem ver dados de alunos.
 - Interface responsiva com visão geral, mapa de produto e planejador de periodização.
 - Planejador de 3/6/12 fases, 3–6 semanas, 1–7 sessões por semana, splits e duração real. Exportação JSON versionada como `DRAFT`.
+- **Fotos de postura** (0.14): quatro vistas por avaliação, no Object Storage do Webflow, só visíveis ao profissional com vínculo técnico, sem metadados do aparelho e imutáveis depois do registro. Exigem a confirmação de que o aluno autorizou e não aceitam menor de 18. A base legal e o consentimento seguem em aberto.
 - **Evolução das avaliações** (0.13): em `/profissional/alunos/<id>/evolucao`, cada indicador ao longo do tempo (gráfico acessível e tabela) e o que mudou entre avaliações na triagem, na postura e no movimento. Descreve, não julga.
 - **Postura e movimento** (0.12): dentro da avaliação, os achados posturais das três vistas e os nove testes de movimento com a escala do documento mestre. Registro, não diagnóstico; não altera a triagem. Sem fotos por enquanto.
 - **PDF do plano entregue** (0.11): gerado no servidor para a revisão entregue, com versão, data, profissional e links de vídeo clicáveis. O profissional e o aluno baixam o mesmo arquivo; cada download é auditado.

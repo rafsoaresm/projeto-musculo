@@ -15,6 +15,16 @@
 }
 ```
 
+Para as fotos de postura (0.14), `wrangler.json` também declara o armazenamento de objetos nativo (R2):
+
+```json
+{
+  "r2_buckets": [{ "binding": "PHOTOS", "bucket_name": "trainer-prescription-photos" }]
+}
+```
+
+O Webflow conecta o app ao bucket no deploy, como faz com o banco. Depois da publicação, conferir na aba **Storage** que o bucket existe e que **não há endereço público**: as fotos só devem ser lidas pela rota autenticada do app. Localmente o `wrangler` simula o bucket em `.wrangler/state`. `cloudflare-env.d.ts` declara o tipo `PHOTOS` e `src/db/binding.ts` o entrega por requisição. Limites informados pelo Webflow: 100 MB e 20 s por requisição; o app limita cada foto a 5 MB.
+
 `database_id` acima é um identificador local, não uma conexão de produção. Conforme a [documentação Webflow](https://developers.webflow.com/webflow-cloud/storing-data/sqlite), o Webflow atribui o identificador real e provisiona o recurso no deploy. Depois da publicação, conferir o recurso atribuído na aba **Storage**. Não criar um banco avulso na conta Cloudflare nem configurar Supabase para este app.
 
 `src/db/binding.ts` acessa `getCloudflareContext({ async: true })` dentro da requisição. A configuração Next inicializa o adapter no desenvolvimento, compartilhando `.wrangler/state` com as migrations locais. `cloudflare-env.d.ts` declara o tipo `DB`.
