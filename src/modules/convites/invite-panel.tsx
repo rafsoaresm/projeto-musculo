@@ -2,6 +2,7 @@
 import { useActionState, useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { Pill, formatDate } from "@/components/ui";
+import { useMountPath } from "@/components/use-mount-path";
 import {
   createInviteLink,
   revokeStudentAccess,
@@ -19,7 +20,7 @@ export function InvitePanel({
   activeSince: string | null;
   inviteExpiresAt: string | null;
 }) {
-  const [invite, createAction, creating] = useActionState<InviteState>(
+  const [created, createAction, creating] = useActionState<InviteState>(
     createInviteLink.bind(null, studentId),
     {},
   );
@@ -29,6 +30,14 @@ export function InvitePanel({
   );
   const [confirming, setConfirming] = useState(false);
   const [copied, setCopied] = useState<"yes" | "failed" | null>(null);
+  const mountPath = useMountPath();
+  // Reached only after the action ran in the browser, never during server rendering.
+  const invite = {
+    error: created.error,
+    link: created.invite
+      ? `${created.invite.origin}${mountPath()}${created.invite.path}`
+      : undefined,
+  };
 
   async function copy(link: string) {
     try {

@@ -10,7 +10,11 @@ import { studentsFor } from "@/db/students";
 import { acceptStudentInvite, studentAccessFor } from "@/db/student-access";
 
 export interface InviteState {
-  link?: string;
+  /**
+   * The origin is trusted server configuration. The mount path is added by the
+   * browser, which is the only side that knows where the app is mounted.
+   */
+  invite?: { origin: string; path: string };
   expiresAt?: string;
   error?: string;
 }
@@ -28,9 +32,9 @@ export async function createInviteLink(
       context,
     ).createInvite(student.id);
     // The origin is trusted server configuration, never a request header.
-    const { origin, basePath } = await getAuthSettings();
+    const { origin } = await getAuthSettings();
     revalidatePath(`/profissional/alunos/${student.id}`);
-    return { link: `${origin}${basePath}/convite/${token}`, expiresAt };
+    return { invite: { origin, path: `/convite/${token}` }, expiresAt };
   } catch {
     return {
       error:

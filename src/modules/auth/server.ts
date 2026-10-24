@@ -15,6 +15,20 @@ import { surfacesFor } from "@/db/surfaces";
  * require* functions itself. Identity, tenant and role always come from the
  * verified session, never from a form field, header or URL.
  */
+/**
+ * The platform chooses the mount path when it builds and Next inlines it, so
+ * this is the value the running app really uses. NEXT_PUBLIC_BASE_PATH comes
+ * from this repository's own build and can be empty on the platform. It only
+ * scopes the session cookie; browser addresses use useMountPath().
+ */
+function mountPath() {
+  return (
+    process.env.__NEXT_ROUTER_BASEPATH ??
+    process.env.NEXT_PUBLIC_BASE_PATH ??
+    ""
+  );
+}
+
 export async function getAuthSettings() {
   const { env } = await getCloudflareContext({ async: true });
   const secret = env.AUTH_SECRET || process.env.AUTH_SECRET;
@@ -26,7 +40,7 @@ export async function getAuthSettings() {
   return {
     secret,
     origin,
-    basePath: process.env.NEXT_PUBLIC_BASE_PATH || "",
+    basePath: mountPath(),
   };
 }
 export async function getAuth() {
