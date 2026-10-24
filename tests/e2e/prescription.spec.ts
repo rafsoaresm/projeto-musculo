@@ -83,6 +83,17 @@ test("a professional prescribes by hand, reorders, copies and revises without lo
   await expect(a2.getByLabel("Copiar de outro treino")).toHaveCount(0);
   await noHorizontalOverflow(page);
 
+  // A whole mesocycle can be copied into a phase that has no exercises at all.
+  await expect(page.getByLabel("Copiar o mesociclo de outra fase")).toHaveCount(0);
+  await editorTab(page, "Fase 03").click();
+  await page.getByLabel("Copiar o mesociclo de outra fase").selectOption({ index: 1 });
+  await page.getByRole("button", { name: "Copiar mesociclo" }).click();
+  await expect(page.getByText("Mesociclo copiado.")).toBeVisible();
+  await expect(workout(page, "A").getByText("2 de 5", { exact: true })).toBeVisible();
+  await expect(workout(page, "A").getByText("3-4 séries × 8-12 repetições")).toBeVisible();
+  // Once the phase has exercises, the whole-phase copy is no longer offered.
+  await expect(page.getByLabel("Copiar o mesociclo de outra fase")).toHaveCount(0);
+
   // A structure change that would drop a workout with exercises is refused and explained.
   await editorTab(page, "Fase 01").click();
   const c = workout(page, "C");
@@ -115,4 +126,19 @@ test("a professional prescribes by hand, reorders, copies and revises without lo
   await expect(copy.getByText("Meu exercício")).toHaveCount(0);
   await page.goto(revisionURL);
   await expect(workout(page, "A").getByText("Meu exercício")).toBeVisible();
+
+  // The Prescrição screen lists the newest revision of the plan and what is still pending.
+  await page.goto("./profissional/prescricao");
+  await expect(page.getByRole("heading", { name: "Prescrição", level: 1 })).toBeVisible();
+  const row = page.locator("tbody tr", { hasText: "Ciclo com exercícios" });
+  await expect(row).toContainText("Aluno da prescrição");
+  await expect(row.getByText("Rascunho", { exact: true })).toBeVisible();
+  await expect(row.getByText(/treinos abaixo do alvo/)).toBeVisible();
+  await noHorizontalOverflow(page);
+  await row.getByRole("link", { name: "Ciclo com exercícios" }).click();
+  await expect(page.getByText("Revisão 2", { exact: false }).first()).toBeVisible();
+  // The overview counts open drafts and no longer calls prescribing "coming soon".
+  await page.goto("./profissional");
+  await expect(page.getByText("Planos em rascunho")).toBeVisible();
+  await expect(page.getByText("treinos abaixo do alvo").first()).toBeVisible();
 });

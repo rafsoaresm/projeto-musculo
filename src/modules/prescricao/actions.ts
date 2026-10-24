@@ -5,7 +5,7 @@ import { requireWorkspace } from "@/modules/auth/server";
 import { prescriptionFor, type ItemOutcome, type Target } from "@/db/prescription";
 
 /** What the browser gets back. A message is shown as is, so it holds no plan data. */
-export type PrescriptionResult = { error?: string } | void;
+export type PrescriptionResult = { error?: string; notice?: string } | void;
 
 const NOT_OPEN =
   "Não foi possível alterar. A revisão pode já estar fechada ou o exercício não está mais disponível.";
@@ -178,6 +178,42 @@ export async function copyWorkout(
       return { error: "O treino de origem não tem exercícios." };
     if (result.status === "invalid_target")
       return { error: "Esse treino não existe na estrutura salva." };
+    return { error: NOT_OPEN };
+  } catch (error) {
+    return { error: messageFor(error) };
+  }
+}
+
+export async function copyMesocycle(
+  planId: string,
+  revisionId: string,
+  fromPhase: number,
+  toPhase: number,
+): Promise<PrescriptionResult> {
+  const { db, context } = await requireWorkspace();
+  try {
+    const result = await prescriptionFor(db, context).copyPhase(
+      planId,
+      revisionId,
+      fromPhase,
+      toPhase,
+    );
+    if (result.status === "saved") {
+      refresh();
+      return result.skipped.length
+        ? {
+            notice: `Copiado. Não há treino ${result.skipped.join(", ")} na fase de destino, então esses exercícios não foram copiados.`,
+          }
+        : { notice: "Mesociclo copiado." };
+    }
+    if (result.status === "destination_not_empty")
+      return { error: "A fase de destino já tem exercícios. Remova-os antes de copiar." };
+    if (result.status === "empty_source")
+      return { error: "A fase de origem não tem exercícios." };
+    if (result.status === "no_common_workouts")
+      return { error: "A fase de destino não tem nenhum dos treinos da origem." };
+    if (result.status === "invalid_target")
+      return { error: "Essa fase não existe na estrutura salva." };
     return { error: NOT_OPEN };
   } catch (error) {
     return { error: messageFor(error) };

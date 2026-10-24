@@ -6,6 +6,7 @@ import {
 } from "@/modules/training/contracts";
 import { buildPeriodization } from "@/modules/training/periodization";
 import { workoutSlots } from "@/modules/prescricao/summary";
+import { latestRecordedSql, screeningStanding, unreviewedAlertSql } from "./assessments";
 import {
   activeUser,
   assertContext,
@@ -42,6 +43,8 @@ export interface PlanRevisionSummary {
   totalSessions: number;
   updatedAt: string;
   readyAt: string | null;
+  approvedAt: string | null;
+  deliveredAt: string | null;
 }
 export interface PlanSummary {
   id: string;
@@ -58,6 +61,37 @@ export interface PlanRevisionDetail {
     schedule: PeriodizationSchedule;
   };
 }
+/** One plan, with its newest revision and how far the prescription is from its targets. */
+export interface PlanOverviewRow {
+  planId: string;
+  title: string;
+  studentId: string;
+  studentName: string;
+  revisionId: string;
+  revisionNumber: number;
+  state: PlanState;
+  startDate: string;
+  endDate: string;
+  totalWeeks: number;
+  updatedAt: string;
+  exercises: number;
+  workouts: number;
+  /** Workouts with fewer exercises than the target. A pending item, never filled in. */
+  below: number;
+}
+export type ApproveOutcome =
+  | { status: "approved" }
+  | { status: "below_target"; below: number }
+  | { status: "screening_acknowledgement_required" }
+  /** The newest assessment is an alert with no recorded review: "Revisão obrigatória antes da entrega." */
+  | { status: "review_required"; assessedOn: string }
+  /** A new assessment was recorded while this one was being approved. Read it and try again. */
+  | { status: "screening_changed" }
+  | { status: "not_found" };
+export type DeliverOutcome =
+  | { status: "delivered" }
+  | { status: "review_required"; assessedOn: string }
+  | { status: "not_found" };
 export type NewRevisionResult =
   | { status: "created"; revisionId: string }
   | { status: "draft_open" }
@@ -88,6 +122,9 @@ export function plansFor(
        JOIN students s ON s.organization_id = tp.organization_id AND s.id = tp.student_id
        WHERE tp.organization_id = ${revision}.organization_id AND tp.id = ${revision}.plan_id
          AND ${activeUser("?2")} AND ${technicalAccessExists("s", "?2")})`;
+  // The student of the plan that a revision row belongs to.
+  const studentOf = `(SELECT tp.student_id FROM training_plans tp
+    WHERE tp.organization_id = plan_revisions.organization_id AND tp.id = plan_revisions.plan_id)`;
   // Recorded only when the statement right before it changed a row.
   const eventAfterChange = (
     action: string,
@@ -120,7 +157,8 @@ export function plansFor(
              r.id AS revisionId, r.revision_number AS revisionNumber, r.state,
              r.start_date AS startDate, r.end_date AS endDate,
              r.total_weeks AS totalWeeks, r.total_sessions AS totalSessions,
-             r.updated_at AS updatedAt, r.ready_at AS readyAt
+             r.updated_at AS updatedAt, r.ready_at AS readyAt,
+             r.approved_at AS approvedAt, r.delivered_at AS deliveredAt
            FROM training_plans p
            JOIN plan_revisions r
              ON r.organization_id = p.organization_id AND r.plan_id = p.id
@@ -151,10 +189,62 @@ export function plansFor(
           totalSessions: row.totalSessions,
           updatedAt: row.updatedAt,
           readyAt: row.readyAt,
+          approvedAt: row.approvedAt,
+          deliveredAt: row.deliveredAt,
         });
         plans.set(row.planId, plan);
       }
       return [...plans.values()];
+    },
+
+    /**
+     * The newest revision of every plan of the students this user reaches through an
+     * active technical assignment. Open drafts come first, then the most recent.
+     */
+    async overview(limit = 200): Promise<PlanOverviewRow[]> {
+      const rows = await db
+        .prepare(
+          `SELECT p.id AS planId, p.title, s.id AS studentId, s.display_name AS studentName,
+             r.id AS revisionId, r.revision_number AS revisionNumber, r.state,
+             r.start_date AS startDate, r.end_date AS endDate, r.total_weeks AS totalWeeks,
+             r.updated_at AS updatedAt, r.schedule_json AS scheduleJson
+           FROM training_plans p
+           JOIN students s ON s.organization_id = p.organization_id AND s.id = p.student_id
+           JOIN plan_revisions r ON r.organization_id = p.organization_id AND r.plan_id = p.id
+           WHERE p.organization_id = ?1 AND ${activeUser("?2")} AND ${technicalAccessExists("s", "?2")}
+             AND r.revision_number =
+               (SELECT MAX(x.revision_number) FROM plan_revisions x WHERE x.plan_id = p.id)
+           ORDER BY CASE r.state WHEN 'DRAFT' THEN 0 ELSE 1 END, r.updated_at DESC
+           LIMIT ?3`,
+        )
+        .bind(organizationId, userId, limit)
+        .all<Omit<PlanOverviewRow, "exercises" | "workouts" | "below"> & { scheduleJson: string }>();
+      if (rows.results.length === 0) return [];
+      // The ids come from the gated query above, so counting them needs no second gate.
+      const counts = await db
+        .prepare(
+          `SELECT pe.revision_id AS revisionId, pe.phase_index AS p, pe.workout_label AS w,
+             COUNT(*) AS n
+           FROM prescribed_exercises pe
+           WHERE pe.organization_id = ?1 AND pe.revision_id IN (SELECT value FROM json_each(?2))
+           GROUP BY pe.revision_id, pe.phase_index, pe.workout_label`,
+        )
+        .bind(organizationId, JSON.stringify(rows.results.map((row) => row.revisionId)))
+        .all<{ revisionId: string; p: number; w: string; n: number }>();
+      const byWorkout = new Map(
+        counts.results.map((c) => [`${c.revisionId}|${c.p}|${c.w}`, c.n]),
+      );
+      return rows.results.map(({ scheduleJson, ...row }) => {
+        const slots = workoutSlots(JSON.parse(scheduleJson) as PeriodizationSchedule);
+        const countOf = (slot: { phaseIndex: number; label: string }) =>
+          byWorkout.get(`${row.revisionId}|${slot.phaseIndex}|${slot.label}`) ?? 0;
+        return {
+          ...row,
+          exercises: slots.reduce((total, slot) => total + countOf(slot), 0),
+          workouts: slots.length,
+          below: slots.filter((slot) => countOf(slot) < slot.target).length,
+        };
+      });
     },
 
     async findRevision(
@@ -168,6 +258,7 @@ export function plansFor(
              r.start_date AS startDate, r.end_date AS endDate,
              r.total_weeks AS totalWeeks, r.total_sessions AS totalSessions,
              r.updated_at AS updatedAt, r.ready_at AS readyAt,
+             r.approved_at AS approvedAt, r.delivered_at AS deliveredAt,
              r.based_on_revision_id AS basedOnRevisionId,
              r.input_json AS inputJson, r.schedule_json AS scheduleJson
            FROM training_plans p
@@ -200,6 +291,8 @@ export function plansFor(
           totalSessions: row.totalSessions,
           updatedAt: row.updatedAt,
           readyAt: row.readyAt,
+          approvedAt: row.approvedAt,
+          deliveredAt: row.deliveredAt,
           basedOnRevisionId: row.basedOnRevisionId,
           input: periodizationInputSchema.parse(JSON.parse(row.inputJson)),
           schedule: JSON.parse(row.scheduleJson) as PeriodizationSchedule,
@@ -336,6 +429,97 @@ export function plansFor(
         eventAfterChange("MARKED_READY", revisionId, stamp),
       ]);
       return results[0].meta.changes > 0;
+    },
+
+    /**
+     * READY to APPROVED, an act of the professional. It needs every workout at or above its
+     * target (the target can be changed in a draft, never filled in here) and a screening
+     * standing: a clear assessment, an alert with the professional's recorded review, or the
+     * professional's acknowledgement that no assessment is registered for the student. An alert
+     * without a review blocks approval. None of these is a clinical clearance: it is only
+     * recorded, with the assessment behind it, as what was known at the time.
+     */
+    async approve(
+      planId: string,
+      revisionId: string,
+      acknowledgement: { screeningNotRecorded: boolean },
+      now = new Date(),
+    ): Promise<ApproveOutcome> {
+      const detail = await this.findRevision(planId, revisionId);
+      if (!detail || detail.revision.state !== "READY") return { status: "not_found" };
+      // A READY revision is frozen, so these counts cannot change before the update below.
+      const counts = await db
+        .prepare(
+          `SELECT phase_index AS p, workout_label AS w, COUNT(*) AS n
+           FROM prescribed_exercises WHERE organization_id = ?1 AND revision_id = ?2
+           GROUP BY phase_index, workout_label`,
+        )
+        .bind(organizationId, revisionId)
+        .all<{ p: number; w: string; n: number }>();
+      const byWorkout = new Map(counts.results.map((c) => [`${c.p}|${c.w}`, c.n]));
+      const below = workoutSlots(detail.revision.schedule).filter(
+        (slot) => (byWorkout.get(`${slot.phaseIndex}|${slot.label}`) ?? 0) < slot.target,
+      ).length;
+      if (below > 0) return { status: "below_target", below };
+      const standing = await screeningStanding(db, organizationId, detail.plan.studentId);
+      if (standing?.risk === "REVIEW_REQUIRED" && !standing.reviewed)
+        return { status: "review_required", assessedOn: standing.assessedOn };
+      if (!standing && !acknowledgement.screeningNotRecorded)
+        return { status: "screening_acknowledgement_required" };
+      const screening = !standing
+        ? "NOT_RECORDED"
+        : standing.risk === "CLEAR"
+          ? "CLEAR"
+          : "REVIEW_REQUIRED_REVIEWED";
+      const stamp = now.toISOString();
+      const results = await db.batch([
+        db
+          .prepare(
+            `UPDATE plan_revisions
+             SET state = 'APPROVED', approved_at = ?3, approved_by_user_id = ?2,
+               approval_screening = ?6, approval_assessment_id = ?7, updated_at = ?3
+             WHERE organization_id = ?1 AND id = ?4 AND plan_id = ?5 AND state = 'READY'
+               AND ${revisionGate("plan_revisions")}
+               AND ${latestRecordedSql("plan_revisions.organization_id", studentOf)} IS ?7`,
+          )
+          .bind(organizationId, userId, stamp, revisionId, planId, screening, standing?.assessmentId ?? null),
+        eventAfterChange("APPROVED", revisionId, stamp),
+      ]);
+      if (results[0].meta.changes > 0) return { status: "approved" };
+      // Nothing changed: either the screening moved under us or the revision is not ours any more.
+      const still = await this.findRevision(planId, revisionId);
+      return still?.revision.state === "READY"
+        ? { status: "screening_changed" }
+        : { status: "not_found" };
+    },
+
+    /**
+     * APPROVED to DELIVERED: the student can see exactly this revision from now on. Delivery is
+     * refused while the student's newest assessment is an alert nobody has reviewed, also when
+     * that assessment was recorded after the approval.
+     */
+    async deliver(planId: string, revisionId: string, now = new Date()): Promise<DeliverOutcome> {
+      const stamp = now.toISOString();
+      const results = await db.batch([
+        db
+          .prepare(
+            `UPDATE plan_revisions
+             SET state = 'DELIVERED', delivered_at = ?3, delivered_by_user_id = ?2, updated_at = ?3
+             WHERE organization_id = ?1 AND id = ?4 AND plan_id = ?5 AND state = 'APPROVED'
+               AND ${revisionGate("plan_revisions")}
+               AND NOT ${unreviewedAlertSql("plan_revisions.organization_id", studentOf)}`,
+          )
+          .bind(organizationId, userId, stamp, revisionId, planId),
+        eventAfterChange("DELIVERED", revisionId, stamp),
+      ]);
+      if (results[0].meta.changes > 0) return { status: "delivered" };
+      const detail = await this.findRevision(planId, revisionId);
+      if (detail?.revision.state === "APPROVED") {
+        const standing = await screeningStanding(db, organizationId, detail.plan.studentId);
+        if (standing?.risk === "REVIEW_REQUIRED" && !standing.reviewed)
+          return { status: "review_required", assessedOn: standing.assessedOn };
+      }
+      return { status: "not_found" };
     },
 
     /**

@@ -6,7 +6,9 @@ import { requireWorkspace } from "@/modules/auth/server";
 import { studentsFor } from "@/db/students";
 import { plansFor } from "@/db/plans";
 import { exercisesFor } from "@/db/exercises";
+import { studentAccessFor } from "@/db/student-access";
 import { prescriptionFor } from "@/db/prescription";
+import { assessmentsFor } from "@/db/assessments";
 import { PageHeading, Pill } from "@/components/ui";
 import { Planner } from "@/modules/training/components/planner";
 import {
@@ -17,6 +19,8 @@ import {
 import { PlanReadOnly } from "@/modules/planos/plan-readonly";
 import { stateLabel } from "@/modules/planos/labels";
 import { PrescriptionEditor } from "@/modules/prescricao/prescription-editor";
+import { ApprovalPanel, type ScreeningInfo } from "@/modules/planos/approval-panel";
+import { progressOf } from "@/modules/prescricao/summary";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Plano" };
@@ -35,10 +39,42 @@ export default async function PlanRevision({
   if (!detail || detail.plan.studentId !== student.id) notFound();
   const { revision } = detail;
   const label = stateLabel(revision.state);
-  const [items, library] = await Promise.all([
+  const [items, library, access, standing] = await Promise.all([
     prescriptionFor(db, context).list(planId, revisionId),
     exercisesFor(db, context).list(),
+    studentAccessFor(db, context).statusOf(student.id),
+    assessmentsFor(db, context).standing(student.id),
   ]);
+  const screening: ScreeningInfo = !standing
+    ? { kind: "NONE" }
+    : {
+        kind:
+          standing.risk === "CLEAR"
+            ? "CLEAR"
+            : standing.reviewed
+              ? "REVIEWED"
+              : "BLOCKED",
+        assessedOn: standing.assessedOn,
+        href: `/profissional/alunos/${student.id}/avaliacoes/${standing.assessmentId}`,
+      };
+  const progress = progressOf(revision.schedule, items);
+  const decision =
+    revision.state === "READY" ||
+    revision.state === "APPROVED" ||
+    revision.state === "DELIVERED" ? (
+      <ApprovalPanel
+        planId={planId}
+        revisionId={revisionId}
+        state={revision.state}
+        below={progress.filter((slot) => slot.status === "BELOW").length}
+        workouts={progress.length}
+        approvedAt={revision.approvedAt}
+        deliveredAt={revision.deliveredAt}
+        portal={access?.access ?? "NONE"}
+        studentHref={`/profissional/alunos/${student.id}`}
+        screening={screening}
+      />
+    ) : null;
   const editor = (
     <PrescriptionEditor
       planId={planId}
@@ -61,7 +97,9 @@ export default async function PlanRevision({
         description={
           revision.state === "DRAFT"
             ? "Rascunho em edição. Salve a estrutura, prescreva os exercícios e marque como pronta quando estiver certo: depois disso a revisão não aceita mais edição."
-            : "Revisão fechada para edição."
+            : revision.state === "DELIVERED"
+              ? "Revisão entregue ao aluno. Ela não muda mais."
+              : "Revisão fechada para edição."
         }
         aside={<Pill tone={label.tone}>{label.text}</Pill>}
       />
@@ -79,10 +117,12 @@ export default async function PlanRevision({
         />
       ) : (
         <PlanReadOnly
+          state={revision.state}
           schedule={revision.schedule}
           createRevision={createRevision.bind(null, planId, revisionId)}
         />
       )}
+      {decision}
       {editor}
       <Link href={`/profissional/alunos/${student.id}`} className="button secondary">
         <ArrowLeft size={17} /> Voltar ao aluno

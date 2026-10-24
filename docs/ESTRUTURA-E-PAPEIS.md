@@ -20,7 +20,7 @@ Versão 0.3 · 23/10/2026. Esta revisão aplica o `TRAINER_PRESCRIPTION_HANDOFF_
 | Papel no banco | `platform_admins` | `memberships` ativa + `professionals` | `student_access` ativo |
 | Vê | Organizações, profissionais, contagens, auditoria de acessos | Os alunos com quem tem vínculo técnico, periodização, convites | Somente o próprio vínculo e o que for liberado |
 | Nunca vê | Nomes, avaliações, treinos e fotos de alunos | Alunos de outros profissionais ou organizações | Qualquer outro aluno, profissional ou organização |
-| Ações reais hoje | Listar organizações, bloquear/restabelecer um acesso, auditar | Cadastrar aluno, convidar/revogar acesso, planejar ciclos | Aceitar convite, ver o próprio acompanhamento |
+| Ações reais hoje | Listar organizações, bloquear/restabelecer um acesso, auditar | Cadastrar aluno, convidar/revogar acesso, planejar e prescrever, aprovar e entregar | Aceitar convite, ver o treino entregue |
 
 Uma mesma conta pode ter mais de uma área (por exemplo, gestor e profissional). `/acesso` encaminha quem tem uma só e oferece a escolha a quem tem várias; a barra superior troca de área.
 
@@ -42,9 +42,10 @@ Uma mesma conta pode ter mais de uma área (por exemplo, gestor e profissional).
 /profissional/biblioteca[/novo|/id]
 /profissional/periodizacao        /profissional/alunos/[id]/planos/novo
                           /profissional/alunos/[id]/planos/[planId]/[revisionId]
-/profissional/[módulo]    planejados: avaliacoes, prescricao, fontes, meu-site, leads, configuracoes
+/profissional/[módulo]    planejados: fontes, meu-site, leads, configuracoes
 
-/aluno                    início                 /aluno/[módulo]   planejados: treino, evolucao, check-in, documentos, mensagens, conta
+/aluno                    início                 /aluno/treino
+/aluno/[módulo]           planejados: evolucao, check-in, documentos, mensagens, conta
 
 /demonstracao[/gestor|/profissional|/aluno ...]   somente com DEMO_MODE=true
 /api/health  /api/auth/*
@@ -76,9 +77,9 @@ Correspondência com os papéis do handoff V2:
 |---|---|---|---|
 | Dashboard | `/profissional` | Disponível: contagens e próximos passos reais | E1 |
 | Alunos (lista, detalhe) | `/profissional/alunos` | Disponível: cadastro, vínculo técnico, convite | E1 |
-| Avaliações | `/profissional/avaliacoes` | Planejado | E2 |
+| Avaliações | `/profissional/avaliacoes` (e `/profissional/alunos/<id>/avaliacoes`) | Disponível (0.10): triagem e indicadores; postura e movimento seguem planejados | E2 |
 | Periodização | `/profissional/periodizacao` | Disponível: planejador avulso (sem salvar) e **planos salvos por aluno** em `/profissional/alunos/<id>/planos/...`, com revisões e estado Rascunho / Estrutura pronta. Só a estrutura do ciclo; sem exercícios nem aprovação | E2 |
-| Prescrição | `/profissional/prescricao` | Tela de entrada planejada (**prévia** na demonstração). A **prescrição manual já existe** dentro de cada plano salvo do aluno, com exercícios por mesociclo e treino, sem sugestões nem aprovação | E2 |
+| Prescrição | `/profissional/prescricao` | Disponível: painel com a revisão mais recente de cada plano e as pendências por alvo. A prescrição manual acontece dentro de cada plano salvo do aluno, sem sugestões nem aprovação (**prévia** ilustrada na demonstração) | E2 |
 | Biblioteca de exercícios | `/profissional/biblioteca` | Disponível: 64 exercícios do sistema (somente leitura, vídeos são links de busca) e exercícios próprios da organização | E2 |
 | Fontes técnicas | `/profissional/fontes` | Planejado | E7 |
 | Meu Site (editor, páginas, domínios, SEO, publicações) | `/profissional/meu-site` | Planejado, um único item por ora | E3 |
@@ -87,7 +88,8 @@ Correspondência com os papéis do handoff V2:
 | Gestor: organizações, auditoria | `/gestor/...` | Disponível | E1 |
 | Gestor: planos e cobrança, afiliados, templates, biblioteca, integrações | `/gestor/...` | Planejado | E3, E5, E6, E7 |
 | Aluno: início | `/aluno` | Disponível: vínculo e estado do treino | E4 |
-| Aluno: treino, evolução, check-in, documentos, mensagens, conta | `/aluno/...` | Planejado (**prévia** do treino na demonstração) | E4 |
+| Aluno: treino atual | `/aluno/treino` | Disponível: a revisão entregue de cada plano, somente leitura (**prévia** com execução na demonstração) | E4 |
+| Aluno: evolução, check-in, documentos, mensagens, conta | `/aluno/...` | Planejado | E4 |
 
 A fonte única desse menu é `src/modules/platform/surfaces.ts`, com teste de contrato (`tests/navigation.test.ts`): todo módulo planejado precisa ter épico, resumo e o que falta.
 
@@ -133,5 +135,5 @@ Ligue com `DEMO_MODE=true` no ambiente (o `npm run auth:setup:local` já faz iss
 - Origem privada separada para o portal e para o painel, múltiplos hosts e Object Storage privado (provas no Webflow Cloud).
 - E-mail verificado, recuperação de senha, convites de equipe, seleção entre organizações, conceder o papel de gestor pela interface.
 - Auditoria de login e de leitura. Hoje se grava ativação do gestor, bloqueios, criação/aceite de convite e revogação de acesso; só ativação e bloqueios têm tela (a do gestor).
-- Persistência de avaliações, prescrições, revisão, aprovação, entrega e PDF (E2); portal com treino liberado, execução e evolução (E4).
+- Postura e movimento nas avaliações e PDF (E2); portal com execução do treino e evolução (E4). Avaliações com triagem, prescrição, aprovação e entrega já persistem (0.4 a 0.10).
 - Decisões do handoff V2 ainda não tomadas: D01 (um site por profissional), D03 (mês civil × semanas), D04 (`REFER_OUT`), D06 (acesso de administradores a dados sensíveis), D08 (modelo comercial dos templates). O estilo escuro do painel também está em aberto.

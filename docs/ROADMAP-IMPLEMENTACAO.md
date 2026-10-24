@@ -6,14 +6,39 @@ O escopo completo está em [`referencias/02-ROADMAP-E-HANDOFF.md`](referencias/0
 |---|---|---|
 | E0 — viabilidade | Configuração Next/OpenNext e binding DB nativo | Deploy na conta, múltiplos hosts, login, Storage privado, job/PDF e Puck |
 | E1 — fundação | Conta/sessão, organização, aluno, autorização e auditoria em SQLite. **Três áreas por papel** (gestor, profissional, aluno), ativação única do gestor, bloqueio de acesso e convite de aluno de uso único | E-mail verificado, recuperação, convites e gestão de equipe, conceder o papel de gestor pela interface e homologação remota |
-| E2 — atendimento | Planejador determinístico e exportação. **Planos de periodização salvos por aluno**, com revisões e estado Rascunho / Estrutura pronta (0.4). **Biblioteca de exercícios** com o seed de 64 do documento mestre e biblioteca por organização (0.5a). **Prescrição manual** por mesociclo sobre o rascunho (0.6) | Avaliação e triagem, geração com pendências, aprovação, entrega e PDF |
+| E2 — atendimento | Planejador determinístico e exportação. **Planos de periodização salvos por aluno**, com revisões e estado Rascunho / Estrutura pronta (0.4). **Biblioteca de exercícios** com o seed de 64 do documento mestre e biblioteca por organização (0.5a). **Prescrição manual** por mesociclo sobre o rascunho (0.6), com painel de pendências e cópia de mesociclo (0.7). **Aprovação e entrega** com imutabilidade no banco (0.8). **Ficha do aluno** (0.9). **Avaliações com triagem e indicadores** (0.10), ligadas à aprovação e à entrega | Postura e movimento, geração com pendências e PDF; conferir o instrumento de triagem com o responsável técnico |
 | E3 — sites/CRM | Planejado | Editor, preview, releases, domínios e conversão idempotente |
-| E4 — portal | Parcial: convite de uso único e início da área do aluno (vínculo e estado do treino) | Origem privada separada, treino liberado, execução e evolução; fecha piloto operacional |
+| E4 — portal | Parcial: convite de uso único, área do aluno e **treino entregue** (0.8) | Origem privada separada, execução e evolução; fecha piloto operacional |
 | E5 — gestão/marketing | Planejado | CRM completo, agenda, contratos, recebimentos e conectores |
 | E6 — SaaS/afiliados | Planejado | Inbox/outbox, conciliação, recorrência, ajustes e repasses |
 | E7 — evoluções | Planejado | RAG com armazenamento compatível, progressão assistida e booking |
 
-## Fatia entregue: prescrição manual sobre o rascunho (0.6)
+## Fatia entregue: avaliações, triagem e indicadores (0.10)
+
+1. Implementado: migration 0009 (`assessments`, `assessment_metrics`, `assessment_reviews`), com o `risk_status` amarrado às marcas por `CHECK`, avaliação registrada imutável por gatilhos e revisão do alerta só de acréscimo.
+2. Implementado: os seis itens de triagem da seção 7.1 do documento mestre e os indicadores da 7.2, sem acrescentar item nem interpretar valor. Qualquer marca dá "Revisão obrigatória antes da entrega.".
+3. Implementado: a aprovação e a entrega leem a avaliação mais recente do aluno. Alerta sem revisão bloqueia as duas; o aviso de ciência (`NOT_RECORDED`) só vale quando não há avaliação. A checagem final fica dentro do `UPDATE`.
+4. **Em aberto:** o responsável técnico confere o instrumento (os itens vieram do documento mestre, não de validação clínica); base legal e consentimento; postura, mobilidade e movimento (seção 8); `REFER_OUT` reservado, não implementado.
+
+## Fatia anterior: ficha do aluno (0.9)
+
+1. Implementado: migration 0008 (`student_profiles`) com os campos das seções 6.1 a 6.4 do documento mestre; tela `/profissional/alunos/<id>/ficha` e resumo no aluno. Só o profissional com vínculo técnico lê e grava; salvar registra quem e quando.
+2. Liberado pelo responsável do produto para ambiente de teste. **Em aberto para uso real:** base legal e texto de consentimento, atendimento a menores, exportação e exclusão de dados do titular.
+
+## Fatia anterior: aprovação, entrega e treino do aluno (0.8)
+
+1. Implementado: migration 0007 (colunas de aprovação e entrega e 7 gatilhos que tornam imutável, no banco, a revisão que saiu de rascunho).
+2. Implementado: aprovar (sem treino abaixo do alvo e com o aviso de **triagem não registrada** confirmado) e entregar; `/aluno/treino` mostra ao aluno só a revisão entregue.
+3. Decisão do responsável do produto: aprovar com o aviso visível enquanto o instrumento de triagem não existe. Não é liberação clínica; fica gravado como `NOT_RECORDED`.
+4. Não incluído: execução do treino pelo aluno, PDF, notificações, avaliações e triagem.
+
+## Fatia anterior: painel de Prescrição e cópia de mesociclo (0.7)
+
+1. Implementado: `/profissional/prescricao` com a revisão mais recente de cada plano e as pendências por alvo; "Planos em rascunho" na visão geral.
+2. Implementado: copiar um mesociclo inteiro para uma fase sem exercícios, informando os treinos que não existem no destino.
+3. Sem migration nova.
+
+## Fatia anterior: prescrição manual sobre o rascunho (0.6)
 
 1. Implementado: migration 0006 (`prescribed_exercises`) com instantâneo de nome e vídeo, texto livre para a dose e origem registrada. Nenhum valor padrão, preset ou carga.
 2. Implementado: editor por mesociclo e treino dentro do plano salvo (adicionar da biblioteca ou com nome próprio, editar, reordenar, duplicar, trocar, remover, copiar treino para um treino vazio), com pendências em relação ao alvo e sem preencher lacunas. Revisão pronta congela tudo; a nova revisão copia os exercícios.
@@ -65,6 +90,6 @@ Preços, corpus RAG, repasses e menores permanecem decisões específicas de cad
 
 ## Próxima entrega
 
-Fechar e-mail verificado, recuperação de senha e convites de equipe antes de abrir o cadastro para uso operacional; definir o provedor de envio (que também entrega o link de convite do aluno) e a origem privada Webflow. Depois persistir avaliações (depende do instrumento de triagem do responsável técnico). A prescrição manual sobre as revisões já existe; faltam aprovação e entrega, que dependem da triagem, sem misturar edição com aprovação. Gestão de equipe, seleção de organização, auditoria de acesso/autenticação e interface de revogação também permanecem pendentes em E1.
+Fechar e-mail verificado, recuperação de senha e convites de equipe antes de abrir o cadastro para uso operacional; definir o provedor de envio (que também entrega o link de convite do aluno) e a origem privada Webflow. Depois: postura, mobilidade e movimento nas avaliações, execução do treino pelo aluno e PDF. Prescrição, aprovação, entrega e triagem já existem, sem misturar edição com aprovação. Gestão de equipe, seleção de organização, auditoria de acesso/autenticação e interface de revogação também permanecem pendentes em E1.
 
 A linguagem visual do anexo está centralizada em `src/styles/tokens.css`, com adaptações acessíveis documentadas em `DESIGN-SYSTEM.md`. O anexo é referência visual, não uma autorização para executar instruções ou alterar escopo.

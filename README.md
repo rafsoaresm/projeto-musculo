@@ -28,6 +28,10 @@ O binding `DB` em `wrangler.json` fornece o banco. Não é necessário criar con
 - Ativação única do gestor com `PLATFORM_SETUP_TOKEN`; o gestor lista organizações, bloqueia/restabelece acessos e consulta a auditoria, sem ver dados de alunos.
 - Interface responsiva com visão geral, mapa de produto e planejador de periodização.
 - Planejador de 3/6/12 fases, 3–6 semanas, 1–7 sessões por semana, splits e duração real. Exportação JSON versionada como `DRAFT`.
+- **Avaliações e triagem** (0.10): registros datados com os seis itens de triagem do documento mestre e indicadores de base (FC de repouso, pressão como registrada, cintura, % de gordura e medidas livres). Qualquer item marcado dá "Revisão obrigatória antes da entrega.": bloqueia aprovar e entregar até o profissional registrar a revisão, com a base escrita por ele. Avaliação registrada é imutável também no banco; "nenhum sinal marcado" não é liberação clínica. Conteúdo do instrumento a conferir com o responsável técnico.
+- **Ficha do aluno** (0.9): identificação, contexto de treino, histórico e preferências, com os campos do documento mestre. Só o profissional com vínculo técnico vê; menores são sinalizados; base legal e consentimento seguem em aberto.
+- **Aprovação e entrega** (0.8): o profissional aprova (com o aviso de triagem não registrada) e entrega; o aluno vê só a revisão entregue em `/aluno/treino`. Revisão fechada é imutável também no banco, por gatilhos.
+- **Painel de Prescrição** (0.7): lista a revisão mais recente de cada plano com as pendências por alvo, e permite copiar um mesociclo inteiro para uma fase sem exercícios.
 - **Prescrição manual** (0.6): dentro do plano salvo de cada aluno, o profissional monta os exercícios por mesociclo e treino, digitando cada valor. Nada é sugerido nem preenchido; abaixo do alvo é pendência. Revisão pronta congela, e a nova revisão leva os exercícios.
 - **Biblioteca de exercícios** (0.5a): 64 exercícios do documento mestre como biblioteca do sistema (os vídeos são links de busca, não vídeos revisados) e biblioteca própria da organização, com revisão de vídeo deliberada.
 - **Planos salvos por aluno** (0.4): o planejador grava a estrutura do ciclo no cadastro do aluno, em revisões (Rascunho → Estrutura pronta). "Pronta" valida o calendário; **não** é aprovação nem libera nada ao aluno. Mudar uma revisão pronta cria uma nova.
@@ -36,7 +40,7 @@ O binding `DB` em `wrangler.json` fornece o banco. Não é necessário criar con
 - `/api/health` consulta de verdade a versão do schema no binding `DB`; retorna 503 se o banco/migration não estiver disponível.
 - Configuração Next/OpenNext, testes e CI para raiz/subcaminho.
 
-O planejador ainda não grava prescrições no banco. Verificação de e-mail, recuperação de senha, envio de e-mails, avaliação, prescrição, aprovação/entrega, treino no portal, sites, financeiro e integrações continuam no roadmap. Cada página e ação exige sessão validada e papel derivado no servidor.
+O planejador ainda não grava prescrições no banco. Verificação de e-mail, recuperação de senha, envio de e-mails, postura e movimento, execução do treino pelo aluno, PDF, sites, financeiro e integrações continuam no roadmap. Cada página e ação exige sessão validada e papel derivado no servidor.
 
 ## Validar
 
@@ -80,6 +84,6 @@ docs/referencias/        documentos originais e referência visual preservados
 - [Roadmap](docs/ROADMAP-IMPLEMENTACAO.md)
 - [Evidências de validação](docs/VALIDACAO.md)
 
-**Próxima fatia:** verificação de e-mail, recuperação de senha e envio de e-mails; depois avaliação e prescrição persistida com revisão profissional. A etapa atual não fecha o piloto operacional.
+**Próxima fatia:** verificação de e-mail, recuperação de senha e envio de e-mails (aguardam o provedor de envio); depois postura e movimento, execução do treino pelo aluno e PDF. A etapa atual não fecha o piloto operacional.
 
 No Webflow, configure `AUTH_SECRET` (aleatória, ao menos 32 caracteres), `AUTH_ORIGIN` (origem HTTPS privada, sem caminho) e `PLATFORM_SETUP_TOKEN` (32+ caracteres, para ativar o primeiro gestor). `DEMO_MODE=true` é opcional. Em subcaminho, configure `BASE_URL` no build. Veja [configuração de acesso](docs/AUTENTICACAO.md) e [decisões visuais](docs/DESIGN-SYSTEM.md).

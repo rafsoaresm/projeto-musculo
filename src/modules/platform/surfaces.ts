@@ -199,14 +199,13 @@ const profissional: NavGroup[] = [
         status: "available",
         primary: true,
       },
-      planned("avaliacoes", "Avaliações", "clipboard", {
-        epic: "E2",
-        reference: "Handoff V2, seções 4.2 e 4.3",
-        summary:
-          "Triagem, indicadores, postura e movimento como registros históricos de cada aluno. Qualquer sinal de triagem coloca a avaliação em revisão necessária. A ferramenta descreve, nunca diagnostica.",
-        needs:
-          "Persistência das avaliações no SQLite e o instrumento de triagem validado com o responsável técnico.",
-      }),
+      {
+        slug: "avaliacoes",
+        label: "Avaliações",
+        icon: "clipboard",
+        status: "available",
+        primary: true,
+      },
       {
         slug: "periodizacao",
         label: "Periodização",
@@ -214,14 +213,13 @@ const profissional: NavGroup[] = [
         status: "available",
         primary: true,
       },
-      planned("prescricao", "Prescrição", "dumbbell", {
-        epic: "E2",
-        reference: "Handoff V2, seção 6",
-        summary:
-          "Uma aba por mesociclo, exercícios editáveis e a origem de cada campo (sistema, IA ou profissional). Prescrição e execução são entidades distintas. O rascunho nunca é entregue sem a aprovação do profissional. A prescrição manual já existe dentro de cada plano salvo do aluno (Alunos, aluno, Planos salvos); esta tela vai reunir todas.",
-        needs:
-          "Avaliação persistida com a triagem, geração com pendências, e o fluxo de revisão, aprovação e entrega.",
-      }, true),
+      {
+        slug: "prescricao",
+        label: "Prescrição",
+        icon: "dumbbell",
+        status: "available",
+        primary: true,
+      },
     ],
   },
   {
@@ -288,14 +286,13 @@ const aluno: NavGroup[] = [
         status: "available",
         primary: true,
       },
-      planned("treino", "Treino atual", "dumbbell", {
-        epic: "E4",
-        reference: "Projeto consolidado, seção 9",
-        summary:
-          "O treino liberado pelo seu profissional, com exercícios, séries, descanso e vídeo. Só aparece depois que o profissional aprova e entrega.",
-        needs:
-          "Prescrição persistida, aprovação e entrega de uma revisão imutável.",
-      }, true),
+      {
+        slug: "treino",
+        label: "Treino atual",
+        icon: "dumbbell",
+        status: "available",
+        primary: true,
+      },
       planned("evolucao", "Evolução", "chart", {
         epic: "E4",
         reference: "Projeto consolidado, seção 9",

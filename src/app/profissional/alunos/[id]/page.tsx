@@ -6,9 +6,13 @@ import { requireWorkspace } from "@/modules/auth/server";
 import { studentsFor } from "@/db/students";
 import { studentAccessFor } from "@/db/student-access";
 import { plansFor } from "@/db/plans";
+import { profilesFor } from "@/db/student-profile";
+import { assessmentsFor } from "@/db/assessments";
 import { PageHeading } from "@/components/ui";
 import { InvitePanel } from "@/modules/convites/invite-panel";
 import { PlansPanel } from "@/modules/planos/plans-panel";
+import { ProfileSummary } from "@/modules/ficha/profile-summary";
+import { AssessmentsPanel } from "@/modules/avaliacoes/assessments-panel";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Aluno" };
@@ -24,6 +28,8 @@ export default async function Student({
   if (!student) notFound();
   const access = await studentAccessFor(db, context).statusOf(student.id);
   const plans = await plansFor(db, context).listForStudent(student.id);
+  const profile = await profilesFor(db, context).get(student.id);
+  const assessments = await assessmentsFor(db, context).listForStudent(student.id);
   return (
     <>
       <PageHeading
@@ -41,16 +47,17 @@ export default async function Student({
           inviteExpiresAt={access?.inviteExpiresAt ?? null}
         />
       </section>
+      <ProfileSummary studentId={student.id} profile={profile} />
+      <AssessmentsPanel studentId={student.id} assessments={assessments} />
       <PlansPanel studentId={student.id} plans={plans} />
       <section className="panel">
-        <p className="eyebrow">ATENDIMENTO</p>
-        <h2>Próximas etapas</h2>
-        <p>
-          Avaliações, prescrição vinculada e entrega de treinos serão integradas
-          nas próximas etapas. Hoje o plano guarda só a estrutura do ciclo.
+        <p className="eyebrow">PLANEJADOR</p>
+        <h2>Explorar sem salvar</h2>
+        <p className="muted">
+          Teste um ciclo no planejador sem criar plano para este aluno.
         </p>
         <Link href="/profissional/periodizacao" className="account-link">
-          Explorar o planejador sem salvar
+          Abrir o planejador
         </Link>
       </section>
       <Link href="/profissional/alunos" className="button secondary">
