@@ -218,23 +218,21 @@ const profissional: NavGroup[] = [
         epic: "E2",
         reference: "Handoff V2, seção 6",
         summary:
-          "Uma aba por mesociclo, exercícios editáveis e a origem de cada campo (sistema, IA ou profissional). Prescrição e execução são entidades distintas. O rascunho nunca é entregue sem a aprovação do profissional.",
+          "Uma aba por mesociclo, exercícios editáveis e a origem de cada campo (sistema, IA ou profissional). Prescrição e execução são entidades distintas. O rascunho nunca é entregue sem a aprovação do profissional. A prescrição manual já existe dentro de cada plano salvo do aluno (Alunos, aluno, Planos salvos); esta tela vai reunir todas.",
         needs:
-          "Avaliação persistida, biblioteca de exercícios e o fluxo de revisão, aprovação e entrega.",
+          "Avaliação persistida com a triagem, geração com pendências, e o fluxo de revisão, aprovação e entrega.",
       }, true),
     ],
   },
   {
     label: "CONHECIMENTO",
     items: [
-      planned("biblioteca", "Biblioteca de exercícios", "book", {
-        epic: "E2",
-        reference: "Handoff V2, seção 6.3",
-        summary:
-          "Biblioteca global curada e biblioteca própria do profissional. A semente de 64 exercícios do documento mestre distingue link de busca de vídeo validado.",
-        needs:
-          "Modelagem dos exercícios e músculos e a curadoria dos vídeos.",
-      }),
+      {
+        slug: "biblioteca",
+        label: "Biblioteca de exercícios",
+        icon: "book",
+        status: "available",
+      },
       planned("fontes", "Fontes técnicas", "library", {
         epic: "E7",
         reference: "Handoff V2, seção 7",

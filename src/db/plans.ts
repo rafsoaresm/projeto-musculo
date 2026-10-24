@@ -5,6 +5,7 @@ import {
   type PeriodizationSchedule,
 } from "@/modules/training/contracts";
 import { buildPeriodization } from "@/modules/training/periodization";
+import { workoutSlots } from "@/modules/prescricao/summary";
 import {
   activeUser,
   assertContext,
@@ -272,6 +273,21 @@ export function plansFor(
       const schedule = buildPeriodization(rawInput);
       const input = periodizationInputSchema.parse(rawInput);
       const stamp = now.toISOString();
+      const kept = workoutSlots(schedule);
+      const current = await this.findRevision(planId, revisionId);
+      if (!current || current.revision.state !== "DRAFT") return false;
+      // A change that removes a workout which already has exercises would throw the
+      // professional's work away. Refuse it and say so: remove the exercises first.
+      const used = await db
+        .prepare(
+          `SELECT DISTINCT phase_index AS p, workout_label AS w
+           FROM prescribed_exercises WHERE organization_id = ?1 AND revision_id = ?2`,
+        )
+        .bind(organizationId, revisionId)
+        .all<{ p: number; w: string }>();
+      const valid = new Set(kept.map((slot) => `${slot.phaseIndex}|${slot.label}`));
+      if (used.results.some((row) => !valid.has(`${row.p}|${row.w}`)))
+        throw new Error("PRESCRIPTION_WOULD_BE_LOST");
       const results = await db.batch([
         db
           .prepare(
@@ -279,7 +295,12 @@ export function plansFor(
              SET input_json = ?3, schedule_json = ?4, engine_version = ?5, start_date = ?6,
                end_date = ?7, total_weeks = ?8, total_sessions = ?9, updated_at = ?10
              WHERE organization_id = ?1 AND id = ?11 AND plan_id = ?12 AND state = 'DRAFT'
-               AND ${revisionGate("plan_revisions")}`,
+               AND ${revisionGate("plan_revisions")}
+               AND NOT EXISTS (
+                 SELECT 1 FROM prescribed_exercises pe WHERE pe.revision_id = plan_revisions.id
+                   AND NOT EXISTS (SELECT 1 FROM json_each(?13) j
+                     WHERE json_extract(j.value, '$.p') = pe.phase_index
+                       AND json_extract(j.value, '$.w') = pe.workout_label))`,
           )
           .bind(
             organizationId,
@@ -290,6 +311,7 @@ export function plansFor(
             stamp,
             revisionId,
             planId,
+            JSON.stringify(kept.map((slot) => ({ p: slot.phaseIndex, w: slot.label }))),
           ),
         eventAfterChange("DRAFT_SAVED", revisionId, stamp),
       ]);
@@ -356,6 +378,34 @@ export function plansFor(
               sourceRevisionId,
             ),
           eventAfterChange("REVISION_CREATED", revisionId, stamp),
+          // The prescription travels with the revision, under new IDs, so editing the
+          // copy never touches the revision it came from. Inserts nothing when the
+          // revision above was refused.
+          db
+            .prepare(
+              `INSERT INTO prescribed_exercises
+                 (id, organization_id, revision_id, phase_index, workout_label, position,
+                  exercise_id, name, video_url, video_status, sets, reps, load_instruction,
+                  cadence, rest_seconds, rest_text, rir_min, rir_max, notes, origin,
+                  created_by_user_id, created_at, updated_at)
+               SELECT lower(hex(randomblob(16))), src.organization_id, ?3, src.phase_index,
+                 src.workout_label, src.position, src.exercise_id, src.name, src.video_url,
+                 src.video_status, src.sets, src.reps, src.load_instruction, src.cadence,
+                 src.rest_seconds, src.rest_text, src.rir_min, src.rir_max, src.notes,
+                 src.origin, ?2, ?4, ?4
+               FROM prescribed_exercises src
+               WHERE src.organization_id = ?1 AND src.revision_id = ?6
+                 AND EXISTS (SELECT 1 FROM plan_revisions n
+                               WHERE n.organization_id = ?1 AND n.id = ?3)`,
+            )
+            .bind(
+              organizationId,
+              userId,
+              revisionId,
+              stamp,
+              planId,
+              sourceRevisionId,
+            ),
         ]);
         return results[0].meta.changes > 0
           ? { status: "created", revisionId }

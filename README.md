@@ -28,6 +28,8 @@ O binding `DB` em `wrangler.json` fornece o banco. Não é necessário criar con
 - Ativação única do gestor com `PLATFORM_SETUP_TOKEN`; o gestor lista organizações, bloqueia/restabelece acessos e consulta a auditoria, sem ver dados de alunos.
 - Interface responsiva com visão geral, mapa de produto e planejador de periodização.
 - Planejador de 3/6/12 fases, 3–6 semanas, 1–7 sessões por semana, splits e duração real. Exportação JSON versionada como `DRAFT`.
+- **Prescrição manual** (0.6): dentro do plano salvo de cada aluno, o profissional monta os exercícios por mesociclo e treino, digitando cada valor. Nada é sugerido nem preenchido; abaixo do alvo é pendência. Revisão pronta congela, e a nova revisão leva os exercícios.
+- **Biblioteca de exercícios** (0.5a): 64 exercícios do documento mestre como biblioteca do sistema (os vídeos são links de busca, não vídeos revisados) e biblioteca própria da organização, com revisão de vídeo deliberada.
 - **Planos salvos por aluno** (0.4): o planejador grava a estrutura do ciclo no cadastro do aluno, em revisões (Rascunho → Estrutura pronta). "Pronta" valida o calendário; **não** é aprovação nem libera nada ao aluno. Mudar uma revisão pronta cria uma nova.
 - Tabelas nativas: `users`, `organizations`, `memberships`, `professionals`, `students`, `care_assignments`, `student_access`, `platform_admins`, `student_invites`, `access_audit_events` e controle de versão do schema.
 - Repositories de leitura com organização, vínculo técnico/aluno, revogação e bloqueio de identidade em cada consulta.

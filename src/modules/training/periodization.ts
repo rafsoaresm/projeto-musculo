@@ -9,6 +9,10 @@ function addDays(date: string, days: number): string {
   return result.toISOString().slice(0, 10);
 }
 
+/** The workouts a split is made of: its letters, or the single "Full Body". */
+export const workoutLabels = (split: string): string[] =>
+  split === "Full Body" ? ["Full Body"] : [...split];
+
 /** Calendar dates, not instants. Rotation continues between weeks within a phase. */
 export function buildPeriodization(input: unknown): PeriodizationSchedule {
   const parsed = periodizationInputSchema.parse(input);
@@ -17,8 +21,7 @@ export function buildPeriodization(input: unknown): PeriodizationSchedule {
   let totalWeeks = 0;
   const phases = parsed.phases.map((phase, index) => {
     const startDate = cursor;
-    const split =
-      phase.split === "Full Body" ? ["Full Body"] : [...phase.split];
+    const split = workoutLabels(phase.split);
     const microcycles = Array.from({ length: phase.weeks }, (_, week) => {
       const weekStart = cursor;
       const sessions = Array.from(
