@@ -1,20 +1,16 @@
 "use client";
 
-import { useState } from "react";
-import {
-  ArrowRight,
-  CalendarDays,
-  Download,
-  Info,
-  RotateCw,
-} from "lucide-react";
+import { useState, useTransition } from "react";
+import { ArrowRight, CalendarDays, Info, RotateCw } from "lucide-react";
 import { buildPeriodization } from "../periodization";
 import {
   periodizationInputSchema,
   phaseSchema,
   type PhaseInput,
+  type PeriodizationInput,
   type PeriodizationSchedule,
 } from "../contracts";
+import { ScheduleResult, ScheduleSummary } from "./schedule-view";
 
 const defaultPhase = (): PhaseInput => ({
   weeks: 4,
@@ -22,24 +18,53 @@ const defaultPhase = (): PhaseInput => ({
   split: "ABC",
   exercisesPerSession: 5,
 });
-const formatDate = (date: string) =>
-  new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC" }).format(
-    new Date(`${date}T00:00:00Z`),
-  );
 
-export function Planner() {
-  const [startDate, setStartDate] = useState("");
+/** Result of a save requested from the server. An error is a message to show. */
+export type PersistResult = { error?: string; saved?: boolean } | void;
+
+export interface PlannerPersistence {
+  /** New plans ask for a name; saved drafts keep theirs. */
+  askTitle?: boolean;
+  saveLabel: string;
+  save: (payload: {
+    title?: string;
+    input: PeriodizationInput;
+  }) => Promise<PersistResult>;
+  /** Marks the saved draft as structurally ready. Needs everything saved first. */
+  ready?: { label: string; action: () => Promise<PersistResult> };
+}
+
+export function Planner({
+  initial,
+  persist,
+}: {
+  /** Start values when a saved draft is opened. */
+  initial?: PeriodizationInput;
+  /** Without it, the planner only calculates and exports (no data is stored). */
+  persist?: PlannerPersistence;
+}) {
+  const [startDate, setStartDate] = useState(initial?.startDate ?? "");
   const [phases, setPhases] = useState<PhaseInput[]>(() =>
-    Array.from({ length: 3 }, defaultPhase),
+    initial
+      ? initial.phases.map((phase) => ({ ...phase }))
+      : Array.from({ length: 3 }, defaultPhase),
   );
   const [selected, setSelected] = useState(0);
-  const [schedule, setSchedule] = useState<PeriodizationSchedule | null>(null);
+  const [schedule, setSchedule] = useState<PeriodizationSchedule | null>(() =>
+    initial ? buildPeriodization(initial) : null,
+  );
   const [error, setError] = useState("");
+  const [title, setTitle] = useState("");
+  const [dirty, setDirty] = useState(false);
+  const [status, setStatus] = useState("");
+  const [saving, startSaving] = useTransition();
   const phase = phases[selected];
 
   function invalidate() {
     setSchedule(null);
     setError("");
+    setDirty(true);
+    setStatus("");
   }
   function updatePhase(update: Partial<PhaseInput>) {
     setPhases(
@@ -70,6 +95,39 @@ export function Planner() {
     setSchedule(buildPeriodization(result.data));
     setError("");
   }
+  function persistNow() {
+    const result = periodizationInputSchema.safeParse({ startDate, phases });
+    if (!result.success) {
+      setError(
+        "Confira a data inicial e os limites de cada fase antes de salvar.",
+      );
+      return;
+    }
+    if (persist?.askTitle && !title.trim()) {
+      setError("Dê um nome ao plano antes de salvar.");
+      return;
+    }
+    setError("");
+    startSaving(async () => {
+      const outcome = await persist?.save({
+        title: persist.askTitle ? title : undefined,
+        input: result.data,
+      });
+      if (outcome?.error) {
+        setError(outcome.error);
+        return;
+      }
+      setSchedule(buildPeriodization(result.data));
+      setDirty(false);
+      setStatus("Rascunho salvo.");
+    });
+  }
+  function markReady() {
+    startSaving(async () => {
+      const outcome = await persist?.ready?.action();
+      if (outcome?.error) setError(outcome.error);
+    });
+  }
   function download() {
     if (!schedule) return;
     const url = URL.createObjectURL(
@@ -92,8 +150,10 @@ export function Planner() {
         <Info size={19} />
         <p>
           Este espaço calcula a estrutura do planejamento. Não prescreve
-          exercícios nem libera treinos. As alterações ficam nesta página;
-          exporte o rascunho para guardar o resultado.
+          exercícios nem libera treinos.{" "}
+          {persist
+            ? "O rascunho fica salvo no cadastro do aluno e só você, com vínculo técnico, o vê. O aluno não o recebe."
+            : "As alterações ficam nesta página; exporte o rascunho para guardar o resultado."}
         </p>
       </div>
       <div className="planner-layout">
@@ -103,6 +163,21 @@ export function Planner() {
               <span className="mini-number">1</span>
               <h2>Estrutura do ciclo</h2>
             </div>
+            {persist?.askTitle && (
+              <label>
+                Nome do plano
+                <input
+                  value={title}
+                  maxLength={120}
+                  required
+                  placeholder="Ex.: Ciclo inicial"
+                  onChange={(event) => {
+                    setTitle(event.target.value);
+                    setStatus("");
+                  }}
+                />
+              </label>
+            )}
             <div className="field-grid">
               <label>
                 Data de início
@@ -245,48 +320,42 @@ export function Planner() {
           <button className="button primary calculate-button" type="submit">
             Calcular planejamento <ArrowRight size={18} />
           </button>
+          {persist && (
+            <div className="persist-actions">
+              <button
+                className="button secondary"
+                type="button"
+                disabled={saving || (!persist.askTitle && !dirty)}
+                onClick={persistNow}
+              >
+                {saving ? "Salvando…" : persist.saveLabel}
+              </button>
+              {persist.ready && (
+                <button
+                  className="button secondary"
+                  type="button"
+                  disabled={saving || dirty}
+                  onClick={markReady}
+                >
+                  {persist.ready.label}
+                </button>
+              )}
+              {dirty && !persist.askTitle && (
+                <span className="small muted" role="status">
+                  Há alterações não salvas.
+                </span>
+              )}
+              {status && (
+                <span className="small muted" role="status">
+                  {status}
+                </span>
+              )}
+            </div>
+          )}
         </form>
         <aside className="planner-summary" aria-live="polite">
           {schedule ? (
-            <>
-              <div className="summary-top">
-                <span className="eyebrow">DURAÇÃO REAL</span>
-                <CalendarDays size={23} />
-              </div>
-              <div className="big-stat">
-                {schedule.totalWeeks}
-                <span>semanas</span>
-              </div>
-              <p className="date-range">
-                {formatDate(schedule.startDate)} →{" "}
-                {formatDate(schedule.endDate)}
-              </p>
-              <div className="summary-stats">
-                <div>
-                  <strong>{schedule.phases.length}</strong>
-                  <span>fases</span>
-                </div>
-                <div>
-                  <strong>{schedule.totalSessions}</strong>
-                  <span>sessões previstas</span>
-                </div>
-              </div>
-              <p className="summary-caption">
-                Calendário contínuo, sem sobreposição. Datas das sessões e dias
-                de descanso serão definidos na prescrição.
-              </p>
-              <button
-                className="button secondary full-width"
-                type="button"
-                onClick={download}
-              >
-                <Download size={17} /> Exportar rascunho JSON
-              </button>
-              <p className="small muted">
-                A exportação contém apenas a estrutura. Não equivale a uma
-                prescrição aprovada.
-              </p>
-            </>
+            <ScheduleSummary schedule={schedule} onDownload={download} />
           ) : (
             <div className="summary-empty">
               <span className="icon-tile brand-tile">
@@ -307,62 +376,7 @@ export function Planner() {
           )}
         </aside>
       </div>
-      {schedule && (
-        <section className="panel schedule-result">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">VISUALIZAÇÃO DO RASCUNHO</p>
-              <h2>Sequência dos mesociclos</h2>
-            </div>
-            <span className="pill brand-pill">
-              Revisão profissional necessária
-            </span>
-          </div>
-          <div className="schedule-table-wrap">
-            <table>
-              <caption className="sr-only">
-                Datas e configuração de todas as fases
-              </caption>
-              <thead>
-                <tr>
-                  <th>Fase</th>
-                  <th>Período</th>
-                  <th>Semanas</th>
-                  <th>Sessões / semana</th>
-                  <th>Divisão</th>
-                  <th>Exercícios / treino</th>
-                </tr>
-              </thead>
-              <tbody>
-                {schedule.phases.map((item) => (
-                  <tr key={item.index}>
-                    <th scope="row">{String(item.index).padStart(2, "0")}</th>
-                    <td>
-                      {formatDate(item.startDate)} — {formatDate(item.endDate)}
-                    </td>
-                    <td>{item.weeks}</td>
-                    <td>{item.sessionsPerWeek}</td>
-                    <td>
-                      <span className="pill neutral">{item.split}</span>
-                    </td>
-                    <td>{item.exercisesPerSession}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <h3 className="microcycle-title">Rotação da fase {selected + 1}</h3>
-          <div className="microcycles">
-            {schedule.phases[selected].microcycles.map((week) => (
-              <div key={week.index}>
-                <span>Semana {week.index}</span>
-                <strong>{week.sessions.join(" / ")}</strong>
-                <small>{formatDate(week.startDate)}</small>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+      {schedule && <ScheduleResult schedule={schedule} selected={selected} />}
     </>
   );
 }

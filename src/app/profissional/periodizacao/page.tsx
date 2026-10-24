@@ -13,7 +13,7 @@ export default async function PeriodizationPage() {
       <PageHeading
         eyebrow="NÚCLEO DE TREINAMENTO"
         title="Periodização"
-        description="Configure as fases. Visualize a duração e a sequência real dos treinos."
+        description="Configure as fases e veja a duração e a sequência reais. Para guardar um plano no cadastro de um aluno, abra o aluno e escolha Novo plano."
         aside={<Pill tone="brand">Rascunho estrutural</Pill>}
       />
       <Planner />
