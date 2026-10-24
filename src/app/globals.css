@@ -970,6 +970,36 @@ main {
   font-size: 13px;
   font-weight: 700;
 }
+.persist-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+.plan-list {
+  list-style: none;
+  margin: 16px 0;
+  padding: 0;
+  display: grid;
+  gap: 16px;
+}
+.plan-list ul {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.plan-list ul li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.plan-list .account-link {
+  margin-top: 0;
+}
 .phase-tabs {
   display: flex;
   flex-wrap: wrap;

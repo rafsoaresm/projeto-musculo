@@ -47,6 +47,9 @@ Esta base é um app na raiz do repositório, com módulos internos. Sites e port
 | platform_admins | Gestor da ferramenta (0003). Sem vínculo técnico com alunos |
 | student_invites | Convite de uso único do aluno; só o hash do token (0003) |
 | access_audit_events | Auditoria de acessos: gestor, bloqueios, convites, revogações (0003) |
+| training_plans | Plano de periodização de um aluno (0004). Só quem tem vínculo técnico lê ou escreve |
+| plan_revisions | Revisões do plano com entrada, cronograma recalculado no servidor e estado (0004). Um rascunho aberto por plano |
+| training_plan_events | Trilha de ações sobre o plano, sem conteúdo (0004) |
 
 IDs de domínio são UUIDs gerados pelo servidor. As identidades Better Auth usam IDs próprios. Datas usam UTC ISO-8601; o calendário usa timezone IANA. Foreign keys compostas impedem cruzar organização, aluno e profissional. Futuros valores monetários serão inteiros em centavos e percentuais em pontos-base.
 

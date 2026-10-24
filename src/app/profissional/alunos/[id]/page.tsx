@@ -5,8 +5,10 @@ import { ArrowLeft } from "lucide-react";
 import { requireWorkspace } from "@/modules/auth/server";
 import { studentsFor } from "@/db/students";
 import { studentAccessFor } from "@/db/student-access";
+import { plansFor } from "@/db/plans";
 import { PageHeading } from "@/components/ui";
 import { InvitePanel } from "@/modules/convites/invite-panel";
+import { PlansPanel } from "@/modules/planos/plans-panel";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Aluno" };
@@ -21,6 +23,7 @@ export default async function Student({
   const student = await studentsFor(db, context).findById(id);
   if (!student) notFound();
   const access = await studentAccessFor(db, context).statusOf(student.id);
+  const plans = await plansFor(db, context).listForStudent(student.id);
   return (
     <>
       <PageHeading
@@ -38,15 +41,16 @@ export default async function Student({
           inviteExpiresAt={access?.inviteExpiresAt ?? null}
         />
       </section>
+      <PlansPanel studentId={student.id} plans={plans} />
       <section className="panel">
         <p className="eyebrow">ATENDIMENTO</p>
-        <h2>O primeiro passo está dado.</h2>
+        <h2>Próximas etapas</h2>
         <p>
           Avaliações, prescrição vinculada e entrega de treinos serão integradas
-          nas próximas etapas.
+          nas próximas etapas. Hoje o plano guarda só a estrutura do ciclo.
         </p>
         <Link href="/profissional/periodizacao" className="account-link">
-          Explorar o planejador de ciclos
+          Explorar o planejador sem salvar
         </Link>
       </section>
       <Link href="/profissional/alunos" className="button secondary">

@@ -39,7 +39,8 @@ Uma mesma conta pode ter mais de uma área (por exemplo, gestor e profissional).
 /gestor/[módulo]          planejados: planos-saas, afiliados, templates, biblioteca-global, integracoes
 
 /profissional             visão geral            /profissional/alunos[/novo|/id]
-/profissional/periodizacao
+/profissional/periodizacao        /profissional/alunos/[id]/planos/novo
+                          /profissional/alunos/[id]/planos/[planId]/[revisionId]
 /profissional/[módulo]    planejados: avaliacoes, prescricao, biblioteca, fontes, meu-site, leads, configuracoes
 
 /aluno                    início                 /aluno/[módulo]   planejados: treino, evolucao, check-in, documentos, mensagens, conta
@@ -48,7 +49,7 @@ Uma mesma conta pode ter mais de uma área (por exemplo, gestor e profissional).
 /api/health  /api/auth/*
 ```
 
-Endereços anteriores (`/alunos`, `/alunos/...`, `/planejamento`) redirecionam para os novos. Links internos usam `next/link`; o mount path vem do build (`BASE_URL`).
+Endereços anteriores (`/alunos`, `/alunos/...`, `/planejamento`) redirecionam para os novos. Links internos usam `next/link`; o mount path é aplicado pelo builder da plataforma e o código do navegador o descobre pela barra de endereço (ver `AUTENTICACAO.md`).
 
 ## 4. Autorização
 
@@ -75,7 +76,7 @@ Correspondência com os papéis do handoff V2:
 | Dashboard | `/profissional` | Disponível: contagens e próximos passos reais | E1 |
 | Alunos (lista, detalhe) | `/profissional/alunos` | Disponível: cadastro, vínculo técnico, convite | E1 |
 | Avaliações | `/profissional/avaliacoes` | Planejado | E2 |
-| Periodização | `/profissional/periodizacao` | Disponível: planejador sem persistência | E2 |
+| Periodização | `/profissional/periodizacao` | Disponível: planejador avulso (sem salvar) e **planos salvos por aluno** em `/profissional/alunos/<id>/planos/...`, com revisões e estado Rascunho / Estrutura pronta. Só a estrutura do ciclo; sem exercícios nem aprovação | E2 |
 | Prescrição | `/profissional/prescricao` | Planejado (**prévia** na demonstração) | E2 |
 | Biblioteca de exercícios | `/profissional/biblioteca` | Planejado | E2 |
 | Fontes técnicas | `/profissional/fontes` | Planejado | E7 |
