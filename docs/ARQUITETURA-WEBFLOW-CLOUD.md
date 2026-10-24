@@ -26,7 +26,7 @@ flowchart TB
   M[Sites públicos] --> C[API comercial pública]
   C --> S
   S --> DB[(SQLite nativo / binding DB)]
-  S --> O[Object Storage nativo - futuro]
+  S --> O[Object Storage nativo - fotos de postura]
   DB --> J[Outbox + consumidor durável a selecionar]
 ```
 
@@ -53,12 +53,13 @@ Esta base é um app na raiz do repositório, com módulos internos. Sites e port
 | assessments | Avaliação datada (inicial ou reavaliação): seis itens de triagem e `risk_status` que o banco amarra às marcas. Rascunho editável; registrada é imutável por gatilhos (0009) |
 | assessment_metrics | Indicadores da avaliação: texto digitado, valor numérico quando simples, unidade e lado. Mudam só em rascunho (0009) |
 | assessment_reviews | Revisão do alerta pelo profissional, só de acréscimo, com a base escrita por ele. Não apaga o alerta (0009) |
+| assessment_photos | Índice das fotos de postura (quatro vistas por avaliação): a imagem fica no Object Storage (`PHOTOS`), nunca no banco nem em endereço público; congela com a avaliação (0011) |
 | assessment_findings | Achados posturais marcados e testes de movimento com a escala do documento; só linhas registradas, congeladas com a avaliação (0010) |
 | student_profiles | Ficha do aluno (dado pessoal e de saúde): uma linha por aluno, só profissional com vínculo técnico (0008) |
 | prescribed_exercises | Exercício prescrito numa revisão: instantâneo de nome e vídeo, dose em texto livre, origem. Só muda em rascunho (0006) |
 | exercises | Biblioteca: `organization_id` nulo é o sistema (somente leitura, seed de 64); senão pertence à organização. `name_key` calculado no código decide duplicidade (0005) |
 
-O PDF do plano entregue (0.11) não tem tabela: `src/modules/pdf/plan-pdf.ts` o gera sob demanda com pdf-lib, a partir da revisão entregue (imutável). Cada download grava `PLAN_PDF_DOWNLOADED` em `access_audit_events`. Nenhum arquivo é guardado, porque o Worker não tem disco persistente.
+O Object Storage nativo (R2, binding `PHOTOS`) guarda as fotos de postura (0.14): o bucket não tem endereço público, a chave é imprevisível e a leitura passa por rota autenticada que confere o vínculo técnico; o banco guarda só o índice. O PDF do plano entregue (0.11) não tem tabela: `src/modules/pdf/plan-pdf.ts` o gera sob demanda com pdf-lib, a partir da revisão entregue (imutável). Cada download grava `PLAN_PDF_DOWNLOADED` em `access_audit_events`. Nenhum arquivo é guardado, porque o Worker não tem disco persistente.
 
 IDs de domínio são UUIDs gerados pelo servidor. As identidades Better Auth usam IDs próprios. Datas usam UTC ISO-8601; o calendário usa timezone IANA. Foreign keys compostas impedem cruzar organização, aluno e profissional. Futuros valores monetários serão inteiros em centavos e percentuais em pontos-base.
 

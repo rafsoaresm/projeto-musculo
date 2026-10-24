@@ -47,4 +47,5 @@ export const ALL_MIGRATIONS = [
   "0008_student_profiles.sql",
   "0009_assessments.sql",
   "0010_posture_and_movement.sql",
+  "0011_assessment_photos.sql",
 ];

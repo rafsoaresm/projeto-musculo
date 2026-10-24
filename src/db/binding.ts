@@ -7,3 +7,10 @@ export async function getDatabase() {
   if (!env.DB) throw new Error("DATABASE_BINDING_UNAVAILABLE");
   return env.DB;
 }
+
+/** The private photo bucket of this request, or an error when the storage is not provisioned. */
+export async function getPhotoBucket() {
+  const { env } = await getCloudflareContext({ async: true });
+  if (!env.PHOTOS) throw new Error("PHOTO_STORAGE_UNAVAILABLE");
+  return env.PHOTOS;
+}

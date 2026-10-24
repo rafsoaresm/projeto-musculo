@@ -3,6 +3,7 @@ import { useState, useTransition } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Notice } from "@/components/ui";
 import type { AssessmentDetail } from "@/db/assessments";
+import { PhotosFieldset } from "./photos-fieldset";
 import { recordAssessment, saveAssessment } from "./actions";
 import {
   CLEAR_TEXT,
@@ -58,7 +59,14 @@ function draftsFrom(detail: AssessmentDetail): MetricDraft[] {
  * Nothing is interpreted here. The status is computed from the marked items, in the browser only
  * for the preview and again on the server for the record.
  */
-export function AssessmentForm({ detail }: { detail: AssessmentDetail }) {
+export function AssessmentForm({
+  detail,
+  minor,
+}: {
+  detail: AssessmentDetail;
+  /** The student is known to be under 18: photos are not accepted. */
+  minor: boolean;
+}) {
   const [assessedOn, setAssessedOn] = useState(detail.assessedOn);
   const [flags, setFlags] = useState(detail.flags);
   const [screeningNotes, setScreeningNotes] = useState(detail.screeningNotes ?? "");
@@ -256,6 +264,13 @@ export function AssessmentForm({ detail }: { detail: AssessmentDetail }) {
           />
         </label>
       </fieldset>
+
+      <PhotosFieldset
+        studentId={detail.studentId}
+        assessmentId={detail.id}
+        photos={detail.photos}
+        minor={minor}
+      />
 
       <fieldset>
         <legend>Movimento, mobilidade e controle</legend>

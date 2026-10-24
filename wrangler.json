@@ -6,6 +6,12 @@
   "compatibility_flags": ["nodejs_compat"],
   "assets": { "binding": "ASSETS", "directory": ".open-next/assets" },
   "observability": { "enabled": true },
+  "r2_buckets": [
+    {
+      "binding": "PHOTOS",
+      "bucket_name": "trainer-prescription-photos"
+    }
+  ],
   "d1_databases": [
     {
       "binding": "DB",

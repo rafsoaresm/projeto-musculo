@@ -1970,3 +1970,41 @@ label.check input {
   gap: 6px;
   padding-left: 18px;
 }
+
+/* ---------- Postural photos ---------- */
+.photo-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+.photo-slot {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  margin: 0;
+}
+.posture-photo {
+  display: block;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  background: var(--color-background);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+}
+.posture-photo.empty,
+.posture-photo.placeholder {
+  display: grid;
+  place-items: center;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+.button.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+@media (max-width: 860px) {
+  .photo-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

@@ -1,6 +1,8 @@
 import { Notice, Pill, formatDateTime } from "@/components/ui";
 import type { AssessmentDetail } from "@/db/assessments";
 import { formatCalendarDate } from "@/modules/training/format";
+import { PhotoImage } from "./photo-image";
+import { PHOTO_VIEWS } from "./photos";
 import { ReviewForm } from "./review-form";
 import { ScreeningPill } from "./screening-pill";
 import {
@@ -79,6 +81,32 @@ export function AssessmentView({ detail }: { detail: AssessmentDetail }) {
           </>
         )}
       </section>
+
+      {detail.photos.length > 0 && (
+        <section className="panel" aria-labelledby="fotos-titulo">
+          <p className="eyebrow">FOTOS</p>
+          <h2 id="fotos-titulo">Fotos da postura</h2>
+          <p className="muted">
+            Registro visual, não diagnóstico. As fotos ficam no armazenamento privado e só aparecem para você.
+          </p>
+          <div className="photo-grid">
+            {PHOTO_VIEWS.filter((view) => detail.photos.some((photo) => photo.view === view.key)).map((view) => (
+              <figure key={view.key} className="photo-slot">
+                <PhotoImage
+                  studentId={detail.studentId}
+                  assessmentId={detail.id}
+                  view={view.key}
+                  stamp={detail.photos.find((photo) => photo.view === view.key)?.createdAt ?? ""}
+                  alt={`Foto ${view.label.toLowerCase()} do aluno`}
+                />
+                <figcaption>
+                  <strong>{view.label}</strong>
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="panel" aria-labelledby="movimento-titulo">
         <p className="eyebrow">MOVIMENTO</p>
