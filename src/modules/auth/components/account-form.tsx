@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useMountPath } from "@/components/use-mount-path";
 
 type Audience = "profissional" | "aluno";
 
@@ -40,6 +41,7 @@ export function AccountForm({
   switchTo?: { href: string; label: string };
 }) {
   const router = useRouter();
+  const mountPath = useMountPath();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const text = signup ? copy[audience] : copy.login;
@@ -54,7 +56,7 @@ export function AccountForm({
     const data = new FormData(event.currentTarget);
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/api/auth/${signup ? "sign-up" : "sign-in"}/email`,
+        `${mountPath()}/api/auth/${signup ? "sign-up" : "sign-in"}/email`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -66,11 +68,14 @@ export function AccountForm({
         },
       );
       if (!response.ok) {
+        // 400/401/422 are about what was typed. Anything else means the access
+        // service itself did not answer as expected, which is not the user's fault.
+        const typed = [400, 401, 422].includes(response.status);
         setError(
           response.status === 429
             ? "Muitas tentativas. Aguarde um minuto e tente novamente."
-            : response.status === 503
-              ? "Acesso temporariamente indisponível. Tente novamente mais tarde."
+            : !typed
+              ? "O serviço de acesso não respondeu como esperado. Tente novamente em instantes."
               : signup
                 ? "Não foi possível criar a conta. Confira os dados ou tente entrar."
                 : "Não foi possível entrar. Confira seu e-mail e sua senha.",

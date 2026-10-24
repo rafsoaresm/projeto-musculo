@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
+import { useMountPath } from "@/components/use-mount-path";
 
 export function SignOut({
   redirectTo = "/entrar",
@@ -15,6 +16,7 @@ export function SignOut({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState(false);
   const router = useRouter();
+  const mountPath = useMountPath();
   return (
     <>
       <button
@@ -31,7 +33,7 @@ export function SignOut({
           setError(false);
           try {
             const response = await fetch(
-              `${process.env.NEXT_PUBLIC_BASE_PATH || ""}/api/auth/sign-out`,
+              `${mountPath()}/api/auth/sign-out`,
               {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },

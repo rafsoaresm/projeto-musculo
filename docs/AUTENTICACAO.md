@@ -28,11 +28,11 @@ Configure no ambiente privado do app:
 |---|---|
 | `AUTH_SECRET` | Segredo criptograficamente aleatório, independente por ambiente, mínimo 32 caracteres; sem prefixo NEXT_PUBLIC |
 | `AUTH_ORIGIN` | Origem HTTPS exata, como `https://painel.example.com`, sem barra final/caminho |
-| `BASE_URL` | Mount path no build, por exemplo `/treinador`; vazio na raiz |
+| `BASE_URL` | Somente para simular um subcaminho em build/teste local, por exemplo `/treinador`. **No Webflow não defina**: o builder aplica o mount path (`/app`) sozinho |
 | `PLATFORM_SETUP_TOKEN` | Segredo de 32+ caracteres para ativar o primeiro gestor. Remova ou troque depois. Sem ele, `/gestor/ativar` informa que a ativação não está configurada |
 | `DEMO_MODE` | `true` liga `/demonstracao` (dados fictícios). Vazio ou ausente mantém desligada; deixe desligada em produção se não quiser a área pública |
 
-O mount path precisa corresponder ao configurado no Webflow. `NEXT_PUBLIC_BASE_PATH` é derivado no build somente para URLs; não contém segredo. O builder Webflow também configura basePath/assetPrefix; conferir se ambos apontam para o mesmo caminho no deploy. O segredo e a origem são lidos de bindings/variáveis do servidor, nunca do host enviado pelo navegador. Sem configuração válida, o endpoint de autenticação responde 503, sem fallback público de segredo.
+O mount path é decidido pelo builder Webflow (basePath/assetPrefix) e **não** depende de variável deste repositório. Por isso o navegador nunca monta endereços de API a partir de `NEXT_PUBLIC_BASE_PATH`: `useMountPath()` (`src/components/use-mount-path.ts`) tira o caminho da própria barra de endereço, comparando-a com o `usePathname()` do Next (que não inclui o mount path). Cadastro, entrada, saída e o link de convite usam esse caminho. No servidor, o cookie de sessão é restrito ao mount path efetivo (`process.env.__NEXT_ROUTER_BASEPATH`, valor que o Next incorpora ao compilar, com `NEXT_PUBLIC_BASE_PATH` como reserva); `request.nextUrl.basePath` não serve porque o OpenNext remove o prefixo antes do handler. `tests/mount-path.test.ts` impede que código de navegador volte a usar a variável de build. O segredo e a origem são lidos de bindings/variáveis do servidor, nunca do host enviado pelo navegador. Sem configuração válida, o endpoint de autenticação responde 503, sem fallback público de segredo.
 
 O DB continua nativo; não há URL de banco externo. Migrations 0001 e 0002 são necessárias. Em homologação, validar cadastro, login, cookies, CSRF, logout e tentativa de acessar um aluno de outra organização na URL real. O domínio do painel deve ser privado, separado de scripts de marketing.
 
