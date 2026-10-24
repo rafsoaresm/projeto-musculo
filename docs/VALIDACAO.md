@@ -1,6 +1,20 @@
-# Evidências de validação — v0.11 (PDF do plano entregue) sobre a base 0.3
+# Evidências de validação — v0.12 (postura e movimento) sobre a base 0.3
 
-Tudo abaixo foi executado **localmente** em 23/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0009 são aditivas. A 0.11 não tem migration nova.
+Tudo abaixo foi executado **localmente** em 23/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0010 são aditivas.
+
+## Fatia 0.12: postura e movimento nas avaliações
+
+Seções 8 e 9 do documento mestre, dentro da mesma avaliação datada da 0.10: o que foi observado fica registrado, congelado com a avaliação, e **não muda a triagem**.
+
+- **Migration 0010 (`assessment_findings`):** uma linha por achado marcado ou por teste registrado. O achado postural só existe marcado; o teste de movimento carrega a escala. Um `CHECK` amarra a área ao conteúdo (teste de movimento sempre com resultado, achado postural nunca), uma chave única impede repetir o item e gatilhos congelam as linhas junto com a avaliação registrada. As listas de itens e a escala ficam no código, como as demais listas do produto, para que acrescentar um item não reconstrua tabela.
+- **Postura (seção 8):** os 18 itens do documento, em três vistas (anterior, lateral e posterior), mais as notas posturais. O formulário diz "registro visual e hipótese de trabalho, não diagnóstico" e que o que não é marcado fica como **não observado, não como normal**. Os nomes são os do documento ("valgo aparente", "aumento aparente de cifose").
+- **Movimento (seção 9):** os 9 testes e a escala de cinco níveis do documento (não avaliado, sem limitação observada, limitação leve, limitação moderada, interrompido por dor/desconforto), com observação por teste. "Não avaliado" sem observação não é gravado; ausência de linha significa não avaliado.
+- **Decisão de produto mantida do documento:** só os seis itens da seção 7.1 geram `REVIEW_REQUIRED`. Um teste "interrompido por dor/desconforto" aparece em destaque na avaliação registrada, mas **não** cria alerta nem bloqueia aprovar e entregar. Se você quiser que ele conte como sinal, é uma decisão sua (e do responsável técnico) e uma mudança pequena.
+- **Salvar substitui tudo:** o que não é enviado não é guardado; um rascunho salvo sem esses campos os limpa. O formulário sempre envia tudo.
+- **Fora desta fatia:** fotos (anterior, laterais e posterior), desenho sobre imagem e comparação entre avaliações, porque não há armazenamento privado de arquivos; os efeitos da seção 9 em regressões, progressões e seleção de exercício ("regra futura" do documento); e qualquer análise automática de imagem, que o documento proíbe para declarar patologia.
+- **Testes de D1 (`tests/assessments.test.ts`, +6 = 24):** os itens do documento e nada além (18 e 9, escala de cinco, chave desconhecida, campo extra e teste repetido recusados); nenhuma combinação muda o status de risco; salvar, ler de volta na ordem do documento sem repetir, substituir e limpar; quem não tem vínculo técnico não grava e nada muda, e um payload inválido não grava; congelamento junto com a avaliação registrada, também por SQL direto; `CHECK`, chave única e chave composta do banco. Mutações deliberadas (não apagar antes de gravar, tirar o vínculo da gravação, gravar também os "não avaliado" vazios) fizeram testes falharem.
+- **Navegador (`tests/e2e/assessments.spec.ts`):** os itens e a escala aparecem; o que foi marcado sobrevive ao recarregar; a avaliação registrada mostra só o que foi marcado e o teste interrompido por dor com a observação. Que isso não mexe na triagem está provado nos testes de D1. Desktop e celular, na raiz e em `/treinador`. Capturas do formulário e da visão registrada conferidas.
+- **Limites:** não validado no Webflow; a migration 0010 só chega ao banco remoto no próximo deploy (a saúde responde 503 até lá).
 
 ## Fatia 0.11: PDF do plano entregue
 
@@ -107,13 +121,13 @@ Cobre **só a estrutura do ciclo** (fases, semanas, sessões, divisão e calend�
 
 ## Código e banco
 
-- `npm run check`: ESLint e TypeScript sem erros e **194 testes, nenhum ignorado**: 17 de isolamento D1, 15 de identidade, 26 de periodização, 31 de papéis, 12 de contrato de navegação/fixtures, 5 de caminho de montagem, 9 de planos salvos, 9 de biblioteca, 21 de prescrição, 16 de aprovação, entrega, situação da triagem e documento entregue, 7 de ficha, 18 de avaliações e 8 de PDF.
+- `npm run check`: ESLint e TypeScript sem erros e **200 testes, nenhum ignorado**: 17 de isolamento D1, 15 de identidade, 26 de periodização, 31 de papéis, 12 de contrato de navegação/fixtures, 5 de caminho de montagem, 9 de planos salvos, 9 de biblioteca, 21 de prescrição, 16 de aprovação, entrega, situação da triagem e documento entregue, 7 de ficha, 24 de avaliações e 8 de PDF.
 - Os 31 testes de `tests/roles.test.ts` usam D1 real (Miniflare) com as três migrations e cobrem:
   - **Gestor:** ativação recusada sem token configurado, com token curto ou errado; exatamente um gestor sob concorrência; token inerte depois; e-mail e papel de proprietário não concedem o papel; revogado ou bloqueado perde o acesso na hora.
   - **Escopo do gestor:** vê organizações e contagens; o resultado serializado não contém nome de aluno; `studentsFor` e a criação de convite não funcionam para ele em nenhuma organização; bloqueio e restabelecimento com auditoria; não bloqueia a si mesmo, outro gestor ou quem não é da organização; a auditoria do gestor lista só ações de plataforma.
   - **Convite:** só o profissional com vínculo técnico ativo cria (dono sem atribuição, outro profissional, papel comercial, outro tenant e cliente são recusados); só o hash é guardado; novo link invalida o pendente; token malformado, desconhecido, expirado, revogado ou reutilizado não vincula; dois aceites simultâneos têm um único vencedor; identidade bloqueada não aceita; um aluno não ganha segundo login ativo; o cliente vê apenas o próprio registro e só na própria organização; revogar encerra o acesso na requisição seguinte; um cliente com duas organizações não as mistura.
   - **Áreas:** combinações de papéis por identidade, revogação de vínculo e distinção entre cliente revogado e login novo.
-- Migrations 0001 a 0009 aplicadas no SQLite local por Wrangler (`db:migrate:local`); a saúde consulta `0009_assessments`.
+- Migrations 0001 a 0010 aplicadas no SQLite local por Wrangler (`db:migrate:local`); a saúde consulta `0010_posture_and_movement`.
 - `npm run build:cloud` (bundle OpenNext/Workers) concluído sem erro na raiz e em `/treinador`.
 
 ## Navegador (Playwright, Worker local)
@@ -126,7 +140,7 @@ Cobre **só a estrutura do ciclo** (fases, semanas, sessões, divisão e calend�
 | Planejador (2 cenários) | Fases independentes, exportação do rascunho, invalidação do resultado, 12 fases — agora atrás de login |
 | Biblioteca de exercícios | 64 do sistema, filtros, cópia, criação, revisão de vídeo em duas gravações, isolamento entre organizações (seção da fatia 0.5a) |
 | PDF do plano | Baixar só depois de entregar, profissional e aluno recebem o mesmo arquivo, 404 para outro aluno, sem sessão não recebe (seção da fatia 0.11, dentro do cenário de entrega) |
-| Avaliações e triagem | Seis itens do documento, registro sem marcas exige confirmação, indicador inválido não apaga o digitado, registrada somente leitura, revisão com base, alerta sem revisão bloqueia aprovar e entregar, outra organização recebe 404 (seção da fatia 0.10) |
+| Avaliações e triagem | Seis itens do documento, postura e movimento com os itens e a escala do documento (seção da fatia 0.12), registro sem marcas exige confirmação, indicador inválido não apaga o digitado, registrada somente leitura, revisão com base, alerta sem revisão bloqueia aprovar e entregar, outra organização recebe 404 (seção da fatia 0.10) |
 | Ficha do aluno | Erro mantém o digitado, salva e persiste, resumo sem expor conteúdo, menor sinalizado, isolamento entre organizações (seção da fatia 0.9) |
 | Aprovação, entrega e treino do aluno | Aviso de triagem obrigatório, aprovar, entregar, o aluno só vê o entregue, nova revisão em rascunho invisível, revogação fecha (seção da fatia 0.8) |
 | Prescrição manual | Adicionar, editar, reordenar, duplicar, remover, copiar treino, estrutura recusada, revisão fechada, nova revisão com os exercícios (seção da fatia 0.6) |

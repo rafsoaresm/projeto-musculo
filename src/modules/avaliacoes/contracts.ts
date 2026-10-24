@@ -39,6 +39,81 @@ export const SIDES = ["LEFT", "RIGHT", "BOTH"] as const;
 export const SIDE_LABEL = { LEFT: "Esquerdo", RIGHT: "Direito", BOTH: "Ambos" } as const;
 export const MAX_METRICS = 30;
 
+/**
+ * Postural analysis (master document, section 8): a visual record and a working hypothesis,
+ * never a diagnosis. These are the items of the document and nothing else. Marking one does not
+ * change the risk status, which only the screening items decide.
+ */
+export const POSTURE_VIEWS = [
+  {
+    key: "ANTERIOR",
+    label: "Vista anterior",
+    items: [
+      { key: "ANTERIOR.HEAD_TILT", label: "Inclinação da cabeça" },
+      { key: "ANTERIOR.SHOULDER_ASYMMETRY", label: "Assimetria de ombros" },
+      { key: "ANTERIOR.PELVIS_ASYMMETRY", label: "Assimetria de pelve" },
+      { key: "ANTERIOR.KNEE_VALGUS", label: "Valgo aparente de joelhos" },
+      { key: "ANTERIOR.KNEE_VARUS", label: "Varo aparente de joelhos" },
+      { key: "ANTERIOR.FOOT_ASYMMETRY", label: "Assimetria dos pés" },
+    ],
+  },
+  {
+    key: "LATERAL",
+    label: "Vista lateral",
+    items: [
+      { key: "LATERAL.FORWARD_HEAD", label: "Cabeça anteriorizada" },
+      { key: "LATERAL.FORWARD_SHOULDERS", label: "Ombros anteriorizados" },
+      { key: "LATERAL.KYPHOSIS", label: "Aumento aparente de cifose" },
+      { key: "LATERAL.LORDOSIS", label: "Aumento aparente de lordose" },
+      { key: "LATERAL.ANTERIOR_PELVIS", label: "Pelve anteriorizada" },
+      { key: "LATERAL.KNEE_HYPEREXTENSION", label: "Joelho hiperestendido" },
+    ],
+  },
+  {
+    key: "POSTERIOR",
+    label: "Vista posterior",
+    items: [
+      { key: "POSTERIOR.SCAPULAR_ASYMMETRY", label: "Assimetria escapular" },
+      { key: "POSTERIOR.LATERAL_DEVIATION", label: "Desvio lateral aparente" },
+      { key: "POSTERIOR.PELVIC_ASYMMETRY", label: "Assimetria pélvica" },
+      { key: "POSTERIOR.CALCANEUS_ASYMMETRY", label: "Assimetria de calcâneo" },
+      { key: "POSTERIOR.ASYMMETRIC_SUPPORT", label: "Apoio assimétrico" },
+      { key: "POSTERIOR.OTHER_VISUAL", label: "Outro achado visual" },
+    ],
+  },
+] as const;
+export type PostureKey = (typeof POSTURE_VIEWS)[number]["items"][number]["key"];
+export const POSTURE_KEYS = POSTURE_VIEWS.flatMap((view) => view.items.map((item) => item.key)) as [
+  PostureKey,
+  ...PostureKey[],
+];
+/** The stored item that carries the free postural notes. */
+export const POSTURE_NOTES_ITEM = "NOTES";
+
+/** Movement, mobility and control (section 9): the nine tests and the five-step scale. */
+export const MOVEMENT_TESTS = [
+  { key: "SQUAT", label: "Agachamento" },
+  { key: "HIP_HINGE", label: "Dobradiça de quadril" },
+  { key: "LUNGE", label: "Avanço / passada" },
+  { key: "PUSH", label: "Empurrar" },
+  { key: "PULL", label: "Puxar" },
+  { key: "CORE_STABILITY", label: "Estabilidade do core" },
+  { key: "SINGLE_LEG_BALANCE", label: "Equilíbrio unipodal" },
+  { key: "ANKLE_MOBILITY", label: "Mobilidade de tornozelo" },
+  { key: "SHOULDER_MOBILITY", label: "Mobilidade de ombro" },
+] as const;
+export type MovementKey = (typeof MOVEMENT_TESTS)[number]["key"];
+export const MOVEMENT_KEYS = MOVEMENT_TESTS.map((test) => test.key) as [MovementKey, ...MovementKey[]];
+export const MOVEMENT_GRADES = [
+  { key: "NOT_ASSESSED", label: "Não avaliado" },
+  { key: "NO_LIMITATION", label: "Sem limitação observada" },
+  { key: "MILD", label: "Limitação leve" },
+  { key: "MODERATE", label: "Limitação moderada" },
+  { key: "STOPPED_BY_PAIN", label: "Interrompido por dor/desconforto" },
+] as const;
+export type MovementGrade = (typeof MOVEMENT_GRADES)[number]["key"];
+export const GRADE_KEYS = MOVEMENT_GRADES.map((grade) => grade.key) as [MovementGrade, ...MovementGrade[]];
+
 const text = (max: number) =>
   z
     .string()
@@ -83,6 +158,28 @@ const metricSchema = z
   });
 export type MetricInput = z.output<typeof metricSchema>;
 
+const postureSchema = z
+  .object({
+    findings: z
+      .array(z.enum(POSTURE_KEYS))
+      .max(POSTURE_KEYS.length)
+      .default([])
+      .transform((keys) => [...new Set(keys)]),
+    notes: text(1000),
+  })
+  .strict();
+const movementSchema = z
+  .array(
+    z
+      .object({ test: z.enum(MOVEMENT_KEYS), grade: z.enum(GRADE_KEYS), notes: text(500) })
+      .strict(),
+  )
+  .max(MOVEMENT_KEYS.length)
+  .superRefine((rows, context) => {
+    if (new Set(rows.map((row) => row.test)).size !== rows.length)
+      context.addIssue({ code: "custom", message: "MOVEMENT_DUPLICATE" });
+  });
+
 const flag = z.boolean().default(false);
 const base = z
   .object({
@@ -102,6 +199,8 @@ const base = z
     screeningNotes: text(1000),
     notes: text(1000),
     metrics: z.array(metricSchema).max(MAX_METRICS).default([]),
+    posture: postureSchema.default({ findings: [], notes: null }),
+    movement: movementSchema.default([]),
   })
   .strict();
 export type AssessmentInput = z.output<typeof base> & { riskStatus: RiskStatus };

@@ -1,8 +1,14 @@
 import type { D1Database, D1PreparedStatement } from "@cloudflare/workers-types";
 import {
+  MOVEMENT_KEYS,
   parseAssessment,
+  POSTURE_KEYS,
+  POSTURE_NOTES_ITEM,
   SCREENING_ITEMS,
   type MetricInput,
+  type MovementGrade,
+  type MovementKey,
+  type PostureKey,
   type RiskStatus,
   type ScreeningKey,
 } from "@/modules/avaliacoes/contracts";
@@ -40,12 +46,21 @@ export interface ReviewRow {
   basis: string;
   reviewedAt: string;
 }
+export interface MovementRow {
+  test: MovementKey;
+  grade: MovementGrade;
+  notes: string | null;
+}
 export interface AssessmentDetail extends AssessmentSummary {
   previousAssessmentId: string | null;
   flags: Record<ScreeningKey, boolean>;
   screeningNotes: string | null;
   notes: string | null;
   metrics: MetricRow[];
+  /** Marked postural findings and the free notes. Absent means not marked, never "normal". */
+  posture: { findings: PostureKey[]; notes: string | null };
+  /** Only the tests that were recorded. A test with no row was not assessed. */
+  movement: MovementRow[];
   reviews: ReviewRow[];
 }
 /**
@@ -162,7 +177,7 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
           notes: string | null;
         }>();
       if (!row) return null;
-      const [metrics, reviews] = await Promise.all([
+      const [metrics, findings, reviews] = await Promise.all([
         db
           .prepare(
             `SELECT m.metric_type AS metricType, m.name, m.value_text AS valueText,
@@ -172,6 +187,13 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
           )
           .bind(organizationId, assessmentId)
           .all<MetricRow>(),
+        db
+          .prepare(
+            `SELECT f.area, f.item, f.grade, f.notes FROM assessment_findings f
+             WHERE f.organization_id = ?1 AND f.assessment_id = ?2 ORDER BY f.rowid`,
+          )
+          .bind(organizationId, assessmentId)
+          .all<{ area: "POSTURE" | "MOVEMENT"; item: string; grade: string | null; notes: string | null }>(),
         db
           .prepare(
             `SELECT r.reviewer_user_id AS reviewerUserId, p.display_name AS reviewerName,
@@ -201,6 +223,16 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
         screeningNotes: row.screeningNotes,
         notes: row.notes,
         metrics: metrics.results,
+        posture: {
+          findings: POSTURE_KEYS.filter((key) =>
+            findings.results.some((f) => f.area === "POSTURE" && f.item === key),
+          ),
+          notes: findings.results.find((f) => f.area === "POSTURE" && f.item === POSTURE_NOTES_ITEM)?.notes ?? null,
+        },
+        movement: MOVEMENT_KEYS.flatMap((test) => {
+          const found = findings.results.find((f) => f.area === "MOVEMENT" && f.item === test);
+          return found ? [{ test, grade: found.grade as MovementGrade, notes: found.notes }] : [];
+        }),
         reviews: reviews.results,
       };
     },
@@ -236,12 +268,24 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
       }
     },
 
-    /** Replaces the content of an open draft, metrics included. False for anything else. */
+    /**
+     * Replaces the content of an open draft: screening, metrics, posture and movement. What is
+     * not sent is not kept. A movement test marked "not assessed" without notes is simply left out.
+     */
     async saveDraft(assessmentId: string, raw: unknown, now = new Date()): Promise<boolean> {
       const input = parseAssessment(raw, now);
       const stamp = now.toISOString();
       const open = `EXISTS (SELECT 1 FROM assessments a WHERE a.organization_id = ?1 AND a.id = ?3
         AND a.state = 'DRAFT' AND ${reachAssessment("a")})`;
+      const findingRows: Array<{ area: "POSTURE" | "MOVEMENT"; item: string; grade: string | null; notes: string | null }> = [
+        ...input.posture.findings.map((item) => ({ area: "POSTURE" as const, item, grade: null, notes: null })),
+        ...(input.posture.notes
+          ? [{ area: "POSTURE" as const, item: POSTURE_NOTES_ITEM, grade: null, notes: input.posture.notes }]
+          : []),
+        ...input.movement
+          .filter((row) => row.grade !== "NOT_ASSESSED" || row.notes)
+          .map((row) => ({ area: "MOVEMENT" as const, item: row.test, grade: row.grade, notes: row.notes })),
+      ];
       const flagColumns = SCREENING_ITEMS.map((item, index) => `${item.column} = ?${index + 6}`);
       const results = await db.batch([
         db
@@ -273,6 +317,18 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
               metric.name, metric.valueText, metric.valueNumber, metric.unit, metric.side,
               metric.notes, index + 1,
             ),
+        ),
+        db
+          .prepare(`DELETE FROM assessment_findings WHERE organization_id = ?1 AND assessment_id = ?3 AND ${open}`)
+          .bind(organizationId, userId, assessmentId),
+        ...findingRows.map((row) =>
+          db
+            .prepare(
+              `INSERT INTO assessment_findings (id, organization_id, assessment_id, area, item, grade, notes)
+               SELECT ?4, ?1, ?3, ?5, ?6, ?7, ?8
+               WHERE ${open}`,
+            )
+            .bind(organizationId, userId, assessmentId, crypto.randomUUID(), row.area, row.item, row.grade, row.notes),
         ),
       ]);
       return results[0].meta.changes > 0;

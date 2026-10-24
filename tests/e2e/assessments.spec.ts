@@ -83,6 +83,22 @@ test("screening and indicators are recorded once, reviewed on top, and stay insi
   await expect(page.getByRole("button", { name: "Registrar avaliação" })).toBeEnabled();
   await page.getByLabel("Detalhes da triagem").fill("Relatou aperto no peito ao subir escada");
 
+  // Posture and movement, with the items and the scale of the master document.
+  await expect(page.getByText("Registro visual e hipótese de trabalho, não diagnóstico.", { exact: false })).toBeVisible();
+  const lateral = page.getByRole("group", { name: "Vista lateral" });
+  await lateral.getByLabel("Cabeça anteriorizada").check();
+  await lateral.getByLabel("Joelho hiperestendido").check();
+  await page.getByRole("group", { name: "Vista anterior" }).getByLabel("Valgo aparente de joelhos").check();
+  await page.getByLabel("Notas posturais").fill("Sem fotos nesta avaliação");
+  const push = page.getByRole("group", { name: "Empurrar" });
+  await expect(push.getByRole("combobox")).toHaveValue("NOT_ASSESSED");
+  await expect(push.getByRole("combobox").locator("option")).toHaveText([
+    "Não avaliado", "Sem limitação observada", "Limitação leve", "Limitação moderada", "Interrompido por dor/desconforto",
+  ]);
+  await push.getByRole("combobox").selectOption("STOPPED_BY_PAIN");
+  await push.getByLabel("Observação (Empurrar)").fill("Dor no ombro direito");
+  await page.getByRole("group", { name: "Agachamento" }).getByRole("combobox").selectOption("MILD");
+
   // Indicators: a value that does not fit its type is refused and nothing typed is lost.
   await page.getByRole("button", { name: "Adicionar indicador" }).click();
   await page.getByRole("group", { name: "Indicador 1" }).getByLabel("Valor").fill("62");
@@ -108,6 +124,12 @@ test("screening and indicators are recorded once, reviewed on top, and stay insi
   await page.reload();
   await expect(page.getByLabel("Dor torácica relatada", { exact: true })).toBeChecked();
   await expect(page.getByRole("group", { name: "Indicador 1" }).getByLabel("Valor")).toHaveValue("62");
+  await expect(page.getByRole("group", { name: "Vista lateral" }).getByLabel("Cabeça anteriorizada")).toBeChecked();
+  await expect(page.getByRole("group", { name: "Vista lateral" }).getByLabel("Aumento aparente de cifose")).not.toBeChecked();
+  await expect(page.getByLabel("Notas posturais")).toHaveValue("Sem fotos nesta avaliação");
+  await expect(page.getByRole("group", { name: "Empurrar" }).getByRole("combobox")).toHaveValue("STOPPED_BY_PAIN");
+  await expect(page.getByRole("group", { name: "Agachamento" }).getByRole("combobox")).toHaveValue("MILD");
+  await expect(page.getByRole("group", { name: "Dobradiça de quadril" }).getByRole("combobox")).toHaveValue("NOT_ASSESSED");
   await expect(page.getByRole("group", { name: "Indicador 3" }).getByLabel("Nome da medida ou do teste")).toHaveValue(
     "Teste de sentar e levantar",
   );
@@ -129,6 +151,19 @@ test("screening and indicators are recorded once, reviewed on top, and stay insi
   await expect(page.getByRole("cell", { name: "120/80 mmHg" })).toBeVisible();
   await expect(page.getByText("Teste de sentar e levantar")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Salvar rascunho|Registrar avaliação|Adicionar indicador/ })).toHaveCount(0);
+  // Posture and movement are shown as recorded. They did not touch the screening: the alert is
+  // only the chest pain, and the stopped test is a recorded result, not a second alert.
+  await expect(page.getByRole("heading", { name: "Análise postural" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Vista lateral" })).toBeVisible();
+  await expect(page.getByRole("listitem").filter({ hasText: "Cabeça anteriorizada" })).toBeVisible();
+  await expect(page.getByRole("listitem").filter({ hasText: "Valgo aparente de joelhos" })).toBeVisible();
+  await expect(page.getByRole("listitem").filter({ hasText: "Aumento aparente de cifose" })).toHaveCount(0);
+  await expect(page.getByText("Sem fotos nesta avaliação")).toBeVisible();
+  const movementRows = page.getByRole("table", { name: "Testes de movimento da avaliação" }).getByRole("row");
+  await expect(movementRows.filter({ hasText: "Empurrar" })).toContainText("Interrompido por dor/desconforto");
+  await expect(movementRows.filter({ hasText: "Empurrar" })).toContainText("Dor no ombro direito");
+  await expect(movementRows.filter({ hasText: "Agachamento" })).toContainText("Limitação leve");
+  await expect(movementRows.filter({ hasText: "Dobradiça de quadril" })).toHaveCount(0);
   const recordedURL = page.url();
   await noHorizontalOverflow(page);
 

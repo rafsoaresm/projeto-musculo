@@ -77,7 +77,7 @@ Correspondência com os papéis do handoff V2:
 |---|---|---|---|
 | Dashboard | `/profissional` | Disponível: contagens e próximos passos reais | E1 |
 | Alunos (lista, detalhe) | `/profissional/alunos` | Disponível: cadastro, vínculo técnico, convite | E1 |
-| Avaliações | `/profissional/avaliacoes` (e `/profissional/alunos/<id>/avaliacoes`) | Disponível (0.10): triagem e indicadores; postura e movimento seguem planejados | E2 |
+| Avaliações | `/profissional/avaliacoes` (e `/profissional/alunos/<id>/avaliacoes`) | Disponível (0.10 e 0.12): triagem, indicadores, postura e movimento; fotos seguem planejadas | E2 |
 | Periodização | `/profissional/periodizacao` | Disponível: planejador avulso (sem salvar) e **planos salvos por aluno** em `/profissional/alunos/<id>/planos/...`, com revisões e estado Rascunho / Estrutura pronta. Só a estrutura do ciclo; sem exercícios nem aprovação | E2 |
 | Prescrição | `/profissional/prescricao` | Disponível: painel com a revisão mais recente de cada plano e as pendências por alvo. A prescrição manual acontece dentro de cada plano salvo do aluno, sem sugestões nem aprovação (**prévia** ilustrada na demonstração) | E2 |
 | Biblioteca de exercícios | `/profissional/biblioteca` | Disponível: 64 exercícios do sistema (somente leitura, vídeos são links de busca) e exercícios próprios da organização | E2 |
@@ -135,5 +135,5 @@ Ligue com `DEMO_MODE=true` no ambiente (o `npm run auth:setup:local` já faz iss
 - Origem privada separada para o portal e para o painel, múltiplos hosts e Object Storage privado (provas no Webflow Cloud).
 - E-mail verificado, recuperação de senha, convites de equipe, seleção entre organizações, conceder o papel de gestor pela interface.
 - Auditoria de login e de leitura. Hoje se grava ativação do gestor, bloqueios, criação/aceite de convite e revogação de acesso; só ativação e bloqueios têm tela (a do gestor).
-- Postura e movimento nas avaliações (E2); portal com execução do treino e evolução (E4). Avaliações com triagem, prescrição, aprovação, entrega e PDF do plano entregue já existem (0.4 a 0.11).
+- Fotos de postura (E2, dependem de armazenamento privado); portal com execução do treino e evolução (E4). Avaliações com triagem, postura e movimento, prescrição, aprovação, entrega e PDF do plano entregue já existem (0.4 a 0.12).
 - Decisões do handoff V2 ainda não tomadas: D01 (um site por profissional), D03 (mês civil × semanas), D04 (`REFER_OUT`), D06 (acesso de administradores a dados sensíveis), D08 (modelo comercial dos templates). O estilo escuro do painel também está em aberto.

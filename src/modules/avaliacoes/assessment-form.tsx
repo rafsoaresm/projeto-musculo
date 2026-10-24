@@ -8,11 +8,17 @@ import {
   CLEAR_TEXT,
   MAX_METRICS,
   METRIC_TYPES,
+  MOVEMENT_GRADES,
+  MOVEMENT_TESTS,
+  POSTURE_VIEWS,
   REVIEW_REQUIRED_TEXT,
   SCREENING_ITEMS,
   SIDES,
   SIDE_LABEL,
   type MetricType,
+  type MovementGrade,
+  type MovementKey,
+  type PostureKey,
 } from "./contracts";
 
 interface MetricDraft {
@@ -59,6 +65,16 @@ export function AssessmentForm({ detail }: { detail: AssessmentDetail }) {
   const [notes, setNotes] = useState(detail.notes ?? "");
   const [metrics, setMetrics] = useState<MetricDraft[]>(() => draftsFrom(detail));
   const [nextKey, setNextKey] = useState(detail.metrics.length);
+  const [posture, setPosture] = useState<PostureKey[]>(detail.posture.findings);
+  const [postureNotes, setPostureNotes] = useState(detail.posture.notes ?? "");
+  const [movement, setMovement] = useState<Record<MovementKey, { grade: MovementGrade; notes: string }>>(() =>
+    Object.fromEntries(
+      MOVEMENT_TESTS.map((test) => {
+        const saved = detail.movement.find((row) => row.test === test.key);
+        return [test.key, { grade: saved?.grade ?? "NOT_ASSESSED", notes: saved?.notes ?? "" }];
+      }),
+    ) as Record<MovementKey, { grade: MovementGrade; notes: string }>,
+  );
   const [asked, setAsked] = useState(false);
   const [message, setMessage] = useState("");
   const [failed, setFailed] = useState(false);
@@ -83,6 +99,12 @@ export function AssessmentForm({ detail }: { detail: AssessmentDetail }) {
       unit: text(metric.unit),
       side: metric.side === "" ? null : metric.side,
       notes: text(metric.notes),
+    })),
+    posture: { findings: posture, notes: text(postureNotes) },
+    movement: MOVEMENT_TESTS.map((test) => ({
+      test: test.key,
+      grade: movement[test.key].grade,
+      notes: text(movement[test.key].notes),
     })),
   });
 
@@ -188,6 +210,96 @@ export function AssessmentForm({ detail }: { detail: AssessmentDetail }) {
             </label>
           </>
         )}
+      </fieldset>
+
+      <fieldset>
+        <legend>Análise postural</legend>
+        <p className="small muted">
+          Registro visual e hipótese de trabalho, não diagnóstico. Marque o que
+          você observou; o que não for marcado fica como não observado, não
+          como normal. Não altera a triagem.
+        </p>
+        {POSTURE_VIEWS.map((view) => (
+          <div key={view.key} role="group" aria-label={view.label} className="check-group">
+            <p className="small muted">
+              <strong>{view.label}</strong>
+            </p>
+            {view.items.map((item) => (
+              <label key={item.key} className="check-row">
+                <input
+                  type="checkbox"
+                  checked={posture.includes(item.key)}
+                  onChange={(event) => {
+                    setPosture(
+                      event.target.checked
+                        ? [...posture, item.key]
+                        : posture.filter((key) => key !== item.key),
+                    );
+                    touch();
+                  }}
+                />
+                {item.label}
+              </label>
+            ))}
+          </div>
+        ))}
+        <label>
+          Notas posturais
+          <textarea
+            rows={2}
+            value={postureNotes}
+            maxLength={1000}
+            onChange={(event) => {
+              setPostureNotes(event.target.value);
+              touch();
+            }}
+          />
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Movimento, mobilidade e controle</legend>
+        <p className="small muted">
+          Escolha o resultado observado em cada teste. Os que ficarem em &ldquo;Não
+          avaliado&rdquo; não são gravados. Esta escala não altera a triagem.
+        </p>
+        {MOVEMENT_TESTS.map((test) => (
+          <div key={test.key} className="movement-row" role="group" aria-label={test.label}>
+            <label>
+              {test.label}
+              <select
+                value={movement[test.key].grade}
+                onChange={(event) => {
+                  setMovement({
+                    ...movement,
+                    [test.key]: { ...movement[test.key], grade: event.target.value as MovementGrade },
+                  });
+                  touch();
+                }}
+              >
+                {MOVEMENT_GRADES.map((grade) => (
+                  <option key={grade.key} value={grade.key}>
+                    {grade.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Observação ({test.label})
+              <input
+                value={movement[test.key].notes}
+                maxLength={500}
+                onChange={(event) => {
+                  setMovement({
+                    ...movement,
+                    [test.key]: { ...movement[test.key], notes: event.target.value },
+                  });
+                  touch();
+                }}
+              />
+            </label>
+          </div>
+        ))}
       </fieldset>
 
       <fieldset>

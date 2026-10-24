@@ -28,6 +28,7 @@ O binding `DB` em `wrangler.json` fornece o banco. Não é necessário criar con
 - Ativação única do gestor com `PLATFORM_SETUP_TOKEN`; o gestor lista organizações, bloqueia/restabelece acessos e consulta a auditoria, sem ver dados de alunos.
 - Interface responsiva com visão geral, mapa de produto e planejador de periodização.
 - Planejador de 3/6/12 fases, 3–6 semanas, 1–7 sessões por semana, splits e duração real. Exportação JSON versionada como `DRAFT`.
+- **Postura e movimento** (0.12): dentro da avaliação, os achados posturais das três vistas e os nove testes de movimento com a escala do documento mestre. Registro, não diagnóstico; não altera a triagem. Sem fotos por enquanto.
 - **PDF do plano entregue** (0.11): gerado no servidor para a revisão entregue, com versão, data, profissional e links de vídeo clicáveis. O profissional e o aluno baixam o mesmo arquivo; cada download é auditado.
 - **Avaliações e triagem** (0.10): registros datados com os seis itens de triagem do documento mestre e indicadores de base (FC de repouso, pressão como registrada, cintura, % de gordura e medidas livres). Qualquer item marcado dá "Revisão obrigatória antes da entrega.": bloqueia aprovar e entregar até o profissional registrar a revisão, com a base escrita por ele. Avaliação registrada é imutável também no banco; "nenhum sinal marcado" não é liberação clínica. Conteúdo do instrumento a conferir com o responsável técnico.
 - **Ficha do aluno** (0.9): identificação, contexto de treino, histórico e preferências, com os campos do documento mestre. Só o profissional com vínculo técnico vê; menores são sinalizados; base legal e consentimento seguem em aberto.
@@ -85,6 +86,6 @@ docs/referencias/        documentos originais e referência visual preservados
 - [Roadmap](docs/ROADMAP-IMPLEMENTACAO.md)
 - [Evidências de validação](docs/VALIDACAO.md)
 
-**Próxima fatia:** verificação de e-mail, recuperação de senha e envio de e-mails (aguardam o provedor de envio); depois postura e movimento e a execução do treino pelo aluno. A etapa atual não fecha o piloto operacional.
+**Próxima fatia:** verificação de e-mail, recuperação de senha e envio de e-mails (aguardam o provedor de envio); depois a execução do treino pelo aluno. A etapa atual não fecha o piloto operacional.
 
 No Webflow, configure `AUTH_SECRET` (aleatória, ao menos 32 caracteres), `AUTH_ORIGIN` (origem HTTPS privada, sem caminho) e `PLATFORM_SETUP_TOKEN` (32+ caracteres, para ativar o primeiro gestor). `DEMO_MODE=true` é opcional. Em subcaminho, configure `BASE_URL` no build. Veja [configuração de acesso](docs/AUTENTICACAO.md) e [decisões visuais](docs/DESIGN-SYSTEM.md).
