@@ -2,7 +2,7 @@ import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import type { D1Database } from "@cloudflare/workers-types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { assessmentsFor, screeningStanding } from "@/db/assessments";
-import { parseAssessment } from "@/modules/avaliacoes/contracts";
+import { GRADE_KEYS, MOVEMENT_KEYS, parseAssessment, POSTURE_KEYS } from "@/modules/avaliacoes/contracts";
 import { ALL_MIGRATIONS, migrate } from "./helpers/migrate";
 
 // Real local D1. Identities are rows, as the server derives them from a verified session.
@@ -103,6 +103,33 @@ describe("the instrument", () => {
       { unit: "%", valueText: "21,5", valueNumber: 21.5 },
       { name: "Teste de sentar e levantar", unit: null, valueText: "14 reps", valueNumber: null, side: "BOTH", notes: "Sem apoio" },
     ]);
+  });
+});
+
+describe("posture and movement in the instrument", () => {
+  const today = day(10);
+  it("takes the items of sections 8 and 9 of the master document, and nothing else", () => {
+    expect(POSTURE_KEYS).toHaveLength(18);
+    expect(MOVEMENT_KEYS).toHaveLength(9);
+    expect(GRADE_KEYS).toEqual(["NOT_ASSESSED", "NO_LIMITATION", "MILD", "MODERATE", "STOPPED_BY_PAIN"]);
+    expect(() => parseAssessment({ assessedOn: "2026-11-10", posture: { findings: ["ANTERIOR.SCOLIOSIS"] } }, today)).toThrow();
+    expect(() => parseAssessment({ assessedOn: "2026-11-10", posture: { findings: [], diagnosis: "x" } }, today)).toThrow();
+    expect(() => parseAssessment({ assessedOn: "2026-11-10", movement: [{ test: "JUMP", grade: "MILD" }] }, today)).toThrow();
+    expect(() => parseAssessment({ assessedOn: "2026-11-10", movement: [{ test: "SQUAT", grade: "SEVERE" }] }, today)).toThrow();
+    expect(() => parseAssessment({ assessedOn: "2026-11-10", movement: [{ test: "SQUAT", grade: "MILD" }, { test: "SQUAT", grade: "MODERATE" }] }, today)).toThrow();
+  });
+
+  it("never changes the risk status: only the six screening items decide it", () => {
+    const everything = parseAssessment(
+      {
+        assessedOn: "2026-11-10",
+        posture: { findings: [...POSTURE_KEYS], notes: "Muitos achados" },
+        movement: MOVEMENT_KEYS.map((test) => ({ test, grade: "STOPPED_BY_PAIN" })),
+      },
+      today,
+    );
+    expect(everything.riskStatus).toBe("CLEAR");
+    expect(everything.posture.findings).toHaveLength(18);
   });
 });
 
@@ -316,5 +343,99 @@ describe("what the database itself refuses", () => {
     await expect(
       sql(`INSERT INTO assessment_reviews(id,organization_id,assessment_id,reviewer_user_id,basis,reviewed_at) VALUES ('rv-x','org-a','${clear.id}','tech-a','x','2026-11-20T00:00:00.000Z')`),
     ).rejects.toThrow(/NOT_APPLICABLE/);
+  });
+});
+
+describe("posture and movement of an assessment", () => {
+  const owner = "tech-a2"; // professional of st-2
+  const api = () => assessmentsFor(db, scope(owner));
+  const rows = async (assessmentId: string) =>
+    (await db.prepare("SELECT area, item, grade, notes FROM assessment_findings WHERE assessment_id = ?1 ORDER BY rowid").bind(assessmentId).all<{ area: string; item: string; grade: string | null; notes: string | null }>()).results;
+
+  it("saves the marked findings and the recorded tests, reads them back and replaces them on the next save", async () => {
+    const started = await api().startDraft("st-2", day(28));
+    if (started.status !== "started") throw new Error(started.status);
+    const base = { assessedOn: "2026-11-28" };
+    expect(
+      await api().saveDraft(
+        started.id,
+        {
+          ...base,
+          posture: { findings: ["POSTERIOR.OTHER_VISUAL", "ANTERIOR.KNEE_VALGUS", "LATERAL.FORWARD_HEAD", "ANTERIOR.KNEE_VALGUS"], notes: "Foto não feita" },
+          movement: [
+            { test: "PUSH", grade: "STOPPED_BY_PAIN", notes: "Dor no ombro direito" },
+            { test: "SQUAT", grade: "MILD", notes: null },
+            { test: "HIP_HINGE", grade: "NOT_ASSESSED", notes: null },
+            { test: "PULL", grade: "NOT_ASSESSED", notes: "Sem equipamento hoje" },
+          ],
+        },
+        day(28),
+      ),
+    ).toBe(true);
+    const saved = (await api().get(started.id))!;
+    // In the order of the document, once each; the unmarked and the empty "not assessed" are not rows.
+    expect(saved.posture).toEqual({ findings: ["ANTERIOR.KNEE_VALGUS", "LATERAL.FORWARD_HEAD", "POSTERIOR.OTHER_VISUAL"], notes: "Foto não feita" });
+    expect(saved.movement).toEqual([
+      { test: "SQUAT", grade: "MILD", notes: null },
+      { test: "PUSH", grade: "STOPPED_BY_PAIN", notes: "Dor no ombro direito" },
+      { test: "PULL", grade: "NOT_ASSESSED", notes: "Sem equipamento hoje" },
+    ]);
+    // Posture and movement are not screening: nothing changed the status.
+    expect(saved.riskStatus).toBe("CLEAR");
+
+    // Another save replaces everything, it does not add.
+    await api().saveDraft(started.id, { ...base, posture: { findings: ["LATERAL.KYPHOSIS"] }, movement: [{ test: "LUNGE", grade: "NO_LIMITATION" }] }, day(28));
+    expect(await rows(started.id)).toEqual([
+      { area: "POSTURE", item: "LATERAL.KYPHOSIS", grade: null, notes: null },
+      { area: "MOVEMENT", item: "LUNGE", grade: "NO_LIMITATION", notes: null },
+    ]);
+    // What is not sent is not kept: a save without the fields clears them.
+    await api().saveDraft(started.id, base, day(28));
+    expect(await rows(started.id)).toEqual([]);
+    expect((await api().get(started.id))?.posture).toEqual({ findings: [], notes: null });
+  });
+
+  it("is refused to anyone else, and an invalid payload writes nothing", async () => {
+    const draft = (await api().listForStudent("st-2")).find((x) => x.state === "DRAFT")!;
+    await api().saveDraft(draft.id, { assessedOn: "2026-11-28", posture: { findings: ["ANTERIOR.HEAD_TILT"] }, movement: [{ test: "SQUAT", grade: "MODERATE" }] }, day(28));
+    const before = await rows(draft.id);
+    expect(before).toHaveLength(2);
+    for (const user of ["tech-a", "owner-a", "commercial-a", "client-1", "mgr-1"])
+      expect(await assessmentsFor(db, scope(user)).saveDraft(draft.id, { assessedOn: "2026-11-28", posture: { findings: ["LATERAL.LORDOSIS"] }, movement: [] }, day(28)), user).toBe(false);
+    expect(await rows(draft.id)).toEqual(before);
+    await expect(api().saveDraft(draft.id, { assessedOn: "2026-11-28", posture: { findings: ["NOPE"] } }, day(28))).rejects.toThrow();
+    expect(await rows(draft.id)).toEqual(before);
+  });
+
+  it("freezes them with the recorded assessment, against direct SQL too", async () => {
+    const draft = (await api().listForStudent("st-2")).find((x) => x.state === "DRAFT")!;
+    expect(await api().record(draft.id, { screeningAsked: true }, day(28))).toEqual({ status: "recorded", riskStatus: "CLEAR" });
+    const before = await rows(draft.id);
+    expect(await api().saveDraft(draft.id, { assessedOn: "2026-11-28", posture: { findings: [] }, movement: [] }, day(29))).toBe(false);
+    expect(await rows(draft.id)).toEqual(before);
+    const run = (sql: string, ...binds: unknown[]) => db.prepare(sql).bind(...binds).run();
+    await expect(run("UPDATE assessment_findings SET grade = 'NO_LIMITATION' WHERE assessment_id = ?1 AND area = 'MOVEMENT'", draft.id)).rejects.toThrow(/ASSESSMENT_FROZEN/);
+    await expect(run("DELETE FROM assessment_findings WHERE assessment_id = ?1", draft.id)).rejects.toThrow(/ASSESSMENT_FROZEN/);
+    await expect(
+      run("INSERT INTO assessment_findings(id,organization_id,assessment_id,area,item) VALUES ('f-late','org-a',?1,'POSTURE','ANTERIOR.FOOT_ASYMMETRY')", draft.id),
+    ).rejects.toThrow(/ASSESSMENT_FROZEN/);
+    expect((await api().get(draft.id))?.movement).toEqual([{ test: "SQUAT", grade: "MODERATE", notes: null }]);
+  });
+
+  it("keeps the rows consistent in the database itself", async () => {
+    const started = await api().startDraft("st-2", day(30));
+    if (started.status !== "started") throw new Error(started.status);
+    const insert = (area: string, item: string, grade: string | null) =>
+      db.prepare("INSERT INTO assessment_findings(id,organization_id,assessment_id,area,item,grade) VALUES (?1,'org-a',?2,?3,?4,?5)").bind(crypto.randomUUID(), started.id, area, item, grade).run();
+    await expect(insert("MOVEMENT", "SQUAT", null)).rejects.toThrow(); // a test needs its grade
+    await expect(insert("POSTURE", "LATERAL.KYPHOSIS", "MILD")).rejects.toThrow(); // a finding has none
+    await expect(insert("OTHER", "X", null)).rejects.toThrow();
+    await insert("POSTURE", "LATERAL.KYPHOSIS", null);
+    await expect(insert("POSTURE", "LATERAL.KYPHOSIS", null)).rejects.toThrow(/UNIQUE/);
+    await expect(
+      db.prepare("INSERT INTO assessment_findings(id,organization_id,assessment_id,area,item) VALUES ('x','org-b',?1,'POSTURE','ANTERIOR.HEAD_TILT')").bind(started.id).run(),
+    ).rejects.toThrow(); // the assessment is not in that organization
+    await db.prepare("DELETE FROM assessment_findings WHERE assessment_id = ?1").bind(started.id).run();
+    await db.prepare("DELETE FROM assessments WHERE id = ?1").bind(started.id).run();
   });
 });

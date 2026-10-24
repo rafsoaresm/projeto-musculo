@@ -1845,3 +1845,43 @@ label.check input {
 .profile-form .notice {
   margin-bottom: 0;
 }
+
+/* ---------- Assessments ---------- */
+.check-group {
+  display: grid;
+  gap: 10px;
+}
+.metric-row,
+.movement-row {
+  display: grid;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid var(--color-line);
+}
+.metric-row:first-of-type,
+.movement-row:first-of-type {
+  border-top: 0;
+}
+.movement-row {
+  grid-template-columns: 1fr 1fr;
+  align-items: end;
+}
+@media (max-width: 720px) {
+  .movement-row {
+    grid-template-columns: 1fr;
+  }
+}
+.review-list {
+  display: grid;
+  gap: 12px;
+  padding-left: 0;
+  list-style: none;
+}
+.review-list li {
+  padding: 12px 14px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+}
+.review-list p {
+  margin: 0;
+}
