@@ -31,6 +31,8 @@ async function migrate(database: D1Database) {
     "0002_identity_and_onboarding.sql",
     "0003_roles_and_access.sql",
     "0004_training_plans.sql",
+    "0005_exercise_library.sql",
+    "0006_prescribed_exercises.sql",
   ]) {
     const sql = await readFile(
       new URL(`../migrations/${file}`, import.meta.url),
@@ -392,6 +394,7 @@ describe("access that ends", () => {
       .all<{ name: string }>();
     expect(tables.results.map((t) => t.name)).toEqual([
       "plan_revisions",
+      "prescribed_exercises",
       "training_plan_events",
     ]);
   });

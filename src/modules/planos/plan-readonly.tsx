@@ -27,9 +27,10 @@ export function PlanReadOnly({
       <div className="notice">
         <Info size={19} />
         <p>
-          A estrutura desta revisão foi validada e não pode mais ser alterada.
-          Isto não é aprovação nem liberação: o aluno não recebe este plano.
-          Para mudar algo, crie uma nova revisão a partir dela.
+          A estrutura e os exercícios desta revisão foram fechados e não podem
+          mais ser alterados. Isto não é aprovação nem liberação: o aluno não
+          recebe este plano. Para mudar algo, crie uma nova revisão a partir
+          dela, que leva os exercícios junto.
         </p>
       </div>
       <div className="planner-layout">

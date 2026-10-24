@@ -50,6 +50,7 @@ Esta base é um app na raiz do repositório, com módulos internos. Sites e port
 | training_plans | Plano de periodização de um aluno (0004). Só quem tem vínculo técnico lê ou escreve |
 | plan_revisions | Revisões do plano com entrada, cronograma recalculado no servidor e estado (0004). Um rascunho aberto por plano |
 | training_plan_events | Trilha de ações sobre o plano, sem conteúdo (0004) |
+| prescribed_exercises | Exercício prescrito numa revisão: instantâneo de nome e vídeo, dose em texto livre, origem. Só muda em rascunho (0006) |
 | exercises | Biblioteca: `organization_id` nulo é o sistema (somente leitura, seed de 64); senão pertence à organização. `name_key` calculado no código decide duplicidade (0005) |
 
 IDs de domínio são UUIDs gerados pelo servidor. As identidades Better Auth usam IDs próprios. Datas usam UTC ISO-8601; o calendário usa timezone IANA. Foreign keys compostas impedem cruzar organização, aluno e profissional. Futuros valores monetários serão inteiros em centavos e percentuais em pontos-base.

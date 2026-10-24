@@ -8,7 +8,7 @@ export async function GET() {
     const db = await getDatabase();
     const schema = await db
       .prepare("SELECT version FROM app_schema_versions WHERE version = ?")
-      .bind("0005_exercise_library")
+      .bind("0006_prescribed_exercises")
       .first();
     if (schema) persistence = "available";
   } catch {
@@ -24,7 +24,7 @@ export async function GET() {
     {
       status: persistence === "available" ? "ok" : "degraded",
       service: "trainer-prescription",
-      version: "0.5.0",
+      version: "0.6.0",
       capabilities: {
         periodization: "available",
         areas: ["gestor", "profissional", "aluno"],

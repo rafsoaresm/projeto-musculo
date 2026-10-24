@@ -15,6 +15,8 @@ const NOT_DRAFT =
 function messageFor(error: unknown): string {
   if (error instanceof Error && error.message === "PLAN_TITLE_INVALID")
     return "Dê um nome ao plano, com até 120 caracteres.";
+  if (error instanceof Error && error.message === "PRESCRIPTION_WOULD_BE_LOST")
+    return "Esta mudança remove treinos que já têm exercícios. Remova ou mova esses exercícios antes de alterar o número de fases ou a divisão.";
   if (error instanceof ZodError)
     return "Confira a data inicial e os limites de cada fase.";
   return "Não foi possível concluir. Tente novamente.";
