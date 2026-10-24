@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { Download } from "lucide-react";
 import { useState, useTransition } from "react";
 import { Notice, Pill, formatDateTime } from "@/components/ui";
 import { NOT_CLEARANCE_TEXT, REVIEW_REQUIRED_TEXT } from "@/modules/avaliacoes/contracts";
@@ -33,6 +34,7 @@ export function ApprovalPanel({
   portal,
   studentHref,
   screening,
+  pdfHref,
 }: {
   planId: string;
   revisionId: string;
@@ -44,6 +46,8 @@ export function ApprovalPanel({
   portal: "ACTIVE" | "INVITED" | "NONE";
   studentHref: string;
   screening: ScreeningInfo;
+  /** The PDF of the delivered revision. Only offered once it was delivered. */
+  pdfHref: string;
 }) {
   const [ack, setAck] = useState(false);
   const blocked = screening.kind === "BLOCKED";
@@ -142,6 +146,9 @@ export function ApprovalPanel({
             revisão não muda mais. Para alterar o treino, crie uma nova
             revisão: o aluno continua vendo esta até você entregar a nova.
           </p>
+          <Link className="button secondary small" href={pdfHref} download prefetch={false}>
+            <Download size={16} /> Baixar PDF desta revisão
+          </Link>
           {blocked && (
             <Notice tone="warning">
               <p>

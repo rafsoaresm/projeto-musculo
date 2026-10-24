@@ -135,5 +135,5 @@ Ligue com `DEMO_MODE=true` no ambiente (o `npm run auth:setup:local` já faz iss
 - Origem privada separada para o portal e para o painel, múltiplos hosts e Object Storage privado (provas no Webflow Cloud).
 - E-mail verificado, recuperação de senha, convites de equipe, seleção entre organizações, conceder o papel de gestor pela interface.
 - Auditoria de login e de leitura. Hoje se grava ativação do gestor, bloqueios, criação/aceite de convite e revogação de acesso; só ativação e bloqueios têm tela (a do gestor).
-- Postura e movimento nas avaliações e PDF (E2); portal com execução do treino e evolução (E4). Avaliações com triagem, prescrição, aprovação e entrega já persistem (0.4 a 0.10).
+- Postura e movimento nas avaliações (E2); portal com execução do treino e evolução (E4). Avaliações com triagem, prescrição, aprovação, entrega e PDF do plano entregue já existem (0.4 a 0.11).
 - Decisões do handoff V2 ainda não tomadas: D01 (um site por profissional), D03 (mês civil × semanas), D04 (`REFER_OUT`), D06 (acesso de administradores a dados sensíveis), D08 (modelo comercial dos templates). O estilo escuro do painel também está em aberto.

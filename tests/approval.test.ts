@@ -2,6 +2,7 @@ import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import type { D1Database } from "@cloudflare/workers-types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { assessmentsFor } from "@/db/assessments";
+import { planDocumentsFor, recordPdfDownload } from "@/db/plan-documents";
 import { plansFor } from "@/db/plans";
 import { prescriptionFor } from "@/db/prescription";
 import { exercisesFor } from "@/db/exercises";
@@ -391,5 +392,67 @@ describe("the screening standing behind an approval", () => {
     expect((await plans.approve(plan.planId, plan.revisionId, { screeningNotRecorded: false }, at(71))).status).toBe("approved");
     await expect(db.prepare("UPDATE plan_revisions SET approval_screening = 'CLEAR' WHERE id = ?1").bind(plan.revisionId).run()).rejects.toThrow(/PLAN_REVISION_FROZEN/);
     await expect(db.prepare("UPDATE plan_revisions SET approval_assessment_id = NULL WHERE id = ?1").bind(plan.revisionId).run()).rejects.toThrow(/PLAN_REVISION_FROZEN/);
+  });
+});
+
+describe("the delivered revision as a document", () => {
+  it("is available to the professional only once delivered, and for any delivered revision", async () => {
+    const plans = plansFor(db, scope("tech-a"));
+    const docs = planDocumentsFor(db, scope("tech-a"));
+    const plan = await newPlan();
+    // Draft, ready and approved have not been handed to the student: no file for them.
+    expect(await docs.delivered(plan.planId, plan.revisionId)).toBeNull();
+    await plans.markReady(plan.planId, plan.revisionId);
+    expect(await docs.delivered(plan.planId, plan.revisionId)).toBeNull();
+    await plans.approve(plan.planId, plan.revisionId, { screeningNotRecorded: true }, at(80));
+    expect(await docs.delivered(plan.planId, plan.revisionId)).toBeNull();
+    await plans.deliver(plan.planId, plan.revisionId, at(81));
+
+    const first = (await docs.delivered(plan.planId, plan.revisionId))!;
+    expect(first).toMatchObject({ studentId: "st-1", studentName: "Student One", organizationName: "Studio A" });
+    expect(first.plan).toMatchObject({ planId: plan.planId, revisionId: plan.revisionId, revisionNumber: 1, deliveredBy: "Pro A", deliveredAt: at(81).toISOString() });
+    expect(first.plan.phases).toHaveLength(3);
+    expect(first.plan.phases[0].workouts[0].exercises.map((e) => e.name)).toEqual(["Exercício 1", "Exercício 2", "Exercício 3"]);
+
+    // A newer delivered revision supersedes it for the student, but the older one stays readable
+    // and identical: it is the history.
+    const next = (await plans.newRevisionFrom(plan.planId, plan.revisionId)) as { revisionId: string };
+    await prescriptionFor(db, scope("tech-a")).add(plan.planId, next.revisionId, slot(1), { customName: "Só na segunda" });
+    await plans.markReady(plan.planId, next.revisionId);
+    await plans.approve(plan.planId, next.revisionId, { screeningNotRecorded: true }, at(82));
+    await plans.deliver(plan.planId, next.revisionId, at(83));
+    expect(await docs.delivered(plan.planId, plan.revisionId)).toEqual(first);
+    const second = (await docs.delivered(plan.planId, next.revisionId))!;
+    expect(second.plan.revisionNumber).toBe(2);
+    expect(second.plan.phases[0].workouts[0].exercises.map((e) => e.name)).toContain("Só na segunda");
+    expect(first.plan.phases[0].workouts[0].exercises.map((e) => e.name)).not.toContain("Só na segunda");
+  });
+
+  it("is refused to anyone without an active technical assignment, and ends with it", async () => {
+    const plan = await deliverable();
+    const reach = (user: string, org = "org-a") => planDocumentsFor(db, scope(user, org)).delivered(plan.planId, plan.revisionId);
+    for (const [user, org] of [["tech-a2", "org-a"], ["owner-a", "org-a"], ["commercial-a", "org-a"], ["client-1", "org-a"], ["mgr-1", "org-a"], ["tech-b", "org-b"], ["tech-b", "org-a"], ["stranger", "org-a"]])
+      expect(await reach(user, org), `${user}/${org}`).toBeNull();
+    expect(await reach("tech-a")).not.toBeNull();
+    // The plan and revision ids alone do not select another organization's data.
+    expect(await planDocumentsFor(db, scope("tech-b", "org-b")).delivered(plan.planId, "nope")).toBeNull();
+
+    await db.prepare("UPDATE care_assignments SET revoked_at = '2026-11-30T00:00:00.000Z' WHERE student_id = 'st-1'").run();
+    expect(await reach("tech-a")).toBeNull();
+    await db.prepare("UPDATE care_assignments SET revoked_at = NULL WHERE student_id = 'st-1'").run();
+    await db.prepare("UPDATE users SET disabled_at = '2026-11-30T00:00:00.000Z' WHERE id = 'tech-a'").run();
+    expect(await reach("tech-a")).toBeNull();
+    await db.prepare("UPDATE users SET disabled_at = NULL WHERE id = 'tech-a'").run();
+    expect(await reach("tech-a")).not.toBeNull();
+  });
+
+  it("records who downloaded which revision and when, never the content", async () => {
+    const plan = await deliverable();
+    await recordPdfDownload(db, { organizationId: "org-a", actorUserId: "client-1", revisionId: plan.revisionId }, at(90));
+    const row = await db
+      .prepare("SELECT organization_id AS org, actor_user_id AS actor, action, subject_id AS subject, created_at AS at FROM access_audit_events WHERE action = 'PLAN_PDF_DOWNLOADED' AND subject_id = ?1")
+      .bind(plan.revisionId)
+      .first<{ org: string; actor: string; action: string; subject: string; at: string }>();
+    expect(row).toEqual({ org: "org-a", actor: "client-1", action: "PLAN_PDF_DOWNLOADED", subject: plan.revisionId, at: at(90).toISOString() });
   });
 });

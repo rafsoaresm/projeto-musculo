@@ -42,7 +42,11 @@ export default async function StudentTrainingPage() {
               </p>
             )}
             {plans.map((plan) => (
-              <StudentTraining key={plan.planId} plan={plan} />
+              <StudentTraining
+                key={plan.planId}
+                plan={plan}
+                pdfHref={`/aluno/treino/pdf/${link.studentId}/${plan.planId}`}
+              />
             ))}
           </div>
         ),

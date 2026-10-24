@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { test, expect, type Page } from "@playwright/test";
 import {
   addStudent,
@@ -89,6 +90,16 @@ test("a plan reaches the client only after the professional approves and deliver
   await expect(page.getByText("Revisão entregue ao aluno. Ela não muda mais.")).toBeVisible();
   await expect(page.getByRole("button", { name: /Editar|Remover|Duplicar|Adicionar/ })).toHaveCount(0);
 
+  // The professional downloads the delivered revision as a PDF, and it is only offered now.
+  const proDownload = page.waitForEvent("download");
+  await page.getByRole("link", { name: "Baixar PDF desta revisão" }).click();
+  const pro = await proDownload;
+  expect(pro.suggestedFilename()).toBe("plano-Plano-entregue-rev1.pdf");
+  const proFile = await readFile((await pro.path())!);
+  expect(proFile.subarray(0, 5).toString()).toBe("%PDF-");
+  expect(proFile.length).toBeGreaterThan(1500);
+  await expect(page.getByRole("heading", { name: "Entregue ao aluno" })).toBeVisible();
+
   // Now the client sees exactly what was delivered.
   await client.page.goto("./aluno");
   await expect(client.page.getByRole("heading", { name: "Plano entregue" })).toBeVisible();
@@ -101,6 +112,28 @@ test("a plan reaches the client only after the professional approves and deliver
   await expect(mine.getByText("3 séries × 8-12 repetições")).toBeVisible();
   await expect(mine.getByText("Remada do Cliente")).toBeVisible();
   await noHorizontalOverflow(client.page);
+  // The client downloads the same version; somebody else's student or plan is a plain 404.
+  const clientDownload = client.page.waitForEvent("download");
+  await client.page.getByRole("link", { name: "Baixar PDF do treino" }).click();
+  const mineFile = await clientDownload;
+  expect(mineFile.suggestedFilename()).toBe("plano-Plano-entregue-rev1.pdf");
+  const clientBytes = await readFile((await mineFile.path())!);
+  expect(clientBytes.subarray(0, 5).toString()).toBe("%PDF-");
+  const pdfPath = new URL(await client.page.getByRole("link", { name: "Baixar PDF do treino" }).evaluate((a) => (a as HTMLAnchorElement).href)).pathname;
+  const [, studentId, planId] = pdfPath.match(/\/aluno\/treino\/pdf\/([^/]+)\/([^/]+)$/)!;
+  const mountPrefix = pdfPath.slice(0, pdfPath.indexOf("/aluno/treino/pdf/"));
+  for (const url of [
+    `${mountPrefix}/aluno/treino/pdf/${planId}/${planId}`, // not the student of this login
+    `${mountPrefix}/aluno/treino/pdf/${studentId}/${studentId}`, // not a plan of the student
+  ]) {
+    const refused = await client.page.request.get(new URL(url, client.page.url()).href);
+    expect(refused.status(), url).toBe(404);
+  }
+  // A stranger without a session is sent to the sign-in page, never given a file.
+  const anonymous = await newActor(browser, baseURL);
+  const noSession = await anonymous.page.request.get(new URL(pdfPath, client.page.url()).href);
+  expect(noSession.headers()["content-type"] ?? "").not.toContain("application/pdf");
+  await anonymous.context.close();
   // No professional controls, and the client cannot reach the professional's address for it.
   await expect(client.page.getByRole("button", { name: /Editar|Remover|Adicionar|Aprovar/ })).toHaveCount(0);
   await client.page.goto(revisionURL);

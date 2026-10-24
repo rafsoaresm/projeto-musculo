@@ -1,6 +1,22 @@
-# Evidências de validação — v0.10 (avaliações e triagem) sobre a base 0.3
+# Evidências de validação — v0.11 (PDF do plano entregue) sobre a base 0.3
 
-Tudo abaixo foi executado **localmente** em 23/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0009 são aditivas.
+Tudo abaixo foi executado **localmente** em 23/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0009 são aditivas. A 0.11 não tem migration nova.
+
+## Fatia 0.11: PDF do plano entregue
+
+Item da Fase 1 do documento mestre (seção 26 e critérios da seção 49). Sem migration: o arquivo é gerado sob demanda a partir da revisão entregue, que é imutável.
+
+- **Geração no servidor, no Worker:** `pdf-lib` 1.17.1 (JavaScript puro, MIT, sem binário nativo nem processo em segundo plano), fontes padrão (Helvetica) e A4. O bundle OpenNext ficou com ~2,1 MB comprimidos; o PDF em si pesa poucos KB. Texto fora do alfabeto da fonte (emoji, símbolos matemáticos) vira equivalente simples (`≥` vira `>=`) ou `?`, em vez de derrubar o arquivo.
+- **Só revisão entregue.** Rascunho, estrutura pronta e aprovada não têm arquivo: um PDF seria um caminho paralelo à entrega. Uma revisão entregue e depois superada continua baixável pelo profissional, idêntica, porque é histórico.
+- **Conteúdo (o que o aluno vê, nada além):** título, aluno, profissional que entregou, espaço, ciclo, revisão e data da entrega, identificação da versão, fases, treinos e exercícios com a dose **como digitada** (campo vazio fica de fora; sem parâmetros aparece "Sem parâmetros definidos"), observações e links de vídeo clicáveis. Só `http`/`https` vira link; `javascript:`, `data:` e texto que não é URL não viram. Rodapé com título, revisão, versão, "Página X de Y" e data de geração (fuso de São Paulo).
+- **Versão e regeneração:** a identificação é um SHA-256 do conteúdo entregue (revisão, datas, fases, treinos e todos os campos dos exercícios) em ordem fixa. A mesma revisão sempre dá a mesma identificação; só a data de geração muda entre downloads. Renomear aluno ou espaço não cria outra versão. O hash e o id da revisão vão também nos metadados do PDF (`Keywords`).
+- **Quem baixa:** o profissional com vínculo técnico ativo (`/profissional/alunos/<id>/planos/<plano>/<revisão>/pdf`) e o login do aluno, só da revisão entregue mais recente de cada plano dele (`/aluno/treino/pdf/<aluno>/<plano>`; o aluno vem dos vínculos verificados do login, nunca só do endereço). Aluno de outra pessoa, plano de outro aluno e revisão não entregue dão 404 simples; sem sessão, o visitante vai para a entrada e nunca recebe o arquivo. Respostas `private, no-store`, `attachment` e `nosniff`.
+- **Auditoria:** cada download grava quem, qual revisão e quando em `access_audit_events` (`PLAN_PDF_DOWNLOADED`), nunca o conteúdo.
+- **Decisões de privacidade a confirmar:** o PDF não leva objetivo, gênero nem nada da ficha ou das avaliações (o documento mestre cita objetivo e gênero no PDF), porque o aluno não lê a ficha e o arquivo é o mesmo para os dois. Também não leva CREF, que a ferramenta ainda não guarda. Se você quiser o objetivo no arquivo, é uma mudança pequena, mas muda quem lê esse dado.
+- **Testes:** `tests/plan-pdf.test.ts` (8): conteúdo e metadados lidos do próprio PDF, dose vazia sem invenção, links só http(s) contados no arquivo, paginação de 12 fases sem perder exercício (todos os 288 links presentes), texto fora da fonte, identificação estável e sensível a qualquer campo entregue (10 alterações testadas), nome de arquivo seguro, quebra de linha. `tests/approval.test.ts` ganhou 3 de D1: só entregue, qualquer entregue (a antiga continua idêntica), oito identidades recusadas, revogação e bloqueio cortam, auditoria sem conteúdo. Mutações deliberadas (aceitar qualquer protocolo de link, tirar um campo da identificação, tirar o filtro de entregue, tirar o vínculo técnico) fizeram testes falharem.
+- **Navegador (`tests/e2e/delivery.spec.ts`):** o botão aparece só depois de entregar; o profissional baixa `plano-Plano-entregue-rev1.pdf` e o aluno baixa o mesmo; endereço de outro aluno ou plano é 404 e a requisição sem sessão não devolve PDF. Desktop e celular, na raiz e em `/treinador`, com o PDF gerado dentro do Worker local (workerd).
+- **Conferência visual:** o PDF de exemplo foi renderizado em imagem e inspecionado (título longo, 3 fases, 8 exercícios por treino, quebra de página). Não há conferência por leitor de tela nem em visualizadores além do `pdftoppm`/`pypdf`.
+- **Limites:** não validado no Webflow (limite de tamanho do bundle e tempo de CPU do Worker remoto não medidos; localmente, o teste de 12 fases com 3 treinos de 8 exercícios, 288 links, roda dentro de cerca de um segundo). Sem PDF de rascunho, sem logotipo ou identidade do profissional, sem CREF, sem fontes embutidas (acentos do português funcionam; outros alfabetos não).
 
 ## Fatia 0.10: avaliações, triagem e indicadores
 
@@ -91,7 +107,7 @@ Cobre **só a estrutura do ciclo** (fases, semanas, sessões, divisão e calend�
 
 ## Código e banco
 
-- `npm run check`: ESLint e TypeScript sem erros e **183 testes, nenhum ignorado**: 17 de isolamento D1, 15 de identidade, 26 de periodização, 31 de papéis, 12 de contrato de navegação/fixtures, 5 de caminho de montagem, 9 de planos salvos, 9 de biblioteca, 21 de prescrição, 13 de aprovação, entrega e situação da triagem, 7 de ficha e 18 de avaliações.
+- `npm run check`: ESLint e TypeScript sem erros e **194 testes, nenhum ignorado**: 17 de isolamento D1, 15 de identidade, 26 de periodização, 31 de papéis, 12 de contrato de navegação/fixtures, 5 de caminho de montagem, 9 de planos salvos, 9 de biblioteca, 21 de prescrição, 16 de aprovação, entrega, situação da triagem e documento entregue, 7 de ficha, 18 de avaliações e 8 de PDF.
 - Os 31 testes de `tests/roles.test.ts` usam D1 real (Miniflare) com as três migrations e cobrem:
   - **Gestor:** ativação recusada sem token configurado, com token curto ou errado; exatamente um gestor sob concorrência; token inerte depois; e-mail e papel de proprietário não concedem o papel; revogado ou bloqueado perde o acesso na hora.
   - **Escopo do gestor:** vê organizações e contagens; o resultado serializado não contém nome de aluno; `studentsFor` e a criação de convite não funcionam para ele em nenhuma organização; bloqueio e restabelecimento com auditoria; não bloqueia a si mesmo, outro gestor ou quem não é da organização; a auditoria do gestor lista só ações de plataforma.
@@ -109,6 +125,7 @@ Cobre **só a estrutura do ciclo** (fases, semanas, sessões, divisão e calend�
 | Entrada, navegação e layout | Três áreas apresentadas, sem rolagem horizontal, módulo planejado mostra "Ainda não disponível", 404 em módulo inexistente, sem erro de página |
 | Planejador (2 cenários) | Fases independentes, exportação do rascunho, invalidação do resultado, 12 fases — agora atrás de login |
 | Biblioteca de exercícios | 64 do sistema, filtros, cópia, criação, revisão de vídeo em duas gravações, isolamento entre organizações (seção da fatia 0.5a) |
+| PDF do plano | Baixar só depois de entregar, profissional e aluno recebem o mesmo arquivo, 404 para outro aluno, sem sessão não recebe (seção da fatia 0.11, dentro do cenário de entrega) |
 | Avaliações e triagem | Seis itens do documento, registro sem marcas exige confirmação, indicador inválido não apaga o digitado, registrada somente leitura, revisão com base, alerta sem revisão bloqueia aprovar e entregar, outra organização recebe 404 (seção da fatia 0.10) |
 | Ficha do aluno | Erro mantém o digitado, salva e persiste, resumo sem expor conteúdo, menor sinalizado, isolamento entre organizações (seção da fatia 0.9) |
 | Aprovação, entrega e treino do aluno | Aviso de triagem obrigatório, aprovar, entregar, o aluno só vê o entregue, nova revisão em rascunho invisível, revogação fecha (seção da fatia 0.8) |
