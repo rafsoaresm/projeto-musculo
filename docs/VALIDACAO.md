@@ -1,6 +1,18 @@
-# Evidências de validação — v0.8 (aprovação e entrega) sobre a base 0.3
+# Evidências de validação — v0.9 (ficha do aluno) sobre a base 0.3
 
-Tudo abaixo foi executado **localmente** em 23/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0007 são aditivas.
+Tudo abaixo foi executado **localmente** em 23/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0008 são aditivas.
+
+## Fatia 0.9: ficha do aluno
+
+Os campos das seções 6.1 a 6.4 do documento mestre, e só eles: identificação (data de nascimento no lugar da idade, que é calculada; gênero com as quatro opções do documento; e-mail; telefone; altura; peso com a data das medidas), contexto de treino (objetivo e nível com as listas do documento, 1 a 7 dias por semana, tempo por sessão, local, equipamentos), histórico (experiência, lesões, cirurgias, dores, limitações, medicamentos ou condições informadas, observações) e preferências (preferidos, de que não gosta, que não deseja realizar, observações do profissional).
+
+- **Migration 0008 (`student_profiles`):** uma linha por aluno. Os limites numéricos são de plausibilidade para erro de digitação, não regra clínica. Valores permitidos ficam no código para não exigir reconstrução de tabela.
+- **Acesso (`src/db/student-profile.ts`):** é dado pessoal e de saúde, então só profissional com vínculo técnico ativo lê ou grava. O próprio aluno, o gestor da plataforma, dono sem vínculo, comercial e financeiro, outra organização e identidade bloqueada não alcançam. Salvar registra **quem e quando** em `access_audit_events`, nunca o conteúdo.
+- **Menor de idade:** o formulário e o resumo avisam, porque a ferramenta ainda não suporta responsável, permissões e consentimentos próprios para menores. Guardar a data não torna esse atendimento suportado.
+- **Consentimento:** o formulário afirma que a base legal e o texto de consentimento ainda não estão definidos. Isso continua em aberto: foi liberado gravar em ambiente de teste, não resolvido para uso real.
+- **Testes de D1 (`tests/student-profile.test.ts`, 7):** gravar e ler, normalização (e-mail em minúsculas, peso com uma casa), salvar substitui e limpa, trilha sem conteúdo, oito identidades recusadas ao ler e gravar, arquivos separados por aluno, revogação e bloqueio cortam na hora, 25 valores inválidos recusados sem gravar, todas as opções do documento aceitas, idade pela data. Duas mutações (remover o vínculo na gravação e na leitura) fizeram os testes falharem.
+- **Navegador (`tests/e2e/profile.spec.ts`):** erro do servidor mantém tudo o que foi digitado, a ficha salva e sobrevive ao recarregar, o resumo do aluno aponta lesões sem mostrar o conteúdo, menor é sinalizado, outra organização recebe "Página não encontrada." Desktop e celular.
+- **Limites:** não validado no Webflow. Sem histórico das medidas (virá com as avaliações), sem exclusões estruturadas ligadas à biblioteca, sem leitura da ficha pelo aluno, sem exportação ou exclusão de dados do titular.
 
 ## Fatia 0.8: aprovação, entrega e treino na área do aluno
 
@@ -62,24 +74,25 @@ Cobre **só a estrutura do ciclo** (fases, semanas, sessões, divisão e calend�
 
 ## Código e banco
 
-- `npm run check`: ESLint e TypeScript sem erros e **152 testes, nenhum ignorado**: 17 de isolamento D1, 15 de identidade, 26 de periodização, 31 de papéis, 12 de contrato de navegação/fixtures, 5 de caminho de montagem, 9 de planos salvos, 9 de biblioteca, 21 de prescrição e 7 de aprovação e entrega.
+- `npm run check`: ESLint e TypeScript sem erros e **159 testes, nenhum ignorado**: 17 de isolamento D1, 15 de identidade, 26 de periodização, 31 de papéis, 12 de contrato de navegação/fixtures, 5 de caminho de montagem, 9 de planos salvos, 9 de biblioteca, 21 de prescrição, 7 de aprovação e entrega e 7 de ficha.
 - Os 31 testes de `tests/roles.test.ts` usam D1 real (Miniflare) com as três migrations e cobrem:
   - **Gestor:** ativação recusada sem token configurado, com token curto ou errado; exatamente um gestor sob concorrência; token inerte depois; e-mail e papel de proprietário não concedem o papel; revogado ou bloqueado perde o acesso na hora.
   - **Escopo do gestor:** vê organizações e contagens; o resultado serializado não contém nome de aluno; `studentsFor` e a criação de convite não funcionam para ele em nenhuma organização; bloqueio e restabelecimento com auditoria; não bloqueia a si mesmo, outro gestor ou quem não é da organização; a auditoria do gestor lista só ações de plataforma.
   - **Convite:** só o profissional com vínculo técnico ativo cria (dono sem atribuição, outro profissional, papel comercial, outro tenant e cliente são recusados); só o hash é guardado; novo link invalida o pendente; token malformado, desconhecido, expirado, revogado ou reutilizado não vincula; dois aceites simultâneos têm um único vencedor; identidade bloqueada não aceita; um aluno não ganha segundo login ativo; o cliente vê apenas o próprio registro e só na própria organização; revogar encerra o acesso na requisição seguinte; um cliente com duas organizações não as mistura.
   - **Áreas:** combinações de papéis por identidade, revogação de vínculo e distinção entre cliente revogado e login novo.
-- Migrations 0001 a 0007 aplicadas no SQLite local por Wrangler (`db:migrate:local`); a saúde consulta `0007_approval_and_delivery`.
+- Migrations 0001 a 0008 aplicadas no SQLite local por Wrangler (`db:migrate:local`); a saúde consulta `0008_student_profiles`.
 - `npm run build:cloud` (bundle OpenNext/Workers) concluído sem erro na raiz e em `/treinador`.
 
 ## Navegador (Playwright, Worker local)
 
-23 execuções aprovadas na raiz **e** 23 em `/treinador` (46), sem testes ignorados (a correção do cadastro, abaixo, foi validada antes com 15 execuções e a variável de build de caminho vazia): desktop e celular (Pixel 7) para cada cenário comum, e um cenário do gestor em projeto próprio, porque a ativação é única por banco (o `globalSetup` revoga gestores do **banco local** antes de cada rodada).
+25 execuções aprovadas na raiz **e** 25 em `/treinador` (50), sem testes ignorados (a correção do cadastro, abaixo, foi validada antes com 15 execuções e a variável de build de caminho vazia): desktop e celular (Pixel 7) para cada cenário comum, e um cenário do gestor em projeto próprio, porque a ativação é única por banco (o `globalSetup` revoga gestores do **banco local** antes de cada rodada).
 
 | Cenário | O que prova |
 |---|---|
 | Entrada, navegação e layout | Três áreas apresentadas, sem rolagem horizontal, módulo planejado mostra "Ainda não disponível", 404 em módulo inexistente, sem erro de página |
 | Planejador (2 cenários) | Fases independentes, exportação do rascunho, invalidação do resultado, 12 fases — agora atrás de login |
 | Biblioteca de exercícios | 64 do sistema, filtros, cópia, criação, revisão de vídeo em duas gravações, isolamento entre organizações (seção da fatia 0.5a) |
+| Ficha do aluno | Erro mantém o digitado, salva e persiste, resumo sem expor conteúdo, menor sinalizado, isolamento entre organizações (seção da fatia 0.9) |
 | Aprovação, entrega e treino do aluno | Aviso de triagem obrigatório, aprovar, entregar, o aluno só vê o entregue, nova revisão em rascunho invisível, revogação fecha (seção da fatia 0.8) |
 | Prescrição manual | Adicionar, editar, reordenar, duplicar, remover, copiar treino, estrutura recusada, revisão fechada, nova revisão com os exercícios (seção da fatia 0.6) |
 | Planos salvos | Salvar, reabrir, marcar pronto, nova revisão e isolamento entre organizações (detalhes na seção da fatia 0.4) |

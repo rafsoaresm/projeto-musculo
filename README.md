@@ -28,6 +28,7 @@ O binding `DB` em `wrangler.json` fornece o banco. Não é necessário criar con
 - Ativação única do gestor com `PLATFORM_SETUP_TOKEN`; o gestor lista organizações, bloqueia/restabelece acessos e consulta a auditoria, sem ver dados de alunos.
 - Interface responsiva com visão geral, mapa de produto e planejador de periodização.
 - Planejador de 3/6/12 fases, 3–6 semanas, 1–7 sessões por semana, splits e duração real. Exportação JSON versionada como `DRAFT`.
+- **Ficha do aluno** (0.9): identificação, contexto de treino, histórico e preferências, com os campos do documento mestre. Só o profissional com vínculo técnico vê; menores são sinalizados; base legal e consentimento seguem em aberto.
 - **Aprovação e entrega** (0.8): o profissional aprova (com o aviso de triagem não registrada) e entrega; o aluno vê só a revisão entregue em `/aluno/treino`. Revisão fechada é imutável também no banco, por gatilhos.
 - **Painel de Prescrição** (0.7): lista a revisão mais recente de cada plano com as pendências por alvo, e permite copiar um mesociclo inteiro para uma fase sem exercícios.
 - **Prescrição manual** (0.6): dentro do plano salvo de cada aluno, o profissional monta os exercícios por mesociclo e treino, digitando cada valor. Nada é sugerido nem preenchido; abaixo do alvo é pendência. Revisão pronta congela, e a nova revisão leva os exercícios.

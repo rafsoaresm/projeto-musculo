@@ -44,4 +44,5 @@ export const ALL_MIGRATIONS = [
   "0005_exercise_library.sql",
   "0006_prescribed_exercises.sql",
   "0007_approval_and_delivery.sql",
+  "0008_student_profiles.sql",
 ];

@@ -6,9 +6,11 @@ import { requireWorkspace } from "@/modules/auth/server";
 import { studentsFor } from "@/db/students";
 import { studentAccessFor } from "@/db/student-access";
 import { plansFor } from "@/db/plans";
+import { profilesFor } from "@/db/student-profile";
 import { PageHeading } from "@/components/ui";
 import { InvitePanel } from "@/modules/convites/invite-panel";
 import { PlansPanel } from "@/modules/planos/plans-panel";
+import { ProfileSummary } from "@/modules/ficha/profile-summary";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Aluno" };
@@ -24,6 +26,7 @@ export default async function Student({
   if (!student) notFound();
   const access = await studentAccessFor(db, context).statusOf(student.id);
   const plans = await plansFor(db, context).listForStudent(student.id);
+  const profile = await profilesFor(db, context).get(student.id);
   return (
     <>
       <PageHeading
@@ -41,6 +44,7 @@ export default async function Student({
           inviteExpiresAt={access?.inviteExpiresAt ?? null}
         />
       </section>
+      <ProfileSummary studentId={student.id} profile={profile} />
       <PlansPanel studentId={student.id} plans={plans} />
       <section className="panel">
         <p className="eyebrow">ATENDIMENTO</p>
