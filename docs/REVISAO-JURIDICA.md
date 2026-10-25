@@ -1,0 +1,143 @@
+# Pacote para revisão jurídica
+
+**Isto não é parecer nem texto jurídico.** É o que a ferramenta faz hoje com dados pessoais, escrito por quem a construiu, para quem vai revisar: o advogado do responsável pelo produto. O texto dos termos (seção 5) é um **rascunho** escrito a partir do funcionamento. Enquanto a versão dele disser `rascunho`, as fotos de postura ficam **fechadas em produção** e ninguém real deve usar a ferramenta como produto.
+
+O que se pede ao advogado está na seção 8, com a proposta que o responsável já aprovou para cada ponto. O que a ferramenta ainda **não** faz está na seção 7, sem enfeite.
+
+## 1. O que a ferramenta é
+
+Um SaaS para personal trainers que atendem sozinhos. Há três áreas: o **gestor** da plataforma (vê organizações, bloqueios e auditoria; **não vê dados de alunos**), o **profissional** (cadastra alunos, avalia, prescreve, acompanha) e o **aluno** (vê o próprio treino, registra o que fez, vê a própria evolução). A prescrição e a execução são registros diferentes, e **nenhuma regra automática ou IA aprova, libera ou altera um treino**: aprovar e entregar são atos do profissional.
+
+Roda no Webflow Cloud (Workers, banco SQLite D1 e armazenamento de objetos R2, da Cloudflare, operados pelo Webflow). Não escolhemos nem conhecemos a região dos dados: ver pergunta 9.
+
+## 2. Papéis (hipótese a confirmar)
+
+| Quem | Papel que a ferramenta pressupõe | Observação |
+|---|---|---|
+| O profissional | **Controlador** dos dados dos seus alunos | Decide a finalidade (o atendimento) e o que registrar. O termo dele diz isso. |
+| A plataforma | **Operador** dos dados dos alunos; **controladora** dos dados de conta e de cobrança do próprio profissional | Hipótese nossa. Não há contrato de operação (DPA) entre os dois ainda. |
+| O Webflow/Cloudflare | Suboperador | Contrato do próprio Webflow. |
+
+## 3. Dados guardados
+
+"Sensível" aqui quer dizer dado de saúde ou imagem de saúde, no sentido do art. 5º, II, da LGPD; a classificação final é do advogado.
+
+| Dado | Onde | Quem vê | Sensível? |
+|---|---|---|---|
+| Nome, e-mail de acesso, senha (guardada só como hash) | `auth_user`, `auth_account` | A própria pessoa; o profissional vê o nome do aluno | Não |
+| IP e navegador de cada sessão | `auth_session` (`ip_address`, `user_agent`) | Ninguém pela interface | Não |
+| Cadastro do aluno: nome, nascimento, sexo, e-mail, telefone, altura, objetivo, nível, rotina, local, equipamentos | `students`, `student_profiles` | Só o profissional com vínculo técnico ativo | Parte (saúde e rotina) |
+| Ficha de saúde: lesões, cirurgias, dores, limitações, medicamentos e condições, observações | `student_profiles` | Só o profissional com vínculo técnico ativo | **Sim** |
+| Avaliações: seis itens de triagem (dor no esforço, tontura, dor no peito, lesão em tratamento, cirurgia recente, restrição médica), indicadores (frequência cardíaca de repouso, pressão, cintura, gordura corporal, medidas), postura e movimento, notas | `assessments`, `assessment_metrics`, `assessment_findings`, `assessment_reviews` | Só o profissional com vínculo técnico ativo | **Sim** |
+| **Fotos de postura** (quatro vistas) | R2 (`PHOTOS`); índice em `assessment_photos` | Só o profissional com vínculo técnico ativo, por rota autenticada | **Sim (imagem de saúde)** |
+| Treino prescrito e entregue | `training_plans`, `plan_revisions`, `prescribed_exercises` | Profissional e o próprio aluno | Não |
+| Registro de execução: séries, cargas, esforço, **dor ou desconforto**, observações | `workout_sessions`, `session_*` | Profissional com vínculo e o próprio aluno | **Sim** (relato de dor) |
+| Aceite dos termos: quem, quando, versão, SHA-256 do texto, autorização das fotos | `consent_acceptances` | O profissional vê a data e a escolha das fotos do aluno; o aluno vê a própria | Não |
+| Trilha de auditoria (quem fez o quê e quando; nunca o conteúdo) | `access_audit_events` | O gestor vê a lista de eventos (ação, organização, quem fez), nunca o conteúdo | Não |
+
+Não há anúncios, rastreadores de terceiros nem uso dos dados para outra finalidade. Cobrança e pagamentos são só um módulo planejado: **não há dados de pagamento no código atual**.
+
+## 4. Como o aceite funciona hoje
+
+- **Uma vez, ao aderir.** O profissional aceita ao criar o espaço; o aluno aceita ao aceitar o convite do profissional. Sem a caixa obrigatória o servidor recusa, mesmo contornando a tela.
+- **Versão e prova.** O texto vive no código. Cada aceite grava a versão e o SHA-256 do texto exato mostrado, a data e a identidade verificada no servidor. A tabela só se acrescenta (gatilhos recusam alterar e apagar).
+- **Texto novo, aceite novo.** Trocar qualquer palavra cria uma nova versão; no acesso seguinte cada pessoa é levada a aceitar de novo, e nada da área abre antes.
+- **Fotos: escolha à parte.** Dentro do mesmo aceite, o aluno vê um item destacado e opcional, **desmarcado por padrão**; recusar não impede o aceite nem o uso da ferramenta. A foto só é aceita se o aceite **mais recente** do aluno, **da versão em vigor**, tem a autorização marcada; o profissional não pode marcar por ele. Cada foto guarda o id do aceite que a autorizou.
+- **Menores.** A ferramenta bloqueia fotos de quem a ficha mostra ter menos de 18 anos, e o termo do aluno pede a confirmação de que tem 18 anos. Não há caminho para responsável legal.
+- **O profissional vê fatos**: quando o aluno aceitou, se a versão é a atual e se autorizou as fotos. O aluno vê, em "Minha conta", a data do aceite e a escolha das fotos.
+
+## 5. Texto atual (rascunho)
+
+Reproduzido do código por `src/modules/consentimento/terms.ts`; um teste confere que este arquivo e o código dizem a mesma coisa. Se o texto mudar, a versão muda e este arquivo precisa ser atualizado.
+
+### 5.1 Aluno
+
+Versão `2026-10-25-rascunho-1`, SHA-256 do texto aceito `4ca15e524fcef096a2b6ec7b4dbe83dd6ba9fdda5c8e6fabc883c956604d6b66`.
+
+> **Termos e aviso de privacidade do aluno**
+>
+> Você está entrando na área do aluno de uma ferramenta que o seu profissional usa para acompanhar o seu treino. Leia antes de aceitar. Você aceita uma única vez, ao entrar.
+>
+> **Quem usa os seus dados.** O seu profissional responsável usa esta ferramenta para planejar, entregar e acompanhar o seu treino. Dentro da ferramenta, só ele vê os seus dados; a equipe que opera a plataforma não tem tela para eles.
+>
+> **Quais dados são guardados.** Os dados do seu cadastro e da sua ficha, as avaliações que ele registrar (que podem incluir informações de saúde, como lesões, medicamentos e dor), o treino que ele entregar e o que você registrar depois de treinar: séries, cargas, esforço, dor ou desconforto e observações.
+>
+> **Para que servem.** Só para o seu atendimento: prescrever, acompanhar e ajustar o seu treino. Não são usados para propaganda e não aparecem para outros alunos. A ferramenta não faz diagnóstico e não altera o seu treino sozinha: quem decide é o seu profissional.
+>
+> **Quanto tempo ficam.** Enquanto você for atendido e por até 5 anos depois, salvo se você pedir a exclusão antes ou se a lei exigir que algum dado seja mantido.
+>
+> **Os seus direitos.** Você pode pedir ao seu profissional para ver os seus dados, corrigir, exportar ou excluir, e pode retirar o seu aceite. Hoje a ferramenta ainda não tem uma tela para esses pedidos; faça-os diretamente ao seu profissional, que deve responder em até 15 dias.
+>
+> **Idade.** Este aceite é para quem tem 18 anos completos. Para menores de 18 anos o aceite precisa ser feito por um responsável, e a ferramenta ainda não oferece esse caminho.
+>
+> Caixa obrigatória: “Tenho 18 anos completos, li e aceito os termos e o aviso de privacidade.”
+>
+> **Fotos da sua postura (opcional).** Se você autorizar, o seu profissional poderá registrar fotos da sua postura nas avaliações. As fotos ficam em armazenamento privado, só ele as vê, e a ferramenta remove os dados do aparelho (posição, data e modelo) antes de guardar. Depois que a avaliação é registrada, as fotos não mudam. Recusar não impede você de usar nada: o resto funciona igual. Para retirar a autorização, fale com o seu profissional.
+>
+> Caixa opcional (desmarcada): “Autorizo o meu profissional a registrar fotos da minha postura.”
+
+### 5.2 Profissional
+
+Versão `2026-10-25-rascunho-1`, SHA-256 do texto aceito `611a264b72d3d8d11096b662e83a66e7a23c1b4ed5453337bc1a415d5c4350e5`.
+
+> **Termos de uso do profissional**
+>
+> Você está criando o espaço de atendimento em uma ferramenta que guarda dados de saúde dos seus alunos. Leia antes de aceitar. Você aceita uma única vez, ao entrar.
+>
+> **O que a ferramenta é e não é.** A ferramenta organiza o seu atendimento: cadastro, avaliações, prescrição e acompanhamento. Ela não faz diagnóstico e não aprova nem libera treino: aprovar e entregar são atos seus, e nenhuma regra automática os substitui. O que você prescreve é de sua responsabilidade técnica.
+>
+> **Os dados dos seus alunos.** Você é o responsável pelos dados dos alunos que cadastra. Registre só o que é necessário para o atendimento e use-os só para ele. Dados de saúde e fotos não devem ser exportados nem usados para outro fim.
+>
+> **O aceite do aluno.** Convide o aluno pelo link da ferramenta: é ali que ele lê e aceita o uso dos dados dele e decide sobre as fotos. Não registre dados de saúde nem fotos de quem não aceitou, e não cadastre menores de 18 anos sem o aceite de um responsável.
+>
+> **Pedidos do aluno.** Quando um aluno pedir para ver, corrigir, exportar ou excluir os dados dele, ou retirar o aceite, você deve atender em até 15 dias. Hoje a ferramenta ainda não tem uma tela para esses pedidos.
+>
+> **A sua conta.** A conta é pessoal: não compartilhe a senha. Ainda não existe recuperação de senha por e-mail, então guarde-a em um lugar seguro.
+>
+> Caixa obrigatória: “Li e aceito os termos de uso.”
+
+## 6. Salvaguardas técnicas já implementadas
+
+- **Isolamento por organização e por vínculo.** Toda consulta filtra organização, vínculo técnico ativo e revogação; a identidade e a organização vêm da sessão verificada no servidor, nunca do corpo ou de cabeçalhos livres. O gestor da plataforma não tem tela para dados de alunos.
+- **Dados de saúde no servidor.** O banco só é acessado no servidor; nada sensível vai para variáveis públicas do navegador.
+- **Fotos:** em armazenamento privado, sem endereço público, lidas só por rota autenticada com vínculo técnico (404 para qualquer outra pessoa); sem cache (`no-store`); a imagem é redesenhada no navegador e limpa de novo no servidor, sem metadados do aparelho (posição, data, modelo); só JPEG, até 5 MB; cada envio e remoção é auditado; imutáveis depois que a avaliação é registrada.
+- **Prescrição ≠ execução; IA nunca aprova.** Revisão entregue é imutável (também no banco). Relato de dor é guardado como foi dito, sem interpretação, e nenhuma regra altera o treino por causa dele.
+- **Sessões.** Troca de senha e encerramento das outras sessões; limite de tentativas; senhas guardadas só como hash.
+- **Aceite sem possibilidade de reescrever.** Ver seção 4.
+
+## 7. O que a ferramenta ainda NÃO faz
+
+1. **Não há tela para pedidos do titular** (acesso, correção, exportação, exclusão, retirada do aceite). O termo manda o aluno falar com o profissional, que deve responder em até 15 dias. Hoje isso seria manual e sem apoio da ferramenta.
+2. **Exclusão não existe.** Registros congelados (avaliação registrada, treino entregue, registro de execução com dor ou lido pelo profissional, fotos de avaliação registrada) são imutáveis por gatilhos no banco, de propósito. Atender um pedido de exclusão exigiria uma **exceção controlada** a essas travas, com auditoria. Não está desenhada nem decidida.
+3. **Retenção não é aplicada.** O termo diz "enquanto você for atendido e por até 5 anos depois", mas nada apaga ou anonimiza dados quando o prazo acaba.
+4. **O aluno não consegue mudar nem retirar a autorização das fotos depois** de aceitar. E não está decidido o que fazer com as fotos já guardadas se ela for retirada.
+5. **Menores:** sem responsável legal, sem permissões próprias. Se a ficha não tem data de nascimento, a ferramenta não sabe a idade; só o termo do aluno pede a confirmação de 18 anos.
+6. **E-mail:** sem verificação de e-mail e sem recuperação de senha (dependem de um provedor de envio, ainda não contratado).
+7. **Termos fora do login:** o texto só aparece para quem está entrando; não há página pública dos termos nem aviso de privacidade completo separado dos termos.
+8. **Encarregado (DPO), canal do titular e plano de resposta a incidentes** não existem; **contrato de operação** entre plataforma e profissional também não.
+9. **Registros técnicos:** o IP e o navegador de cada sessão ficam no banco sem prazo de descarte; os logs de execução do Webflow têm retenção própria que não controlamos.
+
+## 8. Perguntas ao advogado
+
+Cada uma traz a **proposta atual**, aprovada pelo responsável do produto, para o advogado aceitar, trocar ou rejeitar.
+
+1. **Base legal.** Para dados de saúde e imagens de saúde de alunos, o consentimento específico e destacado (como no desenho acima) é o caminho certo, ou há outra base do art. 11 que sirva melhor ao atendimento? *Proposta:* consentimento específico e destacado, com quem, quando e qual versão registrados, e o das fotos como item separado e opcional.
+2. **Controlador e operador.** O profissional como controlador e a plataforma como operador, e a plataforma como controladora dos dados de conta do profissional, está correto? O que precisa existir por escrito (contrato de operação, cláusulas nos termos do profissional)? *Proposta:* a hipótese da seção 2.
+3. **Aceite único.** Aceitar uma vez ao aderir, e de novo só quando o texto muda de versão, é suficiente? *Proposta:* sim.
+4. **Menores.** Qual o caminho mínimo e seguro para atender menores de 18 anos (responsável legal, forma do consentimento, fotos)? *Proposta:* continuar bloqueando fotos e pedindo confirmação de 18 anos até haver um desenho aprovado.
+5. **Retenção.** Qual o prazo razoável após o fim do atendimento, e é diferente para fotos? *Proposta:* cerca de 5 anos após o fim do atendimento, e um prazo menor para fotos; confirmar se há exigência de guarda de registro para profissionais de educação física.
+6. **Exclusão e registros congelados.** Como atender um pedido de exclusão quando o registro é imutável de propósito (prescrição entregue, avaliação registrada)? Pode ser anonimização em vez de apagar? Quais dados a lei obriga a manter? *Proposta:* uma exceção controlada e auditada, só a pedido do titular verificado, com o que a lei exigir mantido.
+7. **Pedidos do titular.** Em quanto tempo e por qual canal responder, e quem responde (o profissional ou a plataforma)? *Proposta:* resposta em até 15 dias, pelo profissional, com apoio de telas da ferramenta (a construir).
+8. **Retirada do aceite.** O que acontece com os dados já guardados quando o aluno retira o aceite ou só a autorização das fotos? As fotos precisam ser apagadas na hora? *Proposta:* nova linha de aceite (o histórico não se apaga); o destino das fotos já guardadas fica para o advogado decidir.
+9. **Transferência internacional.** Os dados ficam em infraestrutura do Webflow/Cloudflare, em região que não escolhemos. É preciso informar isso no aviso e adotar alguma salvaguarda? Convém perguntar ao Webflow onde ficam os dados e por quanto tempo ficam as cópias de segurança.
+10. **Aviso de privacidade completo.** Os termos e o aviso devem ser documentos separados, públicos e acessíveis antes do cadastro? Quem é o encarregado e qual o canal? *Proposta:* hoje é um texto só, mostrado na entrada.
+11. **Registros técnicos e auditoria.** O IP e o navegador das sessões e a trilha de auditoria precisam de prazo de descarte e de menção no aviso?
+12. **Texto.** O advogado pode revisar ou reescrever as seções 5.1 e 5.2. Depois da revisão, a versão passa a ter outro nome (sem `rascunho`) e o hash muda.
+
+## 9. Para abrir as fotos em produção
+
+1. Texto revisado, versão sem `rascunho` em `TERMS_VERSION` (`src/modules/consentimento/terms.ts`) e este arquivo atualizado.
+2. As decisões das perguntas 4, 5, 6 e 8 tomadas, ou registradas como risco aceito pelo responsável.
+3. Conferir na aba **Storage** do Webflow que o bucket `photos` **não tem endereço público**.
+4. Acrescentar `"vars": { "PHOTOS_ENABLED": "true" }` ao `wrangler.json` e publicar (ver `docs/WEBFLOW-CLOUD.md`).
+5. Subir uma foto de teste de um aluno de teste que tenha autorizado, e conferir a leitura só pelo profissional.

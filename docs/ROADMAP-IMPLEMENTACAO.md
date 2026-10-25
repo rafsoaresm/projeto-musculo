@@ -17,7 +17,7 @@ O escopo completo está em [`referencias/02-ROADMAP-E-HANDOFF.md`](referencias/0
 
 1. Implementado: migration 0014. A foto só é aceita se o login ativo do aluno tem aceite da versão em vigor com a autorização das fotos marcada; o profissional não tem mais caixa para isso. Cada foto guarda o id do aceite que a autorizou; o banco recusa foto sem ele. O aluno vê, em `/aluno/conta`, o que aceitou e se autorizou as fotos.
 2. Princípio: a autorização é do titular; a ferramenta mostra e confere, nunca preenche. **As fotos seguem fechadas em produção** até a revisão jurídica do texto.
-3. **Em aberto:** o aluno mudar ou retirar a autorização depois, e o destino das fotos já guardadas; revisão jurídica; menores; pedidos do titular.
+3. **Em aberto:** o aluno mudar ou retirar a autorização depois, e o destino das fotos já guardadas; revisão jurídica; menores; pedidos do titular. **Pacote para o advogado:** [`REVISAO-JURIDICA.md`](REVISAO-JURIDICA.md) (0.21.1), com o texto atual, o que existe, o que falta e as perguntas.
 
 ## Fatia anterior: aceite único dos termos ao aderir (0.20)
 

@@ -1,6 +1,13 @@
-# Evidências de validação — v0.21.0 (fotos dependem da autorização do próprio aluno, registrada no aceite; texto provisório, a revisar por advogado) sobre a base 0.3
+# Evidências de validação — v0.21.1 (pacote para revisão jurídica; fotos dependem da autorização do próprio aluno, registrada no aceite; texto provisório, a revisar por advogado) sobre a base 0.3
 
 Tudo abaixo foi executado **localmente** em 23/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0014 são aditivas.
+
+## Correção 0.21.1: pacote para revisão jurídica
+
+Só documentação e um teste, sem migration nem mudança de comportamento. `docs/REVISAO-JURIDICA.md` reúne o que o advogado precisa para revisar o texto e liberar as fotos: o que a ferramenta é, os papéis (hipótese de controlador e operador), o inventário de dados com onde ficam e quem vê, como o aceite funciona, o **texto atual copiado do código** (versão e SHA-256), as salvaguardas implementadas, **o que ainda não existe** (pedidos do titular, exclusão, retenção, menores, e-mail, aviso público, encarregado) e doze perguntas, cada uma com a proposta já aprovada pelo responsável, mais o roteiro para abrir as fotos em produção.
+
+- **Teste.** `tests/legal-brief.test.ts` (3) confere que o arquivo contém, palavra por palavra, os dois textos, a versão e os dois hashes: se alguém muda o texto no código sem atualizar o pacote, o teste falha. **Mutação deliberada:** trocar uma palavra do texto no pacote fez os dois cenários falharem.
+- **O que isto não é.** Não é parecer nem texto jurídico, e não abre as fotos: elas seguem fechadas em produção. Foi escrito por quem construiu a ferramenta; as afirmações sobre o funcionamento foram conferidas no código (tabelas, quem lê o quê, o que o aluno vê), mas as perguntas jurídicas são do advogado.
 
 ## Fatia 0.21: fotos dependem da autorização do próprio aluno
 
