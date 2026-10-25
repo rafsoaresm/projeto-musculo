@@ -135,6 +135,17 @@ test("the student logs a workout, corrects it, reports pain, and the professiona
   await page.getByRole("link", { name: "Ver todos os registros" }).click();
   await expect(page.getByRole("heading", { name: "Execução dos treinos de Aluno da execução" })).toBeVisible();
   await expect(page.getByRole("cell", { name: "1 de 3" })).toBeVisible();
+  // What was foreseen next to what was logged, and the load as typed. The week is still going, so it is not a miss.
+  const cycle = page.getByRole("group", { name: "Plano da execução, revisão 1" });
+  await expect(cycle.getByText("Em uso", { exact: true })).toBeVisible();
+  await expect(cycle.getByText("Nenhuma semana encerrada ainda.")).toBeVisible();
+  const thisWeek = cycle.getByRole("row").filter({ hasText: "Em andamento" });
+  await expect(thisWeek).toHaveCount(1);
+  await expect(thisWeek.getByRole("cell").last()).toContainText("1 · Full Body");
+  const squatLoad = page.getByRole("group", { name: "Carga: Agachamento da Execução" });
+  await expect(squatLoad.getByText(/Uma carga anotada: 25 kg em /)).toBeVisible();
+  await squatLoad.getByText("Ver os registros").click();
+  await expect(squatLoad.getByRole("cell", { name: "25 kg × 9 rep." })).toBeVisible();
   await expect(page.getByText("Não lido")).toBeVisible();
   await page.getByRole("table").getByRole("link").first().click();
   await expect(page.getByRole("heading", { name: /^Treino Full Body de / })).toBeVisible();
@@ -248,5 +259,47 @@ test("a log without pain can be deleted by the student inside the window", async
   await expect(me.getByRole("heading", { name: "Treino atual" })).toBeVisible();
   await me.getByRole("link", { name: "Registrar treino Full Body, fase 1" }).click();
   await expect(me.getByText("Você ainda não registrou este treino.")).toBeVisible();
+  await client.context.close();
+});
+
+test("the professional reads the load of an exercise over the days, as the student typed it", async ({ page, browser, baseURL }) => {
+  await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
+  await createProfessional(page, "Estúdio da carga");
+  const { studentURL, client } = await deliveredPlanWithClient(page, browser, baseURL, "Aluno da carga");
+  const me = client.page;
+  const logSquat = async (back: number, reps: string, load: string) => {
+    await me.goto("./aluno/treino");
+    await me.getByRole("link", { name: "Registrar treino Full Body, fase 1" }).click();
+    const squat = exerciseGroup(me, "Agachamento da Execução");
+    await me.getByLabel("Data em que você treinou").fill(brazilDay(back));
+    await squat.getByLabel("Fiz este exercício").check();
+    await squat.getByRole("group", { name: "Série 1" }).getByLabel("Repetições").fill(reps);
+    await squat.getByRole("group", { name: "Série 1" }).getByLabel("Carga (kg)").fill(load);
+    await me.getByRole("button", { name: "Salvar registro" }).click();
+    await expect(me.getByText("Registro salvo.")).toBeVisible();
+  };
+  await logSquat(1, "10", "20");
+  await logSquat(0, "8", "22,5");
+
+  await page.goto(`${studentURL}/execucao`);
+  const load = page.getByRole("group", { name: "Carga: Agachamento da Execução" });
+  await expect(load.getByText(/Primeira: 20 kg em .* Última: 22,5 kg em /)).toBeVisible();
+  // The drawing is a supplement: the keyboard reads the same values that the table lists.
+  const chart = load.getByRole("group", { name: /Gráfico: Carga de Agachamento da Execução/ });
+  await expect(chart).toBeVisible();
+  await chart.focus();
+  await expect(chart.getByRole("status")).toContainText("22,5 kg");
+  await page.keyboard.press("ArrowLeft");
+  await expect(chart.getByRole("status")).toContainText("20 kg");
+  await load.getByText("Ver os registros").click();
+  await expect(load.getByRole("cell", { name: "20 kg × 10 rep." })).toBeVisible();
+  await expect(load.getByRole("cell", { name: "22,5 kg × 8 rep." })).toBeVisible();
+  await noHorizontalOverflow(page);
+  // Somebody else's student has no progress to read.
+  const outsider = await newActor(browser, baseURL);
+  await createProfessional(outsider.page, "Outro estúdio da carga");
+  const other = await outsider.page.goto(new URL(`${studentURL}/execucao`, page.url()).href);
+  expect(other?.status()).toBe(404);
+  await outsider.context.close();
   await client.context.close();
 });

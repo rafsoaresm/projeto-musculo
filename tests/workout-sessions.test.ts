@@ -63,12 +63,12 @@ beforeAll(async () => {
   );
   db = await mf.getD1Database("DB");
   await migrate(db, ALL_MIGRATIONS);
-  const people = ["owner-a", "tech-a", "tech-a2", "commercial-a", "owner-b", "tech-b", "client-1", "client-1b", "client-2", "client-b", "client-off", "mgr-1"];
+  const people = ["owner-a", "tech-a", "tech-a2", "commercial-a", "owner-b", "tech-b", "client-1", "client-1b", "client-2", "client-b", "client-off", "client-p", "mgr-1"];
   await db.batch([
     ...people.map((id) =>
       db.prepare("INSERT INTO auth_user(id,name,email,created_at,updated_at) VALUES (?1,?1,?2,0,0)").bind(id, `${id}@example.test`),
     ),
-    db.prepare("INSERT INTO users(id) VALUES ('owner-a'),('tech-a'),('tech-a2'),('commercial-a'),('owner-b'),('tech-b'),('client-1'),('client-1b'),('client-2'),('client-b'),('client-off'),('mgr-1')"),
+    db.prepare("INSERT INTO users(id) VALUES ('owner-a'),('tech-a'),('tech-a2'),('commercial-a'),('owner-b'),('tech-b'),('client-1'),('client-1b'),('client-2'),('client-b'),('client-off'),('client-p'),('mgr-1')"),
     db.prepare("INSERT INTO platform_admins(user_id) VALUES ('mgr-1')"),
     db.prepare("INSERT INTO organizations(id,name) VALUES ('org-a','Studio A'),('org-b','Studio B')"),
     db.prepare(
@@ -81,9 +81,9 @@ beforeAll(async () => {
        ('pro-owner-a','org-a','owner-a','Owner A'),('pro-a','org-a','tech-a','Pro A'),
        ('pro-a2','org-a','tech-a2','Pro A2'),('pro-owner-b','org-b','owner-b','Owner B'),('pro-b','org-b','tech-b','Pro B')`,
     ),
-    db.prepare("INSERT INTO students(id,organization_id,display_name) VALUES ('st-1','org-a','Student One'),('st-2','org-a','Student Two'),('st-b','org-b','Student B'),('st-off','org-a','Student Off')"),
-    db.prepare("INSERT INTO care_assignments(organization_id,student_id,professional_id) VALUES ('org-a','st-1','pro-a'),('org-a','st-2','pro-a2'),('org-a','st-off','pro-a'),('org-b','st-b','pro-b')"),
-    db.prepare("INSERT INTO student_access(organization_id,student_id,user_id) VALUES ('org-a','st-1','client-1'),('org-a','st-1','client-1b'),('org-a','st-2','client-2'),('org-b','st-b','client-b'),('org-a','st-off','client-off')"),
+    db.prepare("INSERT INTO students(id,organization_id,display_name) VALUES ('st-1','org-a','Student One'),('st-2','org-a','Student Two'),('st-b','org-b','Student B'),('st-off','org-a','Student Off'),('st-p','org-a','Student Progress')"),
+    db.prepare("INSERT INTO care_assignments(organization_id,student_id,professional_id) VALUES ('org-a','st-1','pro-a'),('org-a','st-2','pro-a2'),('org-a','st-off','pro-a'),('org-a','st-p','pro-a'),('org-b','st-b','pro-b')"),
+    db.prepare("INSERT INTO student_access(organization_id,student_id,user_id) VALUES ('org-a','st-1','client-1'),('org-a','st-1','client-1b'),('org-a','st-2','client-2'),('org-b','st-b','client-b'),('org-a','st-off','client-off'),('org-a','st-p','client-p')"),
   ]);
 });
 afterAll(async () => {
@@ -475,5 +475,94 @@ describe("the professional reading the logs", () => {
     expect(await reader.painPending()).toEqual([]);
     await run("UPDATE users SET disabled_at = NULL WHERE id = 'tech-a2'");
     expect(await reader.detail(id)).not.toBeNull();
+  });
+});
+
+describe("the progress the professional reads", () => {
+  const nowOn = (day: string) => new Date(`${day}T15:00:00.000Z`);
+  /** Logs one workout of the plan on a day, for the student of this block. */
+  async function logOn(planId: string, exerciseId: string, day: string, sets: Array<{ reps?: number; loadKg?: number }>) {
+    const outcome = await studentSessionsFor(db, "client-p").save(
+      "st-p",
+      log(planId, [done(exerciseId, sets)], { performedOn: day }),
+      nowOn(day),
+    );
+    if (outcome.status !== "saved") throw new Error(`expected saved, got ${outcome.status}`);
+  }
+
+  it("counts the logs of each week against the workouts foreseen and keeps the week in progress out of the missing ones", async () => {
+    const plan = await deliveredPlan("st-p");
+    await logOn(plan.planId, plan.phase1[0], "2026-11-10", [{ reps: 10, loadKg: 20 }, { reps: 8, loadKg: 22.5 }]);
+    // The same day also has an exercise that was skipped, with a note: it is not a point of any series.
+    const second = await studentSessionsFor(db, "client-p").save(
+      "st-p",
+      log(plan.planId, [done(plan.phase1[0], [{ reps: 10, loadKg: 25 }]), { prescribedExerciseId: plan.phase1[1], done: false, notes: "sem tempo", sets: [{ reps: 5, loadKg: 99 }] }], { performedOn: "2026-11-11" }),
+      nowOn("2026-11-11"),
+    );
+    expect(second.status).toBe("saved");
+    const reader = executionFor(db, scope("tech-a"));
+
+    const during = await reader.progress("st-p", "2026-11-12");
+    const cycle = during.cycles.find((item) => item.planId === plan.planId)!;
+    // Delivered on 10 Nov: the week of 2 Nov was never the student's to miss.
+    expect(cycle).toMatchObject({ revisionNumber: 1, deliveredOn: "2026-11-10", supersededOn: null, outside: 0 });
+    expect(cycle.weeks.map((week) => [week.startDate, week.planned, week.recorded, week.inProgress])).toEqual([
+      ["2026-11-09", 3, 2, true],
+    ]);
+    expect(cycle.closed).toEqual({ weeks: 0, planned: 0, recorded: 0 });
+
+    const later = (await reader.progress("st-p", "2026-11-20")).cycles.find((item) => item.planId === plan.planId)!;
+    expect(later.weeks.map((week) => [week.startDate, week.recorded, week.inProgress])).toEqual([
+      ["2026-11-09", 2, false],
+      ["2026-11-16", 0, true],
+    ]);
+    expect(later.closed).toEqual({ weeks: 1, planned: 3, recorded: 2 });
+  });
+
+  it("reads the heaviest set of each day per exercise, as typed", async () => {
+    const reader = executionFor(db, scope("tech-a"));
+    const { series } = await reader.progress("st-p", "2026-11-12");
+    const squat = series.find((item) => item.name === "Exercício 1")!;
+    expect(squat.points).toEqual([
+      { performedOn: "2026-11-10", maxLoadKg: 22.5, repsAtMax: 8, sets: 2 },
+      { performedOn: "2026-11-11", maxLoadKg: 25, repsAtMax: 10, sets: 1 },
+    ]);
+    expect(squat.numeric).toHaveLength(2);
+    // Only what was done enters: a skipped exercise with a note has no point.
+    expect(series.map((item) => item.name)).toEqual(["Exercício 1"]);
+  });
+
+  it("does not count the weeks of a replaced cycle as missed, and shows both cycles", async () => {
+    const plans = plansFor(db, scope("tech-a"));
+    const first = (await executionFor(db, scope("tech-a")).progress("st-p", "2026-11-12")).cycles[0];
+    const next = (await plans.newRevisionFrom(first.planId, (await db.prepare("SELECT id FROM plan_revisions WHERE plan_id = ?1 AND revision_number = 1").bind(first.planId).first<{ id: string }>())!.id)) as { revisionId: string };
+    await plans.markReady(first.planId, next.revisionId);
+    await plans.approve(first.planId, next.revisionId, { screeningNotRecorded: true }, at(60 * 24 * 3));
+    await plans.deliver(first.planId, next.revisionId, at(60 * 24 * 3 + 1));
+    const cycles = (await executionFor(db, scope("tech-a")).progress("st-p", "2026-11-14")).cycles.filter((item) => item.planId === first.planId);
+    expect(cycles.map((item) => item.revisionNumber)).toEqual([2, 1]);
+    expect(cycles[1]).toMatchObject({ supersededOn: "2026-11-13" });
+    expect(cycles[1].weeks.map((week) => [week.startDate, week.recorded, week.inProgress])).toEqual([["2026-11-09", 2, false]]);
+    expect(cycles[1].closed.weeks).toBe(0);
+    expect(cycles[0].weeks.map((week) => [week.startDate, week.recorded, week.inProgress])).toEqual([["2026-11-09", 0, true]]);
+  });
+
+  it("is empty for every identity without an active technical assignment, and after the assignment ends", async () => {
+    const empty = { cycles: [], series: [] };
+    for (const [user, org] of [
+      ["tech-a2", "org-a"], ["owner-a", "org-a"], ["commercial-a", "org-a"], ["client-p", "org-a"],
+      ["mgr-1", "org-a"], ["tech-b", "org-b"], ["tech-b", "org-a"], ["stranger", "org-a"],
+    ])
+      expect(await executionFor(db, scope(user, org)).progress("st-p", "2026-11-14"), user).toEqual(empty);
+    const reader = executionFor(db, scope("tech-a"));
+    expect((await reader.progress("st-p", "2026-11-14")).cycles.length).toBeGreaterThan(0);
+    await run("UPDATE care_assignments SET revoked_at = '2026-11-12T00:00:00.000Z' WHERE student_id = 'st-p'");
+    expect(await reader.progress("st-p", "2026-11-14")).toEqual(empty);
+    await run("UPDATE care_assignments SET revoked_at = NULL WHERE student_id = 'st-p'");
+    await run("UPDATE users SET disabled_at = '2026-11-12T00:00:00.000Z' WHERE id = 'tech-a'");
+    expect(await reader.progress("st-p", "2026-11-14")).toEqual(empty);
+    await run("UPDATE users SET disabled_at = NULL WHERE id = 'tech-a'");
+    // Another student's logs never enter this student's progress.
+    expect((await reader.progress("st-1", "2026-11-14")).series.some((item) => item.points.some((point) => point.performedOn === "2026-11-10" && point.maxLoadKg === 22.5 && point.sets === 2))).toBe(false);
   });
 });

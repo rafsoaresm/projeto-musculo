@@ -78,7 +78,7 @@ Correspondência com os papéis do handoff V2:
 | Dashboard | `/profissional` | Disponível: contagens e próximos passos reais | E1 |
 | Alunos (lista, detalhe) | `/profissional/alunos` | Disponível: cadastro, vínculo técnico, convite | E1 |
 | Avaliações | `/profissional/avaliacoes` (e `/profissional/alunos/<id>/avaliacoes`) | Disponível (0.10 a 0.14): triagem, indicadores, postura, movimento, evolução e fotos de postura | E2 |
-| Execução dos treinos | `/profissional/alunos/<id>/execucao` e `/profissional/alunos/<id>/execucao/<registro>` | Disponível (0.15): o que o aluno registrou, prescrito ao lado do executado, leitura do profissional e relatos de dor sem leitura na visão geral | E2 |
+| Execução dos treinos | `/profissional/alunos/<id>/execucao` e `/profissional/alunos/<id>/execucao/<registro>` | Disponível (0.15 e 0.16): o que o aluno registrou, prescrito ao lado do executado, leitura do profissional, relatos de dor sem leitura na visão geral, registros por semana e carga por exercício | E2 |
 | Periodização | `/profissional/periodizacao` | Disponível: planejador avulso (sem salvar) e **planos salvos por aluno** em `/profissional/alunos/<id>/planos/...`, com revisões e estado Rascunho / Estrutura pronta. Só a estrutura do ciclo; sem exercícios nem aprovação | E2 |
 | Prescrição | `/profissional/prescricao` | Disponível: painel com a revisão mais recente de cada plano e as pendências por alvo. A prescrição manual acontece dentro de cada plano salvo do aluno, sem sugestões nem aprovação (**prévia** ilustrada na demonstração) | E2 |
 | Biblioteca de exercícios | `/profissional/biblioteca` | Disponível: 64 exercícios do sistema (somente leitura, vídeos são links de busca) e exercícios próprios da organização | E2 |

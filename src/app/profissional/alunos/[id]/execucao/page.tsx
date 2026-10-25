@@ -7,6 +7,7 @@ import { studentsFor } from "@/db/students";
 import { executionFor } from "@/db/workout-sessions";
 import { PageHeading, Pill } from "@/components/ui";
 import { formatCalendarDate } from "@/modules/training/format";
+import { ProgressView } from "@/modules/execucao/progress-view";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Execução dos treinos" };
@@ -16,7 +17,8 @@ export default async function StudentExecution({ params }: { params: Promise<{ i
   const { id } = await params;
   const student = await studentsFor(db, context).findById(id);
   if (!student) notFound();
-  const rows = await executionFor(db, context).list(student.id, 100);
+  const execution = executionFor(db, context);
+  const [rows, progress] = await Promise.all([execution.list(student.id, 100), execution.progress(student.id)]);
   return (
     <>
       <PageHeading
@@ -24,6 +26,7 @@ export default async function StudentExecution({ params }: { params: Promise<{ i
         title={`Execução dos treinos de ${student.displayName}`}
         description="O que o aluno registrou depois de treinar, do mais recente para o mais antigo."
       />
+      <ProgressView progress={progress} />
       <section className="panel" aria-labelledby="execucao-lista">
         <h2 id="execucao-lista">Registros do aluno</h2>
         {rows.length === 0 ? (
