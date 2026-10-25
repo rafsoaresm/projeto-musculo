@@ -126,7 +126,8 @@ test("a student changes the password and sees what is not available yet", async 
   await expect(client.page.getByText(clientEmail)).toBeVisible();
   await expect(client.page.getByRole("heading", { name: "Consentimentos e solicitações" })).toBeVisible();
   await expect(client.page.getByText(/Ainda não existe uma tela para pedir a exportação ou a exclusão/)).toBeVisible();
-  await expect(client.page.getByText(/Você aceitou os termos em \d{2}\/\d{2}\/\d{4}\. Fotos da sua postura: você não autorizou\./)).toBeVisible();
+  await expect(client.page.getByText(/Você aceitou os termos em \d{2}\/\d{2}\/\d{4}\./)).toBeVisible();
+  await expect(client.page.getByText("você não autorizou as fotos", { exact: true })).toBeVisible();
   await noHorizontalOverflow(client.page);
   await changePassword(client.page, password, next);
   await expect(client.page.getByText("Senha alterada.")).toBeVisible();

@@ -1,6 +1,17 @@
-# Evidências de validação — v0.21.1 (pacote para revisão jurídica; fotos dependem da autorização do próprio aluno, registrada no aceite; texto provisório, a revisar por advogado) sobre a base 0.3
+# Evidências de validação — v0.22.0 (o aluno autoriza ou retira as fotos em Minha conta; fotos dependem da autorização dele; texto provisório, a revisar por advogado) sobre a base 0.3
 
 Tudo abaixo foi executado **localmente** em 23/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0014 são aditivas.
+
+## Fatia 0.22: o aluno revê a autorização das fotos
+
+Sem migration. Fecha a lacuna da 0.21: quem desmarcava as fotos ao entrar nunca mais conseguia mudar. Em `/aluno/conta` o aluno vê o texto das fotos, o estado de hoje e uma caixa, e salva: autorizar ou retirar. As fotos seguem **fechadas em produção**.
+
+- **Cada mudança é uma nova linha** de aceite da mesma versão (nunca altera uma antiga), então o histórico de quem escolheu o quê e quando fica. A mesma escolha de novo não muda nada ("Nada mudou: esta já era a sua escolha"). Só a sessão do próprio aluno consegue; o profissional vê o resultado e não pode dar nem tirar a autorização.
+- **Efeito.** Autorizar abre o envio na tela do profissional na hora; retirar fecha o envio na hora (a rota responde 403). **O que já foi guardado não é apagado por essa tela**, e o texto diz ao aluno para falar com o profissional sobre essas fotos. O destino delas segue em aberto, para o advogado (`docs/REVISAO-JURIDICA.md`).
+- **Datas.** A tela do aluno e a linha do profissional mostram quando os termos foram aceitos pela primeira vez (essa data não anda quando só a escolha das fotos muda); o profissional vê também a data da escolha das fotos quando ela é de outro dia.
+- **Texto novo.** O texto do aluno passou a dizer que a escolha muda em "Minha conta" (versão `2026-10-25-rascunho-2`, hash novo): pelo mecanismo da 0.20, quem já tinha aceito é levado a aceitar de novo no próximo acesso. O pacote do advogado foi atualizado e o teste que o compara com o código passou a exigir a versão nova.
+- **Testes.** `tests/consent.test.ts` (12): a data do aceite não anda quando só as fotos mudam, a mesma escolha de novo não mexe em data nenhuma e uma versão nova começa a sua própria data; **mutação deliberada:** usar a data mais recente em vez da primeira fez 2 testes falharem. Navegador (raiz e `/treinador`, 56/56 cada, mais o smoke dos dois): o aluno que recusou não é fotografado nem com o cabeçalho antigo; ele autoriza em "Minha conta"; a tela do profissional abre e uma foto é enviada; ele retira; o envio fecha e a foto já guardada continua visível.
+- **Em aberto.** O destino das fotos já guardadas quando a autorização é retirada; a retirada do aceite dos termos como um todo; pedidos de acesso, exportação e exclusão.
 
 ## Correção 0.21.1: pacote para revisão jurídica
 

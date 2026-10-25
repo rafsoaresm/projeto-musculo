@@ -4,6 +4,7 @@ import { latestAcceptance } from "@/db/consent";
 import { formatCalendarDate } from "@/modules/training/format";
 import { PageHeading } from "@/components/ui";
 import { SecurityPanel } from "@/modules/auth/components/security-panel";
+import { PhotosChoice } from "@/modules/consentimento/photos-choice";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Minha conta · Área do aluno" };
@@ -41,14 +42,14 @@ export default async function StudentAccount() {
         <p className="eyebrow">SEUS DADOS</p>
         <h2 id="solicitacoes-conta">Consentimentos e solicitações</h2>
         {accepted && (
-          <p>
-            Você aceitou os termos em {formatCalendarDate(accepted.acceptedAt.slice(0, 10))}. Fotos da sua postura:{" "}
-            <strong>{accepted.photosAuthorized ? "você autorizou" : "você não autorizou"}</strong>.
-          </p>
+          <>
+            <p>Você aceitou os termos em {formatCalendarDate(accepted.termsAcceptedAt.slice(0, 10))}.</p>
+            <PhotosChoice authorized={accepted.photosAuthorized} />
+          </>
         )}
         <p className="muted">
-          Ainda não existe uma tela para pedir a exportação ou a exclusão dos seus dados, nem para registrar
-          consentimentos. Enquanto isso, fale com o seu profissional.
+          Ainda não existe uma tela para pedir a exportação ou a exclusão dos seus dados, nem para retirar o
+          aceite dos termos. Enquanto isso, fale com o seu profissional.
         </p>
       </section>
     </>

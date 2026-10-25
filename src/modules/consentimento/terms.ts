@@ -8,7 +8,7 @@
  */
 export type Audience = "PROFESSIONAL" | "STUDENT";
 
-export const TERMS_VERSION = "2026-10-25-rascunho-1";
+export const TERMS_VERSION = "2026-10-25-rascunho-2";
 export const TERMS_ARE_DRAFT = TERMS_VERSION.includes("rascunho");
 
 export interface Terms {
@@ -58,7 +58,7 @@ export const TERMS: Record<Audience, Terms> = {
       "Tenho 18 anos completos, li e aceito os termos e o aviso de privacidade.",
     photos: {
       heading: "Fotos da sua postura (opcional)",
-      text: "Se você autorizar, o seu profissional poderá registrar fotos da sua postura nas avaliações. As fotos ficam em armazenamento privado, só ele as vê, e a ferramenta remove os dados do aparelho (posição, data e modelo) antes de guardar. Depois que a avaliação é registrada, as fotos não mudam. Recusar não impede você de usar nada: o resto funciona igual. Para retirar a autorização, fale com o seu profissional.",
+      text: "Se você autorizar, o seu profissional poderá registrar fotos da sua postura nas avaliações. As fotos ficam em armazenamento privado, só ele as vê, e a ferramenta remove os dados do aparelho (posição, data e modelo) antes de guardar. Depois que a avaliação é registrada, as fotos não mudam. Recusar não impede você de usar nada: o resto funciona igual. Você pode mudar essa escolha quando quiser, em “Minha conta”: retirar a autorização impede fotos novas; sobre as fotos que já foram guardadas, fale com o seu profissional.",
       label: "Autorizo o meu profissional a registrar fotos da minha postura.",
     },
   },
