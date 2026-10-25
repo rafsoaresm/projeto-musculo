@@ -52,9 +52,33 @@ test("the demonstration shows the three areas with fictional data and saves noth
   await expect(page.getByText(/não inventa cargas nem contagens/)).toBeVisible();
   await expect(page.getByText(/\d+\s?kg/)).toHaveCount(0);
 
+  // The account pages of the demonstration have no account or password to change.
+  for (const area of ["aluno", "profissional"]) {
+    await page.goto(`./demonstracao/${area}/conta`);
+    await expect(page.getByRole("heading", { name: "Minha conta" })).toBeVisible();
+    await expect(page.getByText(/não há conta nem senha para alterar/)).toBeVisible();
+    await expect(page.getByLabel("Senha atual")).toHaveCount(0);
+  }
+
   // The demonstration never opens the real areas.
   await page.goto("./profissional");
   await expect(
     page.getByRole("heading", { name: "Bom ter você de volta." }),
   ).toBeVisible();
+});
+
+test("every link of the demonstration menus opens a page", async ({ page }) => {
+  for (const area of ["gestor", "profissional", "aluno"]) {
+    await page.goto(`./demonstracao/${area}`);
+    const hrefs = await page
+      .locator("a[href]")
+      .evaluateAll((links, prefix) => links.map((link) => link.getAttribute("href") ?? "").filter((href) => href.includes(prefix)), `/demonstracao/${area}/`);
+    expect(hrefs.length, area).toBeGreaterThan(1);
+    for (const href of new Set(hrefs)) {
+      const response = await page.goto(new URL(href, page.url()).href);
+      expect(response?.status(), href).toBe(200);
+      await expect(page.getByRole("heading", { level: 1 }), href).toBeVisible();
+      await expect(page.getByText("Página não encontrada."), href).toHaveCount(0);
+    }
+  }
 });

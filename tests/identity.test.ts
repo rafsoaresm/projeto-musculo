@@ -3,7 +3,7 @@ import type { D1Database } from "@cloudflare/workers-types";
 import { readFile } from "node:fs/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createAuth } from "@/modules/auth/factory";
-import { handleAuthRequest } from "@/modules/auth/http";
+import { AUTH_ENDPOINTS, handleAuthRequest } from "@/modules/auth/http";
 import { provisionWorkspace, workspaceFor } from "@/db/workspaces";
 import { createStudent } from "@/db/create-student";
 import { studentsFor } from "@/db/students";
@@ -170,6 +170,16 @@ describe("Real authentication and atomic native SQLite onboarding", () => {
       404,
     );
   });
+  it("opens exactly these endpoints of the library to the browser, in one list read by the route and the handler", () => {
+    expect([...AUTH_ENDPOINTS].sort()).toEqual([
+      "change-password",
+      "get-session",
+      "revoke-other-sessions",
+      "sign-in/email",
+      "sign-out",
+      "sign-up/email",
+    ]);
+  });
   it("rejects oversized auth bodies before invoking the authentication library", async () => {
     const response = await request("sign-up/email", {
       name: "x".repeat(17000),
@@ -217,6 +227,106 @@ describe("Real authentication and atomic native SQLite onboarding", () => {
       last = response.status;
     }
     expect(last).toBe(429);
+  });
+  describe("password and sessions of someone already signed in", () => {
+    const cookiesOf = (response: Response) =>
+      response.headers
+        .getSetCookie()
+        .map((value) => value.split(";")[0])
+        .join("; ");
+    const signedIn = async (cookie: string) =>
+      (await (await request("get-session", undefined, cookie)).json()) !== null;
+    const newPassword = "another-long-local-password";
+
+    it("changes the password with the current one, ends the other sessions and keeps the person signed in", async () => {
+      const user = await account();
+      const otherDevice = cookiesOf(await request("sign-in/email", { email: user.email, password }));
+      expect(await signedIn(otherDevice)).toBe(true);
+
+      const changed = await request(
+        "change-password",
+        { currentPassword: password, newPassword, revokeOtherSessions: true },
+        user.cookie,
+      );
+      expect(changed.status).toBe(200);
+      expect(await signedIn(otherDevice)).toBe(false);
+      // The device that changed it keeps working, with the session the change issued.
+      expect(await signedIn(cookiesOf(changed) || user.cookie)).toBe(true);
+      // The old password is dead and the new one signs in.
+      expect((await request("sign-in/email", { email: user.email, password })).status).toBe(401);
+      expect((await request("sign-in/email", { email: user.email, password: newPassword })).status).toBe(200);
+    });
+
+    it("keeps the other sessions when not asked to end them", async () => {
+      const user = await account();
+      const otherDevice = cookiesOf(await request("sign-in/email", { email: user.email, password }));
+      expect(
+        (await request("change-password", { currentPassword: password, newPassword, revokeOtherSessions: false }, user.cookie)).status,
+      ).toBe(200);
+      expect(await signedIn(otherDevice)).toBe(true);
+    });
+
+    it("refuses a wrong current password, a short or reused new one, no session and another origin, and changes nothing", async () => {
+      const user = await account();
+      for (const body of [
+        { currentPassword: "not-the-current-password", newPassword },
+        { currentPassword: password, newPassword: "short" },
+        { currentPassword: password, newPassword: "x".repeat(129) },
+        { currentPassword: password },
+        {},
+      ])
+        expect((await request("change-password", body, user.cookie)).status, JSON.stringify(body)).toBe(400);
+      expect((await request("change-password", { currentPassword: password, newPassword })).status).toBe(401);
+      expect(
+        (await request("change-password", { currentPassword: password, newPassword }, user.cookie, "https://evil.example.test")).status,
+      ).toBe(403);
+      // The password is still the old one.
+      expect((await request("sign-in/email", { email: user.email, password })).status).toBe(200);
+      expect((await request("sign-in/email", { email: user.email, password: newPassword })).status).toBe(401);
+    });
+
+    it("never lets one person change another one's password", async () => {
+      const mine = await account();
+      const theirs = await account();
+      // Their cookie with my password changes nothing of mine, and only works with their own current password.
+      expect(
+        (await request("change-password", { currentPassword: password, newPassword }, theirs.cookie)).status,
+      ).toBe(200);
+      expect((await request("sign-in/email", { email: mine.email, password })).status).toBe(200);
+      expect((await request("sign-in/email", { email: theirs.email, password: newPassword })).status).toBe(200);
+    });
+
+    it("ends only the other sessions on request and keeps this one", async () => {
+      const user = await account();
+      const otherDevice = cookiesOf(await request("sign-in/email", { email: user.email, password }));
+      expect((await request("revoke-other-sessions", {}, user.cookie)).status).toBe(200);
+      expect(await signedIn(otherDevice)).toBe(false);
+      expect(await signedIn(user.cookie)).toBe(true);
+      expect((await request("revoke-other-sessions", {})).status).toBe(401);
+    });
+
+    it("limits guessing of the current password from a stolen session", async () => {
+      const user = await account();
+      const statuses: number[] = [];
+      for (let i = 0; i < 7; i++) {
+        const response = await handleAuthRequest(
+          auth,
+          new Request(`${origin}/treinador/api/auth/change-password`, {
+            method: "POST",
+            headers: {
+              Origin: origin,
+              "Content-Type": "application/json",
+              Cookie: user.cookie,
+              "cf-connecting-ip": "198.51.100.77",
+            },
+            body: JSON.stringify({ currentPassword: `wrong-guess-number-${i}`, newPassword }),
+          }),
+        );
+        statuses.push(response.status);
+      }
+      // Five wrong guesses in a minute are answered as wrong; from the sixth on, it is a block.
+      expect(statuses).toEqual([400, 400, 400, 400, 400, 429, 429]);
+    });
   });
   it("provisions one workspace and audits only once on replay", async () => {
     const user = await account();

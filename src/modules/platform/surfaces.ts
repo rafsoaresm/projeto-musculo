@@ -264,6 +264,7 @@ const profissional: NavGroup[] = [
   {
     label: "ESPAÇO",
     items: [
+      { slug: "conta", label: "Minha conta", icon: "user", status: "available" },
       planned("configuracoes", "Configurações", "settings", {
         epic: "E1",
         reference: "Handoff V2, seção 3",
@@ -326,12 +327,7 @@ const aluno: NavGroup[] = [
         needs:
           "Provedor de envio escolhido; notificações não carregam dados sensíveis no corpo.",
       }),
-      planned("conta", "Minha conta", "user", {
-        epic: "E4",
-        reference: "Projeto consolidado, seção 9",
-        summary: "Dados básicos, consentimentos, segurança e solicitações.",
-        needs: "Política de consentimento e fluxos de exportação e exclusão.",
-      }),
+      { slug: "conta", label: "Minha conta", icon: "user", status: "available" },
     ],
   },
 ];

@@ -10,7 +10,7 @@
 
 Better Auth 1.7.12 gerencia credenciais e sessões. Senhas têm 12–128 caracteres e usam o hash da biblioteca. Sessões duram sete dias, com atualização após um dia; não há cache de sessão em cookie. Cookies são HttpOnly, SameSite=Lax, restritos ao mount path e Secure em HTTPS. Sessões expiradas/removidas são rejeitadas; cada operação de domínio reavalia bloqueio e membership/vínculo.
 
-As rotas públicas de autenticação têm allowlist, método HTTP específico, checagem exata de Origin em POST e `private, no-store`. Os limites persistem no SQLite (10 tentativas de login e 5 cadastros por minuto por endereço). O endereço vem exclusivamente de `CF-Connecting-IP`; sua sobrescrita pelo edge deve ser confirmada na homologação Webflow. Sem esse header, usa-se um limite compartilhado. Não se confia em `X-Forwarded-For` enviado livremente.
+As rotas de autenticação têm allowlist (`sign-up/email`, `sign-in/email`, `sign-out`, `get-session` e, só para quem já tem sessão, `change-password` e `revoke-other-sessions`), método HTTP específico, checagem exata de Origin em POST e `private, no-store`. Os limites persistem no SQLite (10 tentativas de login, 5 cadastros e 5 trocas de senha por minuto por endereço). O endereço vem exclusivamente de `CF-Connecting-IP`; sua sobrescrita pelo edge deve ser confirmada na homologação Webflow. Sem esse header, usa-se um limite compartilhado. Não se confia em `X-Forwarded-For` enviado livremente.
 
 Server Actions validam novamente sessão e dados. Organização/usuário nunca vêm de campos do formulário. `createStudent` exige profissional com membership técnica ativa, cria a atribuição e registra auditoria no mesmo batch. IDs de outra organização não revelam o aluno.
 
@@ -50,3 +50,9 @@ O DB continua nativo; não há URL de banco externo. Migrations 0001 e 0002 são
 - O planejador segue exportando rascunhos sem associá-los ao aluno. Avaliações, planos salvos, aprovação e entrega usam a mesma regra: só profissional com vínculo técnico ativo, reavaliada em cada consulta.
 
 Esta entrega permite experimentar os três papéis com dados fictícios em homologação; não fecha E1 nem o piloto operacional.
+
+## Minha conta: senha e sessões (0.18)
+
+Quem já está conectado troca a senha em `/profissional/conta` ou `/aluno/conta`. A troca exige a **senha atual** (conferida no servidor, 12 a 128 caracteres para a nova) e a sessão; com a opção marcada, as sessões dos outros aparelhos são encerradas na mesma chamada e o aparelho que trocou continua conectado. "Desconectar os outros aparelhos" faz só o encerramento. A senha atual é conferida a cada troca, então uma sessão roubada não basta para tomar a conta: o limite de 5 tentativas por minuto também vale contra o palpite da senha atual.
+
+**Não existe recuperação de senha:** quem perde a senha não tem como voltar sozinho, porque ela depende do e-mail verificado e do provedor de envio (pendente). A tela diz isso. A troca de e-mail e a exclusão da conta também não existem ainda.
