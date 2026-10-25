@@ -293,13 +293,13 @@ const aluno: NavGroup[] = [
         status: "available",
         primary: true,
       },
-      planned("evolucao", "Evolução", "chart", {
-        epic: "E4",
-        reference: "Projeto consolidado, seção 9",
-        summary:
-          "Medidas e aderência por data e unidade. Dado ausente continua ausente: nunca vira zero.",
-        needs: "Registro de execução e avaliações persistidos.",
-      }, true),
+      {
+        slug: "evolucao",
+        label: "Evolução",
+        icon: "chart",
+        status: "available",
+        primary: true,
+      },
       planned("check-in", "Check-in", "check", {
         epic: "E4",
         reference: "Projeto consolidado, seção 9",

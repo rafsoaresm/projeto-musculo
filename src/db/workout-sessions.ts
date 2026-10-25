@@ -145,6 +145,73 @@ async function exercisesOf(db: D1Database, sessionIds: string[]) {
 const summaryColumns = `ws.id, ws.performed_on AS performedOn, ws.phase_index AS phaseIndex,
   ws.workout_label AS workoutLabel, ws.effort, ws.pain_reported AS pain, ws.created_at AS createdAt`;
 
+interface ProgressRevision {
+  planId: string;
+  planTitle: string;
+  revisionId: string;
+  revisionNumber: number;
+  deliveredAt: string;
+  scheduleJson: string;
+  supersededAt: string | null;
+  logged: number;
+}
+interface ProgressSession {
+  revisionId: string;
+  performedOn: string;
+  workoutLabel: string;
+}
+interface ProgressExerciseRow {
+  sessionExerciseId: string;
+  performedOn: string;
+  name: string;
+  reps: number | null;
+  loadKg: number | null;
+}
+
+/** Turns rows that a gated query already returned into the cycles and the load series. */
+function assembleProgress(
+  revisions: ProgressRevision[],
+  sessions: ProgressSession[],
+  exercises: ProgressExerciseRow[],
+  today: string,
+): StudentProgress {
+  const cycles = revisions
+    // The cycle in use, and any older one the student logged against.
+    .filter((revision) => revision.supersededAt === null || revision.logged > 0)
+    .map((revision): CycleProgress => {
+      const schedule = JSON.parse(revision.scheduleJson) as PeriodizationSchedule;
+      const deliveredOn = todayInBrazil(new Date(revision.deliveredAt));
+      const supersededOn = revision.supersededAt ? todayInBrazil(new Date(revision.supersededAt)) : null;
+      const records = weeklyRecords(
+        schedule.phases.flatMap((phase) =>
+          phase.microcycles.map((week) => ({
+            phaseIndex: phase.index,
+            startDate: week.startDate,
+            endDate: week.endDate,
+            workouts: week.sessions,
+          })),
+        ),
+        sessions.filter((log) => log.revisionId === revision.revisionId),
+        { since: deliveredOn, until: supersededOn && supersededOn < today ? supersededOn : today, today },
+      );
+      return {
+        ...records,
+        planId: revision.planId,
+        planTitle: revision.planTitle,
+        revisionNumber: revision.revisionNumber,
+        deliveredOn,
+        supersededOn,
+      };
+    });
+  const grouped = new Map<string, LoggedExercise>();
+  for (const row of exercises) {
+    const entry = grouped.get(row.sessionExerciseId) ?? { performedOn: row.performedOn, name: row.name, sets: [] };
+    if (row.reps !== null || row.loadKg !== null) entry.sets.push({ reps: row.reps, loadKg: row.loadKg });
+    grouped.set(row.sessionExerciseId, entry);
+  }
+  return { cycles, series: loadSeries([...grouped.values()]) };
+}
+
 /** The student's side: logs about themselves, through the verified link of their login. */
 export function studentSessionsFor(db: D1Database, userId: string) {
   if (!userId?.trim()) throw new Error("AUTHENTICATION_REQUIRED");
@@ -181,6 +248,78 @@ export function studentSessionsFor(db: D1Database, userId: string) {
         painReported: Boolean(pain),
         acknowledged: Boolean(acknowledged),
         editable: loggedBy === userId && !pain && !acknowledged && withinWindow(row.createdAt, now),
+      }));
+    },
+
+    /**
+     * The student's own progress: what they logged against what the delivered cycles foresaw, and the
+     * heaviest set they typed per exercise and day. Same facts the professional reads, through the
+     * student's own verified link.
+     */
+    async progress(studentId: string, today = todayInBrazil()): Promise<StudentProgress> {
+      const [revisions, sessions, exercises] = await Promise.all([
+        db
+          .prepare(
+            `SELECT p.id AS planId, p.title AS planTitle, r.id AS revisionId,
+               r.revision_number AS revisionNumber, r.delivered_at AS deliveredAt,
+               r.schedule_json AS scheduleJson,
+               (SELECT MIN(x.delivered_at) FROM plan_revisions x
+                  WHERE x.plan_id = p.id AND x.state = 'DELIVERED' AND x.delivered_at > r.delivered_at) AS supersededAt,
+               (SELECT COUNT(*) FROM workout_sessions w WHERE w.revision_id = r.id) AS logged
+             FROM student_access sa
+             JOIN students s ON s.organization_id = sa.organization_id AND s.id = sa.student_id
+             JOIN training_plans p ON p.organization_id = s.organization_id AND p.student_id = s.id
+             JOIN plan_revisions r ON r.organization_id = p.organization_id AND r.plan_id = p.id
+             WHERE sa.user_id = ?1 AND sa.student_id = ?2 AND sa.revoked_at IS NULL
+               AND ${activeUser("?1")} AND r.state = 'DELIVERED'
+             ORDER BY r.delivered_at DESC`,
+          )
+          .bind(userId, studentId)
+          .all<ProgressRevision>(),
+        db
+          .prepare(
+            `SELECT ws.revision_id AS revisionId, ws.performed_on AS performedOn, ws.workout_label AS workoutLabel
+             FROM workout_sessions ws
+             WHERE ws.student_id = ?2 AND ${linked("ws")}`,
+          )
+          .bind(userId, studentId)
+          .all<ProgressSession>(),
+        db
+          .prepare(
+            `SELECT se.id AS sessionExerciseId, ws.performed_on AS performedOn, se.exercise_name AS name,
+               st.reps, st.load_kg AS loadKg
+             FROM workout_sessions ws
+             JOIN session_exercises se ON se.session_id = ws.id AND se.done = 1
+             LEFT JOIN session_sets st ON st.session_exercise_id = se.id
+             WHERE ws.student_id = ?2 AND ws.performed_on >= ?3 AND ${linked("ws")}
+             ORDER BY ws.performed_on, ws.created_at, se.position, st.set_number
+             LIMIT 5000`,
+          )
+          .bind(userId, studentId, addYear(today))
+          .all<ProgressExerciseRow>(),
+      ]);
+      return assembleProgress(revisions.results, sessions.results, exercises.results, today);
+    },
+
+    /** The student's latest logs across their workouts, newest first. */
+    async recent(
+      studentId: string,
+      limit = 10,
+    ): Promise<Array<SessionSummary & { acknowledged: boolean }>> {
+      const result = await db
+        .prepare(
+          `SELECT ${summaryColumns},
+             EXISTS (SELECT 1 FROM session_acknowledgements a WHERE a.session_id = ws.id) AS acknowledged
+           FROM workout_sessions ws
+           WHERE ws.student_id = ?2 AND ${linked("ws")}
+           ORDER BY ws.performed_on DESC, ws.created_at DESC LIMIT ?3`,
+        )
+        .bind(userId, studentId, Math.max(1, Math.min(limit, 50)))
+        .all<Omit<SessionSummary, "painReported"> & { pain: number; acknowledged: number }>();
+      return result.results.map(({ pain, acknowledged, ...row }) => ({
+        ...row,
+        painReported: Boolean(pain),
+        acknowledged: Boolean(acknowledged),
       }));
     },
 
@@ -558,16 +697,7 @@ export function executionFor(db: D1Database, context: AuthenticatedContext | nul
              ORDER BY r.delivered_at DESC`,
           )
           .bind(organizationId, userId, studentId)
-          .all<{
-            planId: string;
-            planTitle: string;
-            revisionId: string;
-            revisionNumber: number;
-            deliveredAt: string;
-            scheduleJson: string;
-            supersededAt: string | null;
-            logged: number;
-          }>(),
+          .all<ProgressRevision>(),
         db
           .prepare(
             `SELECT ws.revision_id AS revisionId, ws.performed_on AS performedOn, ws.workout_label AS workoutLabel
@@ -575,7 +705,7 @@ export function executionFor(db: D1Database, context: AuthenticatedContext | nul
              WHERE ws.organization_id = ?1 AND ws.student_id = ?3 AND ${reach("ws")}`,
           )
           .bind(organizationId, userId, studentId)
-          .all<{ revisionId: string; performedOn: string; workoutLabel: string }>(),
+          .all<ProgressSession>(),
         db
           .prepare(
             `SELECT se.id AS sessionExerciseId, ws.performed_on AS performedOn, se.exercise_name AS name,
@@ -588,43 +718,9 @@ export function executionFor(db: D1Database, context: AuthenticatedContext | nul
              LIMIT 5000`,
           )
           .bind(organizationId, userId, studentId, addYear(today))
-          .all<{ sessionExerciseId: string; performedOn: string; name: string; reps: number | null; loadKg: number | null }>(),
+          .all<ProgressExerciseRow>(),
       ]);
-      const cycles = revisions.results
-        // The cycle in use, and any older one the student logged against.
-        .filter((revision) => revision.supersededAt === null || revision.logged > 0)
-        .map((revision): CycleProgress => {
-          const schedule = JSON.parse(revision.scheduleJson) as PeriodizationSchedule;
-          const deliveredOn = todayInBrazil(new Date(revision.deliveredAt));
-          const supersededOn = revision.supersededAt ? todayInBrazil(new Date(revision.supersededAt)) : null;
-          const records = weeklyRecords(
-            schedule.phases.flatMap((phase) =>
-              phase.microcycles.map((week) => ({
-                phaseIndex: phase.index,
-                startDate: week.startDate,
-                endDate: week.endDate,
-                workouts: week.sessions,
-              })),
-            ),
-            sessions.results.filter((log) => log.revisionId === revision.revisionId),
-            { since: deliveredOn, until: supersededOn && supersededOn < today ? supersededOn : today, today },
-          );
-          return {
-            ...records,
-            planId: revision.planId,
-            planTitle: revision.planTitle,
-            revisionNumber: revision.revisionNumber,
-            deliveredOn,
-            supersededOn,
-          };
-        });
-      const grouped = new Map<string, LoggedExercise>();
-      for (const row of exercises.results) {
-        const entry = grouped.get(row.sessionExerciseId) ?? { performedOn: row.performedOn, name: row.name, sets: [] };
-        if (row.reps !== null || row.loadKg !== null) entry.sets.push({ reps: row.reps, loadKg: row.loadKg });
-        grouped.set(row.sessionExerciseId, entry);
-      }
-      return { cycles, series: loadSeries([...grouped.values()]) };
+      return assembleProgress(revisions.results, sessions.results, exercises.results, today);
     },
 
     /** The professional's reading of a log, with an optional note. It never changes the log. */

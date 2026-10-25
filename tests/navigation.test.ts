@@ -73,7 +73,7 @@ describe("navigation by area (handoff V2, section 3)", () => {
         .filter((i) => i.tag)
         .map((i) => `${id}/${i.slug}`),
     );
-    expect(tagged.sort()).toEqual(["aluno/treino", "profissional/prescricao"]);
+    expect(tagged.sort()).toEqual(["aluno/evolucao", "aluno/treino", "profissional/prescricao"]);
   });
 });
 

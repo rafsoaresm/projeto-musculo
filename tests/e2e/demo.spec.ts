@@ -46,6 +46,12 @@ test("the demonstration shows the three areas with fictional data and saves noth
   await expect(page.getByText("0 de 12 séries concluídas")).toBeVisible();
   await noHorizontalOverflow(page);
 
+  // The progress page of the client is a preview without data: it invents no load and no count.
+  await page.goto("./demonstracao/aluno/evolucao");
+  await expect(page.getByRole("heading", { name: "Evolução" })).toBeVisible();
+  await expect(page.getByText(/não inventa cargas nem contagens/)).toBeVisible();
+  await expect(page.getByText(/\d+\s?kg/)).toHaveCount(0);
+
   // The demonstration never opens the real areas.
   await page.goto("./profissional");
   await expect(

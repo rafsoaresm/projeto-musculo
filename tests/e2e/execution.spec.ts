@@ -167,6 +167,11 @@ test("the student logs a workout, corrects it, reports pain, and the professiona
   await me.goto(registerURL);
   await expect(me.getByText("Lido pelo profissional", { exact: true })).toBeVisible();
   await expect(me.getByRole("link", { name: "Corrigir este registro" })).toHaveCount(0);
+  // The last record of the exercise is shown as a reference and nothing is filled in.
+  const lastSquat = exerciseGroup(me, "Agachamento da Execução");
+  await expect(lastSquat.getByText(/Seu último registro: 25 kg × 9 rep\. em /)).toBeVisible();
+  await expect(lastSquat.getByLabel("Fiz este exercício")).not.toBeChecked();
+  await expect(exerciseGroup(me, "Remada da Execução").getByText(/Seu último registro/)).toHaveCount(0);
 
   // A report of pain is kept: the screen says so before saving and the log cannot be changed after.
   await me.getByLabel("Data em que você treinou").fill(brazilDay(1));
@@ -259,6 +264,11 @@ test("a log without pain can be deleted by the student inside the window", async
   await expect(me.getByRole("heading", { name: "Treino atual" })).toBeVisible();
   await me.getByRole("link", { name: "Registrar treino Full Body, fase 1" }).click();
   await expect(me.getByText("Você ainda não registrou este treino.")).toBeVisible();
+  // With nothing logged, the progress page says so and invents no number.
+  await me.goto("./aluno/evolucao");
+  await expect(me.getByRole("heading", { name: "Você ainda não registrou nenhum treino." })).toBeVisible();
+  await expect(me.getByText("Você ainda não registrou exercícios.")).toBeVisible();
+  await expect(me.getByText(/\d+\s?kg/)).toHaveCount(0);
   await client.context.close();
 });
 
@@ -295,6 +305,21 @@ test("the professional reads the load of an exercise over the days, as the stude
   await expect(load.getByRole("cell", { name: "20 kg × 10 rep." })).toBeVisible();
   await expect(load.getByRole("cell", { name: "22,5 kg × 8 rep." })).toBeVisible();
   await noHorizontalOverflow(page);
+
+  // The student reads the same facts about themselves, from the menu.
+  await me.goto("./aluno");
+  await me.getByRole("link", { name: "Evolução" }).locator("visible=true").first().click();
+  await expect(me.getByRole("heading", { name: "Evolução", exact: true })).toBeVisible();
+  await expect(me.getByRole("heading", { name: "Seus registros por semana" })).toBeVisible();
+  await expect(me.getByText("Em andamento", { exact: true })).toBeVisible();
+  const mine = me.getByRole("group", { name: "Carga: Agachamento da Execução" });
+  await expect(mine.getByText(/Primeira: 20 kg em .* Última: 22,5 kg em /)).toBeVisible();
+  const ownChart = mine.getByRole("group", { name: /Gráfico: Carga de Agachamento da Execução/ });
+  await ownChart.focus();
+  await expect(ownChart.getByRole("status")).toContainText("22,5 kg");
+  await expect(me.getByRole("heading", { name: "Seus últimos registros" })).toBeVisible();
+  await expect(me.locator(".review-list li")).toHaveCount(2);
+  await noHorizontalOverflow(me);
   // Somebody else's student has no progress to read.
   const outsider = await newActor(browser, baseURL);
   await createProfessional(outsider.page, "Outro estúdio da carga");
