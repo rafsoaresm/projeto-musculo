@@ -7,6 +7,7 @@ import {
   noHorizontalOverflow,
   password,
   uniqueEmail,
+  acceptStudentTerms,
 } from "./helpers";
 
 const workout = (page: Page, label: string) =>
@@ -64,6 +65,7 @@ async function deliveredPlanWithClient(page: Page, browser: Browser, baseURL: st
   await client.page.getByLabel("E-mail", { exact: true }).fill(uniqueEmail("client"));
   await client.page.getByLabel("Senha", { exact: true }).fill(password);
   await client.page.getByRole("button", { name: "Criar meu acesso" }).click();
+  await acceptStudentTerms(client.page);
   await client.page.getByRole("button", { name: "Aceitar convite" }).click();
   await expect(client.page.getByRole("heading", { name: "Plano da execução" })).toBeVisible();
   return { studentURL, client };

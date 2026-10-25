@@ -9,12 +9,14 @@ import { plansFor } from "@/db/plans";
 import { profilesFor } from "@/db/student-profile";
 import { assessmentsFor } from "@/db/assessments";
 import { executionFor } from "@/db/workout-sessions";
+import { studentConsentFor } from "@/db/consent";
 import { PageHeading } from "@/components/ui";
 import { InvitePanel } from "@/modules/convites/invite-panel";
 import { PlansPanel } from "@/modules/planos/plans-panel";
 import { ProfileSummary } from "@/modules/ficha/profile-summary";
 import { AssessmentsPanel } from "@/modules/avaliacoes/assessments-panel";
 import { ExecutionPanel } from "@/modules/execucao/execution-panel";
+import { ConsentLine } from "@/modules/consentimento/consent-line";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Aluno" };
@@ -33,6 +35,7 @@ export default async function Student({
   const profile = await profilesFor(db, context).get(student.id);
   const assessments = await assessmentsFor(db, context).listForStudent(student.id);
   const executions = await executionFor(db, context).list(student.id, 5);
+  const consent = await studentConsentFor(db, context, student.id);
   return (
     <>
       <PageHeading
@@ -49,6 +52,7 @@ export default async function Student({
           activeSince={access?.activeSince ?? null}
           inviteExpiresAt={access?.inviteExpiresAt ?? null}
         />
+        <ConsentLine consent={consent} />
       </section>
       <ProfileSummary studentId={student.id} profile={profile} />
       <AssessmentsPanel studentId={student.id} assessments={assessments} />

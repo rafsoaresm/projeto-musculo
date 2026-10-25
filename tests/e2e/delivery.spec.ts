@@ -8,6 +8,7 @@ import {
   noHorizontalOverflow,
   password,
   uniqueEmail,
+  acceptStudentTerms,
 } from "./helpers";
 
 const editorTab = (page: Page, name: string) =>
@@ -69,6 +70,7 @@ test("a plan reaches the client only after the professional approves and deliver
   await client.page.getByLabel("E-mail", { exact: true }).fill(uniqueEmail("client"));
   await client.page.getByLabel("Senha", { exact: true }).fill(password);
   await client.page.getByRole("button", { name: "Criar meu acesso" }).click();
+  await acceptStudentTerms(client.page);
   await client.page.getByRole("button", { name: "Aceitar convite" }).click();
   await expect(client.page.getByText("Nenhum treino liberado ainda.")).toBeVisible();
 
