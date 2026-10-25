@@ -1,10 +1,18 @@
 import type { D1Database, D1PreparedStatement } from "@cloudflare/workers-types";
+import type { PeriodizationSchedule } from "@/modules/training/contracts";
 import {
   EDIT_WINDOW_HOURS,
   parseSession,
   todayInBrazil,
   type SessionInput,
 } from "@/modules/execucao/contracts";
+import {
+  loadSeries,
+  weeklyRecords,
+  type LoadSeries,
+  type LoggedExercise,
+  type WeeklyRecords,
+} from "@/modules/execucao/progress";
 import { activeUser, assertContext, technicalAccessExists, type AuthenticatedContext } from "./students";
 
 /**
@@ -61,6 +69,8 @@ export type SaveOutcome =
 export type RemoveSessionOutcome = { status: "removed" } | { status: "locked" } | { status: "not_found" };
 
 const windowMs = EDIT_WINDOW_HOURS * 3_600_000;
+/** One year back from a calendar day: how much of the history the load series reads. */
+const addYear = (day: string) => `${Number(day.slice(0, 4)) - 1}${day.slice(4)}`;
 const withinWindow = (createdAt: string, now: Date) => now.getTime() - Date.parse(createdAt) <= windowMs;
 
 interface SessionRow {
@@ -415,6 +425,18 @@ export interface PainPendingRow {
   performedOn: string;
   workoutLabel: string;
 }
+export interface CycleProgress extends WeeklyRecords {
+  planId: string;
+  planTitle: string;
+  revisionNumber: number;
+  deliveredOn: string;
+  /** The day a newer revision replaced this one, when it did. */
+  supersededOn: string | null;
+}
+export interface StudentProgress {
+  cycles: CycleProgress[];
+  series: LoadSeries[];
+}
 export type AcknowledgeOutcome = { status: "recorded" } | { status: "not_found" };
 export const SESSION_READ = "WORKOUT_SESSION_READ";
 
@@ -512,6 +534,97 @@ export function executionFor(db: D1Database, context: AuthenticatedContext | nul
         notLogged: planned.results.filter((item) => !seen.has(item.id)).map((item) => item.name),
         acknowledgements: readings.results,
       };
+    },
+
+    /**
+     * What was logged against what the delivered cycles foresaw, and the heaviest set typed per
+     * exercise and day. Read only: it counts and lists, and never grades.
+     */
+    async progress(studentId: string, today = todayInBrazil()): Promise<StudentProgress> {
+      const [revisions, sessions, exercises] = await Promise.all([
+        db
+          .prepare(
+            `SELECT p.id AS planId, p.title AS planTitle, r.id AS revisionId,
+               r.revision_number AS revisionNumber, r.delivered_at AS deliveredAt,
+               r.schedule_json AS scheduleJson,
+               (SELECT MIN(x.delivered_at) FROM plan_revisions x
+                  WHERE x.plan_id = p.id AND x.state = 'DELIVERED' AND x.delivered_at > r.delivered_at) AS supersededAt,
+               (SELECT COUNT(*) FROM workout_sessions w WHERE w.revision_id = r.id) AS logged
+             FROM students s
+             JOIN training_plans p ON p.organization_id = s.organization_id AND p.student_id = s.id
+             JOIN plan_revisions r ON r.organization_id = p.organization_id AND r.plan_id = p.id
+             WHERE s.organization_id = ?1 AND s.id = ?3 AND r.state = 'DELIVERED'
+               AND ${activeUser("?2")} AND ${technicalAccessExists("s", "?2")}
+             ORDER BY r.delivered_at DESC`,
+          )
+          .bind(organizationId, userId, studentId)
+          .all<{
+            planId: string;
+            planTitle: string;
+            revisionId: string;
+            revisionNumber: number;
+            deliveredAt: string;
+            scheduleJson: string;
+            supersededAt: string | null;
+            logged: number;
+          }>(),
+        db
+          .prepare(
+            `SELECT ws.revision_id AS revisionId, ws.performed_on AS performedOn, ws.workout_label AS workoutLabel
+             FROM workout_sessions ws
+             WHERE ws.organization_id = ?1 AND ws.student_id = ?3 AND ${reach("ws")}`,
+          )
+          .bind(organizationId, userId, studentId)
+          .all<{ revisionId: string; performedOn: string; workoutLabel: string }>(),
+        db
+          .prepare(
+            `SELECT se.id AS sessionExerciseId, ws.performed_on AS performedOn, se.exercise_name AS name,
+               st.reps, st.load_kg AS loadKg
+             FROM workout_sessions ws
+             JOIN session_exercises se ON se.session_id = ws.id AND se.done = 1
+             LEFT JOIN session_sets st ON st.session_exercise_id = se.id
+             WHERE ws.organization_id = ?1 AND ws.student_id = ?3 AND ws.performed_on >= ?4 AND ${reach("ws")}
+             ORDER BY ws.performed_on, ws.created_at, se.position, st.set_number
+             LIMIT 5000`,
+          )
+          .bind(organizationId, userId, studentId, addYear(today))
+          .all<{ sessionExerciseId: string; performedOn: string; name: string; reps: number | null; loadKg: number | null }>(),
+      ]);
+      const cycles = revisions.results
+        // The cycle in use, and any older one the student logged against.
+        .filter((revision) => revision.supersededAt === null || revision.logged > 0)
+        .map((revision): CycleProgress => {
+          const schedule = JSON.parse(revision.scheduleJson) as PeriodizationSchedule;
+          const deliveredOn = todayInBrazil(new Date(revision.deliveredAt));
+          const supersededOn = revision.supersededAt ? todayInBrazil(new Date(revision.supersededAt)) : null;
+          const records = weeklyRecords(
+            schedule.phases.flatMap((phase) =>
+              phase.microcycles.map((week) => ({
+                phaseIndex: phase.index,
+                startDate: week.startDate,
+                endDate: week.endDate,
+                workouts: week.sessions,
+              })),
+            ),
+            sessions.results.filter((log) => log.revisionId === revision.revisionId),
+            { since: deliveredOn, until: supersededOn && supersededOn < today ? supersededOn : today, today },
+          );
+          return {
+            ...records,
+            planId: revision.planId,
+            planTitle: revision.planTitle,
+            revisionNumber: revision.revisionNumber,
+            deliveredOn,
+            supersededOn,
+          };
+        });
+      const grouped = new Map<string, LoggedExercise>();
+      for (const row of exercises.results) {
+        const entry = grouped.get(row.sessionExerciseId) ?? { performedOn: row.performedOn, name: row.name, sets: [] };
+        if (row.reps !== null || row.loadKg !== null) entry.sets.push({ reps: row.reps, loadKg: row.loadKg });
+        grouped.set(row.sessionExerciseId, entry);
+      }
+      return { cycles, series: loadSeries([...grouped.values()]) };
     },
 
     /** The professional's reading of a log, with an optional note. It never changes the log. */
