@@ -14,6 +14,8 @@ export interface LoggableExercise {
   /** The prescription as the professional typed it, for the student to see while logging. */
   dose: string;
   notes: string | null;
+  /** What the student typed the last time, as a reference. Never filled into a field. */
+  last: string | null;
 }
 
 interface SetDraft {
@@ -228,6 +230,7 @@ export function SessionForm({
                 <strong>{exercise.name}</strong>
                 <span className="small muted">{exercise.dose || "Sem parâmetros definidos"}</span>
                 {exercise.notes && <span className="small muted">Obs.: {exercise.notes}</span>}
+                {exercise.last && <span className="small muted">{exercise.last}</span>}
               </div>
               <label className="check-row">
                 <input

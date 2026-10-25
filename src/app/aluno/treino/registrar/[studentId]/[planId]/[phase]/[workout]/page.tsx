@@ -9,6 +9,7 @@ import { Notice, PageHeading, Pill } from "@/components/ui";
 import { describeDose } from "@/modules/prescricao/describe";
 import { formatCalendarDate } from "@/modules/training/format";
 import { MAX_DAYS_BACK, PAIN_ADVICE, todayInBrazil } from "@/modules/execucao/contracts";
+import { seriesKey } from "@/modules/execucao/progress";
 import { SessionForm } from "@/modules/execucao/session-form";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +22,7 @@ const decode = (value: string) => {
     return value;
   }
 };
+const kg = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
 const daysBefore = (day: string, days: number) =>
   new Date(Date.parse(`${day}T00:00:00Z`) - days * 86_400_000).toISOString().slice(0, 10);
 
@@ -60,6 +62,17 @@ export default async function RegisterWorkoutPage({
       ? candidate
       : null;
   const today = todayInBrazil();
+  // A reference to what the student typed last time. It is shown, never filled in.
+  const progress = await sessions.progress(link.studentId);
+  const lastOf = new Map(progress.series.map((item) => [item.key, item.points[item.points.length - 1]]));
+  const lastText = (name: string) => {
+    const point = lastOf.get(seriesKey(name));
+    if (!point) return null;
+    const when = formatCalendarDate(point.performedOn);
+    return point.maxLoadKg === null
+      ? `Seu último registro: ${when}.`
+      : `Seu último registro: ${kg.format(point.maxLoadKg)} kg${point.repsAtMax === null ? "" : ` × ${point.repsAtMax} rep.`} em ${when}.`;
+  };
   const here = `/aluno/treino/registrar/${link.studentId}/${plan.planId}/${phaseIndex}/${encodeURIComponent(label)}`;
 
   return (
@@ -87,6 +100,7 @@ export default async function RegisterWorkoutPage({
             name: exercise.name,
             dose: describeDose(exercise),
             notes: exercise.notes,
+            last: lastText(exercise.name),
           }))}
           prescribedSets={Object.fromEntries(workout.exercises.map((exercise) => [exercise.id, exercise.sets]))}
           initial={initial}

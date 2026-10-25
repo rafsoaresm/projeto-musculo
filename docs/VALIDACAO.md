@@ -1,6 +1,19 @@
-# Evidências de validação — v0.16.0 (aderência semanal e carga por exercício; fotos de postura ainda desligadas em produção) sobre a base 0.3
+# Evidências de validação — v0.17.0 (evolução do próprio aluno; fotos de postura ainda desligadas em produção) sobre a base 0.3
 
 Tudo abaixo foi executado **localmente** em 23/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0012 são aditivas.
+
+## Fatia 0.17: evolução do próprio aluno
+
+Fecha a parte do aluno do portal (E4): o aluno lê, de si mesmo, o que o profissional já lia na 0.16. Só leitura, **sem migration**.
+
+- **Menu.** "Evolução" deixou de ser um módulo "em breve" e passou a ser uma página do aluno (`/aluno/evolucao`), no menu e na barra do celular. Na demonstração, a mesma entrada abre uma prévia **sem dados**: ela diz o que a tela real mostra e não inventa carga nem contagem (um teste de navegador confere que não há número de quilos na página).
+- **Tela.** "Seus registros por semana" (os treinos que ele registrou em cada semana ao lado dos previstos pelo ciclo; a semana em andamento nunca conta como falta; semana sem registro não quer dizer que não treinou), "Sua carga por exercício" (a maior carga que ele digitou em cada dia, com gráfico e tabela) e "Seus últimos registros" (data, treino, fase, esforço e as marcas "Relato de dor registrado" e "Lido pelo profissional"). Sem registro nenhum, a tela diz isso e leva ao treino. Mesmas palavras sem julgamento da 0.16: sem porcentagem, meta, alerta ou "melhor" e "pior".
+- **Mesmo cálculo para os dois lados.** O cálculo dos ciclos e das cargas é uma função só, usada pela consulta do profissional (vínculo técnico ativo) e pela do aluno (vínculo de acesso ativo e login ativo). Um teste confere que, para o mesmo aluno, as duas devolvem exatamente o mesmo resultado.
+- **Referência no formulário.** Em cada exercício do registro aparece "Seu último registro: 25 kg × 9 rep. em 24/10/2026", a maior série do último dia em que o aluno fez aquele exercício (pelo nome, sem distinguir maiúsculas e acentos). **É só uma referência: nenhum campo é preenchido**, e um exercício que ele nunca registrou não mostra nada.
+- **Quem lê.** Só o login ligado ao aluno por um acesso ativo. Outro aluno, outra organização, profissional, gestor ou visitante recebem listas vazias; revogar o acesso ou bloquear o login corta na hora.
+- **Testes:** `tests/workout-sessions.test.ts` (+4 = 27), com D1 real: o progresso do aluno é igual ao que o profissional lê; os últimos registros em ordem, com a marca de leitura; sete identidades sem vínculo recebem vazio e nenhuma mistura entre alunos; revogação e bloqueio cortam e voltar atrás restaura. `tests/navigation.test.ts` passou a esperar a prévia da evolução na demonstração. **Mutações deliberadas** que fizeram testes falharem: tirar a checagem de acesso revogado, tirar a de login ativo, tirar o vínculo da consulta das cargas e o da lista de últimos registros. Não é detectável por desenho tirar o vínculo da consulta dos registros por data (ela só alimenta ciclos que já voltam vazios sem vínculo).
+- **Navegador:** o aluno chega pelo menu, vê a semana em andamento, a carga com primeira e última, o gráfico lido pelo teclado (22,5 kg) e os dois últimos registros; sem registros, a tela diz que ainda não há nenhum e não mostra quilos; o formulário mostra a referência do último registro sem marcar nem preencher nada, e não mostra referência para o exercício que nunca foi registrado; a prévia da demonstração não tem números. Desktop e celular, na raiz e em `/treinador`.
+- **Limites:** só o último ano de cargas; a referência de "último registro" vem do nome do exercício, então renomear entre revisões separa o histórico; sem avisos nem metas; sem comparação com outros alunos (nunca haverá: cada login só lê o que é dele).
 
 ## Fatia 0.16: registros por semana e carga por exercício
 
@@ -181,7 +194,7 @@ Cobre **só a estrutura do ciclo** (fases, semanas, sessões, divisão e calend�
 
 ## Código e banco
 
-- `npm run check`: ESLint e TypeScript sem erros e **255 testes, nenhum ignorado**: 17 de isolamento D1, 15 de identidade, 26 de periodização, 31 de papéis, 12 de contrato de navegação/fixtures, 5 de caminho de montagem, 9 de planos salvos, 9 de biblioteca, 21 de prescrição, 16 de aprovação, entrega, situação da triagem e documento entregue, 7 de ficha, 26 de avaliações, 8 de PDF, 8 de evolução, 5 do limpador de JPEG, 8 de fotos, 23 de execução do treino e 9 de registros por semana e carga.
+- `npm run check`: ESLint e TypeScript sem erros e **259 testes, nenhum ignorado**: 17 de isolamento D1, 15 de identidade, 26 de periodização, 31 de papéis, 12 de contrato de navegação/fixtures, 5 de caminho de montagem, 9 de planos salvos, 9 de biblioteca, 21 de prescrição, 16 de aprovação, entrega, situação da triagem e documento entregue, 7 de ficha, 26 de avaliações, 8 de PDF, 8 de evolução, 5 do limpador de JPEG, 8 de fotos, 27 de execução do treino e 9 de registros por semana e carga.
 - Os 31 testes de `tests/roles.test.ts` usam D1 real (Miniflare) com as três migrations e cobrem:
   - **Gestor:** ativação recusada sem token configurado, com token curto ou errado; exatamente um gestor sob concorrência; token inerte depois; e-mail e papel de proprietário não concedem o papel; revogado ou bloqueado perde o acesso na hora.
   - **Escopo do gestor:** vê organizações e contagens; o resultado serializado não contém nome de aluno; `studentsFor` e a criação de convite não funcionam para ele em nenhuma organização; bloqueio e restabelecimento com auditoria; não bloqueia a si mesmo, outro gestor ou quem não é da organização; a auditoria do gestor lista só ações de plataforma.

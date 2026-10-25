@@ -63,12 +63,12 @@ beforeAll(async () => {
   );
   db = await mf.getD1Database("DB");
   await migrate(db, ALL_MIGRATIONS);
-  const people = ["owner-a", "tech-a", "tech-a2", "commercial-a", "owner-b", "tech-b", "client-1", "client-1b", "client-2", "client-b", "client-off", "client-p", "mgr-1"];
+  const people = ["owner-a", "tech-a", "tech-a2", "commercial-a", "owner-b", "tech-b", "client-1", "client-1b", "client-2", "client-b", "client-off", "client-p", "client-q", "mgr-1"];
   await db.batch([
     ...people.map((id) =>
       db.prepare("INSERT INTO auth_user(id,name,email,created_at,updated_at) VALUES (?1,?1,?2,0,0)").bind(id, `${id}@example.test`),
     ),
-    db.prepare("INSERT INTO users(id) VALUES ('owner-a'),('tech-a'),('tech-a2'),('commercial-a'),('owner-b'),('tech-b'),('client-1'),('client-1b'),('client-2'),('client-b'),('client-off'),('client-p'),('mgr-1')"),
+    db.prepare("INSERT INTO users(id) VALUES ('owner-a'),('tech-a'),('tech-a2'),('commercial-a'),('owner-b'),('tech-b'),('client-1'),('client-1b'),('client-2'),('client-b'),('client-off'),('client-p'),('client-q'),('mgr-1')"),
     db.prepare("INSERT INTO platform_admins(user_id) VALUES ('mgr-1')"),
     db.prepare("INSERT INTO organizations(id,name) VALUES ('org-a','Studio A'),('org-b','Studio B')"),
     db.prepare(
@@ -81,9 +81,9 @@ beforeAll(async () => {
        ('pro-owner-a','org-a','owner-a','Owner A'),('pro-a','org-a','tech-a','Pro A'),
        ('pro-a2','org-a','tech-a2','Pro A2'),('pro-owner-b','org-b','owner-b','Owner B'),('pro-b','org-b','tech-b','Pro B')`,
     ),
-    db.prepare("INSERT INTO students(id,organization_id,display_name) VALUES ('st-1','org-a','Student One'),('st-2','org-a','Student Two'),('st-b','org-b','Student B'),('st-off','org-a','Student Off'),('st-p','org-a','Student Progress')"),
-    db.prepare("INSERT INTO care_assignments(organization_id,student_id,professional_id) VALUES ('org-a','st-1','pro-a'),('org-a','st-2','pro-a2'),('org-a','st-off','pro-a'),('org-a','st-p','pro-a'),('org-b','st-b','pro-b')"),
-    db.prepare("INSERT INTO student_access(organization_id,student_id,user_id) VALUES ('org-a','st-1','client-1'),('org-a','st-1','client-1b'),('org-a','st-2','client-2'),('org-b','st-b','client-b'),('org-a','st-off','client-off'),('org-a','st-p','client-p')"),
+    db.prepare("INSERT INTO students(id,organization_id,display_name) VALUES ('st-1','org-a','Student One'),('st-2','org-a','Student Two'),('st-b','org-b','Student B'),('st-off','org-a','Student Off'),('st-p','org-a','Student Progress'),('st-q','org-a','Student Own')"),
+    db.prepare("INSERT INTO care_assignments(organization_id,student_id,professional_id) VALUES ('org-a','st-1','pro-a'),('org-a','st-2','pro-a2'),('org-a','st-off','pro-a'),('org-a','st-p','pro-a'),('org-a','st-q','pro-a'),('org-b','st-b','pro-b')"),
+    db.prepare("INSERT INTO student_access(organization_id,student_id,user_id) VALUES ('org-a','st-1','client-1'),('org-a','st-1','client-1b'),('org-a','st-2','client-2'),('org-b','st-b','client-b'),('org-a','st-off','client-off'),('org-a','st-p','client-p'),('org-a','st-q','client-q')"),
   ]);
 });
 afterAll(async () => {
@@ -564,5 +564,63 @@ describe("the progress the professional reads", () => {
     await run("UPDATE users SET disabled_at = NULL WHERE id = 'tech-a'");
     // Another student's logs never enter this student's progress.
     expect((await reader.progress("st-1", "2026-11-14")).series.some((item) => item.points.some((point) => point.performedOn === "2026-11-10" && point.maxLoadKg === 22.5 && point.sets === 2))).toBe(false);
+  });
+});
+
+describe("the student's own progress", () => {
+  const nowOn = (day: string) => new Date(`${day}T15:00:00.000Z`);
+  const empty = { cycles: [], series: [] };
+
+  it("is the same facts the professional reads, through the student's own link", async () => {
+    const plan = await deliveredPlan("st-q");
+    const mine = studentSessionsFor(db, "client-q");
+    for (const [day, sets] of [
+      ["2026-11-10", [{ reps: 10, loadKg: 20 }, { reps: 8, loadKg: 22.5 }]],
+      ["2026-11-11", [{ reps: 10, loadKg: 25 }]],
+    ] as const) {
+      const outcome = await mine.save("st-q", log(plan.planId, [done(plan.phase1[0], [...sets])], { performedOn: day }), nowOn(day));
+      expect(outcome.status).toBe("saved");
+    }
+    const own = await mine.progress("st-q", "2026-11-12");
+    expect(own).toEqual(await executionFor(db, scope("tech-a")).progress("st-q", "2026-11-12"));
+    const cycle = own.cycles.find((item) => item.planId === plan.planId)!;
+    expect(cycle.weeks.map((week) => [week.startDate, week.planned, week.recorded, week.inProgress])).toEqual([["2026-11-09", 3, 2, true]]);
+    expect(own.series.find((item) => item.name === "Exercício 1")!.points.map((point) => point.maxLoadKg)).toEqual([22.5, 25]);
+  });
+
+  it("lists the latest logs, newest first, with whether a pain report or a reading closed them", async () => {
+    const mine = studentSessionsFor(db, "client-q");
+    const rows = await mine.recent("st-q", 10);
+    expect(rows.map((row) => row.performedOn)).toEqual(["2026-11-11", "2026-11-10"]);
+    expect(rows[0]).toMatchObject({ workoutLabel: FB, phaseIndex: 1, painReported: false, acknowledged: false });
+    expect(await mine.recent("st-q", 1)).toHaveLength(1);
+    await executionFor(db, scope("tech-a")).acknowledge(rows[1].id, null, nowOn("2026-11-12"));
+    expect((await mine.recent("st-q", 10))[1]).toMatchObject({ performedOn: "2026-11-10", acknowledged: true });
+  });
+
+  it("is empty for any other login, other organization, professional or stranger, and never mixes students", async () => {
+    for (const user of ["client-1", "client-p", "client-b", "tech-a", "owner-a", "mgr-1", "stranger"]) {
+      const reader = studentSessionsFor(db, user);
+      expect(await reader.progress("st-q", "2026-11-12"), user).toEqual(empty);
+      expect(await reader.recent("st-q", 10), user).toEqual([]);
+    }
+    // The student of another login sees only their own.
+    const other = await studentSessionsFor(db, "client-p").progress("st-p", "2026-11-12");
+    expect(other.series.some((item) => item.points.some((point) => point.maxLoadKg === 22.5 && point.sets === 2 && point.performedOn === "2026-11-10"))).toBe(true);
+    expect(await studentSessionsFor(db, "client-p").recent("st-q", 10)).toEqual([]);
+  });
+
+  it("stops the moment the link is revoked or the login is blocked", async () => {
+    const mine = studentSessionsFor(db, "client-q");
+    expect((await mine.progress("st-q", "2026-11-12")).cycles.length).toBeGreaterThan(0);
+    await run("UPDATE student_access SET revoked_at = '2026-11-12T00:00:00.000Z' WHERE user_id = 'client-q'");
+    expect(await mine.progress("st-q", "2026-11-12")).toEqual(empty);
+    expect(await mine.recent("st-q", 10)).toEqual([]);
+    await run("UPDATE student_access SET revoked_at = NULL WHERE user_id = 'client-q'");
+    await run("UPDATE users SET disabled_at = '2026-11-12T00:00:00.000Z' WHERE id = 'client-q'");
+    expect(await mine.progress("st-q", "2026-11-12")).toEqual(empty);
+    expect(await mine.recent("st-q", 10)).toEqual([]);
+    await run("UPDATE users SET disabled_at = NULL WHERE id = 'client-q'");
+    expect((await mine.recent("st-q", 10)).length).toBe(2);
   });
 });

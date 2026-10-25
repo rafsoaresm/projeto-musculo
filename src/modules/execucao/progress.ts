@@ -7,7 +7,8 @@ const DAY = 86_400_000;
 export const addDays = (date: string, days: number) =>
   new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY).toISOString().slice(0, 10);
 
-const norm = (text: string) =>
+/** The key of an exercise: the name without case, accents and repeated spaces. */
+export const seriesKey = (text: string) =>
   text.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 
 export interface PlannedWeek {
@@ -100,7 +101,7 @@ export interface LoadSeries {
 export function loadSeries(rows: LoggedExercise[]): LoadSeries[] {
   const groups = new Map<string, { name: string; lastOn: string; byDay: Map<string, LoggedExercise["sets"]> }>();
   for (const row of rows.toSorted((a, b) => a.performedOn.localeCompare(b.performedOn))) {
-    const key = norm(row.name);
+    const key = seriesKey(row.name);
     let group = groups.get(key);
     if (!group) {
       group = { name: row.name, lastOn: row.performedOn, byDay: new Map() };

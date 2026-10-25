@@ -10,7 +10,7 @@ import {
 const PREVIEWS: Record<SurfaceId, string[]> = {
   gestor: [],
   profissional: ["prescricao"],
-  aluno: ["treino"],
+  aluno: ["treino", "evolucao"],
 };
 
 export const demoPrefix = (surface: SurfaceId) => `/demonstracao/${surface}`;

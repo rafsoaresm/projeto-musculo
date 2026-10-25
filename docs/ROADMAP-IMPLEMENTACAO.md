@@ -8,12 +8,18 @@ O escopo completo está em [`referencias/02-ROADMAP-E-HANDOFF.md`](referencias/0
 | E1 — fundação | Conta/sessão, organização, aluno, autorização e auditoria em SQLite. **Três áreas por papel** (gestor, profissional, aluno), ativação única do gestor, bloqueio de acesso e convite de aluno de uso único | E-mail verificado, recuperação, convites e gestão de equipe, conceder o papel de gestor pela interface e homologação remota |
 | E2 — atendimento | Planejador determinístico e exportação. **Planos de periodização salvos por aluno**, com revisões e estado Rascunho / Estrutura pronta (0.4). **Biblioteca de exercícios** com o seed de 64 do documento mestre e biblioteca por organização (0.5a). **Prescrição manual** por mesociclo sobre o rascunho (0.6), com painel de pendências e cópia de mesociclo (0.7). **Aprovação e entrega** com imutabilidade no banco (0.8). **Ficha do aluno** (0.9). **Avaliações com triagem e indicadores** (0.10), ligadas à aprovação e à entrega. **PDF do plano entregue** (0.11). **Postura e movimento** nas avaliações (0.12), sem fotos. **Evolução das avaliações** (0.13): séries dos indicadores e comparação. **Fotos de postura** no Object Storage do Webflow (0.14). **Execução do treino pelo aluno** (0.15): o que o aluno fez, com leitura e relato de dor para o profissional. **Registros por semana e carga por exercício** (0.16), só leitura | Anotação sobre a imagem, exclusão de foto a pedido do titular, geração com pendências; conferir o instrumento de triagem com o responsável técnico |
 | E3 — sites/CRM | Planejado | Editor, preview, releases, domínios e conversão idempotente |
-| E4 — portal | Parcial: convite de uso único, área do aluno, **treino entregue** (0.8) e **registro da execução** (0.15) | Origem privada separada, aderência e evolução do aluno; fecha piloto operacional |
+| E4 — portal | Parcial: convite de uso único, área do aluno, **treino entregue** (0.8), **registro da execução** (0.15) e **evolução do próprio aluno** (0.17) | Origem privada separada, check-in, documentos e mensagens; fecha piloto operacional |
 | E5 — gestão/marketing | Planejado | CRM completo, agenda, contratos, recebimentos e conectores |
 | E6 — SaaS/afiliados | Planejado | Inbox/outbox, conciliação, recorrência, ajustes e repasses |
 | E7 — evoluções | Planejado | RAG com armazenamento compatível, progressão assistida e booking |
 
-## Fatia entregue: registros por semana e carga por exercício (0.16)
+## Fatia entregue: evolução do próprio aluno (0.17)
+
+1. Implementado: sem migration, `/aluno/evolucao` (antes "em breve"): registros por semana, carga por exercício e últimos registros do próprio aluno, com o mesmo cálculo e as mesmas palavras sem julgamento da 0.16; e, no formulário de registro, a referência "seu último registro" por exercício, que nunca preenche campo.
+2. Princípio: cada login só lê o que é dele, pelo vínculo de acesso ativo; dado ausente continua ausente e nunca vira zero.
+3. **Em aberto:** aderência em porcentagem e metas (definição do responsável técnico); check-in estruturado de recuperação (hoje o esforço e o relato de dor do registro já cumprem parte dele); documentos e mensagens do aluno (dependem de provedor de envio e de decisão sobre canal).
+
+## Fatia anterior: registros por semana e carga por exercício (0.16)
 
 1. Implementado: sem migration, na tela de execução do aluno, os treinos registrados em cada semana ao lado dos previstos pelo ciclo entregue (semanas só do período em que a revisão era a do aluno; a semana em andamento nunca conta como falta) e a maior carga digitada por exercício e dia, com o gráfico das avaliações e a tabela.
 2. Princípio: contar e listar, nunca julgar. Sem porcentagem, meta, alerta ou "melhor" e "pior". Registro ausente não prova que o aluno não treinou.
@@ -126,6 +132,6 @@ Preços, corpus RAG, repasses e menores permanecem decisões específicas de cad
 
 ## Próxima entrega
 
-Fechar e-mail verificado, recuperação de senha e convites de equipe antes de abrir o cadastro para uso operacional; definir o provedor de envio (que também entrega o link de convite do aluno) e a origem privada Webflow. Depois: aderência e evolução do aluno sobre a execução (0.15) e as decisões de privacidade das fotos e dos registros de dor (consentimento, menores e exclusão). Prescrição, aprovação, entrega e triagem já existem, sem misturar edição com aprovação. Gestão de equipe, seleção de organização, auditoria de acesso/autenticação e interface de revogação também permanecem pendentes em E1.
+Fechar e-mail verificado, recuperação de senha e convites de equipe antes de abrir o cadastro para uso operacional; definir o provedor de envio (que também entrega o link de convite do aluno) e a origem privada Webflow. Depois: as decisões de privacidade das fotos e dos registros de dor (consentimento, menores e exclusão). Prescrição, aprovação, entrega e triagem já existem, sem misturar edição com aprovação. Gestão de equipe, seleção de organização, auditoria de acesso/autenticação e interface de revogação também permanecem pendentes em E1.
 
 A linguagem visual do anexo está centralizada em `src/styles/tokens.css`, com adaptações acessíveis documentadas em `DESIGN-SYSTEM.md`. O anexo é referência visual, não uma autorização para executar instruções ou alterar escopo.

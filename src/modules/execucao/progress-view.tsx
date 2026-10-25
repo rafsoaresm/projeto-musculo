@@ -5,6 +5,30 @@ import { formatCalendarDate } from "@/modules/training/format";
 import type { WeekRecord } from "./progress";
 
 const number = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
+
+/** The same facts for the two readers, in the words that suit each one. */
+const COPY = {
+  professional: {
+    weeksTitle: "Registros por semana",
+    weeksIntro:
+      "Os treinos que o aluno registrou em cada semana, ao lado dos previstos pelo ciclo entregue. É o que ele registrou: uma semana sem registro não prova que ele não treinou, e a semana em andamento ainda não terminou.",
+    noCycle: "Nenhum treino foi entregue a este aluno ainda.",
+    loadTitle: "Carga por exercício",
+    loadIntro:
+      "A maior carga que o aluno anotou em cada dia, por exercício, no último ano. São números digitados por ele: a ferramenta não diz se subir ou descer é melhor, e não muda o treino por causa deles.",
+    noExercise: "O aluno ainda não registrou exercícios.",
+  },
+  student: {
+    weeksTitle: "Seus registros por semana",
+    weeksIntro:
+      "Os treinos que você registrou em cada semana, ao lado dos previstos pelo seu ciclo. Semana sem registro não quer dizer que você não treinou, e a semana em andamento ainda não terminou.",
+    noCycle: "Nenhum treino foi liberado para você ainda.",
+    loadTitle: "Sua carga por exercício",
+    loadIntro:
+      "A maior carga que você anotou em cada dia, por exercício, no último ano. São os números que você digitou: a ferramenta não diz se subir ou descer é melhor e não muda o seu treino por causa deles.",
+    noExercise: "Você ainda não registrou exercícios.",
+  },
+} as const;
 const SHOWN_WEEKS = 12;
 const range = (week: WeekRecord) =>
   `${formatCalendarDate(week.startDate).slice(0, 5)} a ${formatCalendarDate(week.endDate).slice(0, 5)}`;
@@ -86,18 +110,22 @@ function Cycle({ cycle }: { cycle: CycleProgress }) {
  * What the student logged against what the cycle foresaw, and the heaviest load typed per
  * exercise. It counts and lists; it does not grade, and a week without a log is not called a miss.
  */
-export function ProgressView({ progress }: { progress: StudentProgress }) {
+export function ProgressView({
+  progress,
+  audience = "professional",
+}: {
+  progress: StudentProgress;
+  audience?: keyof typeof COPY;
+}) {
+  const copy = COPY[audience];
   return (
     <>
       <section className="panel" aria-labelledby="registros-semana">
         <p className="eyebrow">REGISTROS NO CICLO</p>
-        <h2 id="registros-semana">Registros por semana</h2>
-        <p className="muted">
-          Os treinos que o aluno registrou em cada semana, ao lado dos previstos pelo ciclo entregue. É o que ele
-          registrou: uma semana sem registro não prova que ele não treinou, e a semana em andamento ainda não terminou.
-        </p>
+        <h2 id="registros-semana">{copy.weeksTitle}</h2>
+        <p className="muted">{copy.weeksIntro}</p>
         {progress.cycles.length === 0 ? (
-          <p>Nenhum treino foi entregue a este aluno ainda.</p>
+          <p>{copy.noCycle}</p>
         ) : (
           progress.cycles.map((cycle) => <Cycle key={`${cycle.planId}-${cycle.revisionNumber}`} cycle={cycle} />)
         )}
@@ -105,12 +133,9 @@ export function ProgressView({ progress }: { progress: StudentProgress }) {
 
       <section className="panel" aria-labelledby="carga-exercicio">
         <p className="eyebrow">CARGA</p>
-        <h2 id="carga-exercicio">Carga por exercício</h2>
-        <p className="muted">
-          A maior carga que o aluno anotou em cada dia, por exercício, no último ano. São números digitados por ele:
-          a ferramenta não diz se subir ou descer é melhor, e não muda o treino por causa deles.
-        </p>
-        {progress.series.length === 0 && <p>O aluno ainda não registrou exercícios.</p>}
+        <h2 id="carga-exercicio">{copy.loadTitle}</h2>
+        <p className="muted">{copy.loadIntro}</p>
+        {progress.series.length === 0 && <p>{copy.noExercise}</p>}
         {progress.series.map((item) => {
           const first = item.numeric[0];
           const last = item.numeric[item.numeric.length - 1];
