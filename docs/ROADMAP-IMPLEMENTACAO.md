@@ -6,14 +6,20 @@ O escopo completo está em [`referencias/02-ROADMAP-E-HANDOFF.md`](referencias/0
 |---|---|---|
 | E0 — viabilidade | Configuração Next/OpenNext e binding DB nativo | Deploy na conta, múltiplos hosts, login, Storage privado, job/PDF e Puck |
 | E1 — fundação | Conta/sessão, organização, aluno, autorização e auditoria em SQLite. **Três áreas por papel** (gestor, profissional, aluno), ativação única do gestor, bloqueio de acesso e convite de aluno de uso único. **Minha conta** com troca de senha e encerramento das outras sessões (0.18) | E-mail verificado, recuperação de senha, convites e gestão de equipe, conceder o papel de gestor pela interface e homologação remota |
-| E2 — atendimento | Planejador determinístico e exportação. **Planos de periodização salvos por aluno**, com revisões e estado Rascunho / Estrutura pronta (0.4). **Biblioteca de exercícios** com o seed de 64 do documento mestre e biblioteca por organização (0.5a). **Prescrição manual** por mesociclo sobre o rascunho (0.6), com painel de pendências e cópia de mesociclo (0.7). **Aprovação e entrega** com imutabilidade no banco (0.8). **Ficha do aluno** (0.9). **Avaliações com triagem e indicadores** (0.10), ligadas à aprovação e à entrega. **PDF do plano entregue** (0.11). **Postura e movimento** nas avaliações (0.12), sem fotos. **Evolução das avaliações** (0.13): séries dos indicadores e comparação. **Fotos de postura** no Object Storage do Webflow (0.14). **Execução do treino pelo aluno** (0.15): o que o aluno fez, com leitura e relato de dor para o profissional. **Registros por semana e carga por exercício** (0.16), só leitura | Anotação sobre a imagem, exclusão de foto a pedido do titular, geração com pendências; conferir o instrumento de triagem com o responsável técnico |
+| E2 — atendimento | Planejador determinístico e exportação. **Planos de periodização salvos por aluno**, com revisões e estado Rascunho / Estrutura pronta (0.4). **Biblioteca de exercícios** com o seed de 64 do documento mestre e biblioteca por organização (0.5a). **Prescrição manual** por mesociclo sobre o rascunho (0.6), com painel de pendências e cópia de mesociclo (0.7). **Aprovação e entrega** com imutabilidade no banco (0.8). **Ficha do aluno** (0.9). **Avaliações com triagem e indicadores** (0.10), ligadas à aprovação e à entrega. **PDF do plano entregue** (0.11). **Postura e movimento** nas avaliações (0.12), sem fotos. **Evolução das avaliações** (0.13): séries dos indicadores e comparação. **Fotos de postura** no Object Storage do Webflow (0.14). **Execução do treino pelo aluno** (0.15): o que o aluno fez, com leitura e relato de dor para o profissional. **Registros por semana, percentual dos previstos com registro e carga por exercício** (0.16 e 0.19), só leitura | Anotação sobre a imagem, exclusão de foto a pedido do titular, geração com pendências; conferir o instrumento de triagem com o responsável técnico |
 | E3 — sites/CRM | Planejado | Editor, preview, releases, domínios e conversão idempotente |
 | E4 — portal | Parcial: convite de uso único, área do aluno, **treino entregue** (0.8), **registro da execução** (0.15) e **evolução do próprio aluno** (0.17) | Origem privada separada, check-in, documentos e mensagens; fecha piloto operacional |
 | E5 — gestão/marketing | Planejado | CRM completo, agenda, contratos, recebimentos e conectores |
 | E6 — SaaS/afiliados | Planejado | Inbox/outbox, conciliação, recorrência, ajustes e repasses |
 | E7 — evoluções | Planejado | RAG com armazenamento compatível, progressão assistida e booking |
 
-## Fatia entregue: Minha conta, senha e sessões (0.18)
+## Fatia entregue: percentual dos treinos previstos com registro (0.19)
+
+1. Implementado: sem migration, em cada ciclo, "X% dos treinos previstos com registro", só das semanas encerradas e com cada semana contando no máximo o previsto, para o profissional e para o aluno.
+2. Princípio: contar, sem meta, cor ou alerta; "com registro" não é "cumpriu".
+3. **Em aberto:** semana de descanso ou lesão fora da conta (marca por semana), metas por aluno, percentual por treino.
+
+## Fatia anterior: Minha conta, senha e sessões (0.18)
 
 1. Implementado: sem migration, `/profissional/conta` e `/aluno/conta` com troca de senha (senha atual conferida no servidor, 12 a 128 caracteres, limite de 5 por minuto) e encerramento das outras sessões; a borda de autenticação aceita só `change-password` e `revoke-other-sessions` além do que já aceitava.
 2. Princípio: sem e-mail, não há recuperação; a tela diz isso. A conta não mostra aparelhos nem endereços, que seriam dado pessoal sem decisão tomada.
@@ -41,7 +47,7 @@ O escopo completo está em [`referencias/02-ROADMAP-E-HANDOFF.md`](referencias/0
 
 1. Implementado: migration 0011 (`assessment_photos`, só o índice) e o binding `PHOTOS` (R2 do Webflow Cloud, provisionado no deploy). Quatro vistas por avaliação, JPEG sem metadados (redesenhado no navegador e limpo de novo no servidor), até 5 MB, lido só por rota autenticada com vínculo técnico, imutável com a avaliação registrada.
 2. Salvaguardas: confirmação de que o aluno autorizou (registrada), bloqueio de menor de 18 pela ficha, nada público, 404 para qualquer outra pessoa, auditoria de envio e remoção.
-3. **Em aberto (exigem decisão do responsável):** base legal e texto de consentimento para imagens de saúde, atendimento a menores, exclusão a pedido do titular depois de registrada, retenção. **Estado (0.18.1):** o primeiro deploy com o bucket falhou duas vezes; a causa provável era o nome do bucket (`trainer-prescription-photos` + o prefixo de 36 caracteres do Webflow passava de 63) e ele passou a se chamar `photos`. As fotos ficam fechadas na tela até o aceite do aluno existir (`PHOTOS_ENABLED`). Ver `docs/WEBFLOW-CLOUD.md`.
+3. **Em aberto (exigem decisão do responsável):** base legal e texto de consentimento para imagens de saúde, atendimento a menores, exclusão a pedido do titular depois de registrada, retenção. **Estado (0.18.1):** o primeiro deploy com o bucket falhou duas vezes porque `trainer-prescription-photos` + o prefixo de 36 caracteres do Webflow passava de 63; com o nome `photos` o bucket foi criado em produção (confirmado no log). As fotos ficam **fechadas** na tela até o aceite do aluno existir (`PHOTOS_ENABLED`). Ver `docs/WEBFLOW-CLOUD.md`.
 
 ## Fatia anterior: evolução das avaliações (0.13)
 

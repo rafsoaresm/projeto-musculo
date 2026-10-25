@@ -2,7 +2,7 @@ import { Pill } from "@/components/ui";
 import type { StudentProgress, CycleProgress } from "@/db/workout-sessions";
 import { MetricChart } from "@/modules/avaliacoes/metric-chart";
 import { formatCalendarDate } from "@/modules/training/format";
-import type { WeekRecord } from "./progress";
+import { closedSummary, type WeekRecord } from "./progress";
 
 const number = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
 
@@ -83,11 +83,7 @@ function Cycle({ cycle }: { cycle: CycleProgress }) {
       </h3>
       <p className="small muted">
         Entregue em {formatCalendarDate(cycle.deliveredOn)}.{" "}
-        {cycle.closed.weeks > 0
-          ? `Nas ${cycle.closed.weeks} ${cycle.closed.weeks === 1 ? "semana já encerrada" : "semanas já encerradas"}: ${cycle.closed.recorded} ${cycle.closed.recorded === 1 ? "treino registrado" : "treinos registrados"} para ${cycle.closed.planned} previstos.`
-          : "Nenhuma semana encerrada ainda."}
-        {cycle.outside > 0 &&
-          ` ${cycle.outside} ${cycle.outside === 1 ? "registro fora" : "registros fora"} das semanas mostradas.`}
+        {closedSummary(cycle.closed, cycle.outside)}
       </p>
       {cycle.weeks.length === 0 ? (
         <p>Ainda não há semana deste ciclo para mostrar.</p>

@@ -1,8 +1,20 @@
-# Evidências de validação — v0.18.1 (bucket das fotos com nome que cabe no Webflow; fotos fechadas até o aceite) sobre a base 0.3
+# Evidências de validação — v0.19.0 (percentual dos treinos previstos com registro; bucket das fotos provisionado, fotos fechadas até o aceite) sobre a base 0.3
 
 Tudo abaixo foi executado **localmente** em 23/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0012 são aditivas.
 
+## Fatia 0.19: percentual dos treinos previstos com registro
+
+Só leitura, sem migration. É a sugestão que o responsável aprovou: registrados ÷ previstos, só das semanas já encerradas, sem cor, meta nem alerta.
+
+- **Conta.** Para cada ciclo, "Isso é X% dos treinos previstos com registro (cada semana conta, no máximo, o que estava previsto)". Cada semana encerrada soma no máximo o que o cronograma previa: um quarto registro numa semana de três não cobre uma semana sem nenhum (4 registros numa semana e nenhum na outra são 3 de 6, 50%, e não 4 de 6). A semana em andamento nunca entra, como na 0.16; sem semana encerrada não há percentual ("Nenhuma semana encerrada ainda."). Inteiro, arredondado.
+- **Sem julgamento.** Não há meta, cor, alerta, nem palavra que avalie (um teste confere que o texto não contém "meta", "baixa", "falta", "abaixo", "aderência" e semelhantes). A tela diz "com registro", não "cumpriu": registro ausente não prova que o aluno não treinou, e a frase de abertura da tela continua dizendo isso. O nome "aderência" não aparece na tela.
+- **Quem lê.** A mesma conta aparece para o profissional (tela de execução do aluno) e para o aluno (`/aluno/evolucao`), pela mesma função.
+- **Testes:** `tests/workout-progress.test.ts` (+3 = 12): o teto por semana, o arredondamento (67, 33, 100, 0 e nulo sem previstos) e o texto, incluindo o plural, o singular e os registros fora das semanas. `tests/workout-sessions.test.ts` confere o total coberto com D1 real. **Mutações deliberadas** que fizeram testes falharem: tirar o teto por semana (2), contar a semana em andamento (2) e truncar em vez de arredondar (1).
+- **Em aberto:** semana de descanso, viagem ou lesão que o profissional queira tirar da conta (exigiria uma marca por semana, com migration); metas por aluno; porcentagem por treino (A, B, C) em vez de por semana.
+
 ## Correção 0.18.1: o bucket das fotos
+
+**Confirmado em produção (25/10/2026):** o deploy `3f1e0696` da 0.18.1 passou da etapa do R2 e o log mostra `R2 Bucket: photos -> f26f7686-f290-4ed2-a487-fefb0d58aa2c-photos` e `Did not find existing R2 bucket, creating R2 bucket f26f7686-f290-4ed2-a487-fefb0d58aa2c-photos`: o Webflow prefixa mesmo o id do ambiente, e o nome antigo passava de 63 caracteres. O ambiente passou a listar o binding `PHOTOS` (tipo r2). As fotos seguem **fechadas** na tela. **Ainda a conferir no painel do Webflow (aba Storage):** que o bucket não tem endereço público.
 
 Os dois deploys da 0.14 com o R2 falharam sem mensagem. Em vez de esperar o suporte, os logs do Webflow deram uma pista no nosso arquivo: o recurso real se chama `<id do ambiente de 36 caracteres>-<nome declarado>` (o banco aparece assim num deploy bom), e `trainer-prescription-photos` somado ao prefixo tem 64 caracteres, um a mais que o limite de 63 do R2. O nome passou a ser `photos`. **Confirmação:** só o deploy em produção (ver `docs/WEBFLOW-CLOUD.md`). A hipótese anterior (Object Storage não ativo ou fora do plano) contraria a documentação do Webflow, para quem o recurso vale em todos os planos.
 
@@ -217,7 +229,7 @@ Cobre **só a estrutura do ciclo** (fases, semanas, sessões, divisão e calend�
 
 ## Código e banco
 
-- `npm run check`: ESLint e TypeScript sem erros e **278 testes, nenhum ignorado**: 17 de isolamento D1, 22 de identidade, 26 de periodização, 31 de papéis, 15 de contrato de navegação/fixtures, 5 de caminho de montagem, 9 de planos salvos, 9 de biblioteca, 21 de prescrição, 16 de aprovação, entrega, situação da triagem e documento entregue, 7 de ficha, 26 de avaliações, 8 de PDF, 8 de evolução, 5 do limpador de JPEG, 11 de fotos, 6 da configuração do Webflow, 27 de execução do treino e 9 de registros por semana e carga.
+- `npm run check`: ESLint e TypeScript sem erros e **281 testes, nenhum ignorado**: 17 de isolamento D1, 22 de identidade, 26 de periodização, 31 de papéis, 15 de contrato de navegação/fixtures, 5 de caminho de montagem, 9 de planos salvos, 9 de biblioteca, 21 de prescrição, 16 de aprovação, entrega, situação da triagem e documento entregue, 7 de ficha, 26 de avaliações, 8 de PDF, 8 de evolução, 5 do limpador de JPEG, 11 de fotos, 6 da configuração do Webflow, 27 de execução do treino e 12 de registros por semana, percentual e carga.
 - Os 31 testes de `tests/roles.test.ts` usam D1 real (Miniflare) com as três migrations e cobrem:
   - **Gestor:** ativação recusada sem token configurado, com token curto ou errado; exatamente um gestor sob concorrência; token inerte depois; e-mail e papel de proprietário não concedem o papel; revogado ou bloqueado perde o acesso na hora.
   - **Escopo do gestor:** vê organizações e contagens; o resultado serializado não contém nome de aluno; `studentsFor` e a criação de convite não funcionam para ele em nenhuma organização; bloqueio e restabelecimento com auditoria; não bloqueia a si mesmo, outro gestor ou quem não é da organização; a auditoria do gestor lista só ações de plataforma.

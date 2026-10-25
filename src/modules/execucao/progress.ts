@@ -34,7 +34,13 @@ export interface WeeklyRecords {
   /** Logs that fall outside every week shown (before the plan was delivered, or after the cycle). */
   outside: number;
   /** Only weeks that are over. The week in progress is never counted as missing. */
-  closed: { weeks: number; planned: number; recorded: number };
+  closed: {
+    weeks: number;
+    planned: number;
+    recorded: number;
+    /** Planned workouts that have a log: each week counts at most what it foresaw. */
+    covered: number;
+  };
 }
 
 /**
@@ -69,8 +75,33 @@ export function weeklyRecords(
       weeks: closed.length,
       planned: closed.reduce((sum, week) => sum + week.planned, 0),
       recorded: closed.reduce((sum, week) => sum + week.recorded, 0),
+      // A fourth log in a week of three does not make up for a week with none.
+      covered: closed.reduce((sum, week) => sum + Math.min(week.recorded, week.planned), 0),
     },
   };
+}
+
+/**
+ * The whole percent of the workouts foreseen, in the weeks that are over, that have a log. It counts
+ * logs and is never a grade: no goal, no colour and no word like "low" or "good" goes with it.
+ * Null when nothing was foreseen.
+ */
+export const percentCovered = (closed: { planned: number; covered: number }) =>
+  closed.planned > 0 ? Math.round((closed.covered / closed.planned) * 100) : null;
+
+/** The sentence under a cycle: what the weeks that are over hold, and the logs outside the weeks shown. */
+export function closedSummary(closed: WeeklyRecords["closed"], outside: number): string {
+  const percent = percentCovered(closed);
+  const weeks = closed.weeks === 1 ? "semana já encerrada" : "semanas já encerradas";
+  const recorded = closed.recorded === 1 ? "treino registrado" : "treinos registrados";
+  const base =
+    closed.weeks > 0
+      ? `Nas ${closed.weeks} ${weeks}: ${closed.recorded} ${recorded} para ${closed.planned} previstos.` +
+        (percent === null
+          ? ""
+          : ` Isso é ${percent}% dos treinos previstos com registro (cada semana conta, no máximo, o que estava previsto).`)
+      : "Nenhuma semana encerrada ainda.";
+  return outside > 0 ? `${base} ${outside} ${outside === 1 ? "registro fora" : "registros fora"} das semanas mostradas.` : base;
 }
 
 export interface LoggedExercise {
