@@ -31,7 +31,8 @@ Uma mesma conta pode ter mais de uma área (por exemplo, gestor e profissional).
 /entrar  /cadastro        conta (a mesma identidade serve a todas as áreas)
 /acesso                   encaminha cada conta para a sua área
 /organizacao              primeiro espaço do profissional
-/convite/[token]          aceite do convite pelo aluno
+/convite/[token]          aceite do convite pelo aluno (com o aceite dos termos)
+/aceite?area=...          aceite dos termos para quem entrou antes da versão atual
 /projeto                  mapa do produto e do roadmap
 
 /gestor                   visão geral            /gestor/organizacoes[/id]

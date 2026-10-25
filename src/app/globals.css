@@ -2054,3 +2054,43 @@ label.check input {
 .execution-ack {
   margin-top: 18px;
 }
+
+/* ---------- Terms and acceptance ---------- */
+.terms-block {
+  display: grid;
+  gap: 8px;
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 16px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  background: var(--color-background);
+}
+.terms-block:focus-visible {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.terms-block h3,
+.terms-block h4,
+.terms-block p {
+  margin: 0;
+}
+.terms-block h4 {
+  margin-top: 8px;
+  font-size: 15px;
+}
+.consent-fields {
+  display: grid;
+  gap: 14px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.consent-fields legend {
+  padding: 0;
+  font-weight: 700;
+}
+.consent-card {
+  max-width: 720px;
+}

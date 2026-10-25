@@ -7,6 +7,7 @@ import { createAuth } from "./factory";
 import { workspaceFor } from "@/db/workspaces";
 import { isPlatformAdmin } from "@/db/platform";
 import { portalLinksFor } from "@/db/student-access";
+import { hasCurrentAcceptance } from "@/db/consent";
 import { surfacesFor } from "@/db/surfaces";
 
 /**
@@ -98,6 +99,8 @@ export async function requireWorkspace() {
   const identity = await requireIdentity();
   const workspace = await workspaceFor(identity.db, identity.user.id);
   if (!workspace) redirect("/acesso");
+  // Health data of other people is handled here: nobody gets in without the terms in force accepted.
+  if (!(await hasCurrentAcceptance(identity.db, identity.user.id, "PROFESSIONAL"))) redirect("/aceite?area=profissional");
   return {
     ...identity,
     workspace,
@@ -118,6 +121,7 @@ export async function requireStudent() {
   const identity = await requireIdentity();
   const links = await portalLinksFor(identity.db, identity.user.id);
   if (links.length === 0) redirect("/acesso");
+  if (!(await hasCurrentAcceptance(identity.db, identity.user.id, "STUDENT"))) redirect("/aceite?area=aluno");
   return { ...identity, links };
 }
 

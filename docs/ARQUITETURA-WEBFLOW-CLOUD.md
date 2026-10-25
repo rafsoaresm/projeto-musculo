@@ -55,6 +55,7 @@ Esta base é um app na raiz do repositório, com módulos internos. Sites e port
 | assessment_reviews | Revisão do alerta pelo profissional, só de acréscimo, com a base escrita por ele. Não apaga o alerta (0009) |
 | workout_sessions, session_exercises, session_sets | O diário do aluno: um registro por treino e dia, apontando para a revisão entregue e para os exercícios prescritos; nada é copiado de volta para a prescrição. Congela por gatilho com relato de dor ou depois da leitura do profissional (0012) |
 | session_acknowledgements | A leitura do profissional sobre um registro (quem, quando, anotação): só se acrescenta, nunca se muda (0012) |
+| consent_acceptances | O aceite dos termos por pessoa e papel (profissional ou aluno): versão, SHA-256 do texto aceito, autorização opcional de fotos (só aluno) e data. Só se acrescenta; a linha mais recente é o estado (0013) |
 | assessment_photos | Índice das fotos de postura (quatro vistas por avaliação): a imagem fica no Object Storage (`PHOTOS`), nunca no banco nem em endereço público; congela com a avaliação (0011) |
 | assessment_findings | Achados posturais marcados e testes de movimento com a escala do documento; só linhas registradas, congeladas com a avaliação (0010) |
 | student_profiles | Ficha do aluno (dado pessoal e de saúde): uma linha por aluno, só profissional com vínculo técnico (0008) |

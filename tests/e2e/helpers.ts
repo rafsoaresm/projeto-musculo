@@ -57,6 +57,7 @@ export async function createProfessional(
     page.getByRole("heading", { name: "Um espaço para seu método." }),
   ).toBeVisible();
   await page.getByLabel("Nome do espaço").fill(workspace);
+  await acceptProfessionalTerms(page);
   await page.getByRole("button", { name: "Criar meu espaço" }).click();
   await expect(page.getByRole("heading", { name: /^Olá, / })).toBeVisible();
   return email;
@@ -85,4 +86,15 @@ export async function signOut(page: Page) {
   if (!(await button.first().isVisible()))
     await page.getByRole("button", { name: "Menu" }).click();
   await button.first().click();
+}
+
+/** Joining the tool is where the terms are accepted, once: the professional when creating the space. */
+export async function acceptProfessionalTerms(page: Page) {
+  await page.getByLabel("Li e aceito os termos de uso.").check();
+}
+
+/** The student, when accepting the invitation. The photos are a separate, optional choice. */
+export async function acceptStudentTerms(page: Page, options: { photos?: boolean } = {}) {
+  await page.getByLabel(/Tenho 18 anos completos, li e aceito/).check();
+  if (options.photos) await page.getByLabel(/Autorizo o meu profissional a registrar fotos/).check();
 }

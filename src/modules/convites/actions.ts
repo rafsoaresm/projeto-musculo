@@ -8,6 +8,8 @@ import {
 } from "@/modules/auth/server";
 import { studentsFor } from "@/db/students";
 import { acceptStudentInvite, studentAccessFor } from "@/db/student-access";
+import { recordAcceptance } from "@/db/consent";
+import { CONSENT_REQUIRED, readConsent } from "@/modules/consentimento/input";
 
 export interface InviteState {
   /**
@@ -57,8 +59,14 @@ export async function revokeStudentAccess(studentId: string): Promise<string> {
 }
 
 /** The signed-in person accepts. The token is the only thing the page supplies. */
-export async function acceptInvite(token: string): Promise<string> {
+export async function acceptInvite(token: string, _previous: string, form: FormData): Promise<string> {
   const { db, user } = await requireIdentity();
+  // Joining the tool is the moment of the acceptance, and of the photos choice. It is recorded before
+  // the invitation is spent: a link that fails keeps its use, and the acceptance stays valid.
+  const consent = readConsent(form);
+  if (!consent.accepted) return CONSENT_REQUIRED;
+  if ((await recordAcceptance(db, user.id, "STUDENT", { photosAuthorized: consent.photos })).status === "refused")
+    return "Não foi possível registrar o aceite. Atualize a página e tente novamente.";
   const accepted = await acceptStudentInvite(db, user.id, token);
   if (!accepted)
     return "Este convite não está mais disponível. Peça um novo ao seu profissional.";

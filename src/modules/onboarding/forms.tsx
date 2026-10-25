@@ -1,5 +1,6 @@
 "use client";
 import { useActionState, useTransition } from "react";
+import { ConsentFields } from "@/modules/consentimento/consent-fields";
 import { setupWorkspace, addStudent } from "./actions";
 
 /**
@@ -46,6 +47,7 @@ export function WorkspaceForm({ name }: { name: string }) {
         Você será responsável pelos alunos cadastrados neste espaço. Fuso
         inicial: Brasília.
       </p>
+      <ConsentFields audience="PROFESSIONAL" />
       {error && (
         <p role="alert" className="form-error">
           {error}

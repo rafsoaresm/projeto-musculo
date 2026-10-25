@@ -9,6 +9,7 @@ import {
   signIn,
   signOut,
   uniqueEmail,
+  acceptStudentTerms,
 } from "./helpers";
 
 const next = "another-long-browser-password";
@@ -115,6 +116,7 @@ test("a student changes the password and sees what is not available yet", async 
   await client.page.getByLabel("E-mail", { exact: true }).fill(clientEmail);
   await client.page.getByLabel("Senha", { exact: true }).fill(password);
   await client.page.getByRole("button", { name: "Criar meu acesso" }).click();
+  await acceptStudentTerms(client.page);
   await client.page.getByRole("button", { name: "Aceitar convite" }).click();
   // The invitation is accepted when the student area opens: going elsewhere before would cancel it.
   await expect(client.page).toHaveURL(/\/aluno\/?$/);

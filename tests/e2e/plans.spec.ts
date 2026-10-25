@@ -7,6 +7,7 @@ import {
   noHorizontalOverflow,
   password,
   uniqueEmail,
+  acceptProfessionalTerms,
 } from "./helpers";
 
 test("a professional saves, revisits and revises a plan; nobody else reaches it", async ({
@@ -76,6 +77,7 @@ test("a professional saves, revisits and revises a plan; nobody else reaches it"
   await other.page.getByLabel("Senha", { exact: true }).fill(password);
   await other.page.locator("form button").click();
   await other.page.getByLabel("Nome do espaço").fill("Outro estúdio dos planos");
+  await acceptProfessionalTerms(other.page);
   await other.page.getByRole("button", { name: "Criar meu espaço" }).click();
   await expect(other.page.getByRole("heading", { name: /^Olá, / })).toBeVisible();
   await other.page.goto(revisionURL);
