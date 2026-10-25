@@ -42,9 +42,9 @@ Não há anúncios, rastreadores de terceiros nem uso dos dados para outra final
 - **Uma vez, ao aderir.** O profissional aceita ao criar o espaço; o aluno aceita ao aceitar o convite do profissional. Sem a caixa obrigatória o servidor recusa, mesmo contornando a tela.
 - **Versão e prova.** O texto vive no código. Cada aceite grava a versão e o SHA-256 do texto exato mostrado, a data e a identidade verificada no servidor. A tabela só se acrescenta (gatilhos recusam alterar e apagar).
 - **Texto novo, aceite novo.** Trocar qualquer palavra cria uma nova versão; no acesso seguinte cada pessoa é levada a aceitar de novo, e nada da área abre antes.
-- **Fotos: escolha à parte.** Dentro do mesmo aceite, o aluno vê um item destacado e opcional, **desmarcado por padrão**; recusar não impede o aceite nem o uso da ferramenta. A foto só é aceita se o aceite **mais recente** do aluno, **da versão em vigor**, tem a autorização marcada; o profissional não pode marcar por ele. Cada foto guarda o id do aceite que a autorizou.
+- **Fotos: escolha à parte.** Dentro do mesmo aceite, o aluno vê um item destacado e opcional, **desmarcado por padrão**; recusar não impede o aceite nem o uso da ferramenta. A foto só é aceita se o aceite **mais recente** do aluno, **da versão em vigor**, tem a autorização marcada; o profissional não pode marcar por ele. Cada foto guarda o id do aceite que a autorizou. **Depois de aceitar, o aluno pode autorizar ou retirar as fotos quando quiser, em "Minha conta"** (0.22): cada mudança é uma nova linha do histórico, da mesma versão do texto, e nada se apaga. Retirar impede fotos novas; as já guardadas **não** são apagadas por essa tela.
 - **Menores.** A ferramenta bloqueia fotos de quem a ficha mostra ter menos de 18 anos, e o termo do aluno pede a confirmação de que tem 18 anos. Não há caminho para responsável legal.
-- **O profissional vê fatos**: quando o aluno aceitou, se a versão é a atual e se autorizou as fotos. O aluno vê, em "Minha conta", a data do aceite e a escolha das fotos.
+- **O profissional vê fatos**: quando o aluno aceitou, se a versão é a atual e se autorizou as fotos. O aluno vê, em "Minha conta", a data do aceite e a escolha das fotos, e as muda ali. O profissional vê a data do aceite e, se a escolha das fotos for de outro dia, a data dela.
 
 ## 5. Texto atual (rascunho)
 
@@ -52,7 +52,7 @@ Reproduzido do código por `src/modules/consentimento/terms.ts`; um teste confer
 
 ### 5.1 Aluno
 
-Versão `2026-10-25-rascunho-1`, SHA-256 do texto aceito `4ca15e524fcef096a2b6ec7b4dbe83dd6ba9fdda5c8e6fabc883c956604d6b66`.
+Versão `2026-10-25-rascunho-2`, SHA-256 do texto aceito `adba1de53466659ad2ab94c182e22b079ad5412374d28ef6bd6562eea5b542dc`.
 
 > **Termos e aviso de privacidade do aluno**
 >
@@ -72,13 +72,13 @@ Versão `2026-10-25-rascunho-1`, SHA-256 do texto aceito `4ca15e524fcef096a2b6ec
 >
 > Caixa obrigatória: “Tenho 18 anos completos, li e aceito os termos e o aviso de privacidade.”
 >
-> **Fotos da sua postura (opcional).** Se você autorizar, o seu profissional poderá registrar fotos da sua postura nas avaliações. As fotos ficam em armazenamento privado, só ele as vê, e a ferramenta remove os dados do aparelho (posição, data e modelo) antes de guardar. Depois que a avaliação é registrada, as fotos não mudam. Recusar não impede você de usar nada: o resto funciona igual. Para retirar a autorização, fale com o seu profissional.
+> **Fotos da sua postura (opcional).** Se você autorizar, o seu profissional poderá registrar fotos da sua postura nas avaliações. As fotos ficam em armazenamento privado, só ele as vê, e a ferramenta remove os dados do aparelho (posição, data e modelo) antes de guardar. Depois que a avaliação é registrada, as fotos não mudam. Recusar não impede você de usar nada: o resto funciona igual. Você pode mudar essa escolha quando quiser, em “Minha conta”: retirar a autorização impede fotos novas; sobre as fotos que já foram guardadas, fale com o seu profissional.
 >
 > Caixa opcional (desmarcada): “Autorizo o meu profissional a registrar fotos da minha postura.”
 
 ### 5.2 Profissional
 
-Versão `2026-10-25-rascunho-1`, SHA-256 do texto aceito `611a264b72d3d8d11096b662e83a66e7a23c1b4ed5453337bc1a415d5c4350e5`.
+Versão `2026-10-25-rascunho-2`, SHA-256 do texto aceito `a189f9ba537e1d802689f02c7e061ddb7782c5b1740b1afc8673efc2e491c59c`.
 
 > **Termos de uso do profissional**
 >
@@ -107,10 +107,10 @@ Versão `2026-10-25-rascunho-1`, SHA-256 do texto aceito `611a264b72d3d8d11096b6
 
 ## 7. O que a ferramenta ainda NÃO faz
 
-1. **Não há tela para pedidos do titular** (acesso, correção, exportação, exclusão, retirada do aceite). O termo manda o aluno falar com o profissional, que deve responder em até 15 dias. Hoje isso seria manual e sem apoio da ferramenta.
+1. **Não há tela para a maior parte dos pedidos do titular** (acesso, correção, exportação, exclusão, retirada do aceite dos termos); a única que existe é a escolha das fotos. O termo manda o aluno falar com o profissional, que deve responder em até 15 dias. Hoje isso seria manual e sem apoio da ferramenta.
 2. **Exclusão não existe.** Registros congelados (avaliação registrada, treino entregue, registro de execução com dor ou lido pelo profissional, fotos de avaliação registrada) são imutáveis por gatilhos no banco, de propósito. Atender um pedido de exclusão exigiria uma **exceção controlada** a essas travas, com auditoria. Não está desenhada nem decidida.
 3. **Retenção não é aplicada.** O termo diz "enquanto você for atendido e por até 5 anos depois", mas nada apaga ou anonimiza dados quando o prazo acaba.
-4. **O aluno não consegue mudar nem retirar a autorização das fotos depois** de aceitar. E não está decidido o que fazer com as fotos já guardadas se ela for retirada.
+4. **Retirar a autorização das fotos não apaga as fotos já guardadas.** O aluno retira em "Minha conta" e o efeito é só impedir fotos novas; o que fazer com as já guardadas (apagar na hora, manter até o fim do atendimento, o que a lei exigir) não está decidido, e a tela diz ao aluno para falar com o profissional.
 5. **Menores:** sem responsável legal, sem permissões próprias. Se a ficha não tem data de nascimento, a ferramenta não sabe a idade; só o termo do aluno pede a confirmação de 18 anos.
 6. **E-mail:** sem verificação de e-mail e sem recuperação de senha (dependem de um provedor de envio, ainda não contratado).
 7. **Termos fora do login:** o texto só aparece para quem está entrando; não há página pública dos termos nem aviso de privacidade completo separado dos termos.
@@ -128,7 +128,7 @@ Cada uma traz a **proposta atual**, aprovada pelo responsável do produto, para 
 5. **Retenção.** Qual o prazo razoável após o fim do atendimento, e é diferente para fotos? *Proposta:* cerca de 5 anos após o fim do atendimento, e um prazo menor para fotos; confirmar se há exigência de guarda de registro para profissionais de educação física.
 6. **Exclusão e registros congelados.** Como atender um pedido de exclusão quando o registro é imutável de propósito (prescrição entregue, avaliação registrada)? Pode ser anonimização em vez de apagar? Quais dados a lei obriga a manter? *Proposta:* uma exceção controlada e auditada, só a pedido do titular verificado, com o que a lei exigir mantido.
 7. **Pedidos do titular.** Em quanto tempo e por qual canal responder, e quem responde (o profissional ou a plataforma)? *Proposta:* resposta em até 15 dias, pelo profissional, com apoio de telas da ferramenta (a construir).
-8. **Retirada do aceite.** O que acontece com os dados já guardados quando o aluno retira o aceite ou só a autorização das fotos? As fotos precisam ser apagadas na hora? *Proposta:* nova linha de aceite (o histórico não se apaga); o destino das fotos já guardadas fica para o advogado decidir.
+8. **Retirada do aceite.** O que acontece com os dados já guardados quando o aluno retira o aceite ou só a autorização das fotos? As fotos precisam ser apagadas na hora? *Proposta (já em funcionamento):* o aluno retira só a autorização das fotos em "Minha conta", como nova linha do histórico, e isso impede fotos novas; o destino das fotos já guardadas fica para o advogado decidir.
 9. **Transferência internacional.** Os dados ficam em infraestrutura do Webflow/Cloudflare, em região que não escolhemos. É preciso informar isso no aviso e adotar alguma salvaguarda? Convém perguntar ao Webflow onde ficam os dados e por quanto tempo ficam as cópias de segurança.
 10. **Aviso de privacidade completo.** Os termos e o aviso devem ser documentos separados, públicos e acessíveis antes do cadastro? Quem é o encarregado e qual o canal? *Proposta:* hoje é um texto só, mostrado na entrada.
 11. **Registros técnicos e auditoria.** O IP e o navegador das sessões e a trilha de auditoria precisam de prazo de descarte e de menção no aviso?

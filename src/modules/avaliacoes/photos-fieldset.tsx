@@ -139,8 +139,9 @@ export function PhotosFieldset({
         </Notice>
       ) : (
         <p className="small muted">
-          O aluno autorizou as fotos da postura ao aceitar os termos. Cada foto guarda qual aceite a
-          autorizou. A base legal e o texto do consentimento ainda dependem de revisão jurídica.
+          O aluno autorizou as fotos da postura. A autorização é dele, pode ser retirada por ele a qualquer
+          momento (o que impede fotos novas) e cada foto guarda qual aceite a autorizou. A base legal e o
+          texto do consentimento ainda dependem de revisão jurídica.
         </p>
       )}
       <div className="photo-grid">

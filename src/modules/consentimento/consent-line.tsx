@@ -17,11 +17,14 @@ export function ConsentLine({ consent }: { consent: StudentConsent | null }) {
       </p>
     );
   const when = formatCalendarDate((consent.acceptedAt ?? "").slice(0, 10));
+  const choiceDay = (consent.photosChoiceAt ?? "").slice(0, 10);
+  const changed = choiceDay !== "" && choiceDay !== (consent.acceptedAt ?? "").slice(0, 10);
   return (
     <p className="small muted">
       Aceite dos termos: feito em {when}
       {consent.current ? "" : ", de uma versão anterior; será pedido de novo no próximo acesso"}. Fotos da postura:{" "}
-      {consent.photosAuthorized ? "autorizadas" : "não autorizadas"} pelo aluno.
+      {consent.photosAuthorized ? "autorizadas" : "não autorizadas"} pelo aluno
+      {changed ? ` (escolha de ${formatCalendarDate(choiceDay)})` : ""}.
     </p>
   );
 }

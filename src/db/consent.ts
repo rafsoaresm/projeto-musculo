@@ -12,7 +12,10 @@ export interface Acceptance {
   version: string;
   sha256: string;
   photosAuthorized: boolean;
+  /** When this row was made: the acceptance itself, or a later change of the photos choice. */
   acceptedAt: string;
+  /** When the person first accepted this exact version and text; a later photos choice does not move it. */
+  termsAcceptedAt: string;
 }
 
 export async function latestAcceptance(
@@ -23,14 +26,17 @@ export async function latestAcceptance(
   if (!userId?.trim()) return null;
   return db
     .prepare(
-      `SELECT id, terms_version AS version, terms_sha256 AS sha256, photos_authorized AS photosAuthorized,
-         accepted_at AS acceptedAt
-       FROM consent_acceptances
-       WHERE user_id = ?1 AND audience = ?2
-       ORDER BY accepted_at DESC, rowid DESC LIMIT 1`,
+      `SELECT c.id, c.terms_version AS version, c.terms_sha256 AS sha256, c.photos_authorized AS photosAuthorized,
+         c.accepted_at AS acceptedAt,
+         (SELECT MIN(f.accepted_at) FROM consent_acceptances f
+           WHERE f.user_id = c.user_id AND f.audience = c.audience
+             AND f.terms_version = c.terms_version AND f.terms_sha256 = c.terms_sha256) AS termsAcceptedAt
+       FROM consent_acceptances c
+       WHERE c.user_id = ?1 AND c.audience = ?2
+       ORDER BY c.accepted_at DESC, c.rowid DESC LIMIT 1`,
     )
     .bind(userId, audience)
-    .first<{ id: string; version: string; sha256: string; photosAuthorized: number; acceptedAt: string }>()
+    .first<{ id: string; version: string; sha256: string; photosAuthorized: number; acceptedAt: string; termsAcceptedAt: string }>()
     .then((row) => (row ? { ...row, photosAuthorized: Boolean(row.photosAuthorized) } : null));
 }
 
@@ -82,7 +88,10 @@ export interface StudentConsent {
   /** The acceptance is of the version in force; an older one asks again at the next access. */
   current: boolean;
   photosAuthorized: boolean;
+  /** When the terms in force were first accepted. */
   acceptedAt: string | null;
+  /** When the photos choice was last made or changed. */
+  photosChoiceAt: string | null;
 }
 
 /**
@@ -130,13 +139,15 @@ export async function studentConsentFor(
   if (!reach) return null;
   const found = await studentLoginAcceptance(db, organizationId, studentId);
   // No linked login: there is no one to have accepted, which is not the same as "refused".
-  if (!found) return { hasLogin: false, accepted: false, current: false, photosAuthorized: false, acceptedAt: null };
+  if (!found)
+    return { hasLogin: false, accepted: false, current: false, photosAuthorized: false, acceptedAt: null, photosChoiceAt: null };
   return {
     hasLogin: true,
     accepted: found.acceptance !== null,
     current: await isCurrent(found.acceptance),
     photosAuthorized: found.acceptance?.photosAuthorized ?? false,
-    acceptedAt: found.acceptance?.acceptedAt ?? null,
+    acceptedAt: found.acceptance?.termsAcceptedAt ?? null,
+    photosChoiceAt: found.acceptance?.acceptedAt ?? null,
   };
 }
 

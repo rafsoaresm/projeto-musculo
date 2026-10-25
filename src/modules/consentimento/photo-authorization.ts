@@ -13,7 +13,7 @@ export const PHOTO_DENIAL_MESSAGE: Record<PhotoDenial, string> = {
   OUTDATED:
     "O aluno aceitou uma versão anterior dos termos. O aceite será pedido de novo no próximo acesso dele, e as fotos ficam fechadas até lá.",
   DECLINED:
-    "O aluno não autorizou as fotos ao aceitar os termos. Só ele pode mudar isso, e a ferramenta ainda não tem uma tela para isso.",
+    "O aluno não autorizou as fotos. Só ele pode mudar isso, em “Minha conta” na área dele; o profissional não pode autorizar por ele.",
 };
 
 /** What the professional's screen shows: `null` when the student's own authorization stands. */

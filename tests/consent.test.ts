@@ -82,6 +82,7 @@ describe("recording the acceptance", () => {
       sha256: await termsHash("STUDENT"),
       photosAuthorized: true,
       acceptedAt: NOW.toISOString(),
+      termsAcceptedAt: NOW.toISOString(),
     });
     expect(await hasCurrentAcceptance(db, "login-1", "STUDENT")).toBe(true);
   });
@@ -92,6 +93,22 @@ describe("recording the acceptance", () => {
     expect(await recordAcceptance(db, "login-1", "STUDENT", { photosAuthorized: true }, later(3))).toEqual({ status: "accepted" });
     expect((await latestAcceptance(db, "login-1", "STUDENT"))!.photosAuthorized).toBe(true);
     expect(await rows("login-1")).toBe(3);
+  });
+
+  it("keeps the date the terms were accepted when only the photos choice changes, and starts anew with a new version", async () => {
+    await run("INSERT INTO auth_user(id,name,email,created_at,updated_at) VALUES ('login-dates','d','login-dates@example.test',0,0)");
+    await recordAcceptance(db, "login-dates", "STUDENT", { photosAuthorized: false }, NOW);
+    await recordAcceptance(db, "login-dates", "STUDENT", { photosAuthorized: true }, later(5));
+    expect(await latestAcceptance(db, "login-dates", "STUDENT")).toMatchObject({
+      photosAuthorized: true,
+      acceptedAt: later(5).toISOString(),
+      termsAcceptedAt: NOW.toISOString(),
+    });
+    // The same choice again changes nothing, so it does not move any date either.
+    expect(await recordAcceptance(db, "login-dates", "STUDENT", { photosAuthorized: true }, later(6))).toEqual({ status: "already" });
+    // A new version of the text starts its own date.
+    await insert("login-dates", "STUDENT", "2099-01-01-nova", "e".repeat(64), 1, later(9).toISOString());
+    expect(await latestAcceptance(db, "login-dates", "STUDENT")).toMatchObject({ termsAcceptedAt: later(9).toISOString() });
   });
 
   it("keeps the audiences apart", async () => {
@@ -169,13 +186,14 @@ describe("what the professional may know of the student's acceptance", () => {
   it("tells a student with no login from one who has not accepted from one who has", async () => {
     const pro = scope("tech-a");
     expect(await studentConsentFor(db, pro, "st-none")).toEqual({
-      hasLogin: false, accepted: false, current: false, photosAuthorized: false, acceptedAt: null,
+      hasLogin: false, accepted: false, current: false, photosAuthorized: false, acceptedAt: null, photosChoiceAt: null,
     });
     // st-off has a login that never accepted.
     expect(await studentConsentFor(db, pro, "st-off")).toMatchObject({ hasLogin: true, accepted: false, current: false });
-    // st-1 accepted, with the photos, in the version in force.
+    // st-1 accepted, with the photos, in the version in force; the photos choice was changed twice since.
     expect(await studentConsentFor(db, pro, "st-1")).toEqual({
-      hasLogin: true, accepted: true, current: true, photosAuthorized: true, acceptedAt: later(3).toISOString(),
+      hasLogin: true, accepted: true, current: true, photosAuthorized: true,
+      acceptedAt: NOW.toISOString(), photosChoiceAt: later(3).toISOString(),
     });
   });
 

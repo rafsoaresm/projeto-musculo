@@ -1,7 +1,7 @@
 "use server";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { requireIdentity } from "@/modules/auth/server";
+import { requireIdentity, requireStudent } from "@/modules/auth/server";
 import { portalLinksFor } from "@/db/student-access";
 import { workspaceFor } from "@/db/workspaces";
 import { recordAcceptance } from "@/db/consent";
@@ -37,4 +37,30 @@ export async function acceptTerms(
   if (outcome.status === "refused") return "Não foi possível registrar o aceite. Tente novamente.";
   revalidatePath(target.home, "layout");
   redirect(target.home);
+}
+
+export type PhotosChoiceResult = { ok: boolean; message: string } | null;
+
+/**
+ * The student changing, after joining, the photos choice they made with the acceptance: authorizing or
+ * withdrawing. It is a new row of the same version, never a change of an old one, so the history of
+ * what they chose and when stays. Only the student's own session can do it; the professional sees the
+ * result and cannot give or take it. Withdrawing stops new photos; what is already stored is not
+ * removed by this: that destiny is a decision still open (see docs/REVISAO-JURIDICA.md).
+ */
+export async function setPhotosChoice(_previous: PhotosChoiceResult, form: FormData): Promise<PhotosChoiceResult> {
+  const { db, user } = await requireStudent();
+  const authorize = form.get("photos") === "on";
+  const outcome = await recordAcceptance(db, user.id, "STUDENT", { photosAuthorized: authorize });
+  if (outcome.status === "refused") return { ok: false, message: "Não foi possível registrar a sua escolha. Tente novamente." };
+  revalidatePath("/aluno/conta");
+  return {
+    ok: true,
+    message:
+      outcome.status === "already"
+        ? "Nada mudou: esta já era a sua escolha."
+        : authorize
+          ? "Escolha registrada: você autorizou as fotos da sua postura."
+          : "Escolha registrada: você não autoriza mais fotos. Fotos novas não serão aceitas.",
+  };
 }
