@@ -51,4 +51,5 @@ export const ALL_MIGRATIONS = [
   "0012_workout_sessions.sql",
   "0013_consent.sql",
   "0014_photo_consent_link.sql",
+  "0015_student_checkins.sql",
 ];
