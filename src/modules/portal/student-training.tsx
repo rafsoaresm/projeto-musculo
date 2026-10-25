@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Download } from "lucide-react";
+import { ClipboardPen, Download } from "lucide-react";
 import { Pill } from "@/components/ui";
 import type { StudentPhase, StudentTrainingPlan } from "@/db/student-plan";
 import { describeDose } from "@/modules/prescricao/describe";
@@ -23,11 +23,14 @@ export function StudentTraining({
   plan,
   today = todayInBrazil(),
   pdfHref,
+  logBase,
 }: {
   plan: StudentTrainingPlan;
   today?: string;
   /** The PDF of this delivered revision, when the page can offer it. */
   pdfHref?: string;
+  /** Where the student logs a workout of this plan: this address, then `/phase/workout`. */
+  logBase?: string;
 }) {
   const current = plan.phases.find((phase) => phaseStanding(phase, today) === "CURRENT");
   return (
@@ -83,6 +86,15 @@ export function StudentTraining({
                 >
                   <header>
                     <h3>Treino {workout.label}</h3>
+                    {logBase && workout.exercises.length > 0 && (
+                      <Link
+                        className="button secondary small"
+                        href={`${logBase}/${phase.index}/${encodeURIComponent(workout.label)}`}
+                        aria-label={`Registrar treino ${workout.label}, fase ${phase.index}`}
+                      >
+                        <ClipboardPen size={16} /> Registrar este treino
+                      </Link>
+                    )}
                   </header>
                   {workout.exercises.length === 0 ? (
                     <p className="small muted">Nenhum exercício neste treino.</p>

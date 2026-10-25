@@ -10,6 +10,8 @@ import { activeUser } from "./students";
  * delivered, private library notes and authorship are not part of this data.
  */
 export interface StudentExercise {
+  /** The prescribed exercise this is, so the student's log can point at it. */
+  id: string;
   name: string;
   videoUrl: string | null;
   videoStatus: VideoStatus;
@@ -74,7 +76,7 @@ export async function assembleDelivered(
   if (revisions.length === 0) return [];
   const items = await db
     .prepare(
-      `SELECT pe.revision_id AS revisionId, pe.phase_index AS phaseIndex,
+      `SELECT pe.id, pe.revision_id AS revisionId, pe.phase_index AS phaseIndex,
          pe.workout_label AS workoutLabel, pe.name, pe.video_url AS videoUrl,
          pe.video_status AS videoStatus, pe.sets, pe.reps,
          pe.load_instruction AS loadInstruction, pe.cadence, pe.rest_seconds AS restSeconds,
@@ -109,6 +111,7 @@ export async function assembleDelivered(
           exercises: mine
             .filter((item) => item.phaseIndex === phase.index && item.workoutLabel === label)
             .map((item) => ({
+              id: item.id,
               name: item.name,
               videoUrl: item.videoUrl,
               videoStatus: item.videoStatus,

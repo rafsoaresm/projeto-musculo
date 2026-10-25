@@ -8,11 +8,13 @@ import { studentAccessFor } from "@/db/student-access";
 import { plansFor } from "@/db/plans";
 import { profilesFor } from "@/db/student-profile";
 import { assessmentsFor } from "@/db/assessments";
+import { executionFor } from "@/db/workout-sessions";
 import { PageHeading } from "@/components/ui";
 import { InvitePanel } from "@/modules/convites/invite-panel";
 import { PlansPanel } from "@/modules/planos/plans-panel";
 import { ProfileSummary } from "@/modules/ficha/profile-summary";
 import { AssessmentsPanel } from "@/modules/avaliacoes/assessments-panel";
+import { ExecutionPanel } from "@/modules/execucao/execution-panel";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Aluno" };
@@ -30,6 +32,7 @@ export default async function Student({
   const plans = await plansFor(db, context).listForStudent(student.id);
   const profile = await profilesFor(db, context).get(student.id);
   const assessments = await assessmentsFor(db, context).listForStudent(student.id);
+  const executions = await executionFor(db, context).list(student.id, 5);
   return (
     <>
       <PageHeading
@@ -50,6 +53,7 @@ export default async function Student({
       <ProfileSummary studentId={student.id} profile={profile} />
       <AssessmentsPanel studentId={student.id} assessments={assessments} />
       <PlansPanel studentId={student.id} plans={plans} />
+      <ExecutionPanel studentId={student.id} rows={executions} />
       <section className="panel">
         <p className="eyebrow">PLANEJADOR</p>
         <h2>Explorar sem salvar</h2>

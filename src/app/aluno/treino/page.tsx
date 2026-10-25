@@ -46,6 +46,7 @@ export default async function StudentTrainingPage() {
                 key={plan.planId}
                 plan={plan}
                 pdfHref={`/aluno/treino/pdf/${link.studentId}/${plan.planId}`}
+                logBase={`/aluno/treino/registrar/${link.studentId}/${plan.planId}`}
               />
             ))}
           </div>
