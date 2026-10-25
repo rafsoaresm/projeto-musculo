@@ -1,4 +1,4 @@
-import { getDatabase } from "@/db/binding";
+import { getDatabase, photoStorageAvailable } from "@/db/binding";
 import { getAuth } from "@/modules/auth/server";
 
 export async function GET() {
@@ -8,7 +8,7 @@ export async function GET() {
     const db = await getDatabase();
     const schema = await db
       .prepare("SELECT version FROM app_schema_versions WHERE version = ?")
-      .bind("0015_student_checkins")
+      .bind("0016_terms_versions")
       .first();
     if (schema) persistence = "available";
   } catch {
@@ -24,13 +24,15 @@ export async function GET() {
     {
       status: persistence === "available" ? "ok" : "degraded",
       service: "trainer-prescription",
-      version: "0.23.0",
+      version: "0.24.0",
       capabilities: {
         periodization: "available",
         areas: ["gestor", "profissional", "aluno"],
         authentication,
         persistence,
         storage: "webflow_sqlite",
+        // Whether the environment lets postural photos in: the bucket exists and the switch is on.
+        photos: (await photoStorageAvailable()) ? "open" : "closed",
       },
     },
     {

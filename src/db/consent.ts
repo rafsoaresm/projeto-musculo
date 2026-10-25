@@ -1,5 +1,6 @@
 import type { D1Database } from "@cloudflare/workers-types";
-import { TERMS_VERSION, termsHash, type Audience } from "@/modules/consentimento/terms";
+import type { Audience, ResolvedTerms } from "@/modules/consentimento/terms";
+import { currentTerms } from "./terms";
 import { activeUser, assertContext, technicalAccessExists, type AuthenticatedContext } from "./students";
 
 /**
@@ -40,13 +41,17 @@ export async function latestAcceptance(
     .then((row) => (row ? { ...row, photosAuthorized: Boolean(row.photosAuthorized) } : null));
 }
 
+const isCurrentOf = (acceptance: Acceptance | null, terms: ResolvedTerms) =>
+  acceptance !== null && acceptance.version === terms.version && acceptance.sha256 === terms.sha256;
+
 /** Whether the latest acceptance is of the version and of the exact words in force now. */
 export async function hasCurrentAcceptance(db: D1Database, userId: string, audience: Audience): Promise<boolean> {
-  const latest = await latestAcceptance(db, userId, audience);
-  return latest !== null && latest.version === TERMS_VERSION && latest.sha256 === (await termsHash(audience));
+  const [latest, terms] = await Promise.all([latestAcceptance(db, userId, audience), currentTerms(db, audience)]);
+  return isCurrentOf(latest, terms);
 }
 
-export type AcceptOutcome = { status: "accepted" } | { status: "already" } | { status: "refused" };
+/** `outdated`: the words changed between the moment the person read them and the moment they accepted. */
+export type AcceptOutcome = { status: "accepted" } | { status: "already" } | { status: "refused" } | { status: "outdated" };
 
 /**
  * Records the acceptance of the terms in force. Asking again with the same choice changes nothing.
@@ -57,15 +62,16 @@ export async function recordAcceptance(
   db: D1Database,
   userId: string,
   audience: Audience,
-  options: { photosAuthorized: boolean },
+  options: { photosAuthorized: boolean; shownVersion: string },
   now = new Date(),
 ): Promise<AcceptOutcome> {
   if (!userId?.trim()) return { status: "refused" };
   const photos = audience === "STUDENT" && options.photosAuthorized;
-  const sha256 = await termsHash(audience);
+  const terms = await currentTerms(db, audience);
+  // What is recorded is the text the person read: if another version took over meanwhile, nothing is.
+  if (options.shownVersion !== terms.version) return { status: "outdated" };
   const latest = await latestAcceptance(db, userId, audience);
-  if (latest && latest.version === TERMS_VERSION && latest.sha256 === sha256 && latest.photosAuthorized === photos)
-    return { status: "already" };
+  if (isCurrentOf(latest, terms) && latest!.photosAuthorized === photos) return { status: "already" };
   // The person may not have a row in `users` yet (it is created when the space is created or the
   // invitation accepted, which comes right after this acceptance). It is made here from the verified
   // account, in the same step; a blocked login keeps its block and records nothing.
@@ -76,7 +82,7 @@ export async function recordAcceptance(
         `INSERT INTO consent_acceptances (id, user_id, audience, terms_version, terms_sha256, photos_authorized, accepted_at)
          SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7 WHERE ${activeUser("?2")}`,
       )
-      .bind(crypto.randomUUID(), userId, audience, TERMS_VERSION, sha256, photos ? 1 : 0, now.toISOString()),
+      .bind(crypto.randomUUID(), userId, audience, terms.version, terms.sha256, photos ? 1 : 0, now.toISOString()),
   ]);
   return inserted.meta.changes > 0 ? { status: "accepted" } : { status: "refused" };
 }
@@ -116,9 +122,6 @@ async function studentLoginAcceptance(
   return { loginId: link.loginId, acceptance: await latestAcceptance(db, link.loginId, "STUDENT") };
 }
 
-const isCurrent = async (acceptance: Acceptance | null) =>
-  acceptance !== null && acceptance.version === TERMS_VERSION && acceptance.sha256 === (await termsHash("STUDENT"));
-
 /**
  * What the professional may know about the student's acceptance: that it was made, when, and the
  * photos choice. Only with an active technical assignment over the student; otherwise nothing.
@@ -144,7 +147,7 @@ export async function studentConsentFor(
   return {
     hasLogin: true,
     accepted: found.acceptance !== null,
-    current: await isCurrent(found.acceptance),
+    current: isCurrentOf(found.acceptance, await currentTerms(db, "STUDENT")),
     photosAuthorized: found.acceptance?.photosAuthorized ?? false,
     acceptedAt: found.acceptance?.termsAcceptedAt ?? null,
     photosChoiceAt: found.acceptance?.acceptedAt ?? null,
@@ -168,7 +171,7 @@ export async function photoAuthorizationFor(
   const found = await studentLoginAcceptance(db, organizationId, studentId);
   if (!found) return { status: "denied", reason: "NO_LOGIN" };
   if (!found.acceptance) return { status: "denied", reason: "NOT_ACCEPTED" };
-  if (!(await isCurrent(found.acceptance))) return { status: "denied", reason: "OUTDATED" };
+  if (!isCurrentOf(found.acceptance, await currentTerms(db, "STUDENT"))) return { status: "denied", reason: "OUTDATED" };
   if (!found.acceptance.photosAuthorized) return { status: "denied", reason: "DECLINED" };
   return { status: "authorized", acceptanceId: found.acceptance.id };
 }

@@ -36,7 +36,8 @@ Uma mesma conta pode ter mais de uma área (por exemplo, gestor e profissional).
 /projeto                  mapa do produto e do roadmap
 
 /gestor                   visão geral            /gestor/organizacoes[/id]
-/gestor/auditoria         /gestor/ativar (primeiro acesso)
+/gestor/auditoria         /gestor/termos (editar os termos)
+/gestor/ativar            primeiro acesso
 /gestor/[módulo]          planejados: planos-saas, afiliados, templates, biblioteca-global, integracoes
 
 /profissional             visão geral            /profissional/alunos[/novo|/id]
@@ -88,7 +89,7 @@ Correspondência com os papéis do handoff V2:
 | Meu Site (editor, páginas, domínios, SEO, publicações) | `/profissional/meu-site` | Planejado, um único item por ora | E3 |
 | Leads | `/profissional/leads` | Planejado | E3 |
 | Configurações | `/profissional/configuracoes` | Planejado | E1 |
-| Gestor: organizações, auditoria | `/gestor/...` | Disponível | E1 |
+| Gestor: organizações, auditoria, termos | `/gestor/...` | Disponível: os termos são editados, revisados e publicados em versões | E1 |
 | Gestor: planos e cobrança, afiliados, templates, biblioteca, integrações | `/gestor/...` | Planejado | E3, E5, E6, E7 |
 | Aluno: início | `/aluno` | Disponível: vínculo e estado do treino | E4 |
 | Aluno: treino atual | `/aluno/treino` | Disponível: a revisão entregue de cada plano, somente leitura (**prévia** com execução na demonstração) | E4 |

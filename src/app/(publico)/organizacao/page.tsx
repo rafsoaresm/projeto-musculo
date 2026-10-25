@@ -1,9 +1,11 @@
 import { requireIdentity } from "@/modules/auth/server";
 import { workspaceFor } from "@/db/workspaces";
+import { shownTerms } from "@/db/terms";
 import { WorkspaceForm } from "@/modules/onboarding/forms";
 import { SignOut } from "@/modules/auth/components/sign-out";
 import { redirect } from "next/navigation";
 export const dynamic = "force-dynamic";
+
 export default async function Organization() {
   const { db, user } = await requireIdentity();
   if (await workspaceFor(db, user.id)) redirect("/profissional");
@@ -21,7 +23,7 @@ export default async function Organization() {
           responsável antes de continuar.
         </p>
       ) : (
-        <WorkspaceForm name={user.name} />
+        <WorkspaceForm name={user.name} terms={await shownTerms(db, "PROFESSIONAL")} />
       )}
       <div className="account-toolbar">
         <SignOut />

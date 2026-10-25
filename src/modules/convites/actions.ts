@@ -9,7 +9,7 @@ import {
 import { studentsFor } from "@/db/students";
 import { acceptStudentInvite, studentAccessFor } from "@/db/student-access";
 import { recordAcceptance } from "@/db/consent";
-import { CONSENT_REQUIRED, readConsent } from "@/modules/consentimento/input";
+import { CONSENT_FAILED, CONSENT_REQUIRED, TERMS_OUTDATED, readConsent } from "@/modules/consentimento/input";
 
 export interface InviteState {
   /**
@@ -65,8 +65,12 @@ export async function acceptInvite(token: string, _previous: string, form: FormD
   // the invitation is spent: a link that fails keeps its use, and the acceptance stays valid.
   const consent = readConsent(form);
   if (!consent.accepted) return CONSENT_REQUIRED;
-  if ((await recordAcceptance(db, user.id, "STUDENT", { photosAuthorized: consent.photos })).status === "refused")
-    return "Não foi possível registrar o aceite. Atualize a página e tente novamente.";
+  const outcome = await recordAcceptance(db, user.id, "STUDENT", {
+    photosAuthorized: consent.photos,
+    shownVersion: consent.shownVersion,
+  });
+  if (outcome.status === "outdated") return TERMS_OUTDATED;
+  if (outcome.status === "refused") return CONSENT_FAILED;
   const accepted = await acceptStudentInvite(db, user.id, token);
   if (!accepted)
     return "Este convite não está mais disponível. Peça um novo ao seu profissional.";

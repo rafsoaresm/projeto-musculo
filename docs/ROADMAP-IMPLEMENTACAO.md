@@ -5,7 +5,7 @@ O escopo completo está em [`referencias/02-ROADMAP-E-HANDOFF.md`](referencias/0
 | Épico | Estado | Critério restante |
 |---|---|---|
 | E0 — viabilidade | Configuração Next/OpenNext e binding DB nativo | Deploy na conta, múltiplos hosts, login, Storage privado, job/PDF e Puck |
-| E1 — fundação | Conta/sessão, organização, aluno, autorização e auditoria em SQLite. **Três áreas por papel** (gestor, profissional, aluno), ativação única do gestor, bloqueio de acesso e convite de aluno de uso único. **Minha conta** com troca de senha e encerramento das outras sessões (0.18). **Aceite único dos termos ao aderir** (0.20), com versão e hash gravados, e **fotos que dependem da autorização do próprio aluno**, que ele autoriza ou retira em Minha conta (0.21 e 0.22) | Revisão jurídica do texto de aceite, telas de pedido do titular, E-mail verificado, recuperação de senha, convites e gestão de equipe, conceder o papel de gestor pela interface e homologação remota |
+| E1 — fundação | Conta/sessão, organização, aluno, autorização e auditoria em SQLite. **Três áreas por papel** (gestor, profissional, aluno), ativação única do gestor, bloqueio de acesso e convite de aluno de uso único. **Minha conta** com troca de senha e encerramento das outras sessões (0.18). **Aceite único dos termos ao aderir** (0.20), com versão e hash gravados, e **texto editável pelo gestor, com versões e histórico** (0.24), e **fotos que dependem da autorização do próprio aluno**, que ele autoriza ou retira em Minha conta (0.21 e 0.22) | Revisão jurídica do texto de aceite, telas de pedido do titular, E-mail verificado, recuperação de senha, convites e gestão de equipe, conceder o papel de gestor pela interface e homologação remota |
 | E2 — atendimento | Planejador determinístico e exportação. **Planos de periodização salvos por aluno**, com revisões e estado Rascunho / Estrutura pronta (0.4). **Biblioteca de exercícios** com o seed de 64 do documento mestre e biblioteca por organização (0.5a). **Prescrição manual** por mesociclo sobre o rascunho (0.6), com painel de pendências e cópia de mesociclo (0.7). **Aprovação e entrega** com imutabilidade no banco (0.8). **Ficha do aluno** (0.9). **Avaliações com triagem e indicadores** (0.10), ligadas à aprovação e à entrega. **PDF do plano entregue** (0.11). **Postura e movimento** nas avaliações (0.12), sem fotos. **Evolução das avaliações** (0.13): séries dos indicadores e comparação. **Fotos de postura** no Object Storage do Webflow (0.14). **Execução do treino pelo aluno** (0.15): o que o aluno fez, com leitura e relato de dor para o profissional. **Registros por semana, percentual dos previstos com registro e carga por exercício** (0.16 e 0.19), só leitura | Anotação sobre a imagem, exclusão de foto a pedido do titular, geração com pendências; conferir o instrumento de triagem com o responsável técnico |
 | E3 — sites/CRM | Planejado | Editor, preview, releases, domínios e conversão idempotente |
 | E4 — portal | Parcial: convite de uso único, área do aluno, **treino entregue** (0.8), **registro da execução** (0.15) e **evolução do próprio aluno** (0.17) e **check-in** (0.23) | Origem privada separada, documentos e mensagens; fecha piloto operacional |
@@ -13,7 +13,13 @@ O escopo completo está em [`referencias/02-ROADMAP-E-HANDOFF.md`](referencias/0
 | E6 — SaaS/afiliados | Planejado | Inbox/outbox, conciliação, recorrência, ajustes e repasses |
 | E7 — evoluções | Planejado | RAG com armazenamento compatível, progressão assistida e booking |
 
-## Fatia entregue: check-in do aluno (0.23)
+## Fatia entregue: termos editáveis pelo gestor (0.24)
+
+1. Implementado: migration 0016. O texto aprovado em 25/10/2026 é a versão inicial (`2026-10-25-base`, sem marca de rascunho); `/gestor/termos` permite editar, ver o que mudou e como a pessoa vai ler, e publicar uma nova versão imutável, com histórico, motivo e auditoria. Quem aceitou outro texto aceita de novo no próximo acesso, e o servidor só grava o aceite do texto que a pessoa realmente leu.
+2. Princípio: o texto é do responsável jurídico, não do código; mudar uma palavra é uma versão nova com prova (versão e hash) e nunca reescreve o que alguém aceitou antes.
+3. **Em aberto:** rascunho no servidor; mostrar ao gestor o efeito nas pessoas que já aceitaram; citar o check-in no texto (pergunta 12 do pacote do advogado).
+
+## Fatia anterior: check-in do aluno (0.23)
 
 1. Implementado: migration 0015. `/aluno/check-in` (antes "planejado"): um check-in por dia com esforço percebido (0 a 10), recuperação (1 a 5 em palavras), relato de dor ou desconforto e observações. Relato de desconforto e check-in lido ficam congelados; o profissional registra a leitura (quem, quando, anotação) e vê, na visão geral, a fila de não lidos com os relatos de desconforto primeiro.
 2. Princípio: o aluno diz, o profissional lê e decide. Nada é pontuado, nenhum aviso sai sozinho e nenhum treino muda por causa de um check-in; a tela diz que não é um canal de urgência.
@@ -34,7 +40,7 @@ O escopo completo está em [`referencias/02-ROADMAP-E-HANDOFF.md`](referencias/0
 ## Fatia anterior: aceite único dos termos ao aderir (0.20)
 
 1. Implementado: migration 0013 (`consent_acceptances`, só se acrescenta). O profissional aceita ao criar o espaço e o aluno ao aceitar o convite, uma vez; as fotos são uma escolha à parte, opcional, no mesmo aceite. Fica gravado quem, quando, a versão e o SHA-256 do texto aceito. Versão nova do texto pede novo aceite no acesso seguinte; o profissional vê, na ficha do aluno, quando ele aceitou e se autorizou as fotos.
-2. Princípio: um texto provisório (`rascunho`) não é texto jurídico. **Ninguém real deve usar a ferramenta como produto antes da revisão de um advogado.** As fotos seguem fechadas em produção.
+2. Princípio: um texto provisório não é texto jurídico. **Estado (25/10/2026):** o advogado aprovou o texto (informado pelo responsável); desde a 0.24 ele deixou de ser rascunho. As fotos seguem fechadas em produção.
 3. **Em aberto:** revisão jurídica, controlador/operador, menores, pedidos do titular (acesso, exportação, exclusão, retirada do aceite), retenção.
 
 ## Fatia anterior: percentual dos treinos previstos com registro (0.19)

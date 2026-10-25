@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { requireStudent } from "@/modules/auth/server";
 import { latestAcceptance } from "@/db/consent";
+import { shownTerms } from "@/db/terms";
 import { formatCalendarDate } from "@/modules/training/format";
 import { PageHeading } from "@/components/ui";
 import { SecurityPanel } from "@/modules/auth/components/security-panel";
@@ -13,6 +14,7 @@ export default async function StudentAccount() {
   const { user, db } = await requireStudent();
   // What this person accepted, in their own words: the date and the photos choice they made.
   const accepted = await latestAcceptance(db, user.id, "STUDENT");
+  const terms = await shownTerms(db, "STUDENT");
   return (
     <>
       <PageHeading eyebrow="ÁREA DO ALUNO" title="Minha conta" description="Seus dados de acesso e a segurança da conta." />
@@ -44,7 +46,10 @@ export default async function StudentAccount() {
         {accepted && (
           <>
             <p>Você aceitou os termos em {formatCalendarDate(accepted.termsAcceptedAt.slice(0, 10))}.</p>
-            <PhotosChoice authorized={accepted.photosAuthorized} />
+            <PhotosChoice
+              authorized={accepted.photosAuthorized}
+              terms={terms}
+            />
           </>
         )}
         <p className="muted">

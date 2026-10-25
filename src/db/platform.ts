@@ -17,10 +17,12 @@ export const PLATFORM_AUDIT_ACTIONS = [
   "PLATFORM_ADMIN_ACTIVATED",
   "USER_BLOCKED",
   "USER_UNBLOCKED",
+  "TERMS_PUBLISHED_STUDENT",
+  "TERMS_PUBLISHED_PROFESSIONAL",
 ] as const;
 export type PlatformAuditAction = (typeof PLATFORM_AUDIT_ACTIONS)[number];
 
-const adminGuard = (user: string) =>
+export const adminGuard = (user: string) =>
   `EXISTS (SELECT 1 FROM platform_admins pa JOIN users u ON u.id = pa.user_id
     WHERE pa.user_id = ${user} AND pa.revoked_at IS NULL AND u.disabled_at IS NULL)`;
 

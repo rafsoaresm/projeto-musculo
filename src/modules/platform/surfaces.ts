@@ -127,6 +127,7 @@ const gestor: NavGroup[] = [
         status: "available",
         primary: true,
       },
+      { slug: "termos", label: "Termos", icon: "file", status: "available" },
     ],
   },
   {

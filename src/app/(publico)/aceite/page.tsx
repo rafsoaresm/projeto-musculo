@@ -4,6 +4,7 @@ import { requireIdentity } from "@/modules/auth/server";
 import { portalLinksFor } from "@/db/student-access";
 import { workspaceFor } from "@/db/workspaces";
 import { hasCurrentAcceptance } from "@/db/consent";
+import { shownTerms } from "@/db/terms";
 import { SignOut } from "@/modules/auth/components/sign-out";
 import { ConsentForm } from "@/modules/consentimento/consent-form";
 
@@ -32,7 +33,7 @@ export default async function AcceptTerms({
       <p className="eyebrow">ANTES DE CONTINUAR</p>
       <h1>Leia e aceite os termos.</h1>
       <p>Você aceita uma única vez. Se o texto mudar, será pedido de novo.</p>
-      <ConsentForm area={area} audience={audience} />
+      <ConsentForm area={area} terms={await shownTerms(db, audience)} />
       <div className="account-toolbar">
         <SignOut />
       </div>

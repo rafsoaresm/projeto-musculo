@@ -1,6 +1,7 @@
 "use client";
 import { useActionState, useTransition } from "react";
 import { ConsentFields } from "@/modules/consentimento/consent-fields";
+import type { ShownTerms } from "@/modules/consentimento/terms";
 import { setupWorkspace, addStudent } from "./actions";
 
 /**
@@ -17,7 +18,7 @@ function useKeepingSubmit(action: (data: FormData) => void) {
   };
 }
 
-export function WorkspaceForm({ name }: { name: string }) {
+export function WorkspaceForm({ name, terms }: { name: string; terms: ShownTerms }) {
   const [error, action, pending] = useActionState(setupWorkspace, "");
   const submit = useKeepingSubmit(action);
   return (
@@ -47,7 +48,7 @@ export function WorkspaceForm({ name }: { name: string }) {
         Você será responsável pelos alunos cadastrados neste espaço. Fuso
         inicial: Brasília.
       </p>
-      <ConsentFields audience="PROFESSIONAL" />
+      <ConsentFields terms={terms} />
       {error && (
         <p role="alert" className="form-error">
           {error}

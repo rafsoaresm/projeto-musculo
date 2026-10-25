@@ -2,12 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getDatabase } from "@/db/binding";
 import { previewStudentInvite } from "@/db/student-access";
+import { shownTerms } from "@/db/terms";
 import { getOptionalIdentity } from "@/modules/auth/server";
 import { AccountForm } from "@/modules/auth/components/account-form";
 import { SignOut } from "@/modules/auth/components/sign-out";
 import { AcceptInvite } from "@/modules/convites/accept-invite";
 
 export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Convite",
   // The link is a secret: keep it out of referrers and indexes.
@@ -65,7 +67,7 @@ export default async function Invitation({
             Conta conectada: {identity.user.email}. Ao aceitar, o convite é
             consumido e não pode ser usado de novo.
           </p>
-          <AcceptInvite token={token} />
+          <AcceptInvite token={token} terms={await shownTerms(await getDatabase(), "STUDENT")} />
           <div className="account-toolbar">
             <SignOut redirectTo={here} />
           </div>

@@ -2,7 +2,7 @@ import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import type { D1Database } from "@cloudflare/workers-types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { hasCurrentAcceptance, latestAcceptance, recordAcceptance, studentConsentFor } from "@/db/consent";
-import { TERMS_VERSION, termsHash } from "@/modules/consentimento/terms";
+import { BASELINE, BASELINE_VERSION, termsHash } from "@/modules/consentimento/terms";
 import { ALL_MIGRATIONS, migrate } from "./helpers/migrate";
 
 let mf: Miniflare;
@@ -73,13 +73,13 @@ afterAll(async () => {
 
 describe("recording the acceptance", () => {
   it("records it once, with the version and the hash of the exact words, and asking again changes nothing", async () => {
-    expect(await recordAcceptance(db, "login-1", "STUDENT", { photosAuthorized: true }, NOW)).toEqual({ status: "accepted" });
-    expect(await recordAcceptance(db, "login-1", "STUDENT", { photosAuthorized: true }, later(1))).toEqual({ status: "already" });
+    expect(await recordAcceptance(db, "login-1", "STUDENT", { photosAuthorized: true, shownVersion: BASELINE_VERSION }, NOW)).toEqual({ status: "accepted" });
+    expect(await recordAcceptance(db, "login-1", "STUDENT", { photosAuthorized: true, shownVersion: BASELINE_VERSION }, later(1))).toEqual({ status: "already" });
     expect(await rows("login-1")).toBe(1);
     expect(await latestAcceptance(db, "login-1", "STUDENT")).toEqual({
       id: expect.stringMatching(/^[0-9a-f-]{36}$/),
-      version: TERMS_VERSION,
-      sha256: await termsHash("STUDENT"),
+      version: BASELINE_VERSION,
+      sha256: await termsHash("STUDENT", BASELINE_VERSION, BASELINE.STUDENT),
       photosAuthorized: true,
       acceptedAt: NOW.toISOString(),
       termsAcceptedAt: NOW.toISOString(),
@@ -88,24 +88,24 @@ describe("recording the acceptance", () => {
   });
 
   it("keeps the log: a different choice is a new row and the latest row is the state", async () => {
-    expect(await recordAcceptance(db, "login-1", "STUDENT", { photosAuthorized: false }, later(2))).toEqual({ status: "accepted" });
+    expect(await recordAcceptance(db, "login-1", "STUDENT", { photosAuthorized: false, shownVersion: BASELINE_VERSION }, later(2))).toEqual({ status: "accepted" });
     expect((await latestAcceptance(db, "login-1", "STUDENT"))!.photosAuthorized).toBe(false);
-    expect(await recordAcceptance(db, "login-1", "STUDENT", { photosAuthorized: true }, later(3))).toEqual({ status: "accepted" });
+    expect(await recordAcceptance(db, "login-1", "STUDENT", { photosAuthorized: true, shownVersion: BASELINE_VERSION }, later(3))).toEqual({ status: "accepted" });
     expect((await latestAcceptance(db, "login-1", "STUDENT"))!.photosAuthorized).toBe(true);
     expect(await rows("login-1")).toBe(3);
   });
 
   it("keeps the date the terms were accepted when only the photos choice changes, and starts anew with a new version", async () => {
     await run("INSERT INTO auth_user(id,name,email,created_at,updated_at) VALUES ('login-dates','d','login-dates@example.test',0,0)");
-    await recordAcceptance(db, "login-dates", "STUDENT", { photosAuthorized: false }, NOW);
-    await recordAcceptance(db, "login-dates", "STUDENT", { photosAuthorized: true }, later(5));
+    await recordAcceptance(db, "login-dates", "STUDENT", { photosAuthorized: false, shownVersion: BASELINE_VERSION }, NOW);
+    await recordAcceptance(db, "login-dates", "STUDENT", { photosAuthorized: true, shownVersion: BASELINE_VERSION }, later(5));
     expect(await latestAcceptance(db, "login-dates", "STUDENT")).toMatchObject({
       photosAuthorized: true,
       acceptedAt: later(5).toISOString(),
       termsAcceptedAt: NOW.toISOString(),
     });
     // The same choice again changes nothing, so it does not move any date either.
-    expect(await recordAcceptance(db, "login-dates", "STUDENT", { photosAuthorized: true }, later(6))).toEqual({ status: "already" });
+    expect(await recordAcceptance(db, "login-dates", "STUDENT", { photosAuthorized: true, shownVersion: BASELINE_VERSION }, later(6))).toEqual({ status: "already" });
     // A new version of the text starts its own date.
     await insert("login-dates", "STUDENT", "2099-01-01-nova", "e".repeat(64), 1, later(9).toISOString());
     expect(await latestAcceptance(db, "login-dates", "STUDENT")).toMatchObject({ termsAcceptedAt: later(9).toISOString() });
@@ -113,25 +113,25 @@ describe("recording the acceptance", () => {
 
   it("keeps the audiences apart", async () => {
     expect(await hasCurrentAcceptance(db, "login-1", "PROFESSIONAL")).toBe(false);
-    expect(await recordAcceptance(db, "owner-a", "PROFESSIONAL", { photosAuthorized: false }, NOW)).toEqual({ status: "accepted" });
+    expect(await recordAcceptance(db, "owner-a", "PROFESSIONAL", { photosAuthorized: false, shownVersion: BASELINE_VERSION }, NOW)).toEqual({ status: "accepted" });
     expect(await hasCurrentAcceptance(db, "owner-a", "PROFESSIONAL")).toBe(true);
     expect(await hasCurrentAcceptance(db, "owner-a", "STUDENT")).toBe(false);
   });
 
   it("stores the photos choice only for a student, whatever was asked", async () => {
-    await recordAcceptance(db, "tech-a", "PROFESSIONAL", { photosAuthorized: true }, NOW);
+    await recordAcceptance(db, "tech-a", "PROFESSIONAL", { photosAuthorized: true, shownVersion: BASELINE_VERSION }, NOW);
     expect((await latestAcceptance(db, "tech-a", "PROFESSIONAL"))!.photosAuthorized).toBe(false);
     // The database says the same for a direct write.
-    await expect(insert("tech-a2", "PROFESSIONAL", TERMS_VERSION, "a".repeat(64), 1, NOW.toISOString())).rejects.toThrow();
+    await expect(insert("tech-a2", "PROFESSIONAL", BASELINE_VERSION, "a".repeat(64), 1, NOW.toISOString())).rejects.toThrow();
   });
 
   it("is not current when it is of another version or of other words, until the person accepts again", async () => {
-    const sha = await termsHash("STUDENT");
+    const sha = await termsHash("STUDENT", BASELINE_VERSION, BASELINE.STUDENT);
     await insert("login-2", "STUDENT", "2020-01-01-antiga", sha, 0, NOW.toISOString());
     expect(await hasCurrentAcceptance(db, "login-2", "STUDENT")).toBe(false);
-    await insert("login-2", "STUDENT", TERMS_VERSION, "b".repeat(64), 0, later(1).toISOString());
+    await insert("login-2", "STUDENT", BASELINE_VERSION, "b".repeat(64), 0, later(1).toISOString());
     expect(await hasCurrentAcceptance(db, "login-2", "STUDENT")).toBe(false);
-    expect(await recordAcceptance(db, "login-2", "STUDENT", { photosAuthorized: false }, later(2))).toEqual({ status: "accepted" });
+    expect(await recordAcceptance(db, "login-2", "STUDENT", { photosAuthorized: false, shownVersion: BASELINE_VERSION }, later(2))).toEqual({ status: "accepted" });
     expect(await hasCurrentAcceptance(db, "login-2", "STUDENT")).toBe(true);
   });
 
@@ -140,20 +140,20 @@ describe("recording the acceptance", () => {
       db.prepare("INSERT INTO auth_user(id,name,email,created_at,updated_at) VALUES ('fresh','fresh','fresh@example.test',0,0)"),
     ]);
     expect((await db.prepare("SELECT COUNT(*) AS n FROM users WHERE id = 'fresh'").first<{ n: number }>())!.n).toBe(0);
-    expect(await recordAcceptance(db, "fresh", "PROFESSIONAL", { photosAuthorized: false }, NOW)).toEqual({ status: "accepted" });
+    expect(await recordAcceptance(db, "fresh", "PROFESSIONAL", { photosAuthorized: false, shownVersion: BASELINE_VERSION }, NOW)).toEqual({ status: "accepted" });
     expect((await db.prepare("SELECT COUNT(*) AS n FROM users WHERE id = 'fresh'").first<{ n: number }>())!.n).toBe(1);
     expect(await hasCurrentAcceptance(db, "fresh", "PROFESSIONAL")).toBe(true);
     // No account, no acceptance: nothing is invented for an id that is not a verified login.
-    expect(await recordAcceptance(db, "ghost", "STUDENT", { photosAuthorized: false }, NOW)).toEqual({ status: "refused" });
+    expect(await recordAcceptance(db, "ghost", "STUDENT", { photosAuthorized: false, shownVersion: BASELINE_VERSION }, NOW)).toEqual({ status: "refused" });
     expect(await rows("ghost")).toBe(0);
     expect((await db.prepare("SELECT COUNT(*) AS n FROM users WHERE id = 'ghost'").first<{ n: number }>())!.n).toBe(0);
   });
 
   it("refuses a blocked login, a blank one, and never reads a stranger as accepted", async () => {
-    expect(await recordAcceptance(db, "blocked", "STUDENT", { photosAuthorized: false }, NOW)).toEqual({ status: "refused" });
+    expect(await recordAcceptance(db, "blocked", "STUDENT", { photosAuthorized: false, shownVersion: BASELINE_VERSION }, NOW)).toEqual({ status: "refused" });
     expect(await rows("blocked")).toBe(0);
     for (const blank of ["", "  "]) {
-      expect(await recordAcceptance(db, blank, "STUDENT", { photosAuthorized: false }, NOW)).toEqual({ status: "refused" });
+      expect(await recordAcceptance(db, blank, "STUDENT", { photosAuthorized: false, shownVersion: BASELINE_VERSION }, NOW)).toEqual({ status: "refused" });
       expect(await hasCurrentAcceptance(db, blank, "STUDENT")).toBe(false);
     }
     expect(await hasCurrentAcceptance(db, "stranger", "STUDENT")).toBe(false);
@@ -163,12 +163,12 @@ describe("recording the acceptance", () => {
     await expect(run("UPDATE consent_acceptances SET photos_authorized = 0 WHERE user_id = 'login-1'")).rejects.toThrow(/CONSENT_APPEND_ONLY/);
     await expect(run("DELETE FROM consent_acceptances WHERE user_id = 'login-1'")).rejects.toThrow(/CONSENT_APPEND_ONLY/);
     const ok = "c".repeat(64);
-    await expect(insert("login-off", "OTHER", TERMS_VERSION, ok, 0, NOW.toISOString())).rejects.toThrow();
-    await expect(insert("login-off", "STUDENT", TERMS_VERSION, "short", 0, NOW.toISOString())).rejects.toThrow();
-    await expect(insert("login-off", "STUDENT", TERMS_VERSION, "G".repeat(64), 0, NOW.toISOString())).rejects.toThrow();
+    await expect(insert("login-off", "OTHER", BASELINE_VERSION, ok, 0, NOW.toISOString())).rejects.toThrow();
+    await expect(insert("login-off", "STUDENT", BASELINE_VERSION, "short", 0, NOW.toISOString())).rejects.toThrow();
+    await expect(insert("login-off", "STUDENT", BASELINE_VERSION, "G".repeat(64), 0, NOW.toISOString())).rejects.toThrow();
     await expect(insert("login-off", "STUDENT", "", ok, 0, NOW.toISOString())).rejects.toThrow();
-    await expect(insert("login-off", "STUDENT", TERMS_VERSION, ok, 2, NOW.toISOString())).rejects.toThrow();
-    await expect(insert("nobody", "STUDENT", TERMS_VERSION, ok, 0, NOW.toISOString())).rejects.toThrow();
+    await expect(insert("login-off", "STUDENT", BASELINE_VERSION, ok, 2, NOW.toISOString())).rejects.toThrow();
+    await expect(insert("nobody", "STUDENT", BASELINE_VERSION, ok, 0, NOW.toISOString())).rejects.toThrow();
   });
 });
 
