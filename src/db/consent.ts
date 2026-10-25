@@ -8,6 +8,7 @@ import { activeUser, assertContext, technicalAccessExists, type AuthenticatedCon
  * keeps the version and the SHA-256 of the exact words that were accepted.
  */
 export interface Acceptance {
+  id: string;
   version: string;
   sha256: string;
   photosAuthorized: boolean;
@@ -22,14 +23,14 @@ export async function latestAcceptance(
   if (!userId?.trim()) return null;
   return db
     .prepare(
-      `SELECT terms_version AS version, terms_sha256 AS sha256, photos_authorized AS photosAuthorized,
+      `SELECT id, terms_version AS version, terms_sha256 AS sha256, photos_authorized AS photosAuthorized,
          accepted_at AS acceptedAt
        FROM consent_acceptances
        WHERE user_id = ?1 AND audience = ?2
        ORDER BY accepted_at DESC, rowid DESC LIMIT 1`,
     )
     .bind(userId, audience)
-    .first<{ version: string; sha256: string; photosAuthorized: number; acceptedAt: string }>()
+    .first<{ id: string; version: string; sha256: string; photosAuthorized: number; acceptedAt: string }>()
     .then((row) => (row ? { ...row, photosAuthorized: Boolean(row.photosAuthorized) } : null));
 }
 
@@ -85,6 +86,31 @@ export interface StudentConsent {
 }
 
 /**
+ * The latest acceptance of the login that is linked to a student right now. `null` when the student
+ * has no active login; an `acceptance` of `null` when that login has not accepted anything yet. It
+ * does not check who is asking: the caller has already established that they may reach the student.
+ */
+async function studentLoginAcceptance(
+  db: D1Database,
+  organizationId: string,
+  studentId: string,
+): Promise<{ loginId: string; acceptance: Acceptance | null } | null> {
+  const link = await db
+    .prepare(
+      `SELECT sa.user_id AS loginId FROM student_access sa
+       WHERE sa.organization_id = ?1 AND sa.student_id = ?2 AND sa.revoked_at IS NULL
+       ORDER BY sa.created_at DESC LIMIT 1`,
+    )
+    .bind(organizationId, studentId)
+    .first<{ loginId: string }>();
+  if (!link) return null;
+  return { loginId: link.loginId, acceptance: await latestAcceptance(db, link.loginId, "STUDENT") };
+}
+
+const isCurrent = async (acceptance: Acceptance | null) =>
+  acceptance !== null && acceptance.version === TERMS_VERSION && acceptance.sha256 === (await termsHash("STUDENT"));
+
+/**
  * What the professional may know about the student's acceptance: that it was made, when, and the
  * photos choice. Only with an active technical assignment over the student; otherwise nothing.
  */
@@ -102,26 +128,49 @@ export async function studentConsentFor(
     .bind(organizationId, userId, studentId)
     .first();
   if (!reach) return null;
-  const link = await db
-    .prepare(
-      `SELECT sa.user_id AS loginId
-       FROM students s
-       JOIN student_access sa ON sa.organization_id = s.organization_id AND sa.student_id = s.id
-       WHERE s.organization_id = ?1 AND s.id = ?3 AND sa.revoked_at IS NULL
-         AND ${activeUser("?2")} AND ${technicalAccessExists("s", "?2")}
-       ORDER BY sa.created_at DESC LIMIT 1`,
-    )
-    .bind(organizationId, userId, studentId)
-    .first<{ loginId: string }>();
+  const found = await studentLoginAcceptance(db, organizationId, studentId);
   // No linked login: there is no one to have accepted, which is not the same as "refused".
-  if (!link) return { hasLogin: false, accepted: false, current: false, photosAuthorized: false, acceptedAt: null };
-  const latest = await latestAcceptance(db, link.loginId, "STUDENT");
-  const current = latest !== null && latest.version === TERMS_VERSION && latest.sha256 === (await termsHash("STUDENT"));
+  if (!found) return { hasLogin: false, accepted: false, current: false, photosAuthorized: false, acceptedAt: null };
   return {
     hasLogin: true,
-    accepted: latest !== null,
-    current,
-    photosAuthorized: latest?.photosAuthorized ?? false,
-    acceptedAt: latest?.acceptedAt ?? null,
+    accepted: found.acceptance !== null,
+    current: await isCurrent(found.acceptance),
+    photosAuthorized: found.acceptance?.photosAuthorized ?? false,
+    acceptedAt: found.acceptance?.acceptedAt ?? null,
   };
 }
+
+/**
+ * Whether photos of a student may be taken now: their linked login has accepted the terms in force
+ * and, in that same latest acceptance, authorized the photos. The professional cannot supply or
+ * change this. Like `studentLoginAcceptance`, it does not check who is asking.
+ */
+export type PhotoAuthorization =
+  | { status: "authorized"; acceptanceId: string }
+  | { status: "denied"; reason: "NO_LOGIN" | "NOT_ACCEPTED" | "OUTDATED" | "DECLINED" };
+
+export async function photoAuthorizationFor(
+  db: D1Database,
+  organizationId: string,
+  studentId: string,
+): Promise<PhotoAuthorization> {
+  const found = await studentLoginAcceptance(db, organizationId, studentId);
+  if (!found) return { status: "denied", reason: "NO_LOGIN" };
+  if (!found.acceptance) return { status: "denied", reason: "NOT_ACCEPTED" };
+  if (!(await isCurrent(found.acceptance))) return { status: "denied", reason: "OUTDATED" };
+  if (!found.acceptance.photosAuthorized) return { status: "denied", reason: "DECLINED" };
+  return { status: "authorized", acceptanceId: found.acceptance.id };
+}
+
+/**
+ * The same lookup as `photoAuthorizationFor`, as a SQL expression, so that an insert can confirm in
+ * the very statement that the acceptance it relies on is still the latest one. The id of the latest
+ * acceptance of the login linked to the student; no row when there is none.
+ */
+export const latestStudentAcceptanceId = (organization: string, student: string) =>
+  `(SELECT c.id FROM consent_acceptances c
+    WHERE c.audience = 'STUDENT'
+      AND c.user_id = (SELECT sa.user_id FROM student_access sa
+        WHERE sa.organization_id = ${organization} AND sa.student_id = ${student} AND sa.revoked_at IS NULL
+        ORDER BY sa.created_at DESC LIMIT 1)
+    ORDER BY c.accepted_at DESC, c.rowid DESC LIMIT 1)`;

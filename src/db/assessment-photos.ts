@@ -6,6 +6,7 @@ import {
   sanitizeJpeg,
   type PhotoView,
 } from "@/modules/avaliacoes/photos";
+import { latestStudentAcceptanceId, photoAuthorizationFor } from "./consent";
 import { activeUser, assertContext, technicalAccessExists, type AuthenticatedContext } from "./students";
 
 /**
@@ -27,7 +28,7 @@ export interface PhotoRow {
 }
 export type PutOutcome =
   | { status: "stored"; replaced: boolean }
-  | { status: "consent_required" }
+  | { status: "consent_required"; reason: "NO_LOGIN" | "NOT_ACCEPTED" | "OUTDATED" | "DECLINED" }
   | { status: "minor" }
   | { status: "invalid"; reason: "NOT_JPEG" | "TOO_LARGE" | "BAD_DIMENSIONS" | "TRUNCATED" | "VIEW" }
   | { status: "not_found" };
@@ -74,19 +75,14 @@ export function assessmentPhotosFor(
     },
 
     /**
-     * Stores or replaces the photo of one view of an open draft. `consentConfirmed` is the
-     * professional's confirmation that the student authorized the photo; without it nothing is
-     * stored. A student known to be under 18 is refused: the product does not support minors yet.
+     * Stores or replaces the photo of one view of an open draft. The authorization is the student's
+     * own, recorded when they joined: without it from the login linked to them, in the version of the
+     * terms in force, nothing is stored, and nothing the professional sends can stand in for it. Each
+     * photo keeps the id of the acceptance that authorized it. A student known to be under 18 is
+     * refused: the product does not support minors yet.
      */
-    async put(
-      assessmentId: string,
-      view: string,
-      body: Uint8Array,
-      options: { consentConfirmed: boolean },
-      now = new Date(),
-    ): Promise<PutOutcome> {
+    async put(assessmentId: string, view: string, body: Uint8Array, now = new Date()): Promise<PutOutcome> {
       if (!isPhotoView(view)) return { status: "invalid", reason: "VIEW" };
-      if (!options.consentConfirmed) return { status: "consent_required" };
       const target = await db
         .prepare(
           `SELECT a.student_id AS studentId, sp.birth_date AS birthDate
@@ -100,6 +96,8 @@ export function assessmentPhotosFor(
       if (!target) return { status: "not_found" };
       const stamp = now.toISOString();
       if (target.birthDate && ageOn(target.birthDate, stamp.slice(0, 10)) < 18) return { status: "minor" };
+      const authorization = await photoAuthorizationFor(db, organizationId, target.studentId);
+      if (authorization.status === "denied") return { status: "consent_required", reason: authorization.reason };
       const image = sanitizeJpeg(body);
       if (!image.ok) return { status: "invalid", reason: image.reason };
 
@@ -121,20 +119,25 @@ export function assessmentPhotosFor(
             .prepare(
               `INSERT INTO assessment_photos
                  (id, organization_id, assessment_id, view, object_key, content_type, size_bytes,
-                  width, height, consent_confirmed_by_user_id, created_at)
-               SELECT ?4, ?1, ?3, ?5, ?6, 'image/jpeg', ?7, ?8, ?9, ?2, ?10
-               WHERE ${openDraft}`,
+                  width, height, consent_confirmed_by_user_id, created_at, consent_acceptance_id)
+               SELECT ?4, ?1, ?3, ?5, ?6, 'image/jpeg', ?7, ?8, ?9, ?2, ?10, ?11
+               WHERE ${openDraft} AND ?11 = ${latestStudentAcceptanceId("?1", "?12")}`,
             )
             .bind(
               organizationId, userId, assessmentId, crypto.randomUUID(), view, key,
-              image.bytes.length, image.width, image.height, stamp,
+              image.bytes.length, image.width, image.height, stamp, authorization.acceptanceId,
+              target.studentId,
             ),
           audit(PHOTO_ADDED, assessmentId, stamp),
         ]);
         if (results[1].meta.changes === 0) throw new Error("PHOTO_NOT_STORED");
       } catch (error) {
         await bucket.delete(key).catch(() => undefined);
-        if (error instanceof Error && error.message === "PHOTO_NOT_STORED") return { status: "not_found" };
+        if (error instanceof Error && error.message === "PHOTO_NOT_STORED") {
+          // Either the draft was recorded meanwhile or the student's authorization changed meanwhile.
+          const again = await photoAuthorizationFor(db, organizationId, target.studentId);
+          return again.status === "denied" ? { status: "consent_required", reason: again.reason } : { status: "not_found" };
+        }
         throw error;
       }
       // The replaced image is no longer referenced by anything: remove it.

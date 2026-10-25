@@ -98,3 +98,39 @@ export async function acceptStudentTerms(page: Page, options: { photos?: boolean
   await page.getByLabel(/Tenho 18 anos completos, li e aceito/).check();
   if (options.photos) await page.getByLabel(/Autorizo o meu profissional a registrar fotos/).check();
 }
+
+/** From a student's page: generates the invitation and signs the student up with it, terms not yet accepted. */
+export async function openInvitation(page: Page, browser: Browser, baseURL: string | undefined, studentName: string) {
+  await page.getByRole("button", { name: "Gerar link de convite" }).click();
+  const link = await page.getByLabel("Link de convite (uso único)").inputValue();
+  const client = await newActor(browser, baseURL);
+  const email = uniqueEmail("client");
+  await client.page.goto(new URL(link).pathname);
+  await client.page.waitForLoadState("networkidle");
+  await client.page.getByLabel("Seu nome").fill(studentName);
+  await client.page.getByLabel("E-mail", { exact: true }).fill(email);
+  await client.page.getByLabel("Senha", { exact: true }).fill(password);
+  await client.page.getByRole("button", { name: "Criar meu acesso" }).click();
+  await expect(client.page.getByRole("button", { name: "Aceitar convite" })).toBeVisible();
+  return { client, email };
+}
+
+/**
+ * The student joins from the professional's page of that student: reads the invitation, accepts the
+ * terms (the photos are an optional choice) and reaches their own area. The student's session is closed.
+ */
+export async function joinStudent(
+  page: Page,
+  browser: Browser,
+  baseURL: string | undefined,
+  studentName: string,
+  options: { photos?: boolean } = {},
+) {
+  const { client, email } = await openInvitation(page, browser, baseURL, studentName);
+  await acceptStudentTerms(client.page, options);
+  await client.page.getByRole("button", { name: "Aceitar convite" }).click();
+  // The invitation is accepted when the student area opens: closing before would cancel it.
+  await expect(client.page).toHaveURL(/\/aluno\/?$/);
+  await client.context.close();
+  return email;
+}

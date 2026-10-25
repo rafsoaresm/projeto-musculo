@@ -5,7 +5,7 @@ O escopo completo está em [`referencias/02-ROADMAP-E-HANDOFF.md`](referencias/0
 | Épico | Estado | Critério restante |
 |---|---|---|
 | E0 — viabilidade | Configuração Next/OpenNext e binding DB nativo | Deploy na conta, múltiplos hosts, login, Storage privado, job/PDF e Puck |
-| E1 — fundação | Conta/sessão, organização, aluno, autorização e auditoria em SQLite. **Três áreas por papel** (gestor, profissional, aluno), ativação única do gestor, bloqueio de acesso e convite de aluno de uso único. **Minha conta** com troca de senha e encerramento das outras sessões (0.18). **Aceite único dos termos ao aderir** (0.20), com versão e hash gravados | Revisão jurídica do texto de aceite, telas de pedido do titular, E-mail verificado, recuperação de senha, convites e gestão de equipe, conceder o papel de gestor pela interface e homologação remota |
+| E1 — fundação | Conta/sessão, organização, aluno, autorização e auditoria em SQLite. **Três áreas por papel** (gestor, profissional, aluno), ativação única do gestor, bloqueio de acesso e convite de aluno de uso único. **Minha conta** com troca de senha e encerramento das outras sessões (0.18). **Aceite único dos termos ao aderir** (0.20), com versão e hash gravados, e **fotos que dependem da autorização do próprio aluno** (0.21) | Revisão jurídica do texto de aceite, telas de pedido do titular, E-mail verificado, recuperação de senha, convites e gestão de equipe, conceder o papel de gestor pela interface e homologação remota |
 | E2 — atendimento | Planejador determinístico e exportação. **Planos de periodização salvos por aluno**, com revisões e estado Rascunho / Estrutura pronta (0.4). **Biblioteca de exercícios** com o seed de 64 do documento mestre e biblioteca por organização (0.5a). **Prescrição manual** por mesociclo sobre o rascunho (0.6), com painel de pendências e cópia de mesociclo (0.7). **Aprovação e entrega** com imutabilidade no banco (0.8). **Ficha do aluno** (0.9). **Avaliações com triagem e indicadores** (0.10), ligadas à aprovação e à entrega. **PDF do plano entregue** (0.11). **Postura e movimento** nas avaliações (0.12), sem fotos. **Evolução das avaliações** (0.13): séries dos indicadores e comparação. **Fotos de postura** no Object Storage do Webflow (0.14). **Execução do treino pelo aluno** (0.15): o que o aluno fez, com leitura e relato de dor para o profissional. **Registros por semana, percentual dos previstos com registro e carga por exercício** (0.16 e 0.19), só leitura | Anotação sobre a imagem, exclusão de foto a pedido do titular, geração com pendências; conferir o instrumento de triagem com o responsável técnico |
 | E3 — sites/CRM | Planejado | Editor, preview, releases, domínios e conversão idempotente |
 | E4 — portal | Parcial: convite de uso único, área do aluno, **treino entregue** (0.8), **registro da execução** (0.15) e **evolução do próprio aluno** (0.17) | Origem privada separada, check-in, documentos e mensagens; fecha piloto operacional |
@@ -13,11 +13,17 @@ O escopo completo está em [`referencias/02-ROADMAP-E-HANDOFF.md`](referencias/0
 | E6 — SaaS/afiliados | Planejado | Inbox/outbox, conciliação, recorrência, ajustes e repasses |
 | E7 — evoluções | Planejado | RAG com armazenamento compatível, progressão assistida e booking |
 
-## Fatia entregue: aceite único dos termos ao aderir (0.20)
+## Fatia entregue: fotos dependem da autorização do aluno (0.21)
+
+1. Implementado: migration 0014. A foto só é aceita se o login ativo do aluno tem aceite da versão em vigor com a autorização das fotos marcada; o profissional não tem mais caixa para isso. Cada foto guarda o id do aceite que a autorizou; o banco recusa foto sem ele. O aluno vê, em `/aluno/conta`, o que aceitou e se autorizou as fotos.
+2. Princípio: a autorização é do titular; a ferramenta mostra e confere, nunca preenche. **As fotos seguem fechadas em produção** até a revisão jurídica do texto.
+3. **Em aberto:** o aluno mudar ou retirar a autorização depois, e o destino das fotos já guardadas; revisão jurídica; menores; pedidos do titular.
+
+## Fatia anterior: aceite único dos termos ao aderir (0.20)
 
 1. Implementado: migration 0013 (`consent_acceptances`, só se acrescenta). O profissional aceita ao criar o espaço e o aluno ao aceitar o convite, uma vez; as fotos são uma escolha à parte, opcional, no mesmo aceite. Fica gravado quem, quando, a versão e o SHA-256 do texto aceito. Versão nova do texto pede novo aceite no acesso seguinte; o profissional vê, na ficha do aluno, quando ele aceitou e se autorizou as fotos.
 2. Princípio: um texto provisório (`rascunho`) não é texto jurídico. **Ninguém real deve usar a ferramenta como produto antes da revisão de um advogado.** As fotos seguem fechadas em produção.
-3. **Próximo:** o envio de fotos passa a exigir a autorização registrada do aluno (no lugar da caixa do profissional). **Em aberto:** revisão jurídica, controlador/operador, menores, pedidos do titular (acesso, exportação, exclusão, retirada do aceite), retenção.
+3. **Em aberto:** revisão jurídica, controlador/operador, menores, pedidos do titular (acesso, exportação, exclusão, retirada do aceite), retenção.
 
 ## Fatia anterior: percentual dos treinos previstos com registro (0.19)
 

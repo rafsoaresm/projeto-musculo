@@ -6,11 +6,13 @@ import { requireWorkspace } from "@/modules/auth/server";
 import { studentsFor } from "@/db/students";
 import { assessmentsFor } from "@/db/assessments";
 import { photoStorageAvailable } from "@/db/binding";
+import { studentConsentFor } from "@/db/consent";
 import { profilesFor } from "@/db/student-profile";
 import { ageOn } from "@/modules/ficha/contracts";
 import { PageHeading } from "@/components/ui";
 import { AssessmentForm } from "@/modules/avaliacoes/assessment-form";
 import { AssessmentView } from "@/modules/avaliacoes/assessment-view";
+import { photoDenialOf } from "@/modules/consentimento/photo-authorization";
 import { formatCalendarDate } from "@/modules/training/format";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +33,8 @@ export default async function Assessment({
   // Photos of a student known to be under 18 are not accepted (the file is the only place that says so).
   const birthDate = detail.state === "DRAFT" ? (await profilesFor(db, context).get(student.id))?.birthDate : null;
   const minor = Boolean(birthDate && ageOn(birthDate, new Date().toISOString().slice(0, 10)) < 18);
+  // The authorization for photos is the student's own, recorded when they joined; the screen only reads it.
+  const photoDenial = detail.state === "DRAFT" ? photoDenialOf(await studentConsentFor(db, context, student.id)) : null;
   return (
     <>
       <PageHeading
@@ -48,7 +52,7 @@ export default async function Assessment({
       />
       {detail.state === "DRAFT" ? (
         <section className="panel">
-          <AssessmentForm detail={detail} minor={minor} storageReady={await photoStorageAvailable()} />
+          <AssessmentForm detail={detail} minor={minor} storageReady={await photoStorageAvailable()} photoDenial={photoDenial} />
         </section>
       ) : (
         <AssessmentView detail={detail} />
