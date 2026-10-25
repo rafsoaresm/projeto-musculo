@@ -114,9 +114,9 @@ export function PhotosFieldset({
       {!storageReady ? (
         <Notice tone="warning">
           <p>
-            <strong>Fotos indisponíveis neste ambiente.</strong> O armazenamento privado de arquivos
-            ainda não foi ativado para este app, então a ferramenta não aceita fotos. O resto da
-            avaliação funciona normalmente.
+            <strong>Fotos indisponíveis neste ambiente.</strong> As fotos ainda não foram liberadas:
+            dependem do aceite dos termos pelo aluno, que ainda não existe, então a ferramenta não
+            aceita fotos. O resto da avaliação funciona normalmente.
           </p>
         </Notice>
       ) : minor ? (

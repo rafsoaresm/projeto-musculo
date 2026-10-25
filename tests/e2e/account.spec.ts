@@ -116,6 +116,8 @@ test("a student changes the password and sees what is not available yet", async 
   await client.page.getByLabel("Senha", { exact: true }).fill(password);
   await client.page.getByRole("button", { name: "Criar meu acesso" }).click();
   await client.page.getByRole("button", { name: "Aceitar convite" }).click();
+  // The invitation is accepted when the student area opens: going elsewhere before would cancel it.
+  await expect(client.page).toHaveURL(/\/aluno\/?$/);
 
   await client.page.goto("./aluno/conta");
   await expect(client.page.getByRole("heading", { name: "Minha conta", level: 1 })).toBeVisible();

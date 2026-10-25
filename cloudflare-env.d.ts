@@ -14,6 +14,11 @@ declare global {
      * where the Object Storage is not provisioned: the app then offers no photo upload.
      */
     PHOTOS?: R2Bucket;
+    /**
+     * "true" opens the photo upload and the photo route. The bucket can be provisioned and still be
+     * closed: photos only open on purpose, once the student's consent exists. Absent means closed.
+     */
+    PHOTOS_ENABLED?: string;
   }
 }
 

@@ -95,3 +95,10 @@ export function sanitizeJpeg(input: Uint8Array): PhotoCheck {
 /** The key of the object: unguessable, and under the organization so a bucket listing stays tidy. */
 export const photoObjectKey = (organizationId: string, assessmentId: string) =>
   `assessments/${organizationId}/${assessmentId}/${crypto.randomUUID()}.jpg`;
+
+/**
+ * Photos are accepted, shown and served only when the bucket exists AND the environment opened them
+ * on purpose with exactly "true". A bucket that is provisioned but not opened serves nothing.
+ */
+export const photosOpen = (env: { PHOTOS?: unknown; PHOTOS_ENABLED?: string }) =>
+  Boolean(env.PHOTOS) && env.PHOTOS_ENABLED === "true";

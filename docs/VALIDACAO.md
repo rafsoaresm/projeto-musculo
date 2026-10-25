@@ -1,6 +1,16 @@
-# Evidências de validação — v0.18.0 (Minha conta: senha e sessões; fotos de postura ainda desligadas em produção) sobre a base 0.3
+# Evidências de validação — v0.18.1 (bucket das fotos com nome que cabe no Webflow; fotos fechadas até o aceite) sobre a base 0.3
 
 Tudo abaixo foi executado **localmente** em 23/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0012 são aditivas.
+
+## Correção 0.18.1: o bucket das fotos
+
+Os dois deploys da 0.14 com o R2 falharam sem mensagem. Em vez de esperar o suporte, os logs do Webflow deram uma pista no nosso arquivo: o recurso real se chama `<id do ambiente de 36 caracteres>-<nome declarado>` (o banco aparece assim num deploy bom), e `trainer-prescription-photos` somado ao prefixo tem 64 caracteres, um a mais que o limite de 63 do R2. O nome passou a ser `photos`. **Confirmação:** só o deploy em produção (ver `docs/WEBFLOW-CLOUD.md`). A hipótese anterior (Object Storage não ativo ou fora do plano) contraria a documentação do Webflow, para quem o recurso vale em todos os planos.
+
+Dois ajustes nos testes de navegador, vistos na mesma rodada: o cenário da conta do aluno clicava em "Aceitar convite" e já navegava, o que cancelava o convite sob carga (agora espera a área do aluno abrir), e o tempo limite de 30 s do Playwright era curto para os fluxos longos (passou a 90 s). O código estava certo nos dois casos.
+
+- **Fotos fechadas por padrão.** O bucket é declarado em produção, mas só abre com `PHOTOS_ENABLED=true`, que o `wrangler.json` de produção não tem: a tela diz "Fotos indisponíveis neste ambiente", a rota responde 503 e nenhuma imagem pode ser enviada antes de existir o aceite do aluno. O preview local e o CI abrem as fotos para os testes de navegador.
+- **Verificado com a configuração de produção** (`wrangler.json`, Worker local): o bucket aparece como `env.PHOTOS (photos) R2 Bucket`, a avaliação diz "Fotos indisponíveis neste ambiente", não há campo de envio nem caixa de autorização, e a rota responde 503 tanto para ler quanto para enviar. Com o `wrangler.photos.json` (preview e CI), as fotos abrem e o teste de navegador delas passa.
+- **Testes:** `tests/photos.test.ts` (+3 = 11): a regra de abrir (só com o bucket e exatamente `PHOTOS_ENABLED=true`; "TRUE", "1", vazio ou ausente ficam fechados; sem bucket, a variável sozinha não abre). Mutação: ignorar a variável faz o teste falhar. `tests/wrangler-config.test.ts` (6): nome de bucket e de banco cabem depois do prefixo nos dois arquivos, produção declara o bucket sem abrir as fotos e o preview as abre. Mutações deliberadas: voltar ao nome longo (3 falhas) e abrir as fotos em produção (1 falha).
 
 ## Fatia 0.18: Minha conta (senha e sessões)
 
@@ -207,7 +217,7 @@ Cobre **só a estrutura do ciclo** (fases, semanas, sessões, divisão e calend�
 
 ## Código e banco
 
-- `npm run check`: ESLint e TypeScript sem erros e **269 testes, nenhum ignorado**: 17 de isolamento D1, 22 de identidade, 26 de periodização, 31 de papéis, 15 de contrato de navegação/fixtures, 5 de caminho de montagem, 9 de planos salvos, 9 de biblioteca, 21 de prescrição, 16 de aprovação, entrega, situação da triagem e documento entregue, 7 de ficha, 26 de avaliações, 8 de PDF, 8 de evolução, 5 do limpador de JPEG, 8 de fotos, 27 de execução do treino e 9 de registros por semana e carga.
+- `npm run check`: ESLint e TypeScript sem erros e **278 testes, nenhum ignorado**: 17 de isolamento D1, 22 de identidade, 26 de periodização, 31 de papéis, 15 de contrato de navegação/fixtures, 5 de caminho de montagem, 9 de planos salvos, 9 de biblioteca, 21 de prescrição, 16 de aprovação, entrega, situação da triagem e documento entregue, 7 de ficha, 26 de avaliações, 8 de PDF, 8 de evolução, 5 do limpador de JPEG, 11 de fotos, 6 da configuração do Webflow, 27 de execução do treino e 9 de registros por semana e carga.
 - Os 31 testes de `tests/roles.test.ts` usam D1 real (Miniflare) com as três migrations e cobrem:
   - **Gestor:** ativação recusada sem token configurado, com token curto ou errado; exatamente um gestor sob concorrência; token inerte depois; e-mail e papel de proprietário não concedem o papel; revogado ou bloqueado perde o acesso na hora.
   - **Escopo do gestor:** vê organizações e contagens; o resultado serializado não contém nome de aluno; `studentsFor` e a criação de convite não funcionam para ele em nenhuma organização; bloqueio e restabelecimento com auditoria; não bloqueia a si mesmo, outro gestor ou quem não é da organização; a auditoria do gestor lista só ações de plataforma.

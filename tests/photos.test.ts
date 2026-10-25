@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isPhotoView, MAX_PHOTO_BYTES, photoObjectKey, sanitizeJpeg } from "@/modules/avaliacoes/photos";
+import { isPhotoView, MAX_PHOTO_BYTES, photoObjectKey, photosOpen, sanitizeJpeg } from "@/modules/avaliacoes/photos";
 
 const bytes = (...parts: Array<number[] | Uint8Array>) => Uint8Array.from(parts.flatMap((part) => [...part]));
 const segment = (marker: number, payload: number[]) => [0xff, marker, (payload.length + 2) >> 8, (payload.length + 2) & 0xff, ...payload];
@@ -82,5 +82,21 @@ describe("postural photos", () => {
     const b = photoObjectKey("org-a", "as-1");
     expect(a).toMatch(/^assessments\/org-a\/as-1\/[0-9a-f-]{36}\.jpg$/);
     expect(a).not.toBe(b);
+  });
+});
+
+describe("when the photos are open", () => {
+  const bucket = {};
+  it("opens only with the bucket and exactly PHOTOS_ENABLED=true", () => {
+    expect(photosOpen({ PHOTOS: bucket, PHOTOS_ENABLED: "true" })).toBe(true);
+  });
+  it("stays closed when the bucket exists but nobody opened the photos on purpose", () => {
+    for (const flag of [undefined, "", "false", "TRUE", "True", "1", "yes", " true"])
+      expect(photosOpen({ PHOTOS: bucket, PHOTOS_ENABLED: flag }), String(flag)).toBe(false);
+  });
+  it("stays closed without the bucket, whatever the flag says", () => {
+    expect(photosOpen({ PHOTOS_ENABLED: "true" })).toBe(false);
+    expect(photosOpen({ PHOTOS: undefined, PHOTOS_ENABLED: "true" })).toBe(false);
+    expect(photosOpen({})).toBe(false);
   });
 });

@@ -15,15 +15,19 @@
 }
 ```
 
-Para as fotos de postura (0.14), o app usa o armazenamento de objetos nativo (R2) pelo binding `PHOTOS`. **O `wrangler.json` publicado não o declara**: o primeiro deploy com ele foi recusado pelo Webflow na etapa "Processing 1 R2 bucket(s)", sem mensagem de erro, também numa segunda tentativa. Sem o binding, o app mostra "Fotos indisponíveis neste ambiente" e a rota de fotos responde 503; nada mais depende dele. O bucket está declarado em `wrangler.photos.json`, usado pelo preview local (`npm run preview:cloud`), pelo `next dev` e pelo CI, que simulam o R2 em `.wrangler/state`:
+Para as fotos de postura (0.14), o app usa o armazenamento de objetos nativo (R2) pelo binding `PHOTOS`, declarado em `wrangler.json`:
 
 ```json
 {
-  "r2_buckets": [{ "binding": "PHOTOS", "bucket_name": "trainer-prescription-photos" }]
+  "r2_buckets": [{ "binding": "PHOTOS", "bucket_name": "photos" }]
 }
 ```
 
-**Para ligar em produção:** confirmar no painel do Webflow Cloud (ou com o suporte) que o Object Storage está ativo para a conta e o plano, copiar o bloco acima para `wrangler.json` e publicar. Depois do deploy, conferir na aba **Storage** que o bucket existe e **não tem endereço público** (as fotos só devem sair pela rota autenticada do app) e subir uma foto de teste. Limites informados pelo Webflow: 100 MB e 20 s por requisição; o app limita cada foto a 5 MB. `cloudflare-env.d.ts` declara `PHOTOS` como opcional e `src/db/binding.ts` o entrega por requisição.
+**Por que o nome é `photos` e não `trainer-prescription-photos` (0.18.1).** Os dois primeiros deploys com o bucket (0.14) falharam logo depois de "Processing 1 R2 bucket(s)...", sem mensagem (deploys `75f914e9` e `827639fe`, commit `c86adfe`). Em 0.18.1 achamos a causa provável **no nosso arquivo, não na conta nem no plano**: o Webflow dá ao recurso real o nome `<id do ambiente>-<nome declarado>`, como mostra o log de um deploy bom, em que o banco aparece como `f26f7686-f290-4ed2-a487-fefb0d58aa2c-trainer-prescription`. O id tem 36 caracteres; com `trainer-prescription-photos` (27) o nome do bucket teria 36 + 1 + 27 = **64 caracteres, e um bucket R2 aceita no máximo 63**. A hipótese anterior, de que o Object Storage não estaria ativo ou fora do plano, **não se sustenta**: segundo a documentação do Webflow, o Object Storage existe em todos os planos do Webflow Cloud, sem ativação separada, e liga com o `r2_buckets` e um deploy (a capacidade total é que muda com o plano). `tests/wrangler-config.test.ts` passou a exigir que o nome declarado caiba depois do prefixo, para os dois arquivos. Isso é uma inferência pela conta e pelos logs: **só o deploy confirma**.
+
+**Bucket provisionado não é foto liberada.** O app só aceita, mostra e serve fotos quando o bucket existe **e** `PHOTOS_ENABLED` é `"true"`. Em produção, `wrangler.json` declara o bucket e **não** declara essa variável, então a tela mostra "Fotos indisponíveis neste ambiente" e a rota de fotos responde 503: o bucket pode ser criado e conferido sem abrir a captura de imagens de saúde antes do aceite do aluno. `wrangler.photos.json` (preview local, `next dev` e CI, que simulam o R2 em `.wrangler/state`) declara o mesmo bucket e liga `PHOTOS_ENABLED`, porque os testes de navegador precisam das fotos abertas.
+
+**Para abrir as fotos em produção:** depois do aceite do aluno existir, acrescentar `"vars": { "PHOTOS_ENABLED": "true" }` ao `wrangler.json` e publicar (se o builder do Webflow não repassar `vars`, definir `PHOTOS_ENABLED` como variável de ambiente no painel). Depois do deploy, conferir na aba **Storage** que o bucket existe e **não tem endereço público** (as fotos só devem sair pela rota autenticada do app) e subir uma foto de teste. Limites informados pelo Webflow: 100 MB e 20 s por requisição; o app limita cada foto a 5 MB. `cloudflare-env.d.ts` declara `PHOTOS` e `PHOTOS_ENABLED` como opcionais e `src/db/binding.ts` os confere por requisição.
 
 `database_id` acima é um identificador local, não uma conexão de produção. Conforme a [documentação Webflow](https://developers.webflow.com/webflow-cloud/storing-data/sqlite), o Webflow atribui o identificador real e provisiona o recurso no deploy. Depois da publicação, conferir o recurso atribuído na aba **Storage**. Não criar um banco avulso na conta Cloudflare nem configurar Supabase para este app.
 
