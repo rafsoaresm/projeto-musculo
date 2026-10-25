@@ -1,15 +1,15 @@
 "use client";
 import { useActionState, useTransition } from "react";
 import { setPhotosChoice, type PhotosChoiceResult } from "./actions";
-import { TERMS } from "./terms";
+import type { ShownTerms } from "./terms";
 
 /**
  * The student's photos choice, after joining. Shows the same words they saw when they accepted, the
  * current state, and one box. It sends from onSubmit rather than the `action` prop because React 19
  * resets a form after its action; the box is remounted by `key` when the saved state changes.
  */
-export function PhotosChoice({ authorized }: { authorized: boolean }) {
-  const photos = TERMS.STUDENT.photos;
+export function PhotosChoice({ authorized, terms }: { authorized: boolean; terms: ShownTerms }) {
+  const photos = terms.content.photos;
   const [result, action, pending] = useActionState(setPhotosChoice, null as PhotosChoiceResult);
   const [, startTransition] = useTransition();
   if (!photos) return null;
@@ -24,6 +24,7 @@ export function PhotosChoice({ authorized }: { authorized: boolean }) {
         startTransition(() => action(data));
       }}
     >
+      <input type="hidden" name="termsVersion" value={terms.version} />
       <h3 id="fotos-escolha">{photos.heading}</h3>
       <p className="muted">{photos.text}</p>
       <p>

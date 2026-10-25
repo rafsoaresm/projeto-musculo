@@ -5,6 +5,8 @@ const actionLabel: Record<string, string> = {
   PLATFORM_ADMIN_ACTIVATED: "Gestor ativado",
   USER_BLOCKED: "Acesso bloqueado",
   USER_UNBLOCKED: "Acesso restabelecido",
+  TERMS_PUBLISHED_STUDENT: "Termos do aluno publicados",
+  TERMS_PUBLISHED_PROFESSIONAL: "Termos do profissional publicados",
 };
 
 /** Shared by the real manager area and the demonstration. */

@@ -1,6 +1,6 @@
 # Pacote para revisão jurídica
 
-**Isto não é parecer nem texto jurídico.** É o que a ferramenta faz hoje com dados pessoais, escrito por quem a construiu, para quem vai revisar: o advogado do responsável pelo produto. O texto dos termos (seção 5) é um **rascunho** escrito a partir do funcionamento. Enquanto a versão dele disser `rascunho`, as fotos de postura ficam **fechadas em produção** e ninguém real deve usar a ferramenta como produto.
+**Isto não é parecer nem texto jurídico.** É o que a ferramenta faz hoje com dados pessoais, escrito por quem a construiu, para quem vai revisar: o advogado do responsável pelo produto. O texto dos termos (seção 5) foi escrito a partir do funcionamento e **aprovado pelo advogado em 25/10/2026**, segundo o responsável pelo produto (a aprovação não está anexada a este arquivo). Essa é a versão inicial, `2026-10-25-base`. A partir da 0.24 o texto em vigor pode ser mudado pelo gestor em **`/gestor/termos`**, e cada mudança é uma nova versão publicada, que todos aceitam de novo; o histórico completo está nessa tela.
 
 O que se pede ao advogado está na seção 8, com a proposta que o responsável já aprovou para cada ponto. O que a ferramenta ainda **não** faz está na seção 7, sem enfeite.
 
@@ -47,13 +47,13 @@ Não há anúncios, rastreadores de terceiros nem uso dos dados para outra final
 - **Menores.** A ferramenta bloqueia fotos de quem a ficha mostra ter menos de 18 anos, e o termo do aluno pede a confirmação de que tem 18 anos. Não há caminho para responsável legal.
 - **O profissional vê fatos**: quando o aluno aceitou, se a versão é a atual e se autorizou as fotos. O aluno vê, em "Minha conta", a data do aceite e a escolha das fotos, e as muda ali. O profissional vê a data do aceite e, se a escolha das fotos for de outro dia, a data dela.
 
-## 5. Texto atual (rascunho)
+## 5. Texto inicial aprovado
 
-Reproduzido do código por `src/modules/consentimento/terms.ts`; um teste confere que este arquivo e o código dizem a mesma coisa. Se o texto mudar, a versão muda e este arquivo precisa ser atualizado.
+Reproduzido do código (`BASELINE` em `src/modules/consentimento/terms.ts`); um teste confere que este arquivo e o texto inicial dizem a mesma coisa. **O texto em vigor hoje é o da tela do gestor** (`/gestor/termos`), que começa por este e pode ter sido publicado de novo; o histórico de versões, com quem publicou e por quê, também está lá.
 
 ### 5.1 Aluno
 
-Versão `2026-10-25-rascunho-2`, SHA-256 do texto aceito `adba1de53466659ad2ab94c182e22b079ad5412374d28ef6bd6562eea5b542dc`.
+Versão `2026-10-25-base`, SHA-256 do texto aceito `7905e8f1a8c54594f8c0d686f6bc49ef10c5ce84f1fb964aed4d6a056617f458`.
 
 > **Termos e aviso de privacidade do aluno**
 >
@@ -79,7 +79,7 @@ Versão `2026-10-25-rascunho-2`, SHA-256 do texto aceito `adba1de53466659ad2ab94
 
 ### 5.2 Profissional
 
-Versão `2026-10-25-rascunho-2`, SHA-256 do texto aceito `a189f9ba537e1d802689f02c7e061ddb7782c5b1740b1afc8673efc2e491c59c`.
+Versão `2026-10-25-base`, SHA-256 do texto aceito `b1d146c9686d4e2b05326b480312996941dec73db8871d846b48f5c72339b9e4`.
 
 > **Termos de uso do profissional**
 >
@@ -134,13 +134,13 @@ Cada uma traz a **proposta atual**, aprovada pelo responsável do produto, para 
 9. **Transferência internacional.** Os dados ficam em infraestrutura do Webflow/Cloudflare, em região que não escolhemos. É preciso informar isso no aviso e adotar alguma salvaguarda? Convém perguntar ao Webflow onde ficam os dados e por quanto tempo ficam as cópias de segurança.
 10. **Aviso de privacidade completo.** Os termos e o aviso devem ser documentos separados, públicos e acessíveis antes do cadastro? Quem é o encarregado e qual o canal? *Proposta:* hoje é um texto só, mostrado na entrada.
 11. **Registros técnicos e auditoria.** O IP e o navegador das sessões e a trilha de auditoria precisam de prazo de descarte e de menção no aviso?
-12. **O check-in e o texto.** O texto do aluno diz que são guardados "o que você registrar depois de treinar: séries, cargas, esforço, dor ou desconforto e observações". O check-in (feito fora do treino, com esforço, recuperação, relato de desconforto e observações) cabe nessa frase ou o texto deve citá-lo expressamente? *Proposta:* citar na próxima versão do texto; o texto não foi alterado para não desfazer a revisão já feita.
-13. **Texto.** O advogado pode revisar ou reescrever as seções 5.1 e 5.2. Depois da revisão, a versão passa a ter outro nome (sem `rascunho`) e o hash muda.
+12. **O check-in e o texto.** O texto aprovado diz que são guardados "o que você registrar depois de treinar: séries, cargas, esforço, dor ou desconforto e observações". O check-in (feito fora do treino, com esforço, recuperação, relato de desconforto e observações) cabe nessa frase ou o texto deve citá-lo expressamente? *Proposta:* citar numa próxima versão, publicada pelo gestor depois da revisão; o texto aprovado não foi alterado.
+13. **Texto.** O advogado revisou as seções 5.1 e 5.2 e aprovou o texto inicial. Qualquer mudança futura (por exemplo, citar o check-in, pergunta 12) se faz em `/gestor/termos`: gera nova versão e novo hash, e todos aceitam de novo.
 
 ## 9. Para abrir as fotos em produção
 
-1. Texto revisado, versão sem `rascunho` em `TERMS_VERSION` (`src/modules/consentimento/terms.ts`) e este arquivo atualizado.
+1. ~~Texto revisado e sem a marca de rascunho.~~ **Feito (0.24):** texto aprovado em 25/10/2026, versão `2026-10-25-base`, sem rótulo de rascunho; mudanças futuras pelo gestor em `/gestor/termos`.
 2. As decisões das perguntas 4, 5, 6 e 8 tomadas, ou registradas como risco aceito pelo responsável.
 3. Conferir na aba **Storage** do Webflow que o bucket `photos` **não tem endereço público**. Caminho: Webflow Cloud > o app > Environments > o ambiente > aba **Storage**. Segundo a documentação do Webflow (Object Storage), **buckets públicos não são suportados** no Webflow Cloud e não existe configuração para torná-lo público nem para dar-lhe endereço `r2.dev` ou domínio próprio: os objetos só saem pelo binding do app. Ver a lista de bindings na aba (nome, tipo, data de criação) e a ausência de qualquer opção de acesso público é a confirmação.
-4. Acrescentar `"vars": { "PHOTOS_ENABLED": "true" }` ao `wrangler.json` e publicar (ver `docs/WEBFLOW-CLOUD.md`).
+4. Acrescentar `"vars": { "PHOTOS_ENABLED": "true" }` ao `wrangler.json` e publicar (ver `docs/WEBFLOW-CLOUD.md`). `/api/health` passa a dizer `"photos": "open"` quando a produção enxerga a variável.
 5. Subir uma foto de teste de um aluno de teste que tenha autorizado, e conferir a leitura só pelo profissional.

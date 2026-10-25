@@ -28,10 +28,12 @@ export default defineConfig({
       testIgnore: /gestor\.spec\.ts|consent-stale\.spec\.ts/,
       use: { ...devices["Pixel 7"] },
     },
-    // The first manager activates once per database, so this runs a single time.
+    // The first manager activates once per database, so this runs a single time. It ends by publishing a
+    // new text of the terms, which asks everyone to accept again: it runs alone, after every other scenario.
     {
       name: "gestor",
       testMatch: /gestor\.spec\.ts/,
+      dependencies: ["desktop", "mobile", "consent-stale"],
       use: { ...devices["Desktop Chrome"] },
     },
     // Writes to the local database from outside the worker, so it runs alone, once, after the others
@@ -39,7 +41,7 @@ export default defineConfig({
     {
       name: "consent-stale",
       testMatch: /consent-stale\.spec\.ts/,
-      dependencies: ["desktop", "mobile", "gestor"],
+      dependencies: ["desktop", "mobile"],
       use: { ...devices["Desktop Chrome"] },
     },
   ],

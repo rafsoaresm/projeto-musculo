@@ -23,10 +23,12 @@ test("a professional accepts the terms once, when creating the space, and cannot
   await expect(page.getByRole("heading", { name: "Um espaço para seu método." })).toBeVisible();
   await page.getByLabel("Nome do espaço").fill("Estúdio dos termos");
 
-  // The terms are on the page, the draft is said to be a draft, and nothing is ticked beforehand.
+  // The terms are on the page with the version being read, the approved text is not marked as a draft,
+  // and nothing is ticked beforehand.
   const terms = page.getByRole("region", { name: "Termos de uso do profissional" });
   await expect(terms).toBeVisible();
-  await expect(terms.getByText("Texto provisório.")).toBeVisible();
+  await expect(terms.getByText("Versão 2026-10-25-base")).toBeVisible();
+  await expect(terms.getByText("Texto provisório.")).toHaveCount(0);
   await expect(terms.getByText("não aprova nem libera treino")).toBeVisible();
   const accept = page.getByLabel("Li e aceito os termos de uso.");
   await expect(accept).not.toBeChecked();

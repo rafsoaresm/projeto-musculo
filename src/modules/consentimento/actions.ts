@@ -5,7 +5,7 @@ import { requireIdentity, requireStudent } from "@/modules/auth/server";
 import { portalLinksFor } from "@/db/student-access";
 import { workspaceFor } from "@/db/workspaces";
 import { recordAcceptance } from "@/db/consent";
-import { CONSENT_REQUIRED, readConsent } from "./input";
+import { CONSENT_FAILED, CONSENT_REQUIRED, TERMS_OUTDATED, readConsent } from "./input";
 import type { Audience } from "./terms";
 
 const AREAS = {
@@ -33,8 +33,12 @@ export async function acceptTerms(
   if (!entitled) redirect("/acesso");
   const choice = readConsent(form);
   if (!choice.accepted) return CONSENT_REQUIRED;
-  const outcome = await recordAcceptance(db, user.id, target.audience, { photosAuthorized: choice.photos });
-  if (outcome.status === "refused") return "Não foi possível registrar o aceite. Tente novamente.";
+  const outcome = await recordAcceptance(db, user.id, target.audience, {
+    photosAuthorized: choice.photos,
+    shownVersion: choice.shownVersion,
+  });
+  if (outcome.status === "outdated") return TERMS_OUTDATED;
+  if (outcome.status === "refused") return CONSENT_FAILED;
   revalidatePath(target.home, "layout");
   redirect(target.home);
 }
@@ -50,8 +54,9 @@ export type PhotosChoiceResult = { ok: boolean; message: string } | null;
  */
 export async function setPhotosChoice(_previous: PhotosChoiceResult, form: FormData): Promise<PhotosChoiceResult> {
   const { db, user } = await requireStudent();
-  const authorize = form.get("photos") === "on";
-  const outcome = await recordAcceptance(db, user.id, "STUDENT", { photosAuthorized: authorize });
+  const { photos: authorize, shownVersion } = readConsent(form);
+  const outcome = await recordAcceptance(db, user.id, "STUDENT", { photosAuthorized: authorize, shownVersion });
+  if (outcome.status === "outdated") return { ok: false, message: TERMS_OUTDATED };
   if (outcome.status === "refused") return { ok: false, message: "Não foi possível registrar a sua escolha. Tente novamente." };
   revalidatePath("/aluno/conta");
   return {

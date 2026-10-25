@@ -2,13 +2,13 @@
 import { useActionState, useTransition } from "react";
 import { acceptTerms } from "./actions";
 import { ConsentFields } from "./consent-fields";
-import type { Audience } from "./terms";
+import type { ShownTerms } from "./terms";
 
 /**
  * The acceptance page's form. It sends from onSubmit rather than the `action` prop because React 19
  * resets a form after its action, which would clear the ticks whenever the server refused it.
  */
-export function ConsentForm({ area, audience }: { area: "aluno" | "profissional"; audience: Audience }) {
+export function ConsentForm({ area, terms }: { area: "aluno" | "profissional"; terms: ShownTerms }) {
   const [error, action, pending] = useActionState(acceptTerms.bind(null, area), "");
   const [, startTransition] = useTransition();
   return (
@@ -20,7 +20,7 @@ export function ConsentForm({ area, audience }: { area: "aluno" | "profissional"
         startTransition(() => action(data));
       }}
     >
-      <ConsentFields audience={audience} />
+      <ConsentFields terms={terms} />
       {error && (
         <p role="alert" className="form-error">
           {error}

@@ -1,6 +1,7 @@
 "use client";
 import { useActionState, useTransition } from "react";
 import { ConsentFields } from "@/modules/consentimento/consent-fields";
+import type { ShownTerms } from "@/modules/consentimento/terms";
 import { acceptInvite } from "./actions";
 
 /**
@@ -8,7 +9,7 @@ import { acceptInvite } from "./actions";
  * invitation. It sends from onSubmit because React 19 resets a form after its action, which would
  * clear the ticks whenever the server refused it.
  */
-export function AcceptInvite({ token }: { token: string }) {
+export function AcceptInvite({ token, terms }: { token: string; terms: ShownTerms }) {
   const [error, action, pending] = useActionState(acceptInvite.bind(null, token), "");
   const [, startTransition] = useTransition();
   return (
@@ -20,7 +21,7 @@ export function AcceptInvite({ token }: { token: string }) {
         startTransition(() => action(data));
       }}
     >
-      <ConsentFields audience="STUDENT" />
+      <ConsentFields terms={terms} />
       {error && (
         <p role="alert" className="form-error">
           {error}

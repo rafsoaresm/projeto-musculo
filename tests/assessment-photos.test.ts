@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { assessmentPhotosFor } from "@/db/assessment-photos";
 import { assessmentsFor } from "@/db/assessments";
 import { recordAcceptance } from "@/db/consent";
+import { BASELINE_VERSION } from "@/modules/consentimento/terms";
 import { profilesFor } from "@/db/student-profile";
 import { MAX_PHOTO_BYTES } from "@/modules/avaliacoes/photos";
 import { ALL_MIGRATIONS, migrate } from "./helpers/migrate";
@@ -84,8 +85,8 @@ beforeAll(async () => {
   // What each student did when they joined: the authorization is theirs, recorded before any photo.
   const joined = new Date("2026-11-01T12:00:00Z");
   for (const login of ["client-1", "client-2", "client-m", "client-r"])
-    await recordAcceptance(db, login, "STUDENT", { photosAuthorized: true }, joined);
-  await recordAcceptance(db, "client-d", "STUDENT", { photosAuthorized: false }, joined);
+    await recordAcceptance(db, login, "STUDENT", { photosAuthorized: true, shownVersion: BASELINE_VERSION }, joined);
+  await recordAcceptance(db, "client-d", "STUDENT", { photosAuthorized: false, shownVersion: BASELINE_VERSION }, joined);
   await db
     .prepare(
       `INSERT INTO consent_acceptances(id,user_id,audience,terms_version,terms_sha256,photos_authorized,accepted_at)
@@ -216,11 +217,11 @@ describe("the student's own authorization", () => {
   it("follows the latest acceptance: withdrawing closes the photos and authorizing again reopens them", async () => {
     const draft = (await assessmentsFor(db, scope("tech-a")).listForStudent("st-race")).find((a) => a.state === "DRAFT")!.id;
     const first = await latestAcceptance("client-r");
-    await recordAcceptance(db, "client-r", "STUDENT", { photosAuthorized: false }, day(11));
+    await recordAcceptance(db, "client-r", "STUDENT", { photosAuthorized: false, shownVersion: BASELINE_VERSION }, day(11));
     expect(await photos().put(draft, "POSTERIOR", jpeg(), day(11))).toEqual({ status: "consent_required", reason: "DECLINED" });
     // What was stored while it stood is kept, and still readable, until someone decides otherwise.
     expect(await read(draft, "ANTERIOR")).not.toBeNull();
-    await recordAcceptance(db, "client-r", "STUDENT", { photosAuthorized: true }, day(12));
+    await recordAcceptance(db, "client-r", "STUDENT", { photosAuthorized: true, shownVersion: BASELINE_VERSION }, day(12));
     expect(await photos().put(draft, "POSTERIOR", jpeg(), day(12))).toEqual({ status: "stored", replaced: false });
     expect(await linked(draft, "POSTERIOR")).toBe(await latestAcceptance("client-r"));
     expect(await linked(draft, "POSTERIOR")).not.toBe(first);
@@ -245,7 +246,7 @@ describe("the student's own authorization", () => {
         return async (statements: Parameters<D1Database["batch"]>[0]) => {
           if (!raced) {
             raced = true;
-            await recordAcceptance(db, "client-r", "STUDENT", { photosAuthorized: false }, day(14));
+            await recordAcceptance(db, "client-r", "STUDENT", { photosAuthorized: false, shownVersion: BASELINE_VERSION }, day(14));
           }
           return target.batch(statements);
         };
@@ -255,7 +256,7 @@ describe("the student's own authorization", () => {
     expect(raced).toBe(true);
     expect(result).toEqual({ status: "consent_required", reason: "DECLINED" });
     expect({ objects: await objects(), rows: await rows(draft) }).toEqual(before);
-    await recordAcceptance(db, "client-r", "STUDENT", { photosAuthorized: true }, day(15));
+    await recordAcceptance(db, "client-r", "STUDENT", { photosAuthorized: true, shownVersion: BASELINE_VERSION }, day(15));
   });
 
   it("is also required by the database: no row without an acceptance that authorizes photos", async () => {
@@ -274,7 +275,7 @@ describe("the student's own authorization", () => {
     await expect(insert("no-such-acceptance")).rejects.toThrow(/PHOTO_AUTHORIZATION_REQUIRED|FOREIGN KEY/);
     await expect(insert(await latestAcceptance("client-d"))).rejects.toThrow(/PHOTO_AUTHORIZATION_REQUIRED/);
     // A professional's acceptance is not a student's authorization.
-    await recordAcceptance(db, "owner-a", "PROFESSIONAL", { photosAuthorized: false }, day(15));
+    await recordAcceptance(db, "owner-a", "PROFESSIONAL", { photosAuthorized: false, shownVersion: BASELINE_VERSION }, day(15));
     const professional = (await db.prepare("SELECT id FROM consent_acceptances WHERE user_id = 'owner-a'").first<{ id: string }>())!.id;
     await expect(insert(professional)).rejects.toThrow(/PHOTO_AUTHORIZATION_REQUIRED/);
     expect(await rows(draft).then((all) => all.filter((r) => r.view === "ANTERIOR"))).toEqual([]);

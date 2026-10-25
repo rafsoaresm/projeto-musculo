@@ -1,16 +1,17 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { TERMS, TERMS_VERSION, termsHash, type Audience } from "@/modules/consentimento/terms";
+import { BASELINE, BASELINE_VERSION, termsHash, type Audience } from "@/modules/consentimento/terms";
 
-// The brief for the lawyer quotes the terms word for word. If the text in code changes and the brief
-// does not, the lawyer would be reading something other than what people accept.
+// The brief quotes the INITIAL text word for word: the one the lawyer approved, which lives in the code.
+// If it changes and the brief does not, the brief would say something other than what was approved. The
+// text in force can be a later one, published by the manager; the brief says where to read it.
 const brief = readFileSync(new URL("../docs/REVISAO-JURIDICA.md", import.meta.url), "utf8");
 
 describe("the legal review brief", () => {
   it.each(["STUDENT", "PROFESSIONAL"] as Audience[])("quotes the %s terms exactly as the code has them", async (audience) => {
-    const terms = TERMS[audience];
-    expect(brief).toContain(TERMS_VERSION);
-    expect(brief).toContain(await termsHash(audience));
+    const terms = BASELINE[audience];
+    expect(brief).toContain(BASELINE_VERSION);
+    expect(brief).toContain(await termsHash(audience, BASELINE_VERSION, terms));
     expect(brief).toContain(terms.title);
     expect(brief).toContain(terms.intro);
     for (const section of terms.sections) {
