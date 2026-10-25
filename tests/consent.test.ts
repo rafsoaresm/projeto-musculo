@@ -77,6 +77,7 @@ describe("recording the acceptance", () => {
     expect(await recordAcceptance(db, "login-1", "STUDENT", { photosAuthorized: true }, later(1))).toEqual({ status: "already" });
     expect(await rows("login-1")).toBe(1);
     expect(await latestAcceptance(db, "login-1", "STUDENT")).toEqual({
+      id: expect.stringMatching(/^[0-9a-f-]{36}$/),
       version: TERMS_VERSION,
       sha256: await termsHash("STUDENT"),
       photosAuthorized: true,

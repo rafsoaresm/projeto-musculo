@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import { test, expect, type Browser, type Page } from "@playwright/test";
 import {
   acceptProfessionalTerms,
@@ -6,39 +5,16 @@ import {
   addStudent,
   createProfessional,
   localIP,
-  newActor,
   noHorizontalOverflow,
-  password,
+  openInvitation,
   signUp,
   uniqueEmail,
 } from "./helpers";
 
-/** Local database only, as the global setup does: the test makes an acceptance stale by adding a newer, older-version row. */
-function makeAcceptanceStale(email: string, audience: "STUDENT" | "PROFESSIONAL") {
-  const sql = `INSERT INTO consent_acceptances (id, user_id, audience, terms_version, terms_sha256, photos_authorized, accepted_at)
-    SELECT lower(hex(randomblob(16))), id, '${audience}', '2020-01-01-versao-antiga', '${"a".repeat(64)}', 0, '${new Date().toISOString()}'
-    FROM auth_user WHERE email = '${email}'`;
-  execFileSync("npx", ["wrangler", "d1", "execute", "DB", "--local", "--command", sql], {
-    stdio: "ignore",
-    env: { ...process.env, WRANGLER_SEND_METRICS: "false" },
-  });
-}
-
 /** Invites the student and returns the client signed up with the invitation page open, terms not yet accepted. */
 async function invited(page: Page, browser: Browser, baseURL: string | undefined, studentName: string) {
   const studentURL = await addStudent(page, studentName);
-  await page.getByRole("button", { name: "Gerar link de convite" }).click();
-  const link = await page.getByLabel("Link de convite (uso único)").inputValue();
-  const client = await newActor(browser, baseURL);
-  const email = uniqueEmail("client");
-  await client.page.goto(new URL(link).pathname);
-  await client.page.waitForLoadState("networkidle");
-  await client.page.getByLabel("Seu nome").fill(studentName);
-  await client.page.getByLabel("E-mail", { exact: true }).fill(email);
-  await client.page.getByLabel("Senha", { exact: true }).fill(password);
-  await client.page.getByRole("button", { name: "Criar meu acesso" }).click();
-  await expect(client.page.getByRole("button", { name: "Aceitar convite" })).toBeVisible();
-  return { studentURL, client, email };
+  return { studentURL, ...(await openInvitation(page, browser, baseURL, studentName)) };
 }
 
 test("a professional accepts the terms once, when creating the space, and cannot create it without", async ({ page }) => {
@@ -106,48 +82,4 @@ test("a student accepts once with the invitation, chooses the photos apart, and 
   await expect(page.getByText("Fotos da postura: não autorizadas pelo aluno.")).toBeVisible();
   await first.client.context.close();
   await second.client.context.close();
-});
-
-test("a stale acceptance sends each person to accept again, and only to the area they really have", async ({
-  page,
-  browser,
-  baseURL,
-}) => {
-  await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
-  const proEmail = await createProfessional(page, "Estúdio da versão");
-  const { client, email: clientEmail } = await invited(page, browser, baseURL, "Aluno da versão");
-  await acceptStudentTerms(client.page);
-  await client.page.getByRole("button", { name: "Aceitar convite" }).click();
-  await expect(client.page).toHaveURL(/\/aluno\/?$/);
-
-  // A new version of the text is a newer row of an older version: the next access asks again.
-  makeAcceptanceStale(clientEmail, "STUDENT");
-  await client.page.goto("./aluno/treino");
-  await expect(client.page).toHaveURL(/\/aceite\?area=aluno/);
-  await expect(client.page.getByRole("heading", { name: "Leia e aceite os termos." })).toBeVisible();
-  await expect(client.page.getByRole("region", { name: "Termos e aviso de privacidade do aluno" })).toBeVisible();
-  // Nothing of the area is reachable meanwhile, and the page cannot be used to get in without ticking.
-  await client.page.goto("./aluno");
-  await expect(client.page).toHaveURL(/\/aceite\?area=aluno/);
-  await client.page.getByRole("button", { name: "Aceitar e continuar" }).click();
-  await expect(client.page).toHaveURL(/\/aceite\?area=aluno/);
-  await acceptStudentTerms(client.page);
-  await client.page.getByRole("button", { name: "Aceitar e continuar" }).click();
-  await expect(client.page).toHaveURL(/\/aluno\/?$/);
-  await client.page.goto("./aluno/treino");
-  await expect(client.page.getByRole("heading", { name: "Treino atual" })).toBeVisible();
-
-  // The professional is asked the same way, and the address of the acceptance page grants no area.
-  makeAcceptanceStale(proEmail, "PROFESSIONAL");
-  await page.goto("./profissional/alunos");
-  await expect(page).toHaveURL(/\/aceite\?area=profissional/);
-  await page.goto("./aceite?area=aluno");
-  await expect(page).not.toHaveURL(/\/aceite\?area=aluno/);
-  await page.goto("./aceite?area=profissional");
-  await acceptProfessionalTerms(page);
-  await page.getByRole("button", { name: "Aceitar e continuar" }).click();
-  await expect(page).toHaveURL(/\/profissional\/?$/);
-  await page.goto("./profissional/alunos");
-  await expect(page.getByRole("heading", { name: "Alunos" })).toBeVisible();
-  await client.context.close();
 });

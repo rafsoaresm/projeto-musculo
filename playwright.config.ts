@@ -20,18 +20,26 @@ export default defineConfig({
   projects: [
     {
       name: "desktop",
-      testIgnore: /gestor\.spec\.ts/,
+      testIgnore: /gestor\.spec\.ts|consent-stale\.spec\.ts/,
       use: { ...devices["Desktop Chrome"] },
     },
     {
       name: "mobile",
-      testIgnore: /gestor\.spec\.ts/,
+      testIgnore: /gestor\.spec\.ts|consent-stale\.spec\.ts/,
       use: { ...devices["Pixel 7"] },
     },
     // The first manager activates once per database, so this runs a single time.
     {
       name: "gestor",
       testMatch: /gestor\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    // Writes to the local database from outside the worker, so it runs alone, once, after the others
+    // (`--no-deps` runs just this one).
+    {
+      name: "consent-stale",
+      testMatch: /consent-stale\.spec\.ts/,
+      dependencies: ["desktop", "mobile", "gestor"],
       use: { ...devices["Desktop Chrome"] },
     },
   ],

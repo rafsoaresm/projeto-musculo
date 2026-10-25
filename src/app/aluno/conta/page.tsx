@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { requireStudent } from "@/modules/auth/server";
+import { latestAcceptance } from "@/db/consent";
+import { formatCalendarDate } from "@/modules/training/format";
 import { PageHeading } from "@/components/ui";
 import { SecurityPanel } from "@/modules/auth/components/security-panel";
 
@@ -7,7 +9,9 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Minha conta · Área do aluno" };
 
 export default async function StudentAccount() {
-  const { user } = await requireStudent();
+  const { user, db } = await requireStudent();
+  // What this person accepted, in their own words: the date and the photos choice they made.
+  const accepted = await latestAcceptance(db, user.id, "STUDENT");
   return (
     <>
       <PageHeading eyebrow="ÁREA DO ALUNO" title="Minha conta" description="Seus dados de acesso e a segurança da conta." />
@@ -36,6 +40,12 @@ export default async function StudentAccount() {
       <section className="panel" aria-labelledby="solicitacoes-conta">
         <p className="eyebrow">SEUS DADOS</p>
         <h2 id="solicitacoes-conta">Consentimentos e solicitações</h2>
+        {accepted && (
+          <p>
+            Você aceitou os termos em {formatCalendarDate(accepted.acceptedAt.slice(0, 10))}. Fotos da sua postura:{" "}
+            <strong>{accepted.photosAuthorized ? "você autorizou" : "você não autorizou"}</strong>.
+          </p>
+        )}
         <p className="muted">
           Ainda não existe uma tela para pedir a exportação ou a exclusão dos seus dados, nem para registrar
           consentimentos. Enquanto isso, fale com o seu profissional.

@@ -2,6 +2,7 @@ import { requireWorkspace } from "@/modules/auth/server";
 import { getPhotoBucket } from "@/db/binding";
 import { assessmentPhotosFor } from "@/db/assessment-photos";
 import { MAX_PHOTO_BYTES } from "@/modules/avaliacoes/photos";
+import { PHOTO_DENIAL_MESSAGE } from "@/modules/consentimento/photo-authorization";
 
 export const dynamic = "force-dynamic";
 
@@ -54,14 +55,12 @@ export async function PUT(request: Request, { params }: Params) {
   const declared = Number(request.headers.get("content-length") ?? "0");
   if (declared > MAX_PHOTO_BYTES) return text("A foto é grande demais.", 413);
   const body = new Uint8Array(await request.arrayBuffer());
-  const result = await repo.put(assessmentId, view, body, {
-    consentConfirmed: request.headers.get("x-consent") === "confirmed",
-  });
+  const result = await repo.put(assessmentId, view, body);
   switch (result.status) {
     case "stored":
       return json({ stored: true, replaced: result.replaced });
     case "consent_required":
-      return json({ error: "Confirme que o aluno autorizou esta foto." }, 400);
+      return json({ error: PHOTO_DENIAL_MESSAGE[result.reason] }, 403);
     case "minor":
       return json({ error: "Fotos de menores de idade não são suportadas pela ferramenta." }, 422);
     case "invalid":

@@ -3,6 +3,7 @@ import { useState, useTransition } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { Notice } from "@/components/ui";
 import type { AssessmentDetail } from "@/db/assessments";
+import type { PhotoDenial } from "@/modules/consentimento/photo-authorization";
 import { PhotosFieldset } from "./photos-fieldset";
 import { recordAssessment, saveAssessment } from "./actions";
 import {
@@ -63,12 +64,15 @@ export function AssessmentForm({
   detail,
   minor,
   storageReady,
+  photoDenial,
 }: {
   detail: AssessmentDetail;
   /** The student is known to be under 18: photos are not accepted. */
   minor: boolean;
   /** The photo storage is provisioned in this environment. */
   storageReady: boolean;
+  /** Why the student's own authorization for photos is missing; null when it stands. */
+  photoDenial: PhotoDenial | null;
 }) {
   const [assessedOn, setAssessedOn] = useState(detail.assessedOn);
   const [flags, setFlags] = useState(detail.flags);
@@ -274,6 +278,7 @@ export function AssessmentForm({
         photos={detail.photos}
         minor={minor}
         storageReady={storageReady}
+        photoDenial={photoDenial}
       />
 
       <fieldset>

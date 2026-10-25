@@ -5,6 +5,7 @@ import { Camera, Trash2 } from "lucide-react";
 import { Notice } from "@/components/ui";
 import { useMountPath } from "@/components/use-mount-path";
 import type { PhotoIndexRow } from "@/db/assessments";
+import { PHOTO_DENIAL_MESSAGE, type PhotoDenial } from "@/modules/consentimento/photo-authorization";
 import { PhotoImage } from "./photo-image";
 import { PHOTO_VIEWS, UPLOAD_LONG_SIDE, photoViewLabel, type PhotoView } from "./photos";
 
@@ -36,16 +37,18 @@ export function PhotosFieldset({
   photos,
   minor,
   storageReady,
+  photoDenial,
 }: {
   studentId: string;
   assessmentId: string;
   photos: PhotoIndexRow[];
   minor: boolean;
   storageReady: boolean;
+  /** Why the student's own authorization is missing; null when it stands. */
+  photoDenial: PhotoDenial | null;
 }) {
   const router = useRouter();
   const mountPath = useMountPath();
-  const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState<PhotoView | null>(null);
   const [message, setMessage] = useState("");
   const [failed, setFailed] = useState(false);
@@ -53,6 +56,7 @@ export function PhotosFieldset({
   const address = (view: PhotoView) =>
     `${mountPath()}/profissional/alunos/${studentId}/avaliacoes/${assessmentId}/fotos/${view}`;
   const headers = { "x-photo-request": "1" };
+  const canSend = storageReady && !minor && photoDenial === null;
 
   async function send(view: PhotoView, file: File) {
     setBusy(view);
@@ -61,7 +65,7 @@ export function PhotosFieldset({
       const blob = await toJpeg(file);
       const response = await fetch(address(view), {
         method: "PUT",
-        headers: { ...headers, "x-consent": "confirmed", "content-type": "image/jpeg" },
+        headers: { ...headers, "content-type": "image/jpeg" },
         body: blob,
       });
       if (!response.ok) {
@@ -115,8 +119,8 @@ export function PhotosFieldset({
         <Notice tone="warning">
           <p>
             <strong>Fotos indisponíveis neste ambiente.</strong> As fotos ainda não foram liberadas:
-            dependem do aceite dos termos pelo aluno, que ainda não existe, então a ferramenta não
-            aceita fotos. O resto da avaliação funciona normalmente.
+            dependem da revisão jurídica do texto que o aluno aceita, então a ferramenta não aceita
+            fotos por enquanto. O resto da avaliação funciona normalmente.
           </p>
         </Notice>
       ) : minor ? (
@@ -127,17 +131,17 @@ export function PhotosFieldset({
             para menores, então não aceita fotos dele.
           </p>
         </Notice>
-      ) : (
-        <>
-          <label className="check-row">
-            <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
-            O aluno autorizou o registro destas fotos para o acompanhamento dele.
-          </label>
-          <p className="small muted">
-            Esta confirmação fica registrada. A base legal e o texto do consentimento para imagens
-            de saúde ainda não estão definidos na ferramenta.
+      ) : photoDenial ? (
+        <Notice tone="warning">
+          <p>
+            <strong>Fotos ainda não autorizadas pelo aluno.</strong> {PHOTO_DENIAL_MESSAGE[photoDenial]}
           </p>
-        </>
+        </Notice>
+      ) : (
+        <p className="small muted">
+          O aluno autorizou as fotos da postura ao aceitar os termos. Cada foto guarda qual aceite a
+          autorizou. A base legal e o texto do consentimento ainda dependem de revisão jurídica.
+        </p>
       )}
       <div className="photo-grid">
         {PHOTO_VIEWS.map((view) => {
@@ -156,7 +160,7 @@ export function PhotosFieldset({
               ) : (
                 <div className="posture-photo empty">Sem foto</div>
               )}
-              {storageReady && !minor && (
+              {canSend && (
                 <>
                   <input
                     ref={(element) => {
@@ -166,7 +170,7 @@ export function PhotosFieldset({
                     className="sr-only"
                     type="file"
                     accept="image/jpeg,image/png,image/webp"
-                    disabled={!consent || busy !== null}
+                    disabled={busy !== null}
                     onChange={(event) => {
                       const file = event.target.files?.[0];
                       if (file) void send(view.key, file);
@@ -174,8 +178,8 @@ export function PhotosFieldset({
                   />
                   <label
                     htmlFor={`foto-${view.key}`}
-                    className={`button secondary small${!consent || busy !== null ? " disabled" : ""}`}
-                    aria-disabled={!consent || busy !== null}
+                    className={`button secondary small${busy !== null ? " disabled" : ""}`}
+                    aria-disabled={busy !== null}
                   >
                     <Camera size={16} /> {stored ? "Substituir foto" : "Enviar foto"}
                     <span className="sr-only"> {view.label.toLowerCase()}</span>
