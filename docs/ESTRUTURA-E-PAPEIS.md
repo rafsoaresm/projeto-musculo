@@ -46,7 +46,8 @@ Uma mesma conta pode ter mais de uma área (por exemplo, gestor e profissional).
 /profissional/[módulo]    planejados: fontes, meu-site, leads, configuracoes
 
 /aluno                    início                 /aluno/treino
-/aluno/[módulo]           planejados: evolucao, check-in, documentos, mensagens, conta
+/aluno/check-in           check-in do dia e histórico
+/aluno/[módulo]           planejados: documentos, mensagens
 
 /demonstracao[/gestor|/profissional|/aluno ...]   somente com DEMO_MODE=true
 /api/health  /api/auth/*
@@ -91,7 +92,8 @@ Correspondência com os papéis do handoff V2:
 | Gestor: planos e cobrança, afiliados, templates, biblioteca, integrações | `/gestor/...` | Planejado | E3, E5, E6, E7 |
 | Aluno: início | `/aluno` | Disponível: vínculo e estado do treino | E4 |
 | Aluno: treino atual | `/aluno/treino` | Disponível: a revisão entregue de cada plano, somente leitura (**prévia** com execução na demonstração) | E4 |
-| Aluno: evolução, check-in, documentos, mensagens, conta | `/aluno/...` | Planejado | E4 |
+| Aluno: check-in | `/aluno/check-in` | Disponível: um por dia, o profissional lê e registra a leitura (**prévia** na demonstração) | E4 |
+| Aluno: documentos, mensagens | `/aluno/...` | Planejado | E4 |
 
 A fonte única desse menu é `src/modules/platform/surfaces.ts`, com teste de contrato (`tests/navigation.test.ts`): todo módulo planejado precisa ter épico, resumo e o que falta.
 

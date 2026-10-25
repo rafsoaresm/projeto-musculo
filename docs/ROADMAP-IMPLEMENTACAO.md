@@ -8,12 +8,18 @@ O escopo completo está em [`referencias/02-ROADMAP-E-HANDOFF.md`](referencias/0
 | E1 — fundação | Conta/sessão, organização, aluno, autorização e auditoria em SQLite. **Três áreas por papel** (gestor, profissional, aluno), ativação única do gestor, bloqueio de acesso e convite de aluno de uso único. **Minha conta** com troca de senha e encerramento das outras sessões (0.18). **Aceite único dos termos ao aderir** (0.20), com versão e hash gravados, e **fotos que dependem da autorização do próprio aluno**, que ele autoriza ou retira em Minha conta (0.21 e 0.22) | Revisão jurídica do texto de aceite, telas de pedido do titular, E-mail verificado, recuperação de senha, convites e gestão de equipe, conceder o papel de gestor pela interface e homologação remota |
 | E2 — atendimento | Planejador determinístico e exportação. **Planos de periodização salvos por aluno**, com revisões e estado Rascunho / Estrutura pronta (0.4). **Biblioteca de exercícios** com o seed de 64 do documento mestre e biblioteca por organização (0.5a). **Prescrição manual** por mesociclo sobre o rascunho (0.6), com painel de pendências e cópia de mesociclo (0.7). **Aprovação e entrega** com imutabilidade no banco (0.8). **Ficha do aluno** (0.9). **Avaliações com triagem e indicadores** (0.10), ligadas à aprovação e à entrega. **PDF do plano entregue** (0.11). **Postura e movimento** nas avaliações (0.12), sem fotos. **Evolução das avaliações** (0.13): séries dos indicadores e comparação. **Fotos de postura** no Object Storage do Webflow (0.14). **Execução do treino pelo aluno** (0.15): o que o aluno fez, com leitura e relato de dor para o profissional. **Registros por semana, percentual dos previstos com registro e carga por exercício** (0.16 e 0.19), só leitura | Anotação sobre a imagem, exclusão de foto a pedido do titular, geração com pendências; conferir o instrumento de triagem com o responsável técnico |
 | E3 — sites/CRM | Planejado | Editor, preview, releases, domínios e conversão idempotente |
-| E4 — portal | Parcial: convite de uso único, área do aluno, **treino entregue** (0.8), **registro da execução** (0.15) e **evolução do próprio aluno** (0.17) | Origem privada separada, check-in, documentos e mensagens; fecha piloto operacional |
+| E4 — portal | Parcial: convite de uso único, área do aluno, **treino entregue** (0.8), **registro da execução** (0.15) e **evolução do próprio aluno** (0.17) e **check-in** (0.23) | Origem privada separada, documentos e mensagens; fecha piloto operacional |
 | E5 — gestão/marketing | Planejado | CRM completo, agenda, contratos, recebimentos e conectores |
 | E6 — SaaS/afiliados | Planejado | Inbox/outbox, conciliação, recorrência, ajustes e repasses |
 | E7 — evoluções | Planejado | RAG com armazenamento compatível, progressão assistida e booking |
 
-## Fatia entregue: o aluno revê a autorização das fotos (0.22)
+## Fatia entregue: check-in do aluno (0.23)
+
+1. Implementado: migration 0015. `/aluno/check-in` (antes "planejado"): um check-in por dia com esforço percebido (0 a 10), recuperação (1 a 5 em palavras), relato de dor ou desconforto e observações. Relato de desconforto e check-in lido ficam congelados; o profissional registra a leitura (quem, quando, anotação) e vê, na visão geral, a fila de não lidos com os relatos de desconforto primeiro.
+2. Princípio: o aluno diz, o profissional lê e decide. Nada é pontuado, nenhum aviso sai sozinho e nenhum treino muda por causa de um check-in; a tela diz que não é um canal de urgência.
+3. **Em aberto:** campos configuráveis pelo profissional; aviso por e-mail (depende do provedor); política de resposta; a frase do termo do aluno citar o check-in (pergunta 12 do pacote do advogado).
+
+## Fatia anterior: o aluno revê a autorização das fotos (0.22)
 
 1. Implementado: sem migration. Em `/aluno/conta` o aluno autoriza ou retira as fotos; cada mudança é uma nova linha de aceite, da mesma versão. Autorizar abre e retirar fecha o envio na tela do profissional na hora. O texto do aluno passou a `2026-10-25-rascunho-2`.
 2. Princípio: a autorização é do titular e ele a muda quando quiser; a ferramenta nunca apaga em silêncio o que já foi guardado nem decide por ele.
@@ -47,7 +53,7 @@ O escopo completo está em [`referencias/02-ROADMAP-E-HANDOFF.md`](referencias/0
 
 1. Implementado: sem migration, `/aluno/evolucao` (antes "em breve"): registros por semana, carga por exercício e últimos registros do próprio aluno, com o mesmo cálculo e as mesmas palavras sem julgamento da 0.16; e, no formulário de registro, a referência "seu último registro" por exercício, que nunca preenche campo.
 2. Princípio: cada login só lê o que é dele, pelo vínculo de acesso ativo; dado ausente continua ausente e nunca vira zero.
-3. **Em aberto:** aderência em porcentagem e metas (definição do responsável técnico); check-in estruturado de recuperação (hoje o esforço e o relato de dor do registro já cumprem parte dele); documentos e mensagens do aluno (dependem de provedor de envio e de decisão sobre canal).
+3. **Em aberto:** aderência em porcentagem e metas (definição do responsável técnico); check-in estruturado de recuperação (entregue na 0.23); documentos e mensagens do aluno (dependem de provedor de envio e de decisão sobre canal).
 
 ## Fatia anterior: registros por semana e carga por exercício (0.16)
 

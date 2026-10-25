@@ -7,6 +7,7 @@ import { studentAccessFor } from "@/db/student-access";
 import { plansFor } from "@/db/plans";
 import { assessmentsFor } from "@/db/assessments";
 import { executionFor } from "@/db/workout-sessions";
+import { checkinsFor } from "@/db/student-checkins";
 import { Kpi, PageHeading, Pill } from "@/components/ui";
 import { formatCalendarDate } from "@/modules/training/format";
 
@@ -15,12 +16,13 @@ export const metadata: Metadata = { title: "Visão geral" };
 
 export default async function ProfessionalHome() {
   const { db, context, workspace, user } = await requireWorkspace();
-  const [students, access, plans, assessments, painPending] = await Promise.all([
+  const [students, access, plans, assessments, painPending, checkinsPending] = await Promise.all([
     studentsFor(db, context).list(),
     studentAccessFor(db, context).statuses(),
     plansFor(db, context).overview(),
     assessmentsFor(db, context).overview(),
     executionFor(db, context).painPending(),
+    checkinsFor(db, context).pending(),
   ]);
   const alerts = assessments.filter((row) => row.riskStatus === "REVIEW_REQUIRED" && !row.reviewed).length;
   const assessed = assessments.some((row) => row.assessmentId !== null);
@@ -99,7 +101,33 @@ export default async function ProfessionalHome() {
           value={painPending.length}
           hint={painPending.length > 0 ? "Registros de treino com dor ou desconforto" : undefined}
         />
+        <Kpi
+          label="Check-ins sem leitura"
+          value={checkinsPending.length}
+          hint={
+            checkinsPending.some((row) => row.discomfort)
+              ? `${checkinsPending.filter((row) => row.discomfort).length} com relato de desconforto`
+              : undefined
+          }
+        />
       </div>
+      {checkinsPending.length > 0 && (
+        <section className="panel" aria-labelledby="checkins-pendentes">
+          <p className="eyebrow">CHECK-INS</p>
+          <h2 id="checkins-pendentes">Check-ins dos alunos sem leitura</h2>
+          <p className="small muted">Primeiro os que relatam desconforto, depois os outros, do mais novo ao mais antigo.</p>
+          <ul className="plan-list">
+            {checkinsPending.slice(0, 8).map((row) => (
+              <li key={row.checkinId}>
+                <Link className="account-link" href={`/profissional/alunos/${row.studentId}#checkins`}>
+                  {row.studentName} · check-in de {formatCalendarDate(row.checkedOn)}
+                  {row.discomfort ? " · relato de desconforto" : ""}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {painPending.length > 0 && (
         <section className="panel" aria-labelledby="dor-pendente">
           <p className="eyebrow">RELATOS DE DOR</p>

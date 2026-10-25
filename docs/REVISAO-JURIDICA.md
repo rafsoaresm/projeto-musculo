@@ -32,6 +32,7 @@ Roda no Webflow Cloud (Workers, banco SQLite D1 e armazenamento de objetos R2, d
 | **Fotos de postura** (quatro vistas) | R2 (`PHOTOS`); índice em `assessment_photos` | Só o profissional com vínculo técnico ativo, por rota autenticada | **Sim (imagem de saúde)** |
 | Treino prescrito e entregue | `training_plans`, `plan_revisions`, `prescribed_exercises` | Profissional e o próprio aluno | Não |
 | Registro de execução: séries, cargas, esforço, **dor ou desconforto**, observações | `workout_sessions`, `session_*` | Profissional com vínculo e o próprio aluno | **Sim** (relato de dor) |
+| **Check-in do aluno** (esforço percebido, recuperação, **relato de dor ou desconforto** com texto livre e observações) | `student_checkins`, `checkin_acknowledgements` | Profissional com vínculo técnico ativo e o próprio aluno | **Sim** (relato de desconforto) |
 | Aceite dos termos: quem, quando, versão, SHA-256 do texto, autorização das fotos | `consent_acceptances` | O profissional vê a data e a escolha das fotos do aluno; o aluno vê a própria | Não |
 | Trilha de auditoria (quem fez o quê e quando; nunca o conteúdo) | `access_audit_events` | O gestor vê a lista de eventos (ação, organização, quem fez), nunca o conteúdo | Não |
 
@@ -115,7 +116,8 @@ Versão `2026-10-25-rascunho-2`, SHA-256 do texto aceito `a189f9ba537e1d802689f0
 6. **E-mail:** sem verificação de e-mail e sem recuperação de senha (dependem de um provedor de envio, ainda não contratado).
 7. **Termos fora do login:** o texto só aparece para quem está entrando; não há página pública dos termos nem aviso de privacidade completo separado dos termos.
 8. **Encarregado (DPO), canal do titular e plano de resposta a incidentes** não existem; **contrato de operação** entre plataforma e profissional também não.
-9. **Registros técnicos:** o IP e o navegador de cada sessão ficam no banco sem prazo de descarte; os logs de execução do Webflow têm retenção própria que não controlamos.
+9. **O check-in não avisa ninguém por conta própria e não tem prazo de resposta.** A tela diz ao aluno que não é um canal de urgência; o profissional lê quando abrir a ferramenta. Não há e-mail, push nem alerta, e a política de resposta do profissional não está definida na ferramenta.
+10. **Registros técnicos:** o IP e o navegador de cada sessão ficam no banco sem prazo de descarte; os logs de execução do Webflow têm retenção própria que não controlamos.
 
 ## 8. Perguntas ao advogado
 
@@ -132,12 +134,13 @@ Cada uma traz a **proposta atual**, aprovada pelo responsável do produto, para 
 9. **Transferência internacional.** Os dados ficam em infraestrutura do Webflow/Cloudflare, em região que não escolhemos. É preciso informar isso no aviso e adotar alguma salvaguarda? Convém perguntar ao Webflow onde ficam os dados e por quanto tempo ficam as cópias de segurança.
 10. **Aviso de privacidade completo.** Os termos e o aviso devem ser documentos separados, públicos e acessíveis antes do cadastro? Quem é o encarregado e qual o canal? *Proposta:* hoje é um texto só, mostrado na entrada.
 11. **Registros técnicos e auditoria.** O IP e o navegador das sessões e a trilha de auditoria precisam de prazo de descarte e de menção no aviso?
-12. **Texto.** O advogado pode revisar ou reescrever as seções 5.1 e 5.2. Depois da revisão, a versão passa a ter outro nome (sem `rascunho`) e o hash muda.
+12. **O check-in e o texto.** O texto do aluno diz que são guardados "o que você registrar depois de treinar: séries, cargas, esforço, dor ou desconforto e observações". O check-in (feito fora do treino, com esforço, recuperação, relato de desconforto e observações) cabe nessa frase ou o texto deve citá-lo expressamente? *Proposta:* citar na próxima versão do texto; o texto não foi alterado para não desfazer a revisão já feita.
+13. **Texto.** O advogado pode revisar ou reescrever as seções 5.1 e 5.2. Depois da revisão, a versão passa a ter outro nome (sem `rascunho`) e o hash muda.
 
 ## 9. Para abrir as fotos em produção
 
 1. Texto revisado, versão sem `rascunho` em `TERMS_VERSION` (`src/modules/consentimento/terms.ts`) e este arquivo atualizado.
 2. As decisões das perguntas 4, 5, 6 e 8 tomadas, ou registradas como risco aceito pelo responsável.
-3. Conferir na aba **Storage** do Webflow que o bucket `photos` **não tem endereço público**.
+3. Conferir na aba **Storage** do Webflow que o bucket `photos` **não tem endereço público**. Caminho: Webflow Cloud > o app > Environments > o ambiente > aba **Storage**. Segundo a documentação do Webflow (Object Storage), **buckets públicos não são suportados** no Webflow Cloud e não existe configuração para torná-lo público nem para dar-lhe endereço `r2.dev` ou domínio próprio: os objetos só saem pelo binding do app. Ver a lista de bindings na aba (nome, tipo, data de criação) e a ausência de qualquer opção de acesso público é a confirmação.
 4. Acrescentar `"vars": { "PHOTOS_ENABLED": "true" }` ao `wrangler.json` e publicar (ver `docs/WEBFLOW-CLOUD.md`).
 5. Subir uma foto de teste de um aluno de teste que tenha autorizado, e conferir a leitura só pelo profissional.

@@ -301,13 +301,7 @@ const aluno: NavGroup[] = [
         status: "available",
         primary: true,
       },
-      planned("check-in", "Check-in", "check", {
-        epic: "E4",
-        reference: "Projeto consolidado, seção 9",
-        summary:
-          "Esforço percebido, recuperação e desconforto relatado. O registro avisa o profissional e não é um canal de urgência.",
-        needs: "Fila de acompanhamento do profissional e política de resposta.",
-      }),
+      { slug: "check-in", label: "Check-in", icon: "check", status: "available" },
     ],
   },
   {
