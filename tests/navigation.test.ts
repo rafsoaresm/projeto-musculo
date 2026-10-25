@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   SURFACE_ORDER,
@@ -66,6 +67,23 @@ describe("navigation by area (handoff V2, section 3)", () => {
       { label: "Profissional", href: "/profissional", current: false },
     ]);
   });
+  it.each(SURFACE_ORDER)(
+    "%s has a real page and a demonstration page for every module it presents as working",
+    (id) => {
+      const missing: string[] = [];
+      for (const item of navigationFor(id).flatMap((g) => g.items)) {
+        if (item.status !== "available") continue;
+        const tail = item.slug ? `/${item.slug}` : "";
+        for (const root of [`src/app/${id}`, `src/app/demonstracao/${id}`]) {
+          // The manager's panel lives in a route group, which is not part of the address.
+          const found = [`${root}${tail}`, `${root}/(painel)${tail}`].some((dir) => existsSync(`${dir}/page.tsx`));
+          if (!found) missing.push(`${root}${tail}`);
+        }
+      }
+      // A menu entry without a page is a 404 for whoever clicks it.
+      expect(missing).toEqual([]);
+    },
+  );
   it("marks only illustrated previews in the demonstration", () => {
     const tagged = SURFACE_ORDER.flatMap((id) =>
       demoNavigation(id)
@@ -73,7 +91,13 @@ describe("navigation by area (handoff V2, section 3)", () => {
         .filter((i) => i.tag)
         .map((i) => `${id}/${i.slug}`),
     );
-    expect(tagged.sort()).toEqual(["aluno/evolucao", "aluno/treino", "profissional/prescricao"]);
+    expect(tagged.sort()).toEqual([
+      "aluno/conta",
+      "aluno/evolucao",
+      "aluno/treino",
+      "profissional/conta",
+      "profissional/prescricao",
+    ]);
   });
 });
 

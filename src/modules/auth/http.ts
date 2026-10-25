@@ -1,5 +1,19 @@
 import type { createAuth } from "./factory";
 
+/**
+ * The only endpoints of the authentication library that are reachable from the browser. The route
+ * and the handler read this one list, so a new endpoint is opened in one place and on purpose.
+ */
+export const AUTH_ENDPOINTS: ReadonlySet<string> = new Set([
+  "sign-up/email",
+  "sign-in/email",
+  "sign-out",
+  "get-session",
+  // For a person already signed in: both need the session cookie, and the first also the current password.
+  "change-password",
+  "revoke-other-sessions",
+]);
+
 /** Public boundary: strict browser origin, endpoint allowlist and rate-limit fallback. */
 export async function handleAuthRequest(
   auth: ReturnType<typeof createAuth>,
@@ -9,14 +23,8 @@ export async function handleAuthRequest(
   const path =
     routeEndpoint ??
     new URL(request.url).pathname.slice(auth.options.basePath!.length + 1);
-  const allowed = new Set([
-    "sign-up/email",
-    "sign-in/email",
-    "sign-out",
-    "get-session",
-  ]);
   const responseHeaders = { "Cache-Control": "private, no-store" };
-  if (!allowed.has(path))
+  if (!AUTH_ENDPOINTS.has(path))
     return new Response(null, { status: 404, headers: responseHeaders });
   if (request.method !== (path === "get-session" ? "GET" : "POST"))
     return new Response(null, { status: 405, headers: responseHeaders });

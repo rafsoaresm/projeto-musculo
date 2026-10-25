@@ -48,6 +48,8 @@ export function createAuth(db: D1Database, settings: AuthSettings) {
       customRules: {
         "/sign-in/email": { window: 60, max: 10 },
         "/sign-up/email": { window: 60, max: 5 },
+        // The current password is checked, so guessing it from a stolen session is limited too.
+        "/change-password": { window: 60, max: 5 },
       },
     },
     advanced: {

@@ -9,8 +9,8 @@ import {
 /** Planned modules that have an illustrated preview in the demonstration. */
 const PREVIEWS: Record<SurfaceId, string[]> = {
   gestor: [],
-  profissional: ["prescricao"],
-  aluno: ["treino", "evolucao"],
+  profissional: ["prescricao", "conta"],
+  aluno: ["treino", "evolucao", "conta"],
 };
 
 export const demoPrefix = (surface: SurfaceId) => `/demonstracao/${surface}`;

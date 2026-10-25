@@ -5,7 +5,7 @@ O escopo completo está em [`referencias/02-ROADMAP-E-HANDOFF.md`](referencias/0
 | Épico | Estado | Critério restante |
 |---|---|---|
 | E0 — viabilidade | Configuração Next/OpenNext e binding DB nativo | Deploy na conta, múltiplos hosts, login, Storage privado, job/PDF e Puck |
-| E1 — fundação | Conta/sessão, organização, aluno, autorização e auditoria em SQLite. **Três áreas por papel** (gestor, profissional, aluno), ativação única do gestor, bloqueio de acesso e convite de aluno de uso único | E-mail verificado, recuperação, convites e gestão de equipe, conceder o papel de gestor pela interface e homologação remota |
+| E1 — fundação | Conta/sessão, organização, aluno, autorização e auditoria em SQLite. **Três áreas por papel** (gestor, profissional, aluno), ativação única do gestor, bloqueio de acesso e convite de aluno de uso único. **Minha conta** com troca de senha e encerramento das outras sessões (0.18) | E-mail verificado, recuperação de senha, convites e gestão de equipe, conceder o papel de gestor pela interface e homologação remota |
 | E2 — atendimento | Planejador determinístico e exportação. **Planos de periodização salvos por aluno**, com revisões e estado Rascunho / Estrutura pronta (0.4). **Biblioteca de exercícios** com o seed de 64 do documento mestre e biblioteca por organização (0.5a). **Prescrição manual** por mesociclo sobre o rascunho (0.6), com painel de pendências e cópia de mesociclo (0.7). **Aprovação e entrega** com imutabilidade no banco (0.8). **Ficha do aluno** (0.9). **Avaliações com triagem e indicadores** (0.10), ligadas à aprovação e à entrega. **PDF do plano entregue** (0.11). **Postura e movimento** nas avaliações (0.12), sem fotos. **Evolução das avaliações** (0.13): séries dos indicadores e comparação. **Fotos de postura** no Object Storage do Webflow (0.14). **Execução do treino pelo aluno** (0.15): o que o aluno fez, com leitura e relato de dor para o profissional. **Registros por semana e carga por exercício** (0.16), só leitura | Anotação sobre a imagem, exclusão de foto a pedido do titular, geração com pendências; conferir o instrumento de triagem com o responsável técnico |
 | E3 — sites/CRM | Planejado | Editor, preview, releases, domínios e conversão idempotente |
 | E4 — portal | Parcial: convite de uso único, área do aluno, **treino entregue** (0.8), **registro da execução** (0.15) e **evolução do próprio aluno** (0.17) | Origem privada separada, check-in, documentos e mensagens; fecha piloto operacional |
@@ -13,7 +13,13 @@ O escopo completo está em [`referencias/02-ROADMAP-E-HANDOFF.md`](referencias/0
 | E6 — SaaS/afiliados | Planejado | Inbox/outbox, conciliação, recorrência, ajustes e repasses |
 | E7 — evoluções | Planejado | RAG com armazenamento compatível, progressão assistida e booking |
 
-## Fatia entregue: evolução do próprio aluno (0.17)
+## Fatia entregue: Minha conta, senha e sessões (0.18)
+
+1. Implementado: sem migration, `/profissional/conta` e `/aluno/conta` com troca de senha (senha atual conferida no servidor, 12 a 128 caracteres, limite de 5 por minuto) e encerramento das outras sessões; a borda de autenticação aceita só `change-password` e `revoke-other-sessions` além do que já aceitava.
+2. Princípio: sem e-mail, não há recuperação; a tela diz isso. A conta não mostra aparelhos nem endereços, que seriam dado pessoal sem decisão tomada.
+3. **Em aberto:** recuperação de senha e troca de e-mail (dependem do provedor de envio); exclusão da conta e solicitações do titular (exportação, exclusão, consentimento) dependem de decisão jurídica; política de senha contra vazamentos.
+
+## Fatia anterior: evolução do próprio aluno (0.17)
 
 1. Implementado: sem migration, `/aluno/evolucao` (antes "em breve"): registros por semana, carga por exercício e últimos registros do próprio aluno, com o mesmo cálculo e as mesmas palavras sem julgamento da 0.16; e, no formulário de registro, a referência "seu último registro" por exercício, que nunca preenche campo.
 2. Princípio: cada login só lê o que é dele, pelo vínculo de acesso ativo; dado ausente continua ausente e nunca vira zero.
