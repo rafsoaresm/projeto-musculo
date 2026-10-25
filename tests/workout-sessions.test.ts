@@ -509,14 +509,14 @@ describe("the progress the professional reads", () => {
     expect(cycle.weeks.map((week) => [week.startDate, week.planned, week.recorded, week.inProgress])).toEqual([
       ["2026-11-09", 3, 2, true],
     ]);
-    expect(cycle.closed).toEqual({ weeks: 0, planned: 0, recorded: 0 });
+    expect(cycle.closed).toEqual({ weeks: 0, planned: 0, recorded: 0, covered: 0 });
 
     const later = (await reader.progress("st-p", "2026-11-20")).cycles.find((item) => item.planId === plan.planId)!;
     expect(later.weeks.map((week) => [week.startDate, week.recorded, week.inProgress])).toEqual([
       ["2026-11-09", 2, false],
       ["2026-11-16", 0, true],
     ]);
-    expect(later.closed).toEqual({ weeks: 1, planned: 3, recorded: 2 });
+    expect(later.closed).toEqual({ weeks: 1, planned: 3, recorded: 2, covered: 2 });
   });
 
   it("reads the heaviest set of each day per exercise, as typed", async () => {

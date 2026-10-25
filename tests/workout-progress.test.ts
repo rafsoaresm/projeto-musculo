@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDays, loadSeries, weeklyRecords, type PlannedWeek } from "@/modules/execucao/progress";
+import { addDays, closedSummary, loadSeries, percentCovered, weeklyRecords, type PlannedWeek } from "@/modules/execucao/progress";
 
 // Four weeks of three Full Body workouts, from Monday 2 Nov 2026.
 const plan: PlannedWeek[] = [0, 1, 2, 3].map((week) => ({
@@ -34,7 +34,7 @@ describe("the weekly records", () => {
       ["2026-11-02", false],
       ["2026-11-09", true],
     ]);
-    expect(result.closed).toEqual({ weeks: 1, planned: 3, recorded: 1 });
+    expect(result.closed).toEqual({ weeks: 1, planned: 3, recorded: 1, covered: 1 });
   });
 
   it("does not show weeks before the student had the plan or after a newer one replaced it", () => {
@@ -45,7 +45,7 @@ describe("the weekly records", () => {
     expect(replaced.weeks.map((week) => week.startDate)).toEqual(["2026-11-02", "2026-11-09"]);
     // Nothing of a replaced cycle is in progress, and the week it was cut in is not a closed one.
     expect(replaced.weeks.every((week) => !week.inProgress)).toBe(true);
-    expect(replaced.closed).toEqual({ weeks: 1, planned: 3, recorded: 0 });
+    expect(replaced.closed).toEqual({ weeks: 1, planned: 3, recorded: 0, covered: 0 });
   });
 
   it("keeps logs that fall outside the weeks shown apart instead of hiding them", () => {
@@ -61,7 +61,7 @@ describe("the weekly records", () => {
       since: "2026-11-01", until: "2026-11-30", today: "2026-11-30",
     });
     expect(result.weeks[0]).toMatchObject({ planned: 3, recorded: 4 });
-    expect(result.closed).toEqual({ weeks: 1, planned: 3, recorded: 4 });
+    expect(result.closed).toEqual({ weeks: 1, planned: 3, recorded: 4, covered: 3 });
   });
 });
 
@@ -101,5 +101,37 @@ describe("the load series", () => {
 
   it("is empty without logs", () => {
     expect(loadSeries([])).toEqual([]);
+  });
+});
+
+describe("the percentage of the cycle", () => {
+  it("counts each week at most what it foresaw, so a fourth log does not hide an empty week", () => {
+    const week = (index: number, count: number) =>
+      Array.from({ length: count }, (_, i) => log(addDays("2026-11-02", index * 7 + i), "A"));
+    const result = weeklyRecords(plan.slice(0, 2), [...week(0, 4), ...week(1, 0)], {
+      since: "2026-11-01", until: "2026-11-30", today: "2026-11-30",
+    });
+    // 4 logs in the first week, none in the second: 4 of 6 by count, but 3 of 6 are covered.
+    expect(result.closed).toEqual({ weeks: 2, planned: 6, recorded: 4, covered: 3 });
+    expect(percentCovered(result.closed)).toBe(50);
+  });
+
+  it("rounds to a whole percent and is null when nothing was foreseen", () => {
+    expect(percentCovered({ planned: 3, covered: 2 })).toBe(67);
+    expect(percentCovered({ planned: 3, covered: 1 })).toBe(33);
+    expect(percentCovered({ planned: 3, covered: 3 })).toBe(100);
+    expect(percentCovered({ planned: 3, covered: 0 })).toBe(0);
+    expect(percentCovered({ planned: 0, covered: 0 })).toBeNull();
+  });
+
+  it("is said in plain words, without a grade, and never for the week that is still going", () => {
+    expect(closedSummary({ weeks: 0, planned: 0, recorded: 0, covered: 0 }, 0)).toBe("Nenhuma semana encerrada ainda.");
+    const text = closedSummary({ weeks: 2, planned: 6, recorded: 4, covered: 3 }, 1);
+    expect(text).toBe(
+      "Nas 2 semanas já encerradas: 4 treinos registrados para 6 previstos. Isso é 50% dos treinos previstos com registro (cada semana conta, no máximo, o que estava previsto). 1 registro fora das semanas mostradas.",
+    );
+    expect(closedSummary({ weeks: 1, planned: 3, recorded: 1, covered: 1 }, 0)).toContain("1 semana já encerrada: 1 treino registrado para 3 previstos. Isso é 33%");
+    // No judgement: no goal, grade or word that rates it.
+    expect(text).not.toMatch(/meta|baixa|alta|bom|ruim|falt|abaixo|acima|ótim|péssim|aderência/i);
   });
 });
