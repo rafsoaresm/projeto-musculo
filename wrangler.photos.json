@@ -13,10 +13,13 @@
   "observability": {
     "enabled": true
   },
+  "vars": {
+    "PHOTOS_ENABLED": "true"
+  },
   "r2_buckets": [
     {
       "binding": "PHOTOS",
-      "bucket_name": "trainer-prescription-photos"
+      "bucket_name": "photos"
     }
   ],
   "d1_databases": [

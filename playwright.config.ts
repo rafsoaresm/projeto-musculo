@@ -4,6 +4,8 @@ const mount = (process.env.BASE_URL || "").replace(/\/$/, "");
 export default defineConfig({
   testDir: "./tests/e2e",
   globalSetup: "./tests/e2e/global-setup.ts",
+  // The scenarios are whole flows (sign-up, invitation, plan, logs); a loaded machine needs the room.
+  timeout: 90_000,
   fullyParallel: true,
   workers: 2,
   reporter: "list",

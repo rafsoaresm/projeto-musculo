@@ -41,7 +41,7 @@ O escopo completo está em [`referencias/02-ROADMAP-E-HANDOFF.md`](referencias/0
 
 1. Implementado: migration 0011 (`assessment_photos`, só o índice) e o binding `PHOTOS` (R2 do Webflow Cloud, provisionado no deploy). Quatro vistas por avaliação, JPEG sem metadados (redesenhado no navegador e limpo de novo no servidor), até 5 MB, lido só por rota autenticada com vínculo técnico, imutável com a avaliação registrada.
 2. Salvaguardas: confirmação de que o aluno autorizou (registrada), bloqueio de menor de 18 pela ficha, nada público, 404 para qualquer outra pessoa, auditoria de envio e remoção.
-3. **Em aberto (exigem decisão do responsável):** base legal e texto de consentimento para imagens de saúde, atendimento a menores, exclusão a pedido do titular depois de registrada, retenção. **Estado:** o código está no ar, mas o Webflow recusou o provisionamento do bucket R2 (deploy falhou sem mensagem, duas vezes); o bucket ficou fora do `wrangler.json` publicado e as fotos aparecem como indisponíveis até o Object Storage ser ativado na conta (ver `docs/WEBFLOW-CLOUD.md`).
+3. **Em aberto (exigem decisão do responsável):** base legal e texto de consentimento para imagens de saúde, atendimento a menores, exclusão a pedido do titular depois de registrada, retenção. **Estado (0.18.1):** o primeiro deploy com o bucket falhou duas vezes; a causa provável era o nome do bucket (`trainer-prescription-photos` + o prefixo de 36 caracteres do Webflow passava de 63) e ele passou a se chamar `photos`. As fotos ficam fechadas na tela até o aceite do aluno existir (`PHOTOS_ENABLED`). Ver `docs/WEBFLOW-CLOUD.md`.
 
 ## Fatia anterior: evolução das avaliações (0.13)
 
