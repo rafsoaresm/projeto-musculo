@@ -128,6 +128,7 @@ const gestor: NavGroup[] = [
         primary: true,
       },
       { slug: "termos", label: "Termos", icon: "file", status: "available" },
+      { slug: "gestores", label: "Gestores", icon: "users", status: "available" },
     ],
   },
   {

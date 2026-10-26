@@ -46,6 +46,15 @@ export function ManagerOverview({
           label="Profissionais bloqueados"
           value={summary.blockedProfessionals}
         />
+        <Kpi
+          label="Pedidos de titulares em aberto"
+          value={summary.requestsOpen}
+          hint={
+            summary.requestsOverdue > 0
+              ? `${summary.requestsOverdue} passou do prazo de 15 dias`
+              : "Só a contagem; sem nome nem conteúdo"
+          }
+        />
       </div>
       <section className="panel">
         <div className="section-heading">

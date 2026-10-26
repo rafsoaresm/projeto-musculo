@@ -1,6 +1,5 @@
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import type { D1Database } from "@cloudflare/workers-types";
-import { readFile } from "node:fs/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { studentsFor } from "@/db/students";
 import {
@@ -16,6 +15,7 @@ import {
   studentAccessFor,
 } from "@/db/student-access";
 import { hadStudentAccess, surfacesFor } from "@/db/surfaces";
+import { ALL_MIGRATIONS, migrate as migrateAll } from "./helpers/migrate";
 
 // Real local D1. Identities are rows, as the server derives them from a session.
 let mf: Miniflare;
@@ -39,24 +39,10 @@ const ids = [
   "stranger",
 ];
 
+// The platform's counts read tables from later migrations (requests of the data subjects), so the
+// test runs on all of them, like production.
 async function migrate(database: D1Database) {
-  for (const file of [
-    "0001_foundation.sql",
-    "0002_identity_and_onboarding.sql",
-    "0003_roles_and_access.sql",
-  ]) {
-    const sql = await readFile(
-      new URL(`../migrations/${file}`, import.meta.url),
-      "utf8",
-    );
-    await database.batch(
-      sql
-        .replace(/^--.*$/gm, "")
-        .split(";")
-        .filter((statement) => statement.trim())
-        .map((statement) => database.prepare(statement)),
-    );
-  }
+  await migrateAll(database, ALL_MIGRATIONS);
 }
 
 beforeAll(async () => {

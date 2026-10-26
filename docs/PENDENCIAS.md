@@ -4,7 +4,7 @@ O que está aberto, quem destrava e onde cada coisa está contada em detalhe. **
 
 Quem: **Responsável** (dono do produto: contas, domínios, decisões), **Advogado**, **Técnico** (responsável técnico em educação física: conteúdo clínico), **Código** (o que se constrói sem esperar ninguém).
 
-Estado conhecido em 26/10/2026: a 0.25.0 está no ar, com as migrations até a 0017 aplicadas (conferido no log do deploy). A 0.26.0 (recuperação de senha por e-mail, migration 0018) está no PR 25, ainda sem deploy. **Nada foi lido ao vivo**: o ambiente onde o código é escrito não alcança `projeto-musculo.webflow.io`.
+Estado conhecido em 26/10/2026: a 0.25.0 está no ar, com as migrations até a 0017 aplicadas (conferido no log do deploy). A 0.26.0 (recuperação de senha por e-mail, migration 0018) foi implantada com sucesso e `0018_email_messages.sql ✅` aparece no log; a 0.27.0 (mais de um gestor, migration 0019) está em PR, ainda sem deploy. **Nada foi lido ao vivo**: o ambiente onde o código é escrito não alcança `projeto-musculo.webflow.io`.
 
 ## 1. Depende do Responsável (conta, domínio, decisão)
 
@@ -51,9 +51,9 @@ Estado conhecido em 26/10/2026: a 0.25.0 está no ar, com as migrations até a 0
 
 | # | Conferência |
 |---|---|
-| C1 | `https://projeto-musculo.webflow.io/app/api/health`: versão `0.25.0` (hoje) e depois `0.26.0`; `"photos": "open"`; `"passwordRecovery": "not_configured"` até R1 |
+| C1 | `https://projeto-musculo.webflow.io/app/api/health`: versão `0.25.0` (hoje) e depois `0.27.0`; `"photos": "open"`; `"passwordRecovery": "not_configured"` até R1 |
 | C2 | Se `"photos": "closed"`: criar `PHOTOS_ENABLED=true` como variável do ambiente (a documentação do Webflow diz que `vars` do `wrangler.json` são ignoradas) e publicar de novo |
-| C3 | Após o deploy da 0.26: `0018_email_messages.sql ✅` no log do deploy |
+| C3 | Após o deploy da 0.26 e da 0.27: `0018_email_messages.sql ✅` e `0019_platform_admin_invites.sql ✅` no log do deploy |
 | C4 | Depois de R1: pedir um link para uma conta de teste (no sandbox da AWS, um endereço verificado), abri-lo e entrar com a senha nova; se a AWS recusar, o código fica em `email_messages.error_code` |
 | C5 | Primeiro uso real das fotos: subir uma foto de teste de um aluno de teste que autorizou, conferir a leitura só pelo profissional e pedir para apagar |
 | C6 | Quem já tinha aceitado os termos vê a tela de aceite de novo (a versão mudou de nome na 0.24) |
@@ -63,8 +63,8 @@ Estado conhecido em 26/10/2026: a 0.25.0 está no ar, com as migrations até a 0
 | # | O que | Observação |
 |---|---|---|
 | B1 | **"Baixar meus dados"**: cópia dos dados do aluno, gerada pela ferramenta | Hoje o pedido de cópia é respondido à mão. Escopo a decidir: o que o aluno já vê (conta, aceites, check-ins, execução, treino entregue, pedidos) versus o registro técnico do profissional |
-| B2 | **Segundo gestor por convite de uso único** (o papel nasce do token, nunca do e-mail) e recuperar o gestor perdido | Hoje há um só gestor e não há como acrescentar outro |
-| B3 | O gestor vê **pedidos do titular atrasados por organização**, sem conteúdo | Hoje só o profissional e o aluno veem o atraso |
+| ~~B2~~ | ~~Segundo gestor por convite de uso único~~ **Feito na 0.27.** Resta o caminho no banco para o último gestor perdido (não testado) | `AUTENTICACAO.md`, "Mais de um gestor" |
+| ~~B3~~ | ~~O gestor vê pedidos do titular atrasados por organização~~ **Feito na 0.27** (só contagens) | |
 | B4 | **Editor dos termos**: rascunho no servidor; prévia do efeito nas pessoas que já aceitaram | Hoje fechar a página perde a edição |
 | B5 | **Retirada do aceite dos termos** como ação do aluno | Hoje é só um pedido (depende em parte de J6) |
 | B6 | **Documentos** do aluno: PDFs de plano que o profissional compartilhou | O PDF e o armazenamento privado já existem |
@@ -83,7 +83,7 @@ Estado conhecido em 26/10/2026: a 0.25.0 está no ar, com as migrations até a 0
 | D2 | **Avisos por e-mail**: relato de desconforto, pedido do titular, lembrete de prazo | R1 |
 | D3 | **Mensagens** do aluno com o profissional | R1 e decisão sobre o canal |
 | D4 | **Convites e gestão de equipe**, papéis e revogação pela interface | R1 |
-| D5 | Gestor concede o papel de gestor pela interface e recupera o único gestor | B2 |
+| ~~D5~~ | ~~Gestor concede o papel de gestor pela interface~~ **Feito na 0.27** | |
 | D6 | Exclusão controlada de **outros dados** além das fotos | J4 |
 | D7 | Fluxo para **menores**, com responsável legal | J2 |
 
@@ -100,12 +100,14 @@ Estado conhecido em 26/10/2026: a 0.25.0 está no ar, com as migrations até a 0
 
 - **O envio real de e-mail nunca foi feito.** A assinatura da AWS bate com os exemplos publicados por ela, e o resto foi testado com um provedor simulado.
 - **`vars` do `wrangler.json` provavelmente é ignorado pelo Webflow.** A chave das fotos é lida do Worker ou de `process.env` (variável do painel) por isso; ver C2.
+- **O papel de gestor entrega poder sobre toda a plataforma** (ver organizações, bloquear acessos, publicar os termos): o link do convite deve ir só à pessoa certa, por canal seguro. O e-mail não é verificado e por isso nunca decide quem é gestor.
 - **Os logs de execução do Webflow podem conter segredos** e têm retenção que não controlamos. O token de redefinição de senha fica no fragmento do endereço justamente para não aparecer neles.
 - **E-mail não é verificado.** A recuperação só troca a senha, nunca o e-mail; convites e vínculos nascem do token, não do e-mail digitado.
-- **Um só gestor ativo** (B2). Se ele se perder, a plataforma não tem quem a opere.
+- **Convém ter sempre dois gestores.** Com dois, um encerra ou convida por cima do outro; com um só, se ele se perder o caminho é no banco e não foi testado.
 - **Sem aviso por e-mail** de nada: o profissional só vê check-ins, relatos de desconforto e pedidos de titular quando abre a ferramenta. A tela diz isso ao aluno.
 - **Registros congelados** (treino entregue, avaliação registrada, relato de dor) não se apagam: só as fotos têm exceção.
 - **Se o vínculo do aluno é revogado**, ele perde as telas de pedido do titular.
 - **Os testes de navegador que leem ou escrevem o banco local de fora do Worker** rodam sozinhos, depois dos outros, porque isso pode provocar um erro 500 raro no Worker local.
+- **Um transbordo horizontal não explicado em `/gestor/gestores`**, visto uma vez em sete execuções do cenário do gestor e nunca reproduzido. A checagem do teste agora nomeia os elementos que passam da janela; se voltar, o nome do elemento diz onde corrigir.
 - **A versão do texto dos termos** muda quando o gestor publica: todos aceitam de novo no acesso seguinte.
 - **A migration aplicada em produção é imutável**; qualquer mudança é uma migration nova e aditiva.

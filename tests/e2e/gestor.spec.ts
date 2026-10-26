@@ -98,6 +98,69 @@ test("the platform manager is activated once and manages organizations without s
   await manager.page.goto("./profissional");
   await expect(manager.page).toHaveURL(/\/gestor$/);
 
+  // Requests of the data subjects are only counted here: how many are open and how many are past the deadline.
+  await expect(manager.page.locator(".kpi", { hasText: "Pedidos de titulares em aberto" }).locator(".kpi-value")).toBeVisible();
+  await manager.page.goto("./gestor/organizacoes");
+  await expect(manager.page.getByRole("columnheader", { name: "Pedidos de titulares" })).toBeVisible();
+
+  // More than one manager: a single-use link, shown once, and the role comes from the link and the account.
+  await manager.page.goto("./gestor/gestores");
+  await expect(manager.page.getByRole("heading", { name: "Gestores", level: 1 })).toBeVisible();
+  await expect(manager.page.getByRole("link", { name: "Gestores" }).first()).toHaveAttribute("aria-current", "page");
+  const ownRow = manager.page.getByRole("row", { name: /Você/ });
+  await expect(ownRow.getByText("código de ativação")).toBeVisible();
+  await expect(ownRow.getByRole("button", { name: /Encerrar/ })).toHaveCount(0);
+  await noHorizontalOverflow(manager.page);
+  await manager.page.getByLabel("Lembrete de para quem é (opcional)").fill("Para a segunda pessoa da gestão");
+  await manager.page.getByRole("button", { name: "Gerar link de convite" }).click();
+  const link = await manager.page.getByLabel("Link de convite de gestor (uso único)").inputValue();
+  expect(link).toMatch(/\/gestor\/convite\/[A-Za-z0-9_-]{43}$/);
+  await expect(manager.page.getByRole("row", { name: /Para a segunda pessoa da gestão/ }).getByText("Aberto")).toBeVisible();
+
+  // Whoever opens it signs up and accepts with their own account. Nothing about their e-mail matters.
+  const colleague = await newActor(browser, baseURL);
+  const colleagueName = `Gestão ${crypto.randomUUID().slice(0, 6)}`;
+  const colleagueEmail = uniqueEmail("mgr3");
+  await colleague.page.goto(link);
+  await expect(colleague.page.getByRole("heading", { name: /convidou você/ })).toBeVisible();
+  await expect(colleague.page.getByText("Não vê alunos, avaliações nem treinos.", { exact: false })).toBeVisible();
+  await colleague.page.getByLabel("Seu nome").fill(colleagueName);
+  await colleague.page.getByLabel("E-mail", { exact: true }).fill(colleagueEmail);
+  await colleague.page.getByLabel("Senha", { exact: true }).fill("only-for-local-browser-testing");
+  await colleague.page.getByRole("button", { name: "Criar minha conta" }).click();
+  await expect(colleague.page.getByRole("heading", { name: `Aceitar como ${colleagueName}.` })).toBeVisible();
+  await colleague.page.getByRole("button", { name: "Aceitar e tornar-me gestor" }).click();
+  await expect(colleague.page.getByRole("heading", { name: "Quem contratou a ferramenta." })).toBeVisible();
+  expect(await colleague.page.content()).not.toContain("Aluno confidencial gestor");
+
+  // The link is spent for everyone else, and says the same as one that never existed.
+  const third = await newActor(browser, baseURL);
+  await third.page.goto(link);
+  await expect(third.page.getByRole("heading", { name: "Convite indisponível." })).toBeVisible();
+  await third.page.goto(link.replace(/[A-Za-z0-9_-]{43}$/, "A".repeat(43)));
+  await expect(third.page.getByRole("heading", { name: "Convite indisponível." })).toBeVisible();
+  await third.context.close();
+
+  // The first manager sees the new one and how they came in; the invitation is marked as used.
+  await manager.page.reload();
+  const newRow = manager.page.getByRole("row", { name: new RegExp(colleagueName) });
+  await expect(newRow.getByText("Ativo")).toBeVisible();
+  await expect(newRow.getByText(/^convite de /)).toBeVisible();
+  await expect(manager.page.getByRole("row", { name: /Para a segunda pessoa da gestão/ }).getByText("Usado")).toBeVisible();
+
+  // Ending the access is confirmed, and takes effect on the very next request.
+  await newRow.getByRole("button", { name: `Encerrar o acesso de gestor de ${colleagueName}` }).click();
+  await newRow.getByRole("button", { name: `Confirmar: encerrar o acesso de ${colleagueName}` }).click();
+  await expect(manager.page.getByText("Acesso de gestor encerrado.")).toBeVisible();
+  await colleague.page.goto("./gestor");
+  await expect(colleague.page).not.toHaveURL(/\/gestor\/?$/);
+  await expect(colleague.page.getByRole("heading", { name: "Quem contratou a ferramenta." })).toHaveCount(0);
+  await colleague.context.close();
+  await manager.page.goto("./gestor/auditoria");
+  await expect(manager.page.getByText("Convite de gestor criado").first()).toBeVisible();
+  await expect(manager.page.getByText("Gestor acrescentado").first()).toBeVisible();
+  await expect(manager.page.getByText("Acesso de gestor encerrado").first()).toBeVisible();
+
   // The terms: the text in force is the approved one, and the manager can change it on a page of its own.
   // This is the last thing the scenario does: publishing a text asks everyone to accept again.
   await manager.page.goto("./gestor/termos");

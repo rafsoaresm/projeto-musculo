@@ -19,6 +19,8 @@ export const demoSummary: PlatformSummary = {
   students: 112,
   portalAccesses: 58,
   blockedProfessionals: 1,
+  requestsOpen: 3,
+  requestsOverdue: 1,
 };
 
 export const demoOrganizations: OrganizationRow[] = [
@@ -32,6 +34,8 @@ export const demoOrganizations: OrganizationRow[] = [
     students: 41,
     portalAccesses: 27,
     blockedMembers: 0,
+    requestsOpen: 1,
+    requestsOverdue: 0,
   },
   {
     id: "demo-org-2",
@@ -43,6 +47,8 @@ export const demoOrganizations: OrganizationRow[] = [
     students: 18,
     portalAccesses: 9,
     blockedMembers: 0,
+    requestsOpen: 2,
+    requestsOverdue: 1,
   },
   {
     id: "demo-org-3",
@@ -54,6 +60,8 @@ export const demoOrganizations: OrganizationRow[] = [
     students: 26,
     portalAccesses: 12,
     blockedMembers: 1,
+    requestsOpen: 0,
+    requestsOverdue: 0,
   },
   {
     id: "demo-org-4",
@@ -65,6 +73,8 @@ export const demoOrganizations: OrganizationRow[] = [
     students: 9,
     portalAccesses: 4,
     blockedMembers: 0,
+    requestsOpen: 0,
+    requestsOverdue: 0,
   },
   {
     id: "demo-org-5",
@@ -76,6 +86,8 @@ export const demoOrganizations: OrganizationRow[] = [
     students: 12,
     portalAccesses: 6,
     blockedMembers: 0,
+    requestsOpen: 0,
+    requestsOverdue: 0,
   },
   {
     id: "demo-org-6",
@@ -87,6 +99,8 @@ export const demoOrganizations: OrganizationRow[] = [
     students: 6,
     portalAccesses: 0,
     blockedMembers: 0,
+    requestsOpen: 0,
+    requestsOverdue: 0,
   },
 ];
 
