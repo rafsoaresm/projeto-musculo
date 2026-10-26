@@ -431,8 +431,11 @@ label {
 }
 
 /* ---------- Tables ---------- */
+/* Positioned, so that the visually hidden text of a header (position: absolute) stays inside the
+   scrolling box instead of stretching the whole page when the table is wider than its panel. */
 .table-wrap,
 .schedule-table-wrap {
+  position: relative;
   overflow-x: auto;
 }
 table {
