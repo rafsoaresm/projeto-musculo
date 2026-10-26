@@ -1,6 +1,17 @@
-# Evidências de validação — v0.24.0 (termos editáveis pelo gestor, com versões e histórico; texto aprovado pelo advogado; check-in do aluno; fotos dependem da autorização do aluno) sobre a base 0.3
+# Evidências de validação — v0.24.1 (fotos abertas em produção, só com a autorização do aluno; termos editáveis pelo gestor, com versões e histórico; texto aprovado pelo advogado; check-in do aluno) sobre a base 0.3
 
 Tudo abaixo foi executado **localmente** em 23/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0016 são aditivas.
+
+## Fatia 0.24.1: fotos abertas em produção
+
+Sem migration. O responsável aprovou o texto (`2026-10-25-base`) e autorizou abrir as fotos; esta fatia só liga o que já existia e já estava protegido (aceite e autorização do próprio aluno desde a 0.21, retirada em Minha conta desde a 0.22, texto editável desde a 0.24).
+
+- **O que mudou.** `wrangler.json` passou a declarar `"vars": { "PHOTOS_ENABLED": "true" }` junto do bucket `photos`. O arquivo `wrangler.photos.json` (cópia usada no preview, no `next dev` e no CI com as fotos abertas, enquanto a produção as mantinha fechadas) foi removido: sem a diferença, a cópia só podia divergir. `preview:cloud`, o adapter de desenvolvimento e o CI agora rodam **o mesmo arquivo que o Webflow lê**, e `tests/wrangler-config.test.ts` exige a variável nele, o bucket com nome que cabe depois do prefixo do ambiente e a ausência da cópia.
+- **A trava lê as duas vias.** A documentação do Webflow Cloud diz que, do `wrangler.json`, só os bindings de armazenamento são lidos e que os demais campos "passam e são ignorados"; variáveis de ambiente oficiais são as do painel, que chegam ao app por `process.env`. Não encontrei documentação que diga se `vars` chega ao Worker de produção, então `photosSwitch` (em `src/modules/avaliacoes/photos.ts`) usa a variável do Worker e, se ela não existir, a de `process.env`, como já fazem `DEMO_MODE` e `AUTH_ORIGIN`. A regra não mudou: só abre com o bucket **e** o texto exato `true`; um valor `false` no Worker não é anulado pelo outro caminho. Testes em `tests/photos.test.ts`.
+- **Verificado localmente** (Worker workerd com `wrangler.json`, build de nuvem sem erro): `/api/health` diz `"photos": "open"` e o log lista `env.PHOTOS_ENABLED ("true")` ao lado de `env.PHOTOS (photos) R2 Bucket`; o smoke passa; os cenários de navegador de fotos (envio como JPEG limpo ao armazenamento privado, menor de 18 anos, aluno que não autorizou) e de aceite passam. `npm run check`: 338 testes.
+- **Não verificado em produção.** O ambiente de execução desta sessão não alcança `projeto-musculo.webflow.io` (falha de DNS), então não li o `/api/health` ao vivo. **Conferir depois do deploy:** abrir `https://projeto-musculo.webflow.io/app/api/health` e ver `"photos": "open"`. Se disser `"closed"`, a plataforma não repassou `vars`: criar `PHOTOS_ENABLED` com o valor `true` como variável do ambiente no painel (Webflow Cloud > o app > Environments > o ambiente > Variables > Add variable) e publicar de novo.
+- **Para fechar de novo.** Tirar `vars` do `wrangler.json` e a variável do painel (se existir), publicar e conferir `"photos": "closed"`. Fotos já guardadas continuam no bucket; nada é apagado.
+- **Em aberto (não mudou com a abertura).** Fotos já guardadas se a autorização for retirada; pedidos do titular (acesso, exportação, exclusão); retenção; menores (a ferramenta recusa foto de menor de 18); conferir na aba **Storage** que o bucket não tem endereço público (a documentação do Webflow diz que buckets públicos não são suportados).
 
 ## Fatia 0.24: termos editáveis pelo gestor
 

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 interface WranglerConfig {
@@ -18,8 +18,8 @@ const read = (file: string) => JSON.parse(readFileSync(file, "utf8")) as Wrangle
 const ENVIRONMENT_PREFIX = 36 + 1;
 const R2_LIMIT = 63;
 
-describe.each(["wrangler.json", "wrangler.photos.json"])("%s", (file) => {
-  const config = read(file);
+describe("wrangler.json", () => {
+  const config = read("wrangler.json");
 
   it("declares bucket names that still fit after the platform prefix", () => {
     for (const bucket of config.r2_buckets ?? []) {
@@ -34,17 +34,17 @@ describe.each(["wrangler.json", "wrangler.photos.json"])("%s", (file) => {
   });
 });
 
-describe("the photos stay closed until they are opened on purpose", () => {
-  it("provisions the bucket in production without opening the photos", () => {
+describe("the photos are open in the configuration the platform deploys", () => {
+  it("provisions the bucket and opens the photos, in the file the platform reads", () => {
     const production = read("wrangler.json");
     expect(production.r2_buckets).toEqual([{ binding: "PHOTOS", bucket_name: "photos" }]);
-    // Opening the photos is a deliberate change, made together with the student's consent.
-    expect(production.vars?.PHOTOS_ENABLED).toBeUndefined();
+    // The student's own authorization is still checked photo by photo, in the database.
+    expect(production.vars?.PHOTOS_ENABLED).toBe("true");
   });
 
-  it("opens them only in the local and CI preview, where the browser tests need them", () => {
-    const preview = read("wrangler.photos.json");
-    expect(preview.vars?.PHOTOS_ENABLED).toBe("true");
-    expect(preview.r2_buckets).toEqual(read("wrangler.json").r2_buckets);
+  it("has no second configuration that could drift from the one deployed", () => {
+    // The preview, the local server and the CI used a copy with the photos open while production kept
+    // them closed; once production opened them the copy had nothing left to say.
+    expect(existsSync("wrangler.photos.json")).toBe(false);
   });
 });
