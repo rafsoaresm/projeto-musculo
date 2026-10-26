@@ -39,6 +39,32 @@ Para as fotos de postura (0.14), o app usa o armazenamento de objetos nativo (R2
 
 `src/db/binding.ts` acessa `getCloudflareContext({ async: true })` dentro da requisição. A configuração Next inicializa o adapter no desenvolvimento, compartilhando `.wrangler/state` com as migrations locais. `cloudflare-env.d.ts` declara o tipo `DB`.
 
+## E-mail (recuperação de senha, Amazon SES)
+
+A recuperação de senha por e-mail (0.26) só existe quando as cinco variáveis abaixo estão completas e bem formadas; com qualquer uma faltando ou estranha, ela continua desligada e nada quebra. Passo a passo para ligar:
+
+1. **Identidade de envio no Amazon SES.** No console da AWS, em *Amazon SES > Configuration > Identities > Create identity*, crie um **domínio** (melhor) ou um endereço. Para domínio, publique no DNS os três registros CNAME do *Easy DKIM* que o console mostra e espere o status ficar *Verified*. Publique também SPF e DMARC do domínio. O remetente (`EMAIL_FROM`) precisa pertencer a essa identidade.
+2. **Sair do modo de teste (sandbox).** Conta nova do SES só envia para endereços verificados. Em *Account dashboard > Request production access*, peça a saída do sandbox descrevendo o uso: e-mail transacional de redefinição de senha, volume baixo. Enquanto isso, só dá para testar enviando para um endereço que você verificou como identidade.
+3. **Usuário IAM só de envio.** Em *IAM > Users*, crie um usuário sem acesso ao console, com a política abaixo (troque a região, o número da conta e o domínio), e crie uma chave de acesso para ele.
+   ```json
+   { "Version": "2012-10-17", "Statement": [ { "Effect": "Allow", "Action": ["ses:SendEmail"],
+     "Resource": "arn:aws:ses:sa-east-1:<número-da-conta>:identity/<seu-domínio>" } ] }
+   ```
+4. **Variáveis do ambiente no Webflow** (Webflow Cloud > o app > Environments > o ambiente > Variables > Add variable). Os valores nunca vão para o repositório nem para o navegador:
+
+   | Variável | Valor | Secreta? |
+   |---|---|---|
+   | `AWS_REGION` | a região da identidade, por exemplo `sa-east-1` | não |
+   | `AWS_ACCESS_KEY_ID` | o id da chave do passo 3 | não |
+   | `AWS_SECRET_ACCESS_KEY` | a chave secreta do passo 3 | **sim** |
+   | `EMAIL_FROM` | `Nome <nao-responda@seu-dominio>` ou só o endereço | não |
+
+   Depois, publique de novo (qualquer commit na `main`, ou *Redeploy*).
+5. **Conferir.** `https://<domínio>/app/api/health` deve mostrar `"passwordRecovery": "available"`. Depois, na tela de entrada deve aparecer "Esqueci minha senha"; peça o link para uma conta de teste (no sandbox, um endereço verificado) e confira que o e-mail chega, o link abre `/redefinir-senha` e a senha nova funciona.
+6. **Desligar.** Apague qualquer uma das variáveis e publique de novo: a recuperação some da tela e os endpoints voltam a responder 404.
+
+`EMAIL_TRANSPORT=capture` existe só para os testes de navegador (guarda o texto do e-mail no banco local) e só é aceito quando `AUTH_ORIGIN` é `localhost` ou `127.0.0.1`: numa variável de produção ele não liga nada. **Atenção a um texto aprovado:** o termo do profissional diz "Ainda não existe recuperação de senha por e-mail". Ao ligar o e-mail essa frase passa a ser falsa; troque-a em `/gestor/termos` (isso gera uma nova versão e todos aceitam de novo).
+
 ## Desenvolvimento
 
 ```sh

@@ -20,12 +20,12 @@ export default defineConfig({
   projects: [
     {
       name: "desktop",
-      testIgnore: /gestor\.spec\.ts|consent-stale\.spec\.ts/,
+      testIgnore: /gestor\.spec\.ts|consent-stale\.spec\.ts|password-reset\.spec\.ts/,
       use: { ...devices["Desktop Chrome"] },
     },
     {
       name: "mobile",
-      testIgnore: /gestor\.spec\.ts|consent-stale\.spec\.ts/,
+      testIgnore: /gestor\.spec\.ts|consent-stale\.spec\.ts|password-reset\.spec\.ts/,
       use: { ...devices["Pixel 7"] },
     },
     // The first manager activates once per database, so this runs a single time. It ends by publishing a
@@ -33,7 +33,7 @@ export default defineConfig({
     {
       name: "gestor",
       testMatch: /gestor\.spec\.ts/,
-      dependencies: ["desktop", "mobile", "consent-stale"],
+      dependencies: ["desktop", "mobile", "consent-stale", "recovery"],
       use: { ...devices["Desktop Chrome"] },
     },
     // Writes to the local database from outside the worker, so it runs alone, once, after the others
@@ -42,6 +42,14 @@ export default defineConfig({
       name: "consent-stale",
       testMatch: /consent-stale\.spec\.ts/,
       dependencies: ["desktop", "mobile"],
+      use: { ...devices["Desktop Chrome"] },
+    },
+    // Reads the e-mail the local "capture" transport kept, from the local database and from outside the
+    // worker, so it runs alone, after the writer above.
+    {
+      name: "recovery",
+      testMatch: /password-reset\.spec\.ts/,
+      dependencies: ["consent-stale"],
       use: { ...devices["Desktop Chrome"] },
     },
   ],

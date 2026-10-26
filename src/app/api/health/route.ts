@@ -1,5 +1,5 @@
 import { getDatabase, photoStorageAvailable } from "@/db/binding";
-import { getAuth } from "@/modules/auth/server";
+import { getAuth, recoveryAvailable } from "@/modules/auth/server";
 
 export async function GET() {
   let persistence: "available" | "unavailable" = "unavailable";
@@ -8,7 +8,7 @@ export async function GET() {
     const db = await getDatabase();
     const schema = await db
       .prepare("SELECT version FROM app_schema_versions WHERE version = ?")
-      .bind("0017_data_subject_requests")
+      .bind("0018_email_messages")
       .first();
     if (schema) persistence = "available";
   } catch {
@@ -24,7 +24,7 @@ export async function GET() {
     {
       status: persistence === "available" ? "ok" : "degraded",
       service: "trainer-prescription",
-      version: "0.25.0",
+      version: "0.26.0",
       capabilities: {
         periodization: "available",
         areas: ["gestor", "profissional", "aluno"],
@@ -33,6 +33,9 @@ export async function GET() {
         storage: "webflow_sqlite",
         // Whether the environment lets postural photos in: the bucket exists and the switch is on.
         photos: (await photoStorageAvailable()) ? "open" : "closed",
+        // Whether a forgotten password can be recovered by e-mail: the sender is completely configured.
+        // Nothing about the provider or its keys is shown here.
+        passwordRecovery: (await recoveryAvailable()) ? "available" : "not_configured",
       },
     },
     {

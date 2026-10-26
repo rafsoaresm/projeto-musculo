@@ -4,6 +4,8 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createAuth } from "./factory";
+import { readEmailSettings } from "@/modules/email/config";
+import { createEmailService } from "@/modules/email/service";
 import { workspaceFor } from "@/db/workspaces";
 import { isPlatformAdmin } from "@/db/platform";
 import { portalLinksFor } from "@/db/student-access";
@@ -31,18 +33,31 @@ function mountPath() {
 }
 
 export async function getAuthSettings() {
-  const { env } = await getCloudflareContext({ async: true });
+  const { env, ctx } = await getCloudflareContext({ async: true });
   const secret = env.AUTH_SECRET || process.env.AUTH_SECRET;
   const origin =
     process.env.NODE_ENV === "development"
       ? process.env.AUTH_ORIGIN || env.AUTH_ORIGIN
       : env.AUTH_ORIGIN || process.env.AUTH_ORIGIN;
   if (!secret || !origin) throw new Error("AUTH_CONFIGURATION_REQUIRED");
+  // The e-mail exists only when it is completely configured. Incomplete means "not available".
+  const emailSettings = readEmailSettings(env as unknown as Record<string, string | undefined>, process.env, origin);
   return {
     secret,
     origin,
     basePath: mountPath(),
+    email: emailSettings && env.DB ? createEmailService(env.DB, emailSettings) : null,
+    background: (promise: Promise<unknown>) => ctx.waitUntil(promise),
   };
+}
+
+/** Whether a forgotten password can be recovered by e-mail in this environment. */
+export async function recoveryAvailable(): Promise<boolean> {
+  try {
+    return Boolean((await getAuthSettings()).email);
+  } catch {
+    return false;
+  }
 }
 export async function getAuth() {
   const { env } = await getCloudflareContext({ async: true });
