@@ -4,7 +4,7 @@ O que está aberto, quem destrava e onde cada coisa está contada em detalhe. **
 
 Quem: **Responsável** (dono do produto: contas, domínios, decisões), **Advogado**, **Técnico** (responsável técnico em educação física: conteúdo clínico), **Código** (o que se constrói sem esperar ninguém).
 
-Estado conhecido em 26/10/2026: a 0.25.0 está no ar, com as migrations até a 0017 aplicadas (conferido no log do deploy). A 0.26.0 (recuperação de senha por e-mail, migration 0018) foi implantada com sucesso e `0018_email_messages.sql ✅` aparece no log; a 0.27.0 (mais de um gestor, migration 0019) também foi implantada com sucesso (commit `e7788ef`) e `0019_platform_admin_invites.sql ✅` aparece no log do deploy. **Nada foi lido ao vivo**: o ambiente onde o código é escrito não alcança `projeto-musculo.webflow.io`.
+Estado conhecido em 26/10/2026: a 0.25.0 está no ar, com as migrations até a 0017 aplicadas (conferido no log do deploy). A 0.26.0 (recuperação de senha por e-mail, migration 0018) foi implantada com sucesso e `0018_email_messages.sql ✅` aparece no log; a 0.27.0 (mais de um gestor, migration 0019) também foi implantada com sucesso (commit `e7788ef`) e `0019_platform_admin_invites.sql ✅` aparece no log do deploy. A 0.28.0 ("Baixar meus dados", sem migration) está em PR, ainda sem deploy. **Nada foi lido ao vivo**: o ambiente onde o código é escrito não alcança `projeto-musculo.webflow.io`.
 
 ## 1. Depende do Responsável (conta, domínio, decisão)
 
@@ -57,12 +57,13 @@ Estado conhecido em 26/10/2026: a 0.25.0 está no ar, com as migrations até a 0
 | C4 | Depois de R1: pedir um link para uma conta de teste (no sandbox da AWS, um endereço verificado), abri-lo e entrar com a senha nova; se a AWS recusar, o código fica em `email_messages.error_code` |
 | C5 | Primeiro uso real das fotos: subir uma foto de teste de um aluno de teste que autorizou, conferir a leitura só pelo profissional e pedir para apagar |
 | C6 | Quem já tinha aceitado os termos vê a tela de aceite de novo (a versão mudou de nome na 0.24) |
+| C7 | Com um aluno de teste em produção: abrir Minha conta, tocar em **Baixar meus dados**, abrir o arquivo e conferir que traz só o que ele vê (e nada da ficha nem das avaliações); em `/api/health` a versão `0.28.0` |
 
 ## 5. Construir agora (Código; não depende de ninguém)
 
 | # | O que | Observação |
 |---|---|---|
-| B1 | **"Baixar meus dados"**: cópia dos dados do aluno, gerada pela ferramenta | Hoje o pedido de cópia é respondido à mão. Escopo a decidir: o que o aluno já vê (conta, aceites, check-ins, execução, treino entregue, pedidos) versus o registro técnico do profissional |
+| ~~B1~~ | ~~"Baixar meus dados": cópia dos dados do aluno, gerada pela ferramenta~~ **Feito na 0.28, só com o que o aluno já vê** (acesso, aceites, check-ins, treinos registrados, treino entregue, pedidos). O registro técnico do profissional continua respondido à mão: ver B13 | `ROADMAP-IMPLEMENTACAO.md` (0.28) |
 | ~~B2~~ | ~~Segundo gestor por convite de uso único~~ **Feito na 0.27.** Resta o caminho no banco para o último gestor perdido (não testado) | `AUTENTICACAO.md`, "Mais de um gestor" |
 | ~~B3~~ | ~~O gestor vê pedidos do titular atrasados por organização~~ **Feito na 0.27** (só contagens) | |
 | B4 | **Editor dos termos**: rascunho no servidor; prévia do efeito nas pessoas que já aceitaram | Hoje fechar a página perde a edição |
@@ -74,13 +75,15 @@ Estado conhecido em 26/10/2026: a 0.25.0 está no ar, com as migrations até a 0
 | B10 | Fotos: **anotação sobre a imagem**; geração do PDF com pendências | Constam como critério restante de E2 |
 | B11 | Política de senha contra vazamentos; MFA | Constam em E1 |
 | B12 | Rotina de **retenção** (depende de J3, mas o mecanismo se constrói antes) | Nada apaga hoje |
+| B13 | **Cópia do registro técnico** do profissional (ficha, avaliações, anotações sobre check-ins e treinos) para o titular | Falta o advogado dizer o que se entrega e como (J1, J4). Enquanto isso o aluno pede e o profissional responde à mão |
+| B14 | **Formato legível** da cópia (página ou PDF) para quem não lê JSON | Hoje só o JSON; a tela explica que abre em um editor de texto |
 
 ## 6. Construir depois de outra pendência
 
 | # | O que | Espera |
 |---|---|---|
 | D1 | **Verificação do e-mail** no cadastro e **troca de e-mail** | R1 |
-| D2 | **Avisos por e-mail**: relato de desconforto, pedido do titular, lembrete de prazo | R1 |
+| D2 | **Avisos por e-mail**: relato de desconforto, pedido do titular, lembrete de prazo, aviso de que uma cópia dos dados foi gerada | R1 |
 | D3 | **Mensagens** do aluno com o profissional | R1 e decisão sobre o canal |
 | D4 | **Convites e gestão de equipe**, papéis e revogação pela interface | R1 |
 | ~~D5~~ | ~~Gestor concede o papel de gestor pela interface~~ **Feito na 0.27** | |
@@ -106,7 +109,7 @@ Estado conhecido em 26/10/2026: a 0.25.0 está no ar, com as migrations até a 0
 - **Convém ter sempre dois gestores.** Com dois, um encerra ou convida por cima do outro; com um só, se ele se perder o caminho é no banco e não foi testado.
 - **Sem aviso por e-mail** de nada: o profissional só vê check-ins, relatos de desconforto e pedidos de titular quando abre a ferramenta. A tela diz isso ao aluno.
 - **Registros congelados** (treino entregue, avaliação registrada, relato de dor) não se apagam: só as fotos têm exceção.
-- **Se o vínculo do aluno é revogado**, ele perde as telas de pedido do titular.
+- **Se o vínculo do aluno é revogado**, ele perde as telas de pedido do titular **e o download dos próprios dados** (a ferramenta só serve a quem tem vínculo ativo). Quem cuida disso fora da ferramenta é o profissional, que responde o pedido; a pergunta de quem entrega a cópia depois que o vínculo termina é do advogado (J1).
 - **Os testes de navegador que leem ou escrevem o banco local de fora do Worker** rodam sozinhos, depois dos outros, porque isso pode provocar um erro 500 raro no Worker local.
 - **Um transbordo horizontal não explicado em `/gestor/gestores`**, visto uma vez em sete execuções do cenário do gestor e nunca reproduzido. A checagem do teste agora nomeia os elementos que passam da janela; se voltar, o nome do elemento diz onde corrigir.
 - **A versão do texto dos termos** muda quando o gestor publica: todos aceitam de novo no acesso seguinte.

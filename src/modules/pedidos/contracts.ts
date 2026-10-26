@@ -31,7 +31,8 @@ export const REQUEST_KIND_LABEL: Record<RequestKind, string> = {
 
 /** What the screen says about what happens, in plain words, next to each kind. */
 export const REQUEST_KIND_HELP: Record<RequestKind, string> = {
-  ACCESS: "O seu profissional responde com o que a ferramenta guarda sobre você.",
+  ACCESS:
+    "O que a ferramenta mostra a você, você já baixa em “Baixar uma cópia dos meus dados”. Este pedido é para receber também o que o seu profissional guarda (ficha, avaliações, fotos e anotações): ele responde.",
   CORRECTION: "Diga qual dado está errado e como deveria ser.",
   PHOTOS_DELETION:
     "Quando o seu profissional atender, as fotos guardadas são apagadas do armazenamento e deixam de aparecer. Fica o registro de que existiram e de que foram apagadas a seu pedido. Isso não retira a sua autorização para fotos novas: faça isso acima, em “Fotos de postura”.",
