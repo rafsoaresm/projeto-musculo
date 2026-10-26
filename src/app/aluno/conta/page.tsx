@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { requireStudent, recoveryAvailable } from "@/modules/auth/server";
 import { latestAcceptance } from "@/db/consent";
 import { shownTerms } from "@/db/terms";
@@ -8,6 +9,7 @@ import { PageHeading } from "@/components/ui";
 import { SecurityPanel } from "@/modules/auth/components/security-panel";
 import { PhotosChoice } from "@/modules/consentimento/photos-choice";
 import { StudentRequests } from "@/modules/pedidos/student-requests";
+import { EXPORTS_PER_HOUR, EXPORT_INCLUDED, EXPORT_NOT_INCLUDED } from "@/modules/pedidos/export";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Minha conta · Área do aluno" };
@@ -59,6 +61,34 @@ export default async function StudentAccount() {
             />
           </>
         )}
+      </section>
+      <section className="panel" id="baixar" aria-labelledby="baixar-conta">
+        <p className="eyebrow">SEUS DADOS</p>
+        <h2 id="baixar-conta">Baixar uma cópia dos meus dados</h2>
+        <p className="muted">
+          Gera na hora um arquivo com o que a ferramenta mostra a você. Está em JSON, um formato que outros programas
+          leem e que também abre em um editor de texto.
+        </p>
+        <p>O arquivo traz:</p>
+        <ul>
+          {EXPORT_INCLUDED.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+        <p>Ele não traz:</p>
+        <ul>
+          {EXPORT_NOT_INCLUDED.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+        <p className="muted">
+          Para receber também o que o seu profissional guarda, faça o pedido “Receber uma cópia dos meus dados” logo
+          abaixo. Cada download fica registrado (quando, nunca o conteúdo) e há um limite de {EXPORTS_PER_HOUR} por
+          hora. O arquivo tem dados de saúde: guarde-o em um lugar seguro.
+        </p>
+        <Link className="button secondary" href="/aluno/conta/meus-dados" download prefetch={false}>
+          Baixar meus dados
+        </Link>
       </section>
       <section className="panel" id="pedidos" aria-labelledby="pedidos-conta">
         <p className="eyebrow">SEUS DIREITOS</p>
