@@ -43,7 +43,7 @@ O DB continua nativo; não há URL de banco externo. Migrations 0001 e 0002 são
 - Um espaço provisionado por identidade. Não há seletor de organizações nem provisionamento automático após revogação.
 - A ferramenta não envia e-mails: o profissional copia o link do convite e o envia por um canal seguro. O token é mostrado uma única vez; só o hash fica no banco.
 - O portal do aluno ainda usa a mesma origem do painel. Antes de dados reais de alunos, publique painel e portal em origens privadas separadas e sem scripts de marketing.
-- Só há um gestor ativo por ativação; conceder o papel a outros gestores pela interface e recuperar o único gestor perdido são pendências.
+- Há um gestor por ativação (código do ambiente) e mais gestores **por convite de uso único** (0.27, abaixo). Recuperar o último gestor perdido continua exigindo mexer no banco (ver "Mais de um gestor").
 - Auditoria cobre criação de organização/aluno, ativação do gestor, bloqueios, convites e revogação de acesso. Não é ainda uma trilha de login, leitura e alterações.
 - Há testes de revogação no banco. O profissional revoga o acesso do aluno e o gestor bloqueia identidades pela interface; revogação de membros de equipe ainda é pendente.
 - Drizzle/Better Auth usa operações sequenciais para credenciais porque D1 não aceita transações interativas. Testar recuperação de falhas parciais de cadastro antes de liberar acesso operacional. Batches do domínio são atômicos e têm teste de rollback.
@@ -63,3 +63,14 @@ Quem já está conectado troca a senha em `/profissional/conta` ou `/aluno/conta
 - **O que o e-mail contém:** o link e como ignorar a mensagem. Nenhum dado de treino, avaliação, foto ou check-in, em texto simples. A tabela `email_messages` guarda o endereço, o resultado (`SENT`, `FAILED`, `THROTTLED`) e o código do erro do provedor, **nunca o link, o token nem o texto**; o banco recusa um texto para qualquer provedor que não seja a captura local.
 - **O que não existe:** verificação do e-mail no cadastro (a conta continua válida sem ela), troca de e-mail, MFA e aviso por e-mail de qualquer outra coisa. Quem se cadastra com um e-mail que não é seu ainda pode criar uma conta nele; por isso a recuperação nunca muda o e-mail de uma conta, só a senha, e só para quem controla a caixa de entrada.
 - **Não foi testado contra a AWS real.** A assinatura (Signature Version 4) foi conferida contra os exemplos publicados pela AWS e o envio contra um provedor simulado; o primeiro envio de verdade depende de credenciais que só o responsável tem. A conferência é o item "e-mail" de `docs/VALIDACAO.md`.
+
+## Mais de um gestor (0.27)
+
+Antes, o único jeito de virar gestor era o código de ativação do ambiente, que só funciona enquanto não há gestor ativo: um gestor só. Agora um gestor convida outro em **Gestor > Gestores** (`/gestor/gestores`).
+
+- **O convite é um link de uso único**, válido por 48 horas, mostrado uma só vez a quem o emitiu; só o SHA-256 dele fica no banco. Quem o abre cria a conta (ou entra) e aceita; o papel nasce **do link e da conta de quem aceitou**, nunca do e-mail (que ainda não é verificado: digitar um e-mail entregaria o papel a quem o cadastrasse primeiro). O lembrete opcional de "para quem é" é só do gestor que emitiu.
+- **O que o novo gestor vê:** organizações, profissionais, contagens, a trilha de ações do gestor e os termos; bloqueia acessos e publica os termos. **Não vê alunos, avaliações nem treinos.** A página do convite diz isso antes de aceitar e pede que a pessoa entre com a conta certa.
+- **O convite morre** quando vence, é usado, é cancelado ou quando quem o emitiu deixa de ser gestor; quem já é gestor não gasta o link; uma identidade bloqueada não vira gestor. O banco recusa essas situações também, por gatilhos (convite só emitido por gestor ativo, imutável depois de usado ou cancelado, nunca apagado).
+- **Encerrar o acesso** de outro gestor vale na requisição seguinte (cada verificação lê `platform_admins` de novo). **Ninguém encerra o próprio**, então sempre sobra ao menos quem está agindo. Pedidos simultâneos de um contra o outro não deixam a plataforma sem gestor.
+- **Auditoria:** `PLATFORM_ADMIN_INVITED`, `PLATFORM_ADMIN_INVITE_REVOKED`, `PLATFORM_ADMIN_GRANTED` e `PLATFORM_ADMIN_REVOKED` aparecem na trilha do gestor, sem o link.
+- **Se o último gestor se perder** (e não houver outro para encerrar nem convidar), o único caminho é no banco: marcar `platform_admins.revoked_at` de quem restou e usar de novo o código de ativação em `/gestor/ativar`. Isso altera o banco de produção, que só o responsável faz pelo painel do Webflow; **não foi testado**. Por isso convém ter sempre dois gestores.

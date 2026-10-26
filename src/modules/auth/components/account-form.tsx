@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useMountPath } from "@/components/use-mount-path";
 
-type Audience = "profissional" | "aluno";
+type Audience = "profissional" | "aluno" | "gestor";
 
 const copy = {
   login: {
@@ -18,6 +18,12 @@ const copy = {
     eyebrow: "PROFISSIONAL",
     heading: "Comece pelo seu cuidado.",
     text: "Crie sua conta profissional para organizar seus alunos.",
+    submit: "Criar minha conta",
+  },
+  gestor: {
+    eyebrow: "GESTOR",
+    heading: "Crie a sua conta de gestor.",
+    text: "Use um e-mail e uma senha. O convite vale para a conta com a qual você o aceitar.",
     submit: "Criar minha conta",
   },
   aluno: {

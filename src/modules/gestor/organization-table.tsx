@@ -31,6 +31,9 @@ export function OrganizationTable({
             <th scope="col" className="num">
               Acessos de aluno
             </th>
+            <th scope="col" className="num">
+              Pedidos de titulares
+            </th>
             <th scope="col">Situação</th>
             <th scope="col">Criada em</th>
             {hrefFor && (
@@ -53,6 +56,17 @@ export function OrganizationTable({
               <td className="num" data-label="Profissionais">{row.members}</td>
               <td className="num" data-label="Alunos">{row.students}</td>
               <td className="num" data-label="Acessos de aluno">{row.portalAccesses}</td>
+              <td className="num" data-label="Pedidos de titulares">
+                {row.requestsOpen === 0 ? (
+                  "0"
+                ) : row.requestsOverdue > 0 ? (
+                  <Pill tone="danger">
+                    {row.requestsOpen} em aberto, {row.requestsOverdue} atrasado{row.requestsOverdue === 1 ? "" : "s"}
+                  </Pill>
+                ) : (
+                  <>{row.requestsOpen} em aberto</>
+                )}
+              </td>
               <td data-label="Situação">
                 {row.blockedMembers > 0 ? (
                   <Pill tone="danger">

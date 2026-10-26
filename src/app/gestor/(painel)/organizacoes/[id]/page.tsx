@@ -36,6 +36,15 @@ export default async function OrganizationDetail({
           hint="Só a contagem"
         />
         <Kpi label="Acessos de aluno ativos" value={organization.portalAccesses} />
+        <Kpi
+          label="Pedidos de titulares em aberto"
+          value={organization.requestsOpen}
+          hint={
+            organization.requestsOverdue > 0
+              ? `${organization.requestsOverdue} passou do prazo de 15 dias`
+              : "Só a contagem; quem responde é o profissional"
+          }
+        />
       </div>
       <Notice>
         <p>

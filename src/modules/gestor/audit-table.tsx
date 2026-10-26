@@ -7,6 +7,10 @@ const actionLabel: Record<string, string> = {
   USER_UNBLOCKED: "Acesso restabelecido",
   TERMS_PUBLISHED_STUDENT: "Termos do aluno publicados",
   TERMS_PUBLISHED_PROFESSIONAL: "Termos do profissional publicados",
+  PLATFORM_ADMIN_INVITED: "Convite de gestor criado",
+  PLATFORM_ADMIN_INVITE_REVOKED: "Convite de gestor cancelado",
+  PLATFORM_ADMIN_GRANTED: "Gestor acrescentado",
+  PLATFORM_ADMIN_REVOKED: "Acesso de gestor encerrado",
 };
 
 /** Shared by the real manager area and the demonstration. */

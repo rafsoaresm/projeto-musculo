@@ -74,11 +74,18 @@ export async function addStudent(page: Page, name: string) {
 }
 
 export async function noHorizontalOverflow(page: Page) {
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-  ).toBe(true);
+  // When the page is wider than the window, name what sticks out, so the failure says where to look.
+  const offenders = await page.evaluate(async () => {
+    // The layout is only final once the fonts are in and a frame has been drawn.
+    await document.fonts.ready;
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+    if (document.documentElement.scrollWidth <= innerWidth) return [];
+    return [...document.querySelectorAll("body *")]
+      .filter((element) => element.getBoundingClientRect().right > innerWidth + 1)
+      .slice(0, 6)
+      .map((element) => `${element.tagName.toLowerCase()}${element.className ? `.${String(element.className).split(" ").join(".")}` : ""} → ${Math.round(element.getBoundingClientRect().right)}px of ${innerWidth}px`);
+  });
+  expect(offenders).toEqual([]);
 }
 
 /** Desktop has "Sair" in the top bar; on a phone it lives in the menu sheet. */

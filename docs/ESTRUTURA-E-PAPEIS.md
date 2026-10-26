@@ -52,6 +52,7 @@ Uma mesma conta pode ter mais de uma área (por exemplo, gestor e profissional).
 /aluno/[módulo]           planejados: documentos, mensagens
 
 /demonstracao[/gestor|/profissional|/aluno ...]   somente com DEMO_MODE=true
+/gestor/gestores  /gestor/convite/<token>   mais de um gestor, por link de uso único (0.27)
 /esqueci-a-senha  /redefinir-senha   só com o e-mail configurado (0.26); sem ele dizem que não está disponível
 /api/health  /api/auth/*
 ```
