@@ -14,6 +14,13 @@ export const AUTH_ENDPOINTS: ReadonlySet<string> = new Set([
   "revoke-other-sessions",
 ]);
 
+/**
+ * The recovery of a forgotten password. Reachable only when the e-mail is configured: the same
+ * route answers 404 for these two otherwise, as if they did not exist. The library's own GET
+ * callback (`reset-password/<token>`) is not in any list: the link goes to our page.
+ */
+export const RESET_ENDPOINTS: ReadonlySet<string> = new Set(["request-password-reset", "reset-password"]);
+
 /** Public boundary: strict browser origin, endpoint allowlist and rate-limit fallback. */
 export async function handleAuthRequest(
   auth: ReturnType<typeof createAuth>,
@@ -24,7 +31,8 @@ export async function handleAuthRequest(
     routeEndpoint ??
     new URL(request.url).pathname.slice(auth.options.basePath!.length + 1);
   const responseHeaders = { "Cache-Control": "private, no-store" };
-  if (!AUTH_ENDPOINTS.has(path))
+  const recoveryOpen = Boolean(auth.options.emailAndPassword?.sendResetPassword);
+  if (!AUTH_ENDPOINTS.has(path) && !(recoveryOpen && RESET_ENDPOINTS.has(path)))
     return new Response(null, { status: 404, headers: responseHeaders });
   if (request.method !== (path === "get-session" ? "GET" : "POST"))
     return new Response(null, { status: 405, headers: responseHeaders });

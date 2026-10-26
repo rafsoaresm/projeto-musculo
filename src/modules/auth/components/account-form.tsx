@@ -33,12 +33,15 @@ export function AccountForm({
   audience = "profissional",
   redirectTo = "/acesso",
   switchTo,
+  forgotHref,
 }: {
   signup?: boolean;
   audience?: Audience;
   /** An internal path chosen by the page, never by a query string. */
   redirectTo?: string;
   switchTo?: { href: string; label: string };
+  /** Only passed when the recovery of the password by e-mail exists in this environment. */
+  forgotHref?: string;
 }) {
   const router = useRouter();
   const mountPath = useMountPath();
@@ -144,6 +147,11 @@ export function AccountForm({
           {pending ? "Aguarde…" : text.submit}
         </button>
       </form>
+      {!signup && forgotHref && (
+        <Link className="account-link" href={forgotHref}>
+          Esqueci minha senha
+        </Link>
+      )}
       <Link className="account-link" href={alternate.href}>
         {alternate.label}
       </Link>

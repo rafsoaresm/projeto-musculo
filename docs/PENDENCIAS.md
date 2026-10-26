@@ -1,0 +1,111 @@
+# Pendências
+
+O que está aberto, quem destrava e onde cada coisa está contada em detalhe. **Este é o lugar onde as pendências ficam guardadas**: ao abrir uma, escreva aqui; ao fechar, risque e diga em qual fatia. Os detalhes de cada decisão estão em [`REVISAO-JURIDICA.md`](REVISAO-JURIDICA.md), [`VALIDACAO.md`](VALIDACAO.md) e [`ROADMAP-IMPLEMENTACAO.md`](ROADMAP-IMPLEMENTACAO.md); aqui só o que falta e quem tem de agir.
+
+Quem: **Responsável** (dono do produto: contas, domínios, decisões), **Advogado**, **Técnico** (responsável técnico em educação física: conteúdo clínico), **Código** (o que se constrói sem esperar ninguém).
+
+Estado conhecido em 26/10/2026: a 0.25.0 está no ar, com as migrations até a 0017 aplicadas (conferido no log do deploy). A 0.26.0 (recuperação de senha por e-mail, migration 0018) está no PR 25, ainda sem deploy. **Nada foi lido ao vivo**: o ambiente onde o código é escrito não alcança `projeto-musculo.webflow.io`.
+
+## 1. Depende do Responsável (conta, domínio, decisão)
+
+| # | O que falta | Por que importa | Onde está |
+|---|---|---|---|
+| R1 | **Configurar a AWS (Amazon SES)** e as variáveis do e-mail no painel do Webflow; depois conferir o primeiro envio real | Sem isso quem perde a senha perde a conta, e nenhum aviso por e-mail existe. A recuperação está construída e desligada | `WEBFLOW-CLOUD.md`, seção "E-mail" |
+| R2 | Ao ligar o e-mail, **trocar em `/gestor/termos`** a frase do termo do profissional "Ainda não existe recuperação de senha por e-mail" | Passa a ser falsa; a troca gera versão nova e todos aceitam de novo | `REVISAO-JURIDICA.md` §5.2 e §7 item 6 |
+| R3 | **Portal do aluno em origem privada separada** do painel | Documentado como condição antes de dados reais de alunos; hoje compartilham a origem. Exige domínio ou host no Webflow | `AUTENTICACAO.md` ("Limites desta fatia"), `AGENTS.md` |
+| R4 | **Escolher o meio de cobrança** e os planos | "Planos e cobrança" e "Afiliados" são "Em breve": hoje ninguém consegue pagar a ferramenta | `ROADMAP-IMPLEMENTACAO.md` (E6), `surfaces.ts` |
+| R5 | Confirmar se **`DEMO_MODE=true` em produção** é de propósito | A demonstração com dados fictícios fica pública no mesmo endereço do app | variável do ambiente |
+| R6 | Conferir na aba **Storage** do Webflow que o bucket `photos` não tem endereço público | Imagem de saúde; a documentação do Webflow diz que bucket público não existe, mas a conferência é sua | `WEBFLOW-CLOUD.md` |
+| R7 | **Publicar o texto citando o check-in**, se o advogado concordar (pergunta 12) | O texto aprovado não cita o check-in nem a recuperação (R2) | `REVISAO-JURIDICA.md` §8 |
+| R8 | Escolher o **canal e o responsável pelo titular** (encarregado/DPO) e um plano de resposta a incidentes | Hoje não existem | `REVISAO-JURIDICA.md` §7 item 8 |
+| R9 | **Contrato de operação** entre a plataforma e o profissional | Não existe | `REVISAO-JURIDICA.md` §7 item 8 |
+
+## 2. Depende do Advogado (pacote em `REVISAO-JURIDICA.md`)
+
+| # | Pergunta | Estado |
+|---|---|---|
+| J1 | Controlador e operador (profissional e plataforma; a AWS e o Webflow como operadores) | Hipótese escrita, sem resposta |
+| J2 | **Menores de 18 anos**: caminho mínimo e seguro (responsável legal, fotos) | A ferramenta bloqueia foto e pede confirmação de 18 anos; sem desenho aprovado |
+| J3 | **Retenção**: prazo (proposta: ~5 anos; menor para fotos) e o que a lei manda manter para o profissional | Nada apaga ou anonimiza hoje |
+| J4 | **Exclusão de registro congelado** (treino entregue, avaliação registrada) | Só as fotos têm exceção construída (0.25); o resto é respondido em palavras |
+| J5 | **Fotos já guardadas** quando o aluno retira a autorização: apagar na hora ou manter | O aluno pede "apagar as minhas fotos" e o profissional atende, mas a regra geral não está decidida |
+| J6 | **Retirada do aceite** dos termos como um todo: efeito sobre os dados | Só existe como pedido respondido em palavras |
+| J7 | Transferência internacional: dados em infraestrutura do Webflow/Cloudflare e e-mail pela AWS, em regiões que não escolhemos | Perguntar ao Webflow onde ficam os dados e as cópias |
+| J8 | **Aviso de privacidade** completo, separado dos termos e público antes do cadastro | Hoje é um texto só, mostrado na entrada |
+| J9 | Prazo de descarte dos registros técnicos (IP e navegador das sessões, `email_messages`, logs) | Sem prazo |
+| J10 | Base legal para dados e imagens de saúde (consentimento específico e destacado, como desenhado) | Proposta aprovada pelo responsável; falta o parecer |
+
+## 3. Depende do Técnico (conteúdo clínico: não será inventado)
+
+| # | O que falta |
+|---|---|
+| T1 | **Conferir o instrumento de triagem** (os seis itens vieram do documento mestre, não de validação clínica) e definir quais sinais colocam a avaliação em revisão |
+| T2 | Confirmar a **escala de esforço** (RIR por exercício e 0 a 10 por sessão) e as janelas (24 horas para corrigir, 14 dias para registrar depois) |
+| T3 | Definir **aderência**: tolerância, semana de descanso, viagem ou lesão fora da conta, metas por aluno, porcentagem por treino (A, B, C) |
+| T4 | **Faixas de referência e metas** dos indicadores; pressão separada em sistólica e diastólica |
+| T5 | O que fazer com um **relato de dor** (hoje só se guarda e se mostra) e se "interrompido por dor" conta como sinal de triagem |
+| T6 | **Política de resposta ao check-in** do aluno e a escala de recuperação em palavras (foi escolha do código) |
+| T7 | O que entra no **PDF** do plano: objetivo e gênero (ficaram de fora por privacidade), CREF (não há campo), logotipo |
+
+## 4. Conferir em produção (não verificado até aqui)
+
+| # | Conferência |
+|---|---|
+| C1 | `https://projeto-musculo.webflow.io/app/api/health`: versão `0.25.0` (hoje) e depois `0.26.0`; `"photos": "open"`; `"passwordRecovery": "not_configured"` até R1 |
+| C2 | Se `"photos": "closed"`: criar `PHOTOS_ENABLED=true` como variável do ambiente (a documentação do Webflow diz que `vars` do `wrangler.json` são ignoradas) e publicar de novo |
+| C3 | Após o deploy da 0.26: `0018_email_messages.sql ✅` no log do deploy |
+| C4 | Depois de R1: pedir um link para uma conta de teste (no sandbox da AWS, um endereço verificado), abri-lo e entrar com a senha nova; se a AWS recusar, o código fica em `email_messages.error_code` |
+| C5 | Primeiro uso real das fotos: subir uma foto de teste de um aluno de teste que autorizou, conferir a leitura só pelo profissional e pedir para apagar |
+| C6 | Quem já tinha aceitado os termos vê a tela de aceite de novo (a versão mudou de nome na 0.24) |
+
+## 5. Construir agora (Código; não depende de ninguém)
+
+| # | O que | Observação |
+|---|---|---|
+| B1 | **"Baixar meus dados"**: cópia dos dados do aluno, gerada pela ferramenta | Hoje o pedido de cópia é respondido à mão. Escopo a decidir: o que o aluno já vê (conta, aceites, check-ins, execução, treino entregue, pedidos) versus o registro técnico do profissional |
+| B2 | **Segundo gestor por convite de uso único** (o papel nasce do token, nunca do e-mail) e recuperar o gestor perdido | Hoje há um só gestor e não há como acrescentar outro |
+| B3 | O gestor vê **pedidos do titular atrasados por organização**, sem conteúdo | Hoje só o profissional e o aluno veem o atraso |
+| B4 | **Editor dos termos**: rascunho no servidor; prévia do efeito nas pessoas que já aceitaram | Hoje fechar a página perde a edição |
+| B5 | **Retirada do aceite dos termos** como ação do aluno | Hoje é só um pedido (depende em parte de J6) |
+| B6 | **Documentos** do aluno: PDFs de plano que o profissional compartilhou | O PDF e o armazenamento privado já existem |
+| B7 | **Configurações** do profissional (dados do espaço) | Item "Em breve" |
+| B8 | Check-ins: campos configuráveis pelo profissional; check-in de dias anteriores; o profissional responder ao aluno | Hoje só registra a leitura |
+| B9 | Trilha de auditoria de **login e leitura** | Hoje cobre criação, ativação, bloqueio, convite, revogação, pedidos e fotos |
+| B10 | Fotos: **anotação sobre a imagem**; geração do PDF com pendências | Constam como critério restante de E2 |
+| B11 | Política de senha contra vazamentos; MFA | Constam em E1 |
+| B12 | Rotina de **retenção** (depende de J3, mas o mecanismo se constrói antes) | Nada apaga hoje |
+
+## 6. Construir depois de outra pendência
+
+| # | O que | Espera |
+|---|---|---|
+| D1 | **Verificação do e-mail** no cadastro e **troca de e-mail** | R1 |
+| D2 | **Avisos por e-mail**: relato de desconforto, pedido do titular, lembrete de prazo | R1 |
+| D3 | **Mensagens** do aluno com o profissional | R1 e decisão sobre o canal |
+| D4 | **Convites e gestão de equipe**, papéis e revogação pela interface | R1 |
+| D5 | Gestor concede o papel de gestor pela interface e recupera o único gestor | B2 |
+| D6 | Exclusão controlada de **outros dados** além das fotos | J4 |
+| D7 | Fluxo para **menores**, com responsável legal | J2 |
+
+## 7. Épicos planejados, não iniciados
+
+- **E0** viabilidade restante: vários hosts por app, domínios e TLS, job em segundo plano, Puck no Webflow Cloud, homologação remota.
+- **E3** Meu Site e Leads: editor de blocos, prévia e publicação, domínios, leads com conversão idempotente em aluno; templates e blocos do gestor.
+- **E4** portal: origem privada separada (R3), documentos (B6), mensagens (D3).
+- **E5** gestão e marketing: CRM completo, agenda, contratos, recebimentos, conectores.
+- **E6** SaaS e afiliados: planos, cobrança, conciliação, recorrência, comissão sobre pagamento SaaS confirmado com idempotência por fato financeiro (R4).
+- **E7** evoluções: fontes técnicas (RAG com armazenamento compatível com SQLite e acervo com direitos verificados), progressão assistida, booking, biblioteca técnica do gestor.
+
+## 8. Riscos e limites conhecidos
+
+- **O envio real de e-mail nunca foi feito.** A assinatura da AWS bate com os exemplos publicados por ela, e o resto foi testado com um provedor simulado.
+- **`vars` do `wrangler.json` provavelmente é ignorado pelo Webflow.** A chave das fotos é lida do Worker ou de `process.env` (variável do painel) por isso; ver C2.
+- **Os logs de execução do Webflow podem conter segredos** e têm retenção que não controlamos. O token de redefinição de senha fica no fragmento do endereço justamente para não aparecer neles.
+- **E-mail não é verificado.** A recuperação só troca a senha, nunca o e-mail; convites e vínculos nascem do token, não do e-mail digitado.
+- **Um só gestor ativo** (B2). Se ele se perder, a plataforma não tem quem a opere.
+- **Sem aviso por e-mail** de nada: o profissional só vê check-ins, relatos de desconforto e pedidos de titular quando abre a ferramenta. A tela diz isso ao aluno.
+- **Registros congelados** (treino entregue, avaliação registrada, relato de dor) não se apagam: só as fotos têm exceção.
+- **Se o vínculo do aluno é revogado**, ele perde as telas de pedido do titular.
+- **Os testes de navegador que leem ou escrevem o banco local de fora do Worker** rodam sozinhos, depois dos outros, porque isso pode provocar um erro 500 raro no Worker local.
+- **A versão do texto dos termos** muda quando o gestor publica: todos aceitam de novo no acesso seguinte.
+- **A migration aplicada em produção é imutável**; qualquer mudança é uma migration nova e aditiva.

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { requireStudent } from "@/modules/auth/server";
+import { requireStudent, recoveryAvailable } from "@/modules/auth/server";
 import { latestAcceptance } from "@/db/consent";
 import { shownTerms } from "@/db/terms";
 import { studentRequestsFor } from "@/db/data-requests";
@@ -14,6 +14,7 @@ export const metadata: Metadata = { title: "Minha conta · Área do aluno" };
 
 export default async function StudentAccount() {
   const { user, db, links } = await requireStudent();
+  const recovery = await recoveryAvailable();
   // What this person accepted, in their own words: the date and the photos choice they made.
   const accepted = await latestAcceptance(db, user.id, "STUDENT");
   const terms = await shownTerms(db, "STUDENT");
@@ -40,8 +41,9 @@ export default async function StudentAccount() {
         <p className="eyebrow">SEGURANÇA</p>
         <h2 id="seguranca-conta">Alterar a senha</h2>
         <p className="muted">
-          Você precisa da senha atual. A recuperação de senha por e-mail ainda não está disponível: guarde a nova
-          senha em um lugar seguro.
+          {recovery
+            ? "Você precisa da senha atual. Se um dia esquecer a senha, use “Esqueci minha senha” na tela de entrada: enviamos um link para o seu e-mail."
+            : "Você precisa da senha atual. A recuperação de senha por e-mail ainda não está disponível: guarde a nova senha em um lugar seguro."}
         </p>
         <SecurityPanel />
       </section>

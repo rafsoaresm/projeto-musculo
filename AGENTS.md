@@ -12,6 +12,7 @@
 - Novos links internos usam `next/link`. Teste montagem em subcaminho; não fixe `/api` ou `/_next` em chamadas do navegador.
 - `npm run check` valida código e regras. `npm run build:cloud` valida o bundle alvo. Testes de fornecedor/conta são distintos de testes locais.
 - Atualize `docs/VALIDACAO.md` e a matriz do roadmap ao concluir uma fatia. Não declare épico completo com apenas scaffolding.
+- Mantenha `docs/PENDENCIAS.md` em dia: ao abrir uma pendência, escreva-a lá com quem a destrava; ao fechar, risque e diga em qual fatia. Não afirme que algo funciona sem dizer o que **não** foi verificado (por exemplo, um envio real de e-mail).
 
 <!-- BEGIN:nextjs-agent-rules -->
 

@@ -52,6 +52,7 @@ Uma mesma conta pode ter mais de uma área (por exemplo, gestor e profissional).
 /aluno/[módulo]           planejados: documentos, mensagens
 
 /demonstracao[/gestor|/profissional|/aluno ...]   somente com DEMO_MODE=true
+/esqueci-a-senha  /redefinir-senha   só com o e-mail configurado (0.26); sem ele dizem que não está disponível
 /api/health  /api/auth/*
 ```
 

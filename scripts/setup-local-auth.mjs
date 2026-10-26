@@ -11,7 +11,9 @@ const generated = {
   AUTH_SECRET: () => randomBytes(48).toString("base64url"),
   PLATFORM_SETUP_TOKEN: () => randomBytes(48).toString("base64url"),
 };
-const fixed = { DEMO_MODE: "true" };
+// EMAIL_TRANSPORT=capture keeps the text of e-mail in the local database for the browser tests; the
+// application only honours it on localhost or 127.0.0.1.
+const fixed = { DEMO_MODE: "true", EMAIL_TRANSPORT: "capture" };
 
 async function read(file) {
   try {

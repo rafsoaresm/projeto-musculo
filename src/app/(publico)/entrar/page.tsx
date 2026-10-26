@@ -1,4 +1,5 @@
 import { AccountForm } from "@/modules/auth/components/account-form";
+import { recoveryAvailable } from "@/modules/auth/server";
 
 // Only a fixed allow-list of intents maps to a destination: never a free URL.
 const intents = {
@@ -15,6 +16,7 @@ export default async function Login({
 }) {
   const { bloqueado, area } = await searchParams;
   const intent = area === "gestor" ? intents.gestor : null;
+  const recovery = await recoveryAvailable();
   return (
     <>
       {bloqueado && (
@@ -24,6 +26,7 @@ export default async function Login({
         </p>
       )}
       <AccountForm
+        forgotHref={recovery ? "/esqueci-a-senha" : undefined}
         redirectTo={intent?.redirectTo}
         switchTo={
           intent

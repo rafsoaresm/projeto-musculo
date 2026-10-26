@@ -19,6 +19,17 @@ declare global {
      * closed: photos only open on purpose, once the student's consent exists. Absent means closed.
      */
     PHOTOS_ENABLED?: string;
+    /**
+     * Recovery of a forgotten password by e-mail (Amazon SES). All four of these and EMAIL_FROM must
+     * be set; anything less and the recovery does not exist. The secret is a secret variable.
+     */
+    AWS_REGION?: string;
+    AWS_ACCESS_KEY_ID?: string;
+    AWS_SECRET_ACCESS_KEY?: string;
+    /** The verified sender: "address" or "Name <address>". */
+    EMAIL_FROM?: string;
+    /** "capture" keeps the text of the message in the database; honoured only on localhost, for the browser tests. */
+    EMAIL_TRANSPORT?: string;
   }
 }
 
