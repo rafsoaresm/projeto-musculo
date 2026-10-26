@@ -51,6 +51,8 @@ export interface ReviewRow {
 export interface PhotoIndexRow {
   view: PhotoView;
   createdAt: string;
+  /** When the photo was erased on the student's request; null while it is stored. Never shown again once set. */
+  erasedAt: string | null;
 }
 export interface MovementRow {
   test: MovementKey;
@@ -229,7 +231,8 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
           .all<FindingRow>(),
         db
           .prepare(
-            `SELECT p.view, p.created_at AS createdAt FROM assessment_photos p
+            `SELECT p.view, p.created_at AS createdAt, e.erased_at AS erasedAt FROM assessment_photos p
+             LEFT JOIN photo_erasures e ON e.photo_id = p.id
              WHERE p.organization_id = ?1 AND p.assessment_id = ?2
              ORDER BY CASE p.view WHEN 'ANTERIOR' THEN 1 WHEN 'LATERAL_LEFT' THEN 2
                WHEN 'LATERAL_RIGHT' THEN 3 ELSE 4 END`,
@@ -314,8 +317,9 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
           .all<FindingRow & { assessmentId: string }>(),
         db
           .prepare(
-            `SELECT p.assessment_id AS assessmentId, p.view, p.created_at AS createdAt
+            `SELECT p.assessment_id AS assessmentId, p.view, p.created_at AS createdAt, e.erased_at AS erasedAt
              FROM assessment_photos p
+             LEFT JOIN photo_erasures e ON e.photo_id = p.id
              WHERE p.organization_id = ?1 AND p.assessment_id IN (SELECT value FROM json_each(?2))
              ORDER BY CASE p.view WHEN 'ANTERIOR' THEN 1 WHEN 'LATERAL_LEFT' THEN 2
                WHEN 'LATERAL_RIGHT' THEN 3 ELSE 4 END`,
@@ -346,7 +350,7 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
         ...shapeFindings(findings.results.filter((finding) => finding.assessmentId === row.id)),
         photos: photoRows.results
           .filter((photo) => photo.assessmentId === row.id)
-          .map((photo) => ({ view: photo.view, createdAt: photo.createdAt })),
+          .map((photo) => ({ view: photo.view, createdAt: photo.createdAt, erasedAt: photo.erasedAt })),
       }));
     },
 

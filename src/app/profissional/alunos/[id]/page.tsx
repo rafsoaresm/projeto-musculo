@@ -18,6 +18,7 @@ import { AssessmentsPanel } from "@/modules/avaliacoes/assessments-panel";
 import { ExecutionPanel } from "@/modules/execucao/execution-panel";
 import { ConsentLine } from "@/modules/consentimento/consent-line";
 import { CheckinPanel } from "@/modules/checkin/checkin-panel";
+import { RequestsPanel } from "@/modules/pedidos/requests-panel";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Aluno" };
@@ -60,6 +61,7 @@ export default async function Student({
       <PlansPanel studentId={student.id} plans={plans} />
       <ExecutionPanel studentId={student.id} rows={executions} />
       <CheckinPanel db={db} context={context} studentId={student.id} />
+      <RequestsPanel db={db} context={context} studentId={student.id} />
       <section className="panel">
         <p className="eyebrow">PLANEJADOR</p>
         <h2>Explorar sem salvar</h2>

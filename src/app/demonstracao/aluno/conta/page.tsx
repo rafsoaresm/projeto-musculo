@@ -17,7 +17,7 @@ export default async function DemoAccount() {
       <Notice>
         <p>
           Na demonstração não há conta nem senha para alterar. Na área real, esta tela mostra o nome e o e-mail de
-          acesso e permite trocar a senha, desconectando os outros aparelhos se você quiser.
+          acesso e permite trocar a senha, desconectando os outros aparelhos se você quiser, escolher sobre as fotos e fazer pedidos sobre os seus dados (cópia, correção, apagar as fotos, exclusão), com prazo de resposta de 15 dias.
         </p>
       </Notice>
     </>

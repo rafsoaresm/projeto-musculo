@@ -102,7 +102,7 @@ test("the other devices can be ended without changing the password, and a visito
   await device.context.close();
 });
 
-test("a student changes the password and sees what is not available yet", async ({ page, browser, baseURL }) => {
+test("a student changes the password and sees what can be asked about their data", async ({ page, browser, baseURL }) => {
   await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
   await createProfessional(page, "Estúdio da conta do aluno");
   const studentURL = await addStudent(page, "Aluna da conta");
@@ -125,7 +125,10 @@ test("a student changes the password and sees what is not available yet", async 
   await expect(client.page.getByRole("heading", { name: "Minha conta", level: 1 })).toBeVisible();
   await expect(client.page.getByText(clientEmail)).toBeVisible();
   await expect(client.page.getByRole("heading", { name: "Consentimentos e solicitações" })).toBeVisible();
-  await expect(client.page.getByText(/Ainda não existe uma tela para pedir a exportação ou a exclusão/)).toBeVisible();
+  // What was a note saying that nothing could be asked is now the place to ask (0.25).
+  await expect(client.page.getByRole("heading", { name: "Pedidos sobre os seus dados" })).toBeVisible();
+  await expect(client.page.getByText("Quem responde é o seu profissional, em até 15 dias.", { exact: false })).toBeVisible();
+  await expect(client.page.getByText(/Ainda não existe uma tela para pedir a exportação ou a exclusão/)).toHaveCount(0);
   await expect(client.page.getByText(/Você aceitou os termos em \d{2}\/\d{2}\/\d{4}\./)).toBeVisible();
   await expect(client.page.getByText("você não autorizou as fotos", { exact: true })).toBeVisible();
   await noHorizontalOverflow(client.page);

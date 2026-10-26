@@ -1,5 +1,6 @@
 "use client";
 import { useSyncExternalStore } from "react";
+import { formatDate } from "@/components/ui";
 import { useMountPath } from "@/components/use-mount-path";
 
 /**
@@ -14,12 +15,15 @@ export function PhotoImage({
   view,
   stamp,
   alt,
+  erasedAt = null,
 }: {
   studentId: string;
   assessmentId: string;
   view: string;
   stamp: string;
   alt: string;
+  /** When the photo was erased on the student's request. The image is not asked for again. */
+  erasedAt?: string | null;
 }) {
   const mountPath = useMountPath();
   // The mount path is read in the browser only; the server renders the placeholder, so the two
@@ -29,6 +33,12 @@ export function PhotoImage({
     () => mountPath(),
     () => null,
   );
+  if (erasedAt)
+    return (
+      <p className="posture-photo placeholder erased" role="img" aria-label={`${alt}: apagada a pedido do aluno`}>
+        Foto apagada a pedido do aluno em {formatDate(erasedAt)}.
+      </p>
+    );
   const src =
     prefix === null
       ? undefined

@@ -25,6 +25,8 @@ export interface PhotoRow {
   width: number;
   height: number;
   createdAt: string;
+  /** When it was erased on the student's request; null while it is stored. */
+  erasedAt: string | null;
 }
 export type PutOutcome =
   | { status: "stored"; replaced: boolean }
@@ -62,9 +64,11 @@ export function assessmentPhotosFor(
     async list(assessmentId: string): Promise<PhotoRow[]> {
       const result = await db
         .prepare(
-          `SELECT p.view, p.size_bytes AS sizeBytes, p.width, p.height, p.created_at AS createdAt
+          `SELECT p.view, p.size_bytes AS sizeBytes, p.width, p.height, p.created_at AS createdAt,
+             e.erased_at AS erasedAt
            FROM assessment_photos p
            JOIN assessments a ON a.organization_id = p.organization_id AND a.id = p.assessment_id
+           LEFT JOIN photo_erasures e ON e.photo_id = p.id
            WHERE p.organization_id = ?1 AND p.assessment_id = ?3 AND ${reach("a")}
            ORDER BY CASE p.view WHEN 'ANTERIOR' THEN 1 WHEN 'LATERAL_LEFT' THEN 2
              WHEN 'LATERAL_RIGHT' THEN 3 ELSE 4 END`,
@@ -156,7 +160,8 @@ export function assessmentPhotosFor(
           `SELECT a.student_id AS studentId, p.object_key AS key
            FROM assessment_photos p
            JOIN assessments a ON a.organization_id = p.organization_id AND a.id = p.assessment_id
-           WHERE p.organization_id = ?1 AND p.assessment_id = ?3 AND p.view = ?4 AND ${reach("a")}`,
+           WHERE p.organization_id = ?1 AND p.assessment_id = ?3 AND p.view = ?4 AND ${reach("a")}
+             AND NOT EXISTS (SELECT 1 FROM photo_erasures e WHERE e.photo_id = p.id)`,
         )
         .bind(organizationId, userId, assessmentId, view)
         .first<{ studentId: string; key: string }>();

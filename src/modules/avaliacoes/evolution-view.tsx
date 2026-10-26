@@ -129,6 +129,7 @@ export function EvolutionView({
                         assessmentId={assessment.id}
                         view={view.key}
                         stamp={assessment.photos.find((photo) => photo.view === view.key)?.createdAt ?? ""}
+                        erasedAt={assessment.photos.find((photo) => photo.view === view.key)?.erasedAt ?? null}
                         alt={`Foto ${view.label.toLowerCase()} de ${formatCalendarDate(assessment.assessedOn)}`}
                       />
                       <figcaption>{formatCalendarDate(assessment.assessedOn)}</figcaption>

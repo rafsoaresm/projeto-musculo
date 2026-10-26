@@ -8,7 +8,9 @@ import { plansFor } from "@/db/plans";
 import { assessmentsFor } from "@/db/assessments";
 import { executionFor } from "@/db/workout-sessions";
 import { checkinsFor } from "@/db/student-checkins";
-import { Kpi, PageHeading, Pill } from "@/components/ui";
+import { dataRequestsFor } from "@/db/data-requests";
+import { REQUEST_KIND_LABEL } from "@/modules/pedidos/contracts";
+import { Kpi, PageHeading, Pill, formatDate } from "@/components/ui";
 import { formatCalendarDate } from "@/modules/training/format";
 
 export const dynamic = "force-dynamic";
@@ -16,13 +18,14 @@ export const metadata: Metadata = { title: "Visão geral" };
 
 export default async function ProfessionalHome() {
   const { db, context, workspace, user } = await requireWorkspace();
-  const [students, access, plans, assessments, painPending, checkinsPending] = await Promise.all([
+  const [students, access, plans, assessments, painPending, checkinsPending, requestsPending] = await Promise.all([
     studentsFor(db, context).list(),
     studentAccessFor(db, context).statuses(),
     plansFor(db, context).overview(),
     assessmentsFor(db, context).overview(),
     executionFor(db, context).painPending(),
     checkinsFor(db, context).pending(),
+    dataRequestsFor(db, context).pending(),
   ]);
   const alerts = assessments.filter((row) => row.riskStatus === "REVIEW_REQUIRED" && !row.reviewed).length;
   const assessed = assessments.some((row) => row.assessmentId !== null);
@@ -110,7 +113,35 @@ export default async function ProfessionalHome() {
               : undefined
           }
         />
+        <Kpi
+          label="Pedidos de alunos sobre os dados"
+          value={requestsPending.length}
+          hint={
+            requestsPending.some((row) => row.overdue)
+              ? `${requestsPending.filter((row) => row.overdue).length} passou do prazo de 15 dias`
+              : requestsPending.length > 0
+                ? "Resposta em até 15 dias"
+                : undefined
+          }
+        />
       </div>
+      {requestsPending.length > 0 && (
+        <section className="panel" aria-labelledby="pedidos-pendentes">
+          <p className="eyebrow">PEDIDOS DO TITULAR</p>
+          <h2 id="pedidos-pendentes">Pedidos de alunos sobre os dados deles</h2>
+          <p className="small muted">Do prazo mais próximo ao mais distante. A resposta é sua; a ferramenta não avisa por e-mail.</p>
+          <ul className="plan-list">
+            {requestsPending.slice(0, 8).map((row) => (
+              <li key={row.id}>
+                <Link className="account-link" href={`/profissional/alunos/${row.studentId}#pedidos`}>
+                  {row.studentName} · {REQUEST_KIND_LABEL[row.kind]} · {row.overdue ? "passou do prazo em" : "prazo"}{" "}
+                  {formatDate(row.dueAt)}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {checkinsPending.length > 0 && (
         <section className="panel" aria-labelledby="checkins-pendentes">
           <p className="eyebrow">CHECK-INS</p>
