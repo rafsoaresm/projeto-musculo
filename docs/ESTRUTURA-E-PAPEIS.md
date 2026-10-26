@@ -44,7 +44,8 @@ Uma mesma conta pode ter mais de uma área (por exemplo, gestor e profissional).
 /profissional/biblioteca[/novo|/id]
 /profissional/periodizacao        /profissional/alunos/[id]/planos/novo
                           /profissional/alunos/[id]/planos/[planId]/[revisionId]
-/profissional/[módulo]    planejados: fontes, meu-site, leads, configuracoes
+/profissional/configuracoes   nome do espaço, nome de exibição e quem tem acesso (0.29)
+/profissional/[módulo]    planejados: fontes, meu-site, leads
 
 /aluno                    início                 /aluno/treino
 /aluno/check-in           check-in do dia e histórico
@@ -92,7 +93,7 @@ Correspondência com os papéis do handoff V2:
 | Fontes técnicas | `/profissional/fontes` | Planejado | E7 |
 | Meu Site (editor, páginas, domínios, SEO, publicações) | `/profissional/meu-site` | Planejado, um único item por ora | E3 |
 | Leads | `/profissional/leads` | Planejado | E3 |
-| Configurações | `/profissional/configuracoes` | Planejado | E1 |
+| Configurações | `/profissional/configuracoes` | Disponível: o proprietário muda o nome do espaço, cada profissional o próprio nome de exibição, e a lista de quem tem acesso é só de leitura. **Equipe, papéis e permissões continuam planejados** (dependem do e-mail verificado). Na demonstração há uma prévia que só explica | E1 |
 | Gestor: organizações, auditoria, termos | `/gestor/...` | Disponível: os termos são editados, revisados e publicados em versões | E1 |
 | Gestor: planos e cobrança, afiliados, templates, biblioteca, integrações | `/gestor/...` | Planejado | E3, E5, E6, E7 |
 | Aluno: início | `/aluno` | Disponível: vínculo e estado do treino | E4 |

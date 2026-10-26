@@ -267,13 +267,7 @@ const profissional: NavGroup[] = [
     label: "ESPAÇO",
     items: [
       { slug: "conta", label: "Minha conta", icon: "user", status: "available" },
-      planned("configuracoes", "Configurações", "settings", {
-        epic: "E1",
-        reference: "Handoff V2, seção 3",
-        summary: "Equipe, papéis, permissões e dados do espaço de trabalho.",
-        needs:
-          "E-mail verificado, recuperação de senha, convites de equipe e a interface de revogação.",
-      }),
+      { slug: "configuracoes", label: "Configurações", icon: "settings", status: "available" },
     ],
   },
 ];
