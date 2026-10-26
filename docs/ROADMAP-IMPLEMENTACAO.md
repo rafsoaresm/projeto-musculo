@@ -2,6 +2,8 @@
 
 O escopo completo está em [`referencias/02-ROADMAP-E-HANDOFF.md`](referencias/02-ROADMAP-E-HANDOFF.md). O pedido atual substitui Vercel por Webflow Cloud e PostgreSQL/Supabase por **SQLite nativo do Webflow**. Os anexos históricos não devem reintroduzir provedores descartados.
 
+As pendências de todas as frentes (o que depende do responsável, do advogado e do técnico, o que se constrói agora e o que espera) estão em [`PENDENCIAS.md`](PENDENCIAS.md); este roadmap conta o que foi entregue.
+
 | Épico | Estado | Critério restante |
 |---|---|---|
 | E0 — viabilidade | Configuração Next/OpenNext e binding DB nativo | Deploy na conta, múltiplos hosts, login, Storage privado, job/PDF e Puck |

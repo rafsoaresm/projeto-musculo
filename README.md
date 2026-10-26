@@ -94,6 +94,7 @@ docs/referencias/        documentos originais e referência visual preservados
 - [Design system](docs/DESIGN-SYSTEM.md)
 - [Banco e publicação no Webflow](docs/WEBFLOW-CLOUD.md)
 - [Roadmap](docs/ROADMAP-IMPLEMENTACAO.md)
+- [Pendências: o que está aberto e quem destrava](docs/PENDENCIAS.md)
 - [Evidências de validação](docs/VALIDACAO.md)
 
 **Próxima fatia:** verificação de e-mail, recuperação de senha e envio de e-mails (aguardam o provedor de envio); depois a execução do treino pelo aluno. A etapa atual não fecha o piloto operacional.
