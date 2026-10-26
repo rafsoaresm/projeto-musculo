@@ -97,6 +97,7 @@ export function AssessmentView({ detail }: { detail: AssessmentDetail }) {
                   assessmentId={detail.id}
                   view={view.key}
                   stamp={detail.photos.find((photo) => photo.view === view.key)?.createdAt ?? ""}
+                  erasedAt={detail.photos.find((photo) => photo.view === view.key)?.erasedAt ?? null}
                   alt={`Foto ${view.label.toLowerCase()} do aluno`}
                 />
                 <figcaption>

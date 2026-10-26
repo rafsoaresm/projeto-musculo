@@ -28,3 +28,12 @@ export async function photoStorageAvailable(): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * The photo bucket binding, whether or not new photos are being accepted. Erasing photos on request
+ * has to work even when the photos were closed again. Null when the bucket is not provisioned.
+ */
+export async function getPhotoBucketBinding() {
+  const { env } = await getCloudflareContext({ async: true });
+  return env.PHOTOS ?? null;
+}

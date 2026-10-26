@@ -1,39 +1,5 @@
-import zlib from "node:zlib";
 import { test, expect, type Page } from "@playwright/test";
-import { addStudent, createProfessional, joinStudent, localIP, newActor, noHorizontalOverflow, signIn } from "./helpers";
-
-/** A real PNG (a gradient), so the browser has something to decode and re-draw. */
-function png(width = 120, height = 160): Buffer {
-  const crc = (buffer: Buffer) => {
-    const out = Buffer.alloc(4);
-    out.writeUInt32BE(zlib.crc32(buffer));
-    return out;
-  };
-  const chunk = (type: string, data: Buffer) => {
-    const length = Buffer.alloc(4);
-    length.writeUInt32BE(data.length);
-    const body = Buffer.concat([Buffer.from(type), data]);
-    return Buffer.concat([length, body, crc(body)]);
-  };
-  const header = Buffer.alloc(13);
-  header.writeUInt32BE(width, 0);
-  header.writeUInt32BE(height, 4);
-  header.set([8, 2, 0, 0, 0], 8);
-  const rows = Buffer.alloc((width * 3 + 1) * height);
-  for (let y = 0; y < height; y += 1)
-    for (let x = 0; x < width; x += 1) {
-      const at = y * (width * 3 + 1) + 1 + x * 3;
-      rows[at] = Math.round((x / width) * 255);
-      rows[at + 1] = Math.round((y / height) * 255);
-      rows[at + 2] = 160;
-    }
-  return Buffer.concat([
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    chunk("IHDR", header),
-    chunk("IDAT", zlib.deflateSync(rows)),
-    chunk("IEND", Buffer.alloc(0)),
-  ]);
-}
+import { addStudent, createProfessional, joinStudent, localIP, newActor, noHorizontalOverflow, png, signIn } from "./helpers";
 
 const todayBR = () => {
   const [year, month, day] = new Date().toISOString().slice(0, 10).split("-");

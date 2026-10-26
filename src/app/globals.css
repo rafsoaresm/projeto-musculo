@@ -1999,6 +1999,11 @@ label.check input {
   color: var(--color-muted);
   font-size: 13px;
 }
+.posture-photo.erased {
+  margin: 0;
+  padding: 12px;
+  text-align: center;
+}
 .button.disabled {
   opacity: 0.5;
   pointer-events: none;

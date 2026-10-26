@@ -2,19 +2,24 @@ import type { Metadata } from "next";
 import { requireStudent } from "@/modules/auth/server";
 import { latestAcceptance } from "@/db/consent";
 import { shownTerms } from "@/db/terms";
+import { studentRequestsFor } from "@/db/data-requests";
 import { formatCalendarDate } from "@/modules/training/format";
 import { PageHeading } from "@/components/ui";
 import { SecurityPanel } from "@/modules/auth/components/security-panel";
 import { PhotosChoice } from "@/modules/consentimento/photos-choice";
+import { StudentRequests } from "@/modules/pedidos/student-requests";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Minha conta · Área do aluno" };
 
 export default async function StudentAccount() {
-  const { user, db } = await requireStudent();
+  const { user, db, links } = await requireStudent();
   // What this person accepted, in their own words: the date and the photos choice they made.
   const accepted = await latestAcceptance(db, user.id, "STUDENT");
   const terms = await shownTerms(db, "STUDENT");
+  // The students come from the verified links of this login, never from the address.
+  const requests = studentRequestsFor(db, user.id);
+  const perStudent = await Promise.all(links.map(async (link) => ({ link, rows: await requests.list(link.studentId) })));
   return (
     <>
       <PageHeading eyebrow="ÁREA DO ALUNO" title="Minha conta" description="Seus dados de acesso e a segurança da conta." />
@@ -52,10 +57,24 @@ export default async function StudentAccount() {
             />
           </>
         )}
+      </section>
+      <section className="panel" id="pedidos" aria-labelledby="pedidos-conta">
+        <p className="eyebrow">SEUS DIREITOS</p>
+        <h2 id="pedidos-conta">Pedidos sobre os seus dados</h2>
         <p className="muted">
-          Ainda não existe uma tela para pedir a exportação ou a exclusão dos seus dados, nem para retirar o
-          aceite dos termos. Enquanto isso, fale com o seu profissional.
+          Você pode pedir uma cópia dos seus dados, a correção de um dado, que as suas fotos sejam apagadas, a
+          exclusão dos seus dados ou retirar o aceite dos termos. Quem responde é o seu profissional, em até 15 dias.
         </p>
+        {perStudent.map(({ link, rows }) => (
+          <div key={link.studentId}>
+            {links.length > 1 && (
+              <p className="eyebrow">
+                {link.organizationName} · {link.studentName}
+              </p>
+            )}
+            <StudentRequests studentId={link.studentId} rows={rows} />
+          </div>
+        ))}
       </section>
     </>
   );

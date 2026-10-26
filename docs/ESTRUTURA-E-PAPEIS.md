@@ -48,6 +48,7 @@ Uma mesma conta pode ter mais de uma área (por exemplo, gestor e profissional).
 
 /aluno                    início                 /aluno/treino
 /aluno/check-in           check-in do dia e histórico
+/aluno/conta              dados de acesso, senha, fotos e pedidos sobre os dados (prazo de 15 dias)
 /aluno/[módulo]           planejados: documentos, mensagens
 
 /demonstracao[/gestor|/profissional|/aluno ...]   somente com DEMO_MODE=true
@@ -94,6 +95,8 @@ Correspondência com os papéis do handoff V2:
 | Aluno: início | `/aluno` | Disponível: vínculo e estado do treino | E4 |
 | Aluno: treino atual | `/aluno/treino` | Disponível: a revisão entregue de cada plano, somente leitura (**prévia** com execução na demonstração) | E4 |
 | Aluno: check-in | `/aluno/check-in` | Disponível: um por dia, o profissional lê e registra a leitura (**prévia** na demonstração) | E4 |
+| Aluno: pedidos sobre os dados | `/aluno/conta` | Disponível: cópia dos dados, correção, apagar as fotos, exclusão, retirada do aceite ou outro, com prazo de 15 dias; o profissional responde e a ferramenta só apaga as fotos (**sem aviso por e-mail**) | E1 |
+| Profissional: pedidos do titular | `/profissional` (fila) e `/profissional/alunos/<id>#pedidos` | Disponível: fila por prazo, resposta com explicação, "Apagar as fotos" com confirmação | E1 |
 | Aluno: documentos, mensagens | `/aluno/...` | Planejado | E4 |
 
 A fonte única desse menu é `src/modules/platform/surfaces.ts`, com teste de contrato (`tests/navigation.test.ts`): todo módulo planejado precisa ter épico, resumo e o que falta.
