@@ -13,7 +13,13 @@ O escopo completo está em [`referencias/02-ROADMAP-E-HANDOFF.md`](referencias/0
 | E6 — SaaS/afiliados | Planejado | Inbox/outbox, conciliação, recorrência, ajustes e repasses |
 | E7 — evoluções | Planejado | RAG com armazenamento compatível, progressão assistida e booking |
 
-## Fatia entregue: termos editáveis pelo gestor (0.24)
+## Fatia entregue: fotos abertas em produção (0.24.1)
+
+1. Implementado: sem migration. `wrangler.json` declara `PHOTOS_ENABLED=true` junto do bucket; a cópia `wrangler.photos.json` foi removida (preview, `next dev` e CI usam o arquivo que o Webflow lê); o app aceita a variável vinda do Worker ou de `process.env` (painel). Cada foto continua exigindo a autorização do próprio aluno, que o profissional não substitui.
+2. Princípio: abrir é uma decisão do responsável, tomada depois da aprovação do texto, e reversível (tirar a variável fecha). **Estado:** não foi possível ler `/api/health` ao vivo daqui; conferir `"photos": "open"` depois do deploy e, se estiver `"closed"`, criar a variável no painel (passos em `docs/WEBFLOW-CLOUD.md`).
+3. **Em aberto:** destino das fotos já guardadas se a autorização for retirada; pedidos do titular; retenção; menores.
+
+## Fatia anterior: termos editáveis pelo gestor (0.24)
 
 1. Implementado: migration 0016. O texto aprovado em 25/10/2026 é a versão inicial (`2026-10-25-base`, sem marca de rascunho); `/gestor/termos` permite editar, ver o que mudou e como a pessoa vai ler, e publicar uma nova versão imutável, com histórico, motivo e auditoria. Quem aceitou outro texto aceita de novo no próximo acesso, e o servidor só grava o aceite do texto que a pessoa realmente leu.
 2. Princípio: o texto é do responsável jurídico, não do código; mudar uma palavra é uma versão nova com prova (versão e hash) e nunca reescreve o que alguém aceitou antes.
@@ -34,13 +40,13 @@ O escopo completo está em [`referencias/02-ROADMAP-E-HANDOFF.md`](referencias/0
 ## Fatia anterior: fotos dependem da autorização do aluno (0.21)
 
 1. Implementado: migration 0014. A foto só é aceita se o login ativo do aluno tem aceite da versão em vigor com a autorização das fotos marcada; o profissional não tem mais caixa para isso. Cada foto guarda o id do aceite que a autorizou; o banco recusa foto sem ele. O aluno vê, em `/aluno/conta`, o que aceitou e se autorizou as fotos.
-2. Princípio: a autorização é do titular; a ferramenta mostra e confere, nunca preenche. **As fotos seguem fechadas em produção** até a revisão jurídica do texto.
+2. Princípio: a autorização é do titular; a ferramenta mostra e confere, nunca preenche. As fotos estavam fechadas em produção até a revisão jurídica do texto; abertas na 0.24.1.
 3. **Em aberto:** o destino das fotos já guardadas se a autorização for retirada (o aluno já retira em Minha conta desde a 0.22); revisão jurídica; menores; pedidos do titular. **Pacote para o advogado:** [`REVISAO-JURIDICA.md`](REVISAO-JURIDICA.md) (0.21.1), com o texto atual, o que existe, o que falta e as perguntas.
 
 ## Fatia anterior: aceite único dos termos ao aderir (0.20)
 
 1. Implementado: migration 0013 (`consent_acceptances`, só se acrescenta). O profissional aceita ao criar o espaço e o aluno ao aceitar o convite, uma vez; as fotos são uma escolha à parte, opcional, no mesmo aceite. Fica gravado quem, quando, a versão e o SHA-256 do texto aceito. Versão nova do texto pede novo aceite no acesso seguinte; o profissional vê, na ficha do aluno, quando ele aceitou e se autorizou as fotos.
-2. Princípio: um texto provisório não é texto jurídico. **Estado (25/10/2026):** o advogado aprovou o texto (informado pelo responsável); desde a 0.24 ele deixou de ser rascunho. As fotos seguem fechadas em produção.
+2. Princípio: um texto provisório não é texto jurídico. **Estado (25/10/2026):** o advogado aprovou o texto (informado pelo responsável); desde a 0.24 ele deixou de ser rascunho. As fotos foram abertas em produção na 0.24.1.
 3. **Em aberto:** revisão jurídica, controlador/operador, menores, pedidos do titular (acesso, exportação, exclusão, retirada do aceite), retenção.
 
 ## Fatia anterior: percentual dos treinos previstos com registro (0.19)

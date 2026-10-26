@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isPhotoView, MAX_PHOTO_BYTES, photoObjectKey, photosOpen, sanitizeJpeg } from "@/modules/avaliacoes/photos";
+import { isPhotoView, MAX_PHOTO_BYTES, photoObjectKey, photosOpen, photosSwitch, sanitizeJpeg } from "@/modules/avaliacoes/photos";
 
 const bytes = (...parts: Array<number[] | Uint8Array>) => Uint8Array.from(parts.flatMap((part) => [...part]));
 const segment = (marker: number, payload: number[]) => [0xff, marker, (payload.length + 2) >> 8, (payload.length + 2) & 0xff, ...payload];
@@ -93,6 +93,17 @@ describe("when the photos are open", () => {
   it("stays closed when the bucket exists but nobody opened the photos on purpose", () => {
     for (const flag of [undefined, "", "false", "TRUE", "True", "1", "yes", " true"])
       expect(photosOpen({ PHOTOS: bucket, PHOTOS_ENABLED: flag }), String(flag)).toBe(false);
+  });
+  it("reads the Worker variable first and the dashboard variable (process.env) when the Worker has none", () => {
+    expect(photosSwitch({ PHOTOS_ENABLED: "true" }, {})).toBe("true");
+    expect(photosSwitch({}, { PHOTOS_ENABLED: "true" })).toBe("true");
+    expect(photosSwitch({ PHOTOS_ENABLED: "" }, { PHOTOS_ENABLED: "true" })).toBe("true");
+    expect(photosSwitch({}, {})).toBeUndefined();
+    // A value set on the Worker is not overridden by the other road.
+    expect(photosSwitch({ PHOTOS_ENABLED: "false" }, { PHOTOS_ENABLED: "true" })).toBe("false");
+    const bucket2 = {};
+    expect(photosOpen({ PHOTOS: bucket2, PHOTOS_ENABLED: photosSwitch({}, { PHOTOS_ENABLED: "true" }) })).toBe(true);
+    expect(photosOpen({ PHOTOS: bucket2, PHOTOS_ENABLED: photosSwitch({ PHOTOS_ENABLED: "false" }, { PHOTOS_ENABLED: "true" }) })).toBe(false);
   });
   it("stays closed without the bucket, whatever the flag says", () => {
     expect(photosOpen({ PHOTOS_ENABLED: "true" })).toBe(false);

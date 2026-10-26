@@ -13,6 +13,9 @@
   "observability": {
     "enabled": true
   },
+  "vars": {
+    "PHOTOS_ENABLED": "true"
+  },
   "r2_buckets": [
     {
       "binding": "PHOTOS",

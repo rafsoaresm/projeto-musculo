@@ -102,3 +102,13 @@ export const photoObjectKey = (organizationId: string, assessmentId: string) =>
  */
 export const photosOpen = (env: { PHOTOS?: unknown; PHOTOS_ENABLED?: string }) =>
   Boolean(env.PHOTOS) && env.PHOTOS_ENABLED === "true";
+
+/**
+ * The environment's own switch. A variable declared on the Worker wins; a variable created in the
+ * Webflow dashboard reaches `process.env` instead (the platform documents only the bindings of
+ * `wrangler.json`, so the same variable can arrive by either road, as `DEMO_MODE` and `AUTH_ORIGIN` do).
+ */
+export const photosSwitch = (
+  env: { PHOTOS_ENABLED?: string },
+  processEnv: Record<string, string | undefined>,
+) => env.PHOTOS_ENABLED || processEnv.PHOTOS_ENABLED;

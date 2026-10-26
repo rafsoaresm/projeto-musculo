@@ -1,6 +1,6 @@
 import "server-only";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { photosOpen } from "@/modules/avaliacoes/photos";
+import { photosOpen, photosSwitch } from "@/modules/avaliacoes/photos";
 
 /** Resolve the managed Webflow Cloud binding inside the current request. */
 export async function getDatabase() {
@@ -9,10 +9,13 @@ export async function getDatabase() {
   return env.DB;
 }
 
+const photoStorageOpen = (env: CloudflareEnv) =>
+  photosOpen({ PHOTOS: env.PHOTOS, PHOTOS_ENABLED: photosSwitch(env, process.env) });
+
 /** The private photo bucket of this request, or an error when the storage is not provisioned or not opened. */
 export async function getPhotoBucket() {
   const { env } = await getCloudflareContext({ async: true });
-  if (!env.PHOTOS || !photosOpen(env)) throw new Error("PHOTO_STORAGE_UNAVAILABLE");
+  if (!env.PHOTOS || !photoStorageOpen(env)) throw new Error("PHOTO_STORAGE_UNAVAILABLE");
   return env.PHOTOS;
 }
 
@@ -20,7 +23,7 @@ export async function getPhotoBucket() {
 export async function photoStorageAvailable(): Promise<boolean> {
   try {
     const { env } = await getCloudflareContext({ async: true });
-    return photosOpen(env);
+    return photoStorageOpen(env);
   } catch {
     return false;
   }
