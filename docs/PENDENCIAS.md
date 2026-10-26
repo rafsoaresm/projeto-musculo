@@ -4,7 +4,7 @@ O que está aberto, quem destrava e onde cada coisa está contada em detalhe. **
 
 Quem: **Responsável** (dono do produto: contas, domínios, decisões), **Advogado**, **Técnico** (responsável técnico em educação física: conteúdo clínico), **Código** (o que se constrói sem esperar ninguém).
 
-Estado conhecido em 26/10/2026: a 0.25.0 está no ar, com as migrations até a 0017 aplicadas (conferido no log do deploy). A 0.26.0 (recuperação de senha por e-mail, migration 0018) foi implantada com sucesso e `0018_email_messages.sql ✅` aparece no log; a 0.27.0 (mais de um gestor, migration 0019) está em PR, ainda sem deploy. **Nada foi lido ao vivo**: o ambiente onde o código é escrito não alcança `projeto-musculo.webflow.io`.
+Estado conhecido em 26/10/2026: a 0.25.0 está no ar, com as migrations até a 0017 aplicadas (conferido no log do deploy). A 0.26.0 (recuperação de senha por e-mail, migration 0018) foi implantada com sucesso e `0018_email_messages.sql ✅` aparece no log; a 0.27.0 (mais de um gestor, migration 0019) também foi implantada com sucesso (commit `e7788ef`) e `0019_platform_admin_invites.sql ✅` aparece no log do deploy. **Nada foi lido ao vivo**: o ambiente onde o código é escrito não alcança `projeto-musculo.webflow.io`.
 
 ## 1. Depende do Responsável (conta, domínio, decisão)
 
@@ -51,9 +51,9 @@ Estado conhecido em 26/10/2026: a 0.25.0 está no ar, com as migrations até a 0
 
 | # | Conferência |
 |---|---|
-| C1 | `https://projeto-musculo.webflow.io/app/api/health`: versão `0.25.0` (hoje) e depois `0.27.0`; `"photos": "open"`; `"passwordRecovery": "not_configured"` até R1 |
+| C1 | `https://projeto-musculo.webflow.io/app/api/health`: versão `0.27.0`; `"photos": "open"`; `"passwordRecovery": "not_configured"` até R1 |
 | C2 | Se `"photos": "closed"`: criar `PHOTOS_ENABLED=true` como variável do ambiente (a documentação do Webflow diz que `vars` do `wrangler.json` são ignoradas) e publicar de novo |
-| C3 | Após o deploy da 0.26 e da 0.27: `0018_email_messages.sql ✅` e `0019_platform_admin_invites.sql ✅` no log do deploy |
+| ~~C3~~ | ~~Após o deploy da 0.26 e da 0.27: `0018_email_messages.sql ✅` e `0019_platform_admin_invites.sql ✅` no log do deploy~~ **Conferido em 26/10/2026** nos dois deploys |
 | C4 | Depois de R1: pedir um link para uma conta de teste (no sandbox da AWS, um endereço verificado), abri-lo e entrar com a senha nova; se a AWS recusar, o código fica em `email_messages.error_code` |
 | C5 | Primeiro uso real das fotos: subir uma foto de teste de um aluno de teste que autorizou, conferir a leitura só pelo profissional e pedir para apagar |
 | C6 | Quem já tinha aceitado os termos vê a tela de aceite de novo (a versão mudou de nome na 0.24) |
