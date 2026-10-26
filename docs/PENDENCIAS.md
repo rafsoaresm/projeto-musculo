@@ -4,7 +4,7 @@ O que está aberto, quem destrava e onde cada coisa está contada em detalhe. **
 
 Quem: **Responsável** (dono do produto: contas, domínios, decisões), **Advogado**, **Técnico** (responsável técnico em educação física: conteúdo clínico), **Código** (o que se constrói sem esperar ninguém).
 
-Estado conhecido em 26/10/2026: a 0.25.0 está no ar, com as migrations até a 0017 aplicadas (conferido no log do deploy). A 0.26.0 (recuperação de senha por e-mail, migration 0018) foi implantada com sucesso e `0018_email_messages.sql ✅` aparece no log; a 0.27.0 (mais de um gestor, migration 0019) também foi implantada com sucesso (commit `e7788ef`) e `0019_platform_admin_invites.sql ✅` aparece no log do deploy. A 0.28.0 ("Baixar meus dados", sem migration) está em PR, ainda sem deploy. **Nada foi lido ao vivo**: o ambiente onde o código é escrito não alcança `projeto-musculo.webflow.io`.
+Estado conhecido em 26/10/2026: a 0.25.0 está no ar, com as migrations até a 0017 aplicadas (conferido no log do deploy). A 0.26.0 (recuperação de senha por e-mail, migration 0018) foi implantada com sucesso e `0018_email_messages.sql ✅` aparece no log; a 0.27.0 (mais de um gestor, migration 0019) também foi implantada com sucesso (commit `e7788ef`) e `0019_platform_admin_invites.sql ✅` aparece no log do deploy. A 0.28.0 ("Baixar meus dados", sem migration) também foi implantada com sucesso (commit `2298dce`; não há linha de migration nova no log, porque não há migration). A 0.29.0 (Configurações do profissional, sem migration) está em PR, ainda sem deploy. **Nada foi lido ao vivo**: o ambiente onde o código é escrito não alcança `projeto-musculo.webflow.io`.
 
 ## 1. Depende do Responsável (conta, domínio, decisão)
 
@@ -58,6 +58,7 @@ Estado conhecido em 26/10/2026: a 0.25.0 está no ar, com as migrations até a 0
 | C5 | Primeiro uso real das fotos: subir uma foto de teste de um aluno de teste que autorizou, conferir a leitura só pelo profissional e pedir para apagar |
 | C6 | Quem já tinha aceitado os termos vê a tela de aceite de novo (a versão mudou de nome na 0.24) |
 | C7 | Com um aluno de teste em produção: abrir Minha conta, tocar em **Baixar meus dados**, abrir o arquivo e conferir que traz só o que ele vê (e nada da ficha nem das avaliações); em `/api/health` a versão `0.28.0` |
+| C8 | Em produção, em `/profissional/configuracoes`: corrigir o nome do espaço e o nome de exibição de uma conta de teste e ver o nome novo na área de um aluno de teste; `/api/health` com a versão `0.29.0` |
 
 ## 5. Construir agora (Código; não depende de ninguém)
 
@@ -69,7 +70,7 @@ Estado conhecido em 26/10/2026: a 0.25.0 está no ar, com as migrations até a 0
 | B4 | **Editor dos termos**: rascunho no servidor; prévia do efeito nas pessoas que já aceitaram | Hoje fechar a página perde a edição |
 | B5 | **Retirada do aceite dos termos** como ação do aluno | Hoje é só um pedido (depende em parte de J6) |
 | B6 | **Documentos** do aluno: PDFs de plano que o profissional compartilhou | O PDF e o armazenamento privado já existem |
-| B7 | **Configurações** do profissional (dados do espaço) | Item "Em breve" |
+| ~~B7~~ | ~~Configurações do profissional (dados do espaço)~~ **Feito na 0.29** (nome do espaço, nome de exibição e quem tem acesso, só leitura). Equipe, papéis e permissões seguem em D4 | `ROADMAP-IMPLEMENTACAO.md` (0.29) |
 | B8 | Check-ins: campos configuráveis pelo profissional; check-in de dias anteriores; o profissional responder ao aluno | Hoje só registra a leitura |
 | B9 | Trilha de auditoria de **login e leitura** | Hoje cobre criação, ativação, bloqueio, convite, revogação, pedidos e fotos |
 | B10 | Fotos: **anotação sobre a imagem**; geração do PDF com pendências | Constam como critério restante de E2 |
@@ -77,6 +78,7 @@ Estado conhecido em 26/10/2026: a 0.25.0 está no ar, com as migrations até a 0
 | B12 | Rotina de **retenção** (depende de J3, mas o mecanismo se constrói antes) | Nada apaga hoje |
 | B13 | **Cópia do registro técnico** do profissional (ficha, avaliações, anotações sobre check-ins e treinos) para o titular | Falta o advogado dizer o que se entrega e como (J1, J4). Enquanto isso o aluno pede e o profissional responde à mão |
 | B14 | **Formato legível** da cópia (página ou PDF) para quem não lê JSON | Hoje só o JSON; a tela explica que abre em um editor de texto |
+| B15 | Guardar **o nome de quem entregou no momento da entrega** e o **histórico de nomes anteriores** do espaço e do profissional | Hoje o nome é lido na hora: renomear muda como as entregas já feitas dizem quem as entregou (o conteúdo não muda). Exige migration aditiva e decide-se com o advogado se o nome da entrega deve ser fixo (J1) |
 
 ## 6. Construir depois de outra pendência
 

@@ -95,6 +95,7 @@ describe("navigation by area (handoff V2, section 3)", () => {
       "aluno/conta",
       "aluno/evolucao",
       "aluno/treino",
+      "profissional/configuracoes",
       "profissional/conta",
       "profissional/prescricao",
     ]);
