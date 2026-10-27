@@ -21,6 +21,7 @@ export const PLATFORM_AUDIT_ACTIONS = [
   "TERMS_PUBLISHED_PROFESSIONAL",
   "TERMS_DRAFT_DISCARDED_STUDENT",
   "TERMS_DRAFT_DISCARDED_PROFESSIONAL",
+  "PLATFORM_TWO_FACTOR_RESET",
   "PLATFORM_ADMIN_INVITED",
   "PLATFORM_ADMIN_INVITE_REVOKED",
   "PLATFORM_ADMIN_GRANTED",
@@ -66,6 +67,8 @@ export interface MemberRow {
   email: string;
   revoked: boolean;
   blocked: boolean;
+  /** The second step of the sign-in is on for this person. A fact, never the secret. */
+  twoFactor: boolean;
 }
 export interface PlatformAuditRow {
   id: string;
@@ -85,6 +88,7 @@ export interface ManagerRow {
   invitedByEmail: string | null;
   revoked: boolean;
   self: boolean;
+  twoFactor: boolean;
 }
 export type ManagerInviteStatus = "OPEN" | "USED" | "EXPIRED" | "REVOKED" | "LAPSED";
 export interface ManagerInviteRow {
@@ -314,7 +318,8 @@ export function platformFor(db: D1Database, context: PlatformContext | null) {
       const members = await db
         .prepare(
           `SELECT m.user_id AS userId, m.role, p.display_name AS displayName, au.email,
-                  m.revoked_at IS NOT NULL AS revoked, u.disabled_at IS NOT NULL AS blocked
+                  m.revoked_at IS NOT NULL AS revoked, u.disabled_at IS NOT NULL AS blocked,
+                  au.two_factor_enabled AS twoFactor
            FROM memberships m
            JOIN users u ON u.id = m.user_id
            JOIN auth_user au ON au.id = m.user_id
@@ -330,6 +335,7 @@ export function platformFor(db: D1Database, context: PlatformContext | null) {
           email: string;
           revoked: number;
           blocked: number;
+          twoFactor: number;
         }>();
       return {
         organization,
@@ -337,6 +343,7 @@ export function platformFor(db: D1Database, context: PlatformContext | null) {
           ...member,
           revoked: Boolean(member.revoked),
           blocked: Boolean(member.blocked),
+          twoFactor: Boolean(member.twoFactor),
         })),
       };
     },
@@ -394,14 +401,20 @@ export function platformFor(db: D1Database, context: PlatformContext | null) {
           `SELECT pa.user_id AS userId, au.name, au.email, pa.created_at AS since,
                   (SELECT ci.email FROM platform_admin_invites i JOIN auth_user ci ON ci.id = i.created_by_user_id
                    WHERE i.accepted_by_user_id = pa.user_id ORDER BY i.accepted_at DESC LIMIT 1) AS invitedByEmail,
-                  pa.revoked_at IS NOT NULL AS revoked, pa.user_id = ?1 AS self
+                  pa.revoked_at IS NOT NULL AS revoked, pa.user_id = ?1 AS self,
+                  au.two_factor_enabled AS twoFactor
            FROM platform_admins pa JOIN auth_user au ON au.id = pa.user_id
            WHERE ${adminGuard("?1")}
            ORDER BY pa.revoked_at IS NOT NULL, pa.created_at, pa.user_id`,
         )
         .bind(userId)
-        .all<Omit<ManagerRow, "revoked" | "self"> & { revoked: number; self: number }>();
-      return result.results.map((row) => ({ ...row, revoked: Boolean(row.revoked), self: Boolean(row.self) }));
+        .all<Omit<ManagerRow, "revoked" | "self" | "twoFactor"> & { revoked: number; self: number; twoFactor: number }>();
+      return result.results.map((row) => ({
+        ...row,
+        revoked: Boolean(row.revoked),
+        self: Boolean(row.self),
+        twoFactor: Boolean(row.twoFactor),
+      }));
     },
 
     /** The invitations, newest first. The link itself is never here: only its hash exists. */
@@ -497,6 +510,40 @@ export function platformFor(db: D1Database, context: PlatformContext | null) {
           .bind(crypto.randomUUID(), userId, targetUserId, stamp),
       ]);
       return results[0].meta.changes === 1;
+    },
+
+    /**
+     * Turns the second step of the sign-in off for someone who can no longer use it (the phone and the
+     * recovery codes are lost). Only for another manager or for someone who belongs to an organization:
+     * never oneself (a manager turns their own off with their password), and never a student. Everything
+     * happens in one batch or nothing does: the flag goes down (the database writes its own line for
+     * that), a line names who did it, the secrets are deleted and every session of that person ends, so
+     * they come back with the password alone and may start the second step again. The manager must have
+     * checked, by another way, that it is that person asking: the tool cannot.
+     */
+    async resetTwoFactor(targetUserId: string, now = new Date()): Promise<boolean> {
+      const event = crypto.randomUUID();
+      const stamp = now.toISOString();
+      const done = `EXISTS (SELECT 1 FROM access_audit_events WHERE id = ?3)`;
+      const results = await db.batch([
+        db
+          .prepare(
+            `UPDATE auth_user SET two_factor_enabled = 0, updated_at = ?4
+             WHERE id = ?2 AND id <> ?1 AND two_factor_enabled = 1 AND ${adminGuard("?1")}
+               AND (EXISTS (SELECT 1 FROM memberships m WHERE m.user_id = auth_user.id)
+                 OR EXISTS (SELECT 1 FROM platform_admins pa WHERE pa.user_id = auth_user.id AND pa.revoked_at IS NULL))`,
+          )
+          .bind(userId, targetUserId, event, now.getTime()),
+        db
+          .prepare(
+            `INSERT INTO access_audit_events (id, organization_id, actor_user_id, action, subject_id, created_at)
+             SELECT ?3, NULL, ?1, 'PLATFORM_TWO_FACTOR_RESET', ?2, ?4 WHERE (SELECT changes()) > 0`,
+          )
+          .bind(userId, targetUserId, event, stamp),
+        db.prepare(`DELETE FROM auth_two_factor WHERE user_id = ?2 AND ${done}`).bind(userId, targetUserId, event),
+        db.prepare(`DELETE FROM auth_session WHERE user_id = ?2 AND ${done}`).bind(userId, targetUserId, event),
+      ]);
+      return results[1].meta.changes > 0;
     },
 
     async listAudit(limit = 50): Promise<PlatformAuditRow[]> {

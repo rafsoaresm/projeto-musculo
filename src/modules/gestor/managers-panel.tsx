@@ -5,8 +5,10 @@ import { Check, Copy } from "lucide-react";
 import { Notice, Pill, formatDate } from "@/components/ui";
 import { useMountPath } from "@/components/use-mount-path";
 import type { ManagerInviteRow, ManagerRow } from "@/db/platform";
+import { ResetTwoFactor } from "./reset-two-factor";
 import {
   inviteManager,
+  resetManagerTwoFactor,
   revokeManager,
   revokeManagerInvite,
   type ManagerInviteState,
@@ -102,8 +104,12 @@ export function ManagersPanel({ managers, invites }: { managers: ManagerRow[]; i
                   </td>
                   <td data-label="Situação">
                     {manager.revoked ? <Pill>Acesso encerrado</Pill> : <Pill tone="success">Ativo</Pill>}
+                    {manager.twoFactor && <small className="cell-sub">Duas etapas ativas</small>}
                   </td>
                   <td>
+                    {!manager.revoked && !manager.self && manager.twoFactor && (
+                      <ResetTwoFactor name={manager.name} reset={resetManagerTwoFactor.bind(null, manager.userId)} />
+                    )}
                     {!manager.revoked && !manager.self && (
                       confirming === manager.userId ? (
                         <span className="inline-form">

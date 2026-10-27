@@ -20,6 +20,7 @@ Estado conhecido em 27/10/2026: a 0.25.0 está no ar, com as migrations até a 0
 | R8 | Escolher o **canal e o responsável pelo titular** (encarregado/DPO) e um plano de resposta a incidentes | Hoje não existem | `REVISAO-JURIDICA.md` §7 item 8 |
 | R9 | **Contrato de operação** entre a plataforma e o profissional | Não existe | `REVISAO-JURIDICA.md` §7 item 8 |
 | R10 | **O texto aprovado diz uma coisa que deixou de ser verdade**: tanto o do aluno ("Os seus direitos") quanto o do profissional ("Pedidos do aluno") afirmam "Hoje a ferramenta ainda não tem uma tela para esses pedidos". Desde a 0.25 o aluno faz os pedidos em Minha conta e desde a 0.28 baixa uma cópia do que vê | Quem aceita lê uma frase falsa. Trocar o texto exige o aval do advogado e gera versão nova: junte com R2 e R7 numa só publicação para ninguém aceitar três vezes. O editor com rascunho (0.30) serve para preparar o texto antes | `REVISAO-JURIDICA.md` §5.2 e §7 item 6a; `/gestor/termos` |
+| R11 | **Decidir se a verificação em duas etapas passa a ser obrigatória** para o gestor da plataforma (e, depois, para o profissional) | Hoje é opcional (0.31): uma conta de gestor com senha fraca ou vazada ainda entra só com a senha, e o gestor vê todas as organizações. Obrigar exige uma regra de transição (quem já é gestor, quem perde o celular) e depende de R1 para a pessoa se recuperar sem outro gestor | `AUTENTICACAO.md`, "Verificação em duas etapas" |
 
 ## 2. Depende do Advogado (pacote em `REVISAO-JURIDICA.md`)
 
@@ -52,7 +53,7 @@ Estado conhecido em 27/10/2026: a 0.25.0 está no ar, com as migrations até a 0
 
 | # | Conferência |
 |---|---|
-| C1 | `https://projeto-musculo.webflow.io/app/api/health`: versão `0.30.0`; `"photos": "open"`; `"passwordRecovery": "not_configured"` até R1 |
+| C1 | `https://projeto-musculo.webflow.io/app/api/health`: versão `0.31.0`; `"photos": "open"`; `"passwordRecovery": "not_configured"` até R1 |
 | C2 | Se `"photos": "closed"`: criar `PHOTOS_ENABLED=true` como variável do ambiente (a documentação do Webflow diz que `vars` do `wrangler.json` são ignoradas) e publicar de novo |
 | ~~C3~~ | ~~Após o deploy da 0.26 e da 0.27: `0018_email_messages.sql ✅` e `0019_platform_admin_invites.sql ✅` no log do deploy~~ **Conferido em 26/10/2026** nos dois deploys |
 | C4 | Depois de R1: pedir um link para uma conta de teste (no sandbox da AWS, um endereço verificado), abri-lo e entrar com a senha nova; se a AWS recusar, o código fica em `email_messages.error_code` |
@@ -61,6 +62,7 @@ Estado conhecido em 27/10/2026: a 0.25.0 está no ar, com as migrations até a 0
 | C7 | Com um aluno de teste em produção: abrir Minha conta, tocar em **Baixar meus dados**, abrir o arquivo e conferir que traz só o que ele vê (e nada da ficha nem das avaliações); em `/api/health` a versão `0.28.0` |
 | C8 | Em produção, em `/profissional/configuracoes`: corrigir o nome do espaço e o nome de exibição de uma conta de teste e ver o nome novo na área de um aluno de teste; `/api/health` com a versão `0.29.0` |
 | C9 | ~~`0020_terms_drafts.sql ✅` no log do deploy~~ **Conferido em 27/10/2026.** Falta, em `/gestor/termos` salvar um rascunho, recarregar e achá-lo; `/api/health` com a versão `0.30.0` (**não publique nada para testar: publicar pede novo aceite a todos**) |
+| C10 | Depois do deploy da 0.31: `0021_two_factor.sql ✅` no log do deploy e `/api/health` com a versão `0.31.0`. Com uma conta de teste (**não** a do gestor real, até a conferência): ligar a etapa em `/profissional/conta` **lendo o QR com um aplicativo autenticador de verdade** (nenhum foi usado até aqui, só um gerador de código da suíte), sair, entrar com o código, entrar com um código de recuperação, e pedir ao gestor que redefina |
 
 ## 5. Construir agora (Código; não depende de ninguém)
 
@@ -71,23 +73,24 @@ Estado conhecido em 27/10/2026: a 0.25.0 está no ar, com as migrations até a 0
 | ~~B3~~ | ~~O gestor vê pedidos do titular atrasados por organização~~ **Feito na 0.27** (só contagens) | |
 | ~~B4~~ | ~~Editor dos termos: rascunho no servidor; prévia do efeito nas pessoas que já aceitaram~~ **Feito na 0.30** (a prévia do efeito, "as N pessoas que aceitaram terão de aceitar de novo", já existia desde a 0.24). Fora do rascunho: voltar/avançar do navegador não pergunta, só recarregar, fechar e os links da página | `ROADMAP-IMPLEMENTACAO.md` (0.30) |
 | B5 | **Retirada do aceite dos termos** como ação do aluno | Hoje é só um pedido (depende em parte de J6) |
-| B6 | **Documentos** do aluno: PDFs de plano que o profissional compartilhou | O PDF e o armazenamento privado já existem |
+| B6 | **Documentos** do aluno: PDFs de plano que o profissional compartilhou | O PDF e o armazenamento privado já existem. **Parada em 27/10/2026 por falta de decisão, não por falta de código:** hoje o aluno já baixa o PDF da revisão entregue no próprio treino (uma lista de documentos o repetiria) e mostrar revisões substituídas pede uma decisão do Técnico sobre o que o aluno deve poder reler |
 | ~~B7~~ | ~~Configurações do profissional (dados do espaço)~~ **Feito na 0.29** (nome do espaço, nome de exibição e quem tem acesso, só leitura). Equipe, papéis e permissões seguem em D4 | `ROADMAP-IMPLEMENTACAO.md` (0.29) |
 | B8 | Check-ins: campos configuráveis pelo profissional; check-in de dias anteriores; o profissional responder ao aluno | Hoje só registra a leitura |
 | B9 | Trilha de auditoria de **login e leitura** | Hoje cobre criação, ativação, bloqueio, convite, revogação, pedidos e fotos |
 | B10 | Fotos: **anotação sobre a imagem**; geração do PDF com pendências | Constam como critério restante de E2 |
-| B11 | Política de senha contra vazamentos; MFA | Constam em E1 |
+| B11 | ~~MFA~~ **Feito na 0.31** (opcional; ver R11, B16). Resta a **política de senha contra vazamentos** (o plugin `haveIBeenPwned` da biblioteca existe e não está ligado) | Consulta um serviço de terceiros, mesmo enviando só o início do hash da senha: decidir com o Responsável e o advogado antes de ligar |
 | B12 | Rotina de **retenção** (depende de J3, mas o mecanismo se constrói antes) | Nada apaga hoje |
 | B13 | **Cópia do registro técnico** do profissional (ficha, avaliações, anotações sobre check-ins e treinos) para o titular | Falta o advogado dizer o que se entrega e como (J1, J4). Enquanto isso o aluno pede e o profissional responde à mão |
 | B14 | **Formato legível** da cópia (página ou PDF) para quem não lê JSON | Hoje só o JSON; a tela explica que abre em um editor de texto |
 | B15 | Guardar **o nome de quem entregou no momento da entrega** e o **histórico de nomes anteriores** do espaço e do profissional | Hoje o nome é lido na hora: renomear muda como as entregas já feitas dizem quem as entregou (o conteúdo não muda). Exige migration aditiva e decide-se com o advogado se o nome da entrega deve ser fixo (J1) |
+| B16 | **Último gestor sem celular e sem códigos**: ninguém na ferramenta redefine a etapa dele (o gestor não redefine a si mesmo) | Hoje só mexendo no banco (zerar `auth_user.two_factor_enabled` e apagar a linha em `auth_two_factor` e as sessões da pessoa), e isso **não foi testado**. Juntar com o caminho do último gestor perdido (B2) e com R1 |
 
 ## 6. Construir depois de outra pendência
 
 | # | O que | Espera |
 |---|---|---|
 | D1 | **Verificação do e-mail** no cadastro e **troca de e-mail** | R1 |
-| D2 | **Avisos por e-mail**: relato de desconforto, pedido do titular, lembrete de prazo, aviso de que uma cópia dos dados foi gerada | R1 |
+| D2 | **Avisos por e-mail**: a verificação em duas etapas ligada, desligada ou redefinida; relato de desconforto, pedido do titular, lembrete de prazo, aviso de que uma cópia dos dados foi gerada | R1 |
 | D3 | **Mensagens** do aluno com o profissional | R1 e decisão sobre o canal |
 | D4 | **Convites e gestão de equipe**, papéis e revogação pela interface | R1 |
 | ~~D5~~ | ~~Gestor concede o papel de gestor pela interface~~ **Feito na 0.27** | |

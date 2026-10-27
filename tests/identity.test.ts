@@ -1,12 +1,12 @@
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import type { D1Database } from "@cloudflare/workers-types";
-import { readFile } from "node:fs/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createAuth } from "@/modules/auth/factory";
 import { AUTH_ENDPOINTS, handleAuthRequest } from "@/modules/auth/http";
 import { provisionWorkspace, workspaceFor } from "@/db/workspaces";
 import { createStudent } from "@/db/create-student";
 import { studentsFor } from "@/db/students";
+import { ALL_MIGRATIONS, migrate } from "./helpers/migrate";
 
 let mf: Miniflare;
 let db: D1Database;
@@ -61,22 +61,7 @@ beforeAll(async () => {
     }),
   );
   db = await mf.getD1Database("DB");
-  for (const file of [
-    "0001_foundation.sql",
-    "0002_identity_and_onboarding.sql",
-  ]) {
-    const sql = await readFile(
-      new URL(`../migrations/${file}`, import.meta.url),
-      "utf8",
-    );
-    await db.batch(
-      sql
-        .replace(/^--.*$/gm, "")
-        .split(";")
-        .filter((s) => s.trim())
-        .map((s) => db.prepare(s)),
-    );
-  }
+  await migrate(db, ALL_MIGRATIONS);
   auth = createAuth(db, {
     origin,
     secret: crypto.randomUUID() + crypto.randomUUID(),
@@ -178,6 +163,11 @@ describe("Real authentication and atomic native SQLite onboarding", () => {
       "sign-in/email",
       "sign-out",
       "sign-up/email",
+      "two-factor/disable",
+      "two-factor/enable",
+      "two-factor/generate-backup-codes",
+      "two-factor/verify-backup-code",
+      "two-factor/verify-totp",
     ]);
   });
   it("rejects oversized auth bodies before invoking the authentication library", async () => {

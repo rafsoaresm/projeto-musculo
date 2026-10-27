@@ -5,7 +5,9 @@ import {
   createProfessional,
   newActor,
   noHorizontalOverflow,
+  signIn,
   signUp,
+  turnOnTwoFactor,
   uniqueEmail,
 } from "./helpers";
 
@@ -88,11 +90,36 @@ test("the platform manager is activated once and manages organizations without s
   await pro.page.goto("./profissional");
   await expect(pro.page.getByRole("heading", { name: /^Olá, / })).toBeVisible();
 
+  // A professional turns on the second step; a manager can turn it off for someone who lost the phone and
+  // the codes. The person is signed out and comes back with the password alone.
+  await turnOnTwoFactor(pro.page, "./profissional/conta");
+  await manager.page.reload();
+  await expect(manager.page.getByText("Duas etapas ativas")).toBeVisible();
+  await manager.page.getByRole("button", { name: `Redefinir a verificação em duas etapas de ${person}` }).click();
+  await expect(manager.page.getByText("Confirme, por outro canal", { exact: false })).toBeVisible();
+  await manager.page.getByRole("button", { name: `Confirmar: redefinir as duas etapas de ${person}` }).click();
+  await expect(manager.page.getByText("Verificação em duas etapas redefinida.", { exact: false })).toBeVisible();
+  await expect(manager.page.getByText("Duas etapas ativas")).toHaveCount(0);
+  await pro.page.goto("./profissional");
+  await expect(pro.page).toHaveURL(/\/entrar/);
+  await signIn(pro.page, proEmail);
+  await expect(pro.page.getByRole("heading", { name: /^Olá, / })).toBeVisible();
+
   // Both actions are on the audit trail.
   await manager.page.goto("./gestor/auditoria");
   await expect(manager.page.getByText("Acesso bloqueado").first()).toBeVisible();
   await expect(manager.page.getByText("Acesso restabelecido").first()).toBeVisible();
   await expect(manager.page.getByText(proEmail).first()).toBeVisible();
+  await expect(manager.page.getByText("Verificação em duas etapas redefinida").first()).toBeVisible();
+
+  // The manager has a page of their own account, with the password and the second step.
+  await manager.page.goto("./gestor/conta");
+  await expect(manager.page.getByRole("heading", { name: "Minha conta", level: 1 })).toBeVisible();
+  await expect(manager.page.getByRole("link", { name: "Minha conta" }).first()).toHaveAttribute("aria-current", "page");
+  await expect(manager.page.getByRole("heading", { name: "Alterar a senha" })).toBeVisible();
+  await expect(manager.page.getByRole("heading", { name: "Verificação em duas etapas" })).toBeVisible();
+  await expect(manager.page.getByText("Desativada.")).toBeVisible();
+  await noHorizontalOverflow(manager.page);
 
   // The manager has no workspace and therefore no professional area.
   await manager.page.goto("./profissional");

@@ -862,6 +862,52 @@ main {
   font-weight: 700;
   text-decoration: underline;
 }
+button.account-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.qr-code {
+  display: block;
+  width: min(240px, 100%);
+  height: auto;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  background: #fff;
+}
+.two-factor-steps {
+  display: grid;
+  gap: 22px;
+  margin: 0;
+  padding-left: 22px;
+}
+.two-factor-steps > li {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  min-width: 0;
+}
+.two-factor-key,
+.two-factor-codes code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 0.06em;
+  overflow-wrap: anywhere;
+}
+.two-factor-codes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 14px;
+  list-style: none;
+  border: 1px dashed var(--color-line-strong);
+  border-radius: var(--radius-card);
+  background: var(--color-background);
+}
 .account-toolbar {
   display: flex;
   align-items: center;

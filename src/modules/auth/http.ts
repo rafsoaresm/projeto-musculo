@@ -12,6 +12,14 @@ export const AUTH_ENDPOINTS: ReadonlySet<string> = new Set([
   // For a person already signed in: both need the session cookie, and the first also the current password.
   "change-password",
   "revoke-other-sessions",
+  // The second step (an authenticator app). Setting it up, turning it off and the new recovery codes
+  // need the session and the password; the two verifications finish a sign-in that asked for it. The
+  // library's other routes (a code by e-mail or phone, the app's secret again) stay closed.
+  "two-factor/enable",
+  "two-factor/verify-totp",
+  "two-factor/verify-backup-code",
+  "two-factor/generate-backup-codes",
+  "two-factor/disable",
 ]);
 
 /**
