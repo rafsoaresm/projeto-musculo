@@ -60,4 +60,5 @@ export const ALL_MIGRATIONS = [
   "0021_two_factor.sql",
   "0022_sign_in_trail.sql",
   "0023_leads_services.sql",
+  "0024_sites.sql",
 ];

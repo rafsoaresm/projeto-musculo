@@ -1,8 +1,9 @@
 "use client";
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { Notice, formatDateTime } from "@/components/ui";
+import { useUnsavedGuard } from "@/components/use-unsaved-guard";
 import { TermsBlock } from "@/modules/consentimento/terms-block";
 import { changedParts, parseTermsContent, type Audience, type TermsContent } from "@/modules/consentimento/terms";
 import { discardTermsDraft, publishTerms, saveTermsDraft } from "./terms-actions";
@@ -86,27 +87,7 @@ export function TermsEditor({
   const dirty =
     snapshotOf({ title, intro, sections, confirmation, photos: hasPhotos ? photos : null }) !== savedSnapshot;
 
-  // Leaving with words that are not saved would lose them. Closing or reloading is asked by the browser;
-  // the links of this page (the tabs, the history) change the screen without leaving it, so they ask here.
-  useEffect(() => {
-    if (!dirty) return;
-    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
-    const askBeforeLinks = (event: MouseEvent) => {
-      const link = (event.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
-      if (!link || link.target === "_blank" || link.hasAttribute("download")) return;
-      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      if (!window.confirm("Há alterações que ainda não foram salvas e vão se perder. Sair mesmo assim?")) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
-    };
-    window.addEventListener("beforeunload", warn);
-    document.addEventListener("click", askBeforeLinks, true);
-    return () => {
-      window.removeEventListener("beforeunload", warn);
-      document.removeEventListener("click", askBeforeLinks, true);
-    };
-  }, [dirty]);
+  useUnsavedGuard(dirty);
 
   const update = (key: number, patch: Partial<SectionDraft>) => {
     setSections((all) => all.map((section) => (section.key === key ? { ...section, ...patch } : section)));
