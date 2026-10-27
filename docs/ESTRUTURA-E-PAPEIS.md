@@ -36,7 +36,7 @@ Uma mesma conta pode ter mais de uma área (por exemplo, gestor e profissional).
 /projeto                  mapa do produto e do roadmap
 
 /gestor                   visão geral            /gestor/organizacoes[/id]
-/gestor/auditoria         /gestor/termos (editar os termos)
+/gestor/auditoria         /gestor/termos (editar os termos, com rascunho salvo no servidor)
 /gestor/ativar            primeiro acesso
 /gestor/[módulo]          planejados: planos-saas, afiliados, templates, biblioteca-global, integracoes
 
@@ -94,7 +94,7 @@ Correspondência com os papéis do handoff V2:
 | Meu Site (editor, páginas, domínios, SEO, publicações) | `/profissional/meu-site` | Planejado, um único item por ora | E3 |
 | Leads | `/profissional/leads` | Planejado | E3 |
 | Configurações | `/profissional/configuracoes` | Disponível: o proprietário muda o nome do espaço, cada profissional o próprio nome de exibição, e a lista de quem tem acesso é só de leitura. **Equipe, papéis e permissões continuam planejados** (dependem do e-mail verificado). Na demonstração há uma prévia que só explica | E1 |
-| Gestor: organizações, auditoria, termos | `/gestor/...` | Disponível: os termos são editados, revisados e publicados em versões | E1 |
+| Gestor: organizações, auditoria, termos | `/gestor/...` | Disponível: os termos são editados, **guardados como rascunho no servidor** (um por público, compartilhado entre gestores, com trava de revisão), revisados e publicados em versões | E1 |
 | Gestor: planos e cobrança, afiliados, templates, biblioteca, integrações | `/gestor/...` | Planejado | E3, E5, E6, E7 |
 | Aluno: início | `/aluno` | Disponível: vínculo e estado do treino | E4 |
 | Aluno: treino atual | `/aluno/treino` | Disponível: a revisão entregue de cada plano, somente leitura (**prévia** com execução na demonstração) | E4 |

@@ -175,6 +175,49 @@ export function parseTermsContent(audience: Audience, raw: unknown): TermsConten
   return content;
 }
 
+/**
+ * The words of a draft: the same shape and size limits as the text to be published, but fields may be
+ * empty and nothing is trimmed, so what the manager typed comes back as typed. Whether it is fit to
+ * publish is decided later, by `parseTermsContent`. Throws a ZodError.
+ */
+const draftLine = (max: number) =>
+  z
+    .string()
+    .transform((value) => value.replace(/\r\n?/g, "\n"))
+    .pipe(z.string().max(max));
+const draftSchema = z
+  .object({
+    title: draftLine(120),
+    intro: draftLine(3000),
+    sections: z.array(z.object({ heading: draftLine(120), text: draftLine(4000) }).strict()).min(1).max(20),
+    confirmation: draftLine(300),
+    photos: z.object({ heading: draftLine(120), text: draftLine(4000), label: draftLine(300) }).strict().optional(),
+  })
+  .strict();
+export type TermsDraftContent = z.infer<typeof draftSchema>;
+
+/** The largest draft the table accepts (characters of its JSON). */
+export const DRAFT_MAX_CHARACTERS = 60000;
+
+export function parseDraftContent(audience: Audience, raw: unknown): TermsDraftContent {
+  const parsed = draftSchema
+    .superRefine((value, context) => {
+      if (audience === "PROFESSIONAL" && value.photos)
+        context.addIssue({ code: "custom", path: ["photos"], message: "PHOTOS_BLOCK_NOT_ALLOWED" });
+    })
+    .parse(raw);
+  const content: TermsDraftContent = {
+    title: parsed.title,
+    intro: parsed.intro,
+    sections: parsed.sections,
+    confirmation: parsed.confirmation,
+  };
+  if (parsed.photos) content.photos = parsed.photos;
+  if (JSON.stringify(content).length > DRAFT_MAX_CHARACTERS)
+    throw new z.ZodError([{ code: "custom", path: [], message: "DRAFT_TOO_LARGE" }]);
+  return content;
+}
+
 /** The same words, whatever the object identity. */
 export const sameContent = (a: TermsContent, b: TermsContent) =>
   canonicalText("STUDENT", "", a) === canonicalText("STUDENT", "", b);

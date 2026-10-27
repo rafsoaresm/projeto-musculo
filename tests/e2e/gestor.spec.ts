@@ -185,6 +185,19 @@ test("the platform manager is activated once and manages organizations without s
   await expect(manager.page.locator("p.form-error")).toContainText("nenhum pode ficar vazio");
   await manager.page.getByLabel("Título do bloco").fill("Fotos da sua postura (opcional)");
 
+  // The words can be kept on the server as a draft and thrown away; the editor goes back to the text in force.
+  await manager.page.getByLabel("Título do bloco").fill("Fotos da sua postura (escolha opcional)");
+  await expect(manager.page.getByText("Há alterações ainda não salvas.")).toBeVisible();
+  await manager.page.getByRole("button", { name: "Salvar rascunho" }).click();
+  await expect(manager.page.getByText("Rascunho salvo. Ele não publica nada", { exact: false })).toBeVisible();
+  await manager.page.getByRole("button", { name: "Descartar rascunho" }).click();
+  await expect(manager.page.getByRole("group", { name: "Confirmar o descarte do rascunho" })).toBeVisible();
+  await manager.page.getByRole("button", { name: "Sim, descartar" }).click();
+  await expect(manager.page.getByText("Rascunho descartado. O editor voltou ao texto em vigor.")).toBeVisible();
+  await expect(manager.page.getByLabel("Título do bloco")).toHaveValue("Fotos da sua postura (opcional)");
+  await expect(manager.page.getByText("Nenhuma alteração pendente.")).toBeVisible();
+  await expect(manager.page.getByRole("button", { name: "Descartar rascunho" })).toHaveCount(0);
+
   // Change the professional's text: edit, read what changed and how it will look, then publish.
   await manager.page.getByRole("link", { name: "Termos do profissional" }).click();
   await expect(manager.page.getByRole("link", { name: "Termos do profissional" })).toHaveAttribute("aria-current", "page");
@@ -193,6 +206,35 @@ test("the platform manager is activated once and manages organizations without s
   await manager.page.getByRole("button", { name: "Adicionar seção" }).click();
   await manager.page.getByLabel("Título da seção 6").fill("Seção nova");
   await manager.page.getByLabel("Texto da seção 6").fill("Conteúdo da seção nova.");
+
+  // Words that are not ready are kept as a draft on the server and found again after a reload.
+  await expect(manager.page.getByText("Há alterações ainda não salvas.")).toBeVisible();
+  await manager.page.getByRole("button", { name: "Salvar rascunho" }).click();
+  await expect(manager.page.getByText("Rascunho salvo. Ele não publica nada", { exact: false })).toBeVisible();
+  await expect(manager.page.getByText(/Rascunho salvo por .+ em \d{2}\/\d{2}\/\d{4}/)).toBeVisible();
+  await manager.page.reload();
+  await expect(manager.page.getByText("Continuando o rascunho salvo", { exact: false })).toBeVisible();
+  await expect(manager.page.getByLabel("Título", { exact: true })).toHaveValue("Termos de uso do profissional (versão 2)");
+  await expect(manager.page.getByLabel("Título da seção 6")).toHaveValue("Seção nova");
+  await expect(manager.page.getByText("Nenhuma alteração pendente.")).toBeHidden();
+  await noHorizontalOverflow(manager.page);
+
+  // A change that is not saved is flagged, and leaving through a link of the page asks first.
+  await manager.page.getByLabel("Texto da seção 6").fill("Conteúdo da seção nova, com mais uma frase.");
+  await expect(manager.page.getByText("Há alterações ainda não salvas.")).toBeVisible();
+  const asked: string[] = [];
+  manager.page.once("dialog", (dialog) => {
+    asked.push(dialog.message());
+    void dialog.dismiss();
+  });
+  await manager.page.getByRole("link", { name: "Termos do aluno" }).click();
+  await expect.poll(() => asked.length).toBe(1);
+  expect(asked[0]).toContain("ainda não foram salvas");
+  await expect(manager.page.getByRole("link", { name: "Termos do profissional" })).toHaveAttribute("aria-current", "page");
+  await expect(manager.page.getByLabel("Texto da seção 6")).toHaveValue("Conteúdo da seção nova, com mais uma frase.");
+  await manager.page.getByRole("button", { name: "Salvar rascunho" }).click();
+  await expect(manager.page.getByText("Rascunho salvo. Ele não publica nada", { exact: false })).toBeVisible();
+
   await manager.page.getByRole("button", { name: "Revisar as alterações" }).click();
   const changes = manager.page.getByRole("region", { name: "O que mudou" });
   await expect(changes.getByText("Título alterado")).toBeVisible();
@@ -205,6 +247,11 @@ test("the platform manager is activated once and manages organizations without s
   await manager.page.getByLabel(/revisado e aprovado por quem responde juridicamente/).check();
   await publish.click();
   await expect(manager.page.getByText(/Versão \d{4}-\d{2}-\d{2}-\d{6} publicada\. Todos aceitam de novo no próximo acesso\./)).toBeVisible();
+
+  // The draft went with the publication: nothing is left to continue.
+  await manager.page.reload();
+  await expect(manager.page.getByText("Continuando o rascunho salvo", { exact: false })).toHaveCount(0);
+  await expect(manager.page.getByRole("button", { name: "Descartar rascunho" })).toHaveCount(0);
 
   // The history keeps both versions, with who published and why; the new one is in force.
   const history = manager.page.getByRole("table", { name: /Versões do texto/ });

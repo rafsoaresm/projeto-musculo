@@ -28,7 +28,11 @@ export default async function Terms({
   const { db, context } = await requirePlatformAdmin();
   const tab = TABS.find((candidate) => candidate.slug === publico) ?? TABS[0];
   const terms = termsFor(db, context);
-  const [current, history] = await Promise.all([currentTerms(db, tab.audience), terms.history(tab.audience)]);
+  const [current, history, draft] = await Promise.all([
+    currentTerms(db, tab.audience),
+    terms.history(tab.audience),
+    terms.draft(tab.audience),
+  ]);
   const chosen = base ? history.find((row) => (row.id ?? "inicial") === base) : undefined;
   const startFrom = chosen ? await terms.contentOf(tab.audience, chosen.id) : null;
   const inForce = history[0];
@@ -88,13 +92,33 @@ export default async function Terms({
             Começando pelo texto da versão {chosen.version}. As mudanças abaixo são comparadas com o texto em vigor.
           </p>
         )}
+        {draft && !chosen && (
+          <Notice tone={draft.baseIsCurrent ? "info" : "warning"}>
+            <p>
+              Continuando o <strong>rascunho salvo</strong> por {draft.updatedByEmail} em {formatDateTime(draft.updatedAt)}.
+              {draft.baseIsCurrent
+                ? " Ele ainda parte do texto em vigor."
+                : " Atenção: o texto em vigor mudou depois que este rascunho foi começado; as diferenças são medidas contra o texto em vigor hoje."}
+            </p>
+          </Notice>
+        )}
+        {draft && chosen && (
+          <Notice tone="warning">
+            <p>
+              Existe um <strong>rascunho salvo</strong> por {draft.updatedByEmail}. Salvar um rascunho a partir desta versão o
+              substitui. <Link className="account-link" href={`/gestor/termos?publico=${tab.slug}`}>Abrir o rascunho salvo</Link>
+            </p>
+          </Notice>
+        )}
         <TermsEditor
           // The same editor stays mounted when a publication changes the version in force: its message must survive.
           key={`${tab.audience}-${chosen?.version ?? "vigor"}`}
           audience={tab.audience}
           current={current.content}
-          initial={startFrom ?? current.content}
+          initial={startFrom ?? draft?.content ?? current.content}
           acceptedBy={inForce.acceptedBy}
+          inForceId={inForce.id}
+          draft={{ revision: draft?.revision ?? null, savedAt: draft?.updatedAt ?? null, savedBy: draft?.updatedByEmail ?? null }}
         />
       </section>
       <section className="panel" aria-labelledby="historico">
