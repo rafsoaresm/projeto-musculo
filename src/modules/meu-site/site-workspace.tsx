@@ -1,27 +1,15 @@
 "use client";
-import { useState, useSyncExternalStore, useTransition } from "react";
+import { useReducer, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
+import { LayoutTemplate } from "lucide-react";
 import { Pill, formatDateTime } from "@/components/ui";
-import { useMountPath } from "@/components/use-mount-path";
 import { useUnsavedGuard } from "@/components/use-unsaved-guard";
 import type { ReleaseRow, ServiceChoice } from "@/db/sites";
-import { BlockEditor } from "./block-editor";
-import {
-  BLOCK_LABEL,
-  BLOCK_TYPES,
-  DESCRIPTION_MAX,
-  MAX_BLOCKS,
-  PUBLIC_WARNING,
-  TITLE_MAX,
-  emptyBlock,
-  newBlockId,
-  type Block,
-  type BlockType,
-  type PublishIssue,
-  type SiteContent,
-} from "./contracts";
+import { PUBLIC_WARNING, type PublishIssue, type SiteContent } from "./contracts";
+import { historyReducer, startHistory } from "./editor-history";
+import { PublicAddress } from "./public-address";
+import { VisualEditor } from "./visual-editor";
 import { changeSiteAddress, publishSite, restoreSiteRelease, saveSiteDraft, unpublishSite } from "./actions";
 
 interface Props {
@@ -46,32 +34,28 @@ function useNote() {
     ),
   };
 }
-
-const noSubscription = () => () => undefined;
-/** The public address as the browser sees it (with the origin and the mount); on the server, the path only. */
-function PublicAddress({ slug }: { slug: string }) {
-  const mountPath = useMountPath();
-  const origin = useSyncExternalStore(noSubscription, () => window.location.origin, () => "");
-  return <code className="site-address">{origin ? `${origin}${mountPath()}/s/${slug}` : `/s/${slug}`}</code>;
-}
+type Note = ReturnType<typeof useNote>;
 
 /**
- * The editor of the page: the data of the site, the blocks, the draft, the publication and the versions.
- * The whole document is held here and sent on save together with the revision that was loaded, so a save
- * made from a stale screen is refused instead of overwriting. Publishing needs the draft saved, and what
- * is public changes only on "Publicar".
+ * The site of the professional: the state (public or not), the address, the versions and the visual editor.
+ * The whole document is held here, with its undo history, and sent on save together with the revision that
+ * was loaded, so a save made from a stale screen is refused instead of overwriting. Publishing needs the
+ * draft saved, and what is public changes only on "Publicar". The editor is a window over this state: the
+ * answers to what is pressed inside it are shown inside it, and the ones of this screen stay here.
  */
 export function SiteWorkspace({ slug, initial, live, releases, services, canEdit }: Props) {
   const router = useRouter();
-  const [content, setContent] = useState<SiteContent>(initial.content);
+  const [history, dispatch] = useReducer(historyReducer, initial.content, startHistory);
+  const content = history.present;
   const [saved, setSaved] = useState(() => JSON.stringify(initial.content));
   const [revision, setRevision] = useState(initial.revision);
+  const [editorOpen, setEditorOpen] = useState(false);
   const stateNote = useNote();
   const saveNote = useNote();
+  const editorNote = useNote();
   const addressNote = useNote();
   const versionsNote = useNote();
   const [issues, setIssues] = useState<PublishIssue[]>([]);
-  const [newType, setNewType] = useState<BlockType>("text");
   const [newSlug, setNewSlug] = useState(slug);
   const [confirmingRestore, setConfirmingRestore] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -80,45 +64,42 @@ export function SiteWorkspace({ slug, initial, live, releases, services, canEdit
   useUnsavedGuard(dirty);
   const unpublished = live !== null && revision > live.draftRevision;
 
-  const edit = (next: SiteContent) => {
-    setContent(next);
+  const afterChange = () => {
     saveNote.clear();
+    editorNote.clear();
     setIssues([]);
   };
-  const setBlocks = (blocks: Block[]) => edit({ ...content, blocks });
-  const move = (index: number, by: -1 | 1) => {
-    const target = index + by;
-    if (target < 0 || target >= content.blocks.length) return;
-    const copy = [...content.blocks];
-    [copy[index], copy[target]] = [copy[target], copy[index]];
-    setBlocks(copy);
+  const edit = (next: SiteContent, key?: string) => {
+    dispatch({ type: "edit", content: next, at: Date.now(), key });
+    afterChange();
   };
 
-  function save() {
+  /** `note` is where the answer is shown: the editor's own, or the one of this screen. */
+  function save(note: Note) {
     startTransition(async () => {
       const result = await saveSiteDraft(content, revision);
       if (result.status === "saved") {
         setRevision(result.revision);
         setSaved(JSON.stringify(content));
-        saveNote.say("Rascunho salvo.");
+        note.say("Rascunho salvo.");
         router.refresh();
       } else {
-        saveNote.say(result.message, true);
+        note.say(result.message, true);
       }
     });
   }
-  function publish() {
+  function publish(note: Note) {
     startTransition(async () => {
       setIssues([]);
       const result = await publishSite(revision);
       if (result.status === "published") {
-        stateNote.say(`Publicado: o site está no ar na versão ${result.number}.`);
+        note.say(`Publicado: o site está no ar na versão ${result.number}.`);
         router.refresh();
       } else if (result.status === "invalid") {
         setIssues(result.issues);
-        stateNote.say("Falta completar o site antes de publicar.", true);
+        note.say("Falta completar o site antes de publicar.", true);
       } else {
-        stateNote.say(result.message, true);
+        note.say(result.message, true);
       }
     });
   }
@@ -134,7 +115,7 @@ export function SiteWorkspace({ slug, initial, live, releases, services, canEdit
       const result = await restoreSiteRelease(releaseId, revision);
       setConfirmingRestore(null);
       if (result.status === "restored") {
-        setContent(result.content);
+        dispatch({ type: "replace", content: result.content });
         setSaved(JSON.stringify(result.content));
         setRevision(result.revision);
         setIssues([]);
@@ -175,7 +156,7 @@ export function SiteWorkspace({ slug, initial, live, releases, services, canEdit
         )}
         {unpublished && <p className="small">Há alterações salvas que ainda não foram publicadas.</p>}
         <p className="small muted">{PUBLIC_WARNING}</p>
-        {issues.length > 0 && (
+        {!editorOpen && issues.length > 0 && (
           <div className="notice warning" role="alert">
             <div>
               <p>
@@ -190,11 +171,16 @@ export function SiteWorkspace({ slug, initial, live, releases, services, canEdit
           </div>
         )}
         <div className="persist-actions">
+          {canEdit && (
+            <button type="button" className="button primary" onClick={() => setEditorOpen(true)}>
+              <LayoutTemplate size={20} /> Abrir o editor visual
+            </button>
+          )}
           <Link className="button secondary" href="/profissional/meu-site/previa">
-            Ver a prévia
+            Ver a prévia do rascunho salvo
           </Link>
           {canEdit && (
-            <button type="button" className="button primary" disabled={pending || dirty} onClick={publish}>
+            <button type="button" className="button primary" disabled={pending || dirty} onClick={() => publish(stateNote)}>
               {pending ? "Aguarde…" : live ? "Publicar uma nova versão" : "Publicar"}
             </button>
           )}
@@ -204,9 +190,19 @@ export function SiteWorkspace({ slug, initial, live, releases, services, canEdit
             </button>
           )}
         </div>
-        {canEdit && dirty && <p className="small muted">Salve o rascunho antes de publicar.</p>}
-        {!canEdit && <p className="small muted">Só o proprietário ou a gestão editam e publicam o site. Você pode ver o rascunho.</p>}
+        {canEdit && dirty && (
+          <div className="stack-form">
+            <p className="small">Há alterações no editor que ainda não foram salvas.</p>
+            <div className="persist-actions">
+              <button type="button" className="button secondary" disabled={pending} onClick={() => save(saveNote)}>
+                {pending ? "Aguarde…" : "Salvar rascunho"}
+              </button>
+            </div>
+          </div>
+        )}
+        {!canEdit && <p className="small muted">Só o proprietário ou a gestão editam e publicam o site. Você pode ver a prévia do rascunho.</p>}
         {stateNote.element}
+        {!editorOpen && saveNote.element}
       </section>
 
       {canEdit && !live && (
@@ -235,119 +231,6 @@ export function SiteWorkspace({ slug, initial, live, releases, services, canEdit
             </div>
             {addressNote.element}
           </form>
-        </section>
-      )}
-
-      <section className="panel" aria-labelledby="dados-site">
-        <h2 id="dados-site">Dados do site</h2>
-        <fieldset className="plain-fieldset stack-form" disabled={!canEdit}>
-          <label>
-            Título do site
-            <input value={content.title} maxLength={TITLE_MAX} autoComplete="off" onChange={(event) => edit({ ...content, title: event.target.value })} />
-          </label>
-          <label>
-            Descrição para buscadores (opcional)
-            <textarea value={content.description} maxLength={DESCRIPTION_MAX} rows={2} onChange={(event) => edit({ ...content, description: event.target.value })} />
-          </label>
-          <label>
-            WhatsApp
-            <input
-              type="tel"
-              value={content.contact.whatsapp}
-              maxLength={30}
-              autoComplete="off"
-              onChange={(event) => edit({ ...content, contact: { ...content.contact, whatsapp: event.target.value } })}
-            />
-          </label>
-          <label>
-            E-mail de contato
-            <input
-              type="email"
-              value={content.contact.email}
-              maxLength={254}
-              autoComplete="off"
-              onChange={(event) => edit({ ...content, contact: { ...content.contact, email: event.target.value } })}
-            />
-          </label>
-          <label>
-            Instagram (o nome de usuário)
-            <input
-              value={content.contact.instagram}
-              maxLength={31}
-              autoComplete="off"
-              onChange={(event) => edit({ ...content, contact: { ...content.contact, instagram: event.target.value } })}
-            />
-          </label>
-          <p className="small muted">Os botões e o rodapé do site levam a estes contatos. Só aparecem os que estiverem preenchidos.</p>
-        </fieldset>
-      </section>
-
-      <section aria-labelledby="blocos-site">
-        <h2 id="blocos-site" className="section-title">
-          Blocos da página
-        </h2>
-        {content.blocks.length === 0 && (
-          <div className="panel">
-            <p>A página ainda não tem blocos. Acrescente o primeiro abaixo.</p>
-          </div>
-        )}
-        {content.blocks.map((block, index) => (
-          <div className="panel" key={block.id}>
-            <fieldset disabled={!canEdit} className="plain-fieldset">
-              <BlockEditor
-                block={block}
-                index={index}
-                total={content.blocks.length}
-                services={services}
-                onChange={(next) => setBlocks(content.blocks.map((b) => (b.id === block.id ? next : b)))}
-                onMove={(by) => move(index, by)}
-                onDuplicate={() =>
-                  content.blocks.length < MAX_BLOCKS &&
-                  setBlocks([...content.blocks.slice(0, index + 1), { ...structuredClone(block), id: newBlockId() }, ...content.blocks.slice(index + 1)])
-                }
-                onRemove={() => setBlocks(content.blocks.filter((b) => b.id !== block.id))}
-              />
-            </fieldset>
-          </div>
-        ))}
-        {canEdit && (
-          <div className="panel">
-            <div className="stack-form">
-              <label>
-                Novo bloco
-                <select value={newType} onChange={(event) => setNewType(event.target.value as BlockType)}>
-                  {BLOCK_TYPES.map((type) => (
-                    <option key={type} value={type}>
-                      {BLOCK_LABEL[type]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="persist-actions">
-                <button
-                  type="button"
-                  className="button secondary"
-                  disabled={content.blocks.length >= MAX_BLOCKS}
-                  onClick={() => setBlocks([...content.blocks, emptyBlock(newType)])}
-                >
-                  <Plus size={16} /> Acrescentar bloco
-                </button>
-              </div>
-              {content.blocks.length >= MAX_BLOCKS && <p className="small muted">Limite de {MAX_BLOCKS} blocos.</p>}
-            </div>
-          </div>
-        )}
-      </section>
-
-      {canEdit && (
-        <section className="panel save-bar" aria-label="Salvar o rascunho">
-          <p className="small">{dirty ? "Há alterações ainda não salvas." : `Rascunho salvo (revisão ${revision}).`}</p>
-          <div className="persist-actions">
-            <button type="button" className="button primary" disabled={pending || !dirty} onClick={save}>
-              {pending ? "Aguarde…" : "Salvar rascunho"}
-            </button>
-          </div>
-          {saveNote.element}
         </section>
       )}
 
@@ -396,6 +279,34 @@ export function SiteWorkspace({ slug, initial, live, releases, services, canEdit
         {canEdit && dirty && releases.length > 0 && <p className="small muted">Salve as alterações para poder voltar a uma versão.</p>}
         {versionsNote.element}
       </section>
+
+      {canEdit && editorOpen && (
+        <VisualEditor
+          content={content}
+          onEdit={edit}
+          undo={() => {
+            dispatch({ type: "undo" });
+            afterChange();
+          }}
+          redo={() => {
+            dispatch({ type: "redo" });
+            afterChange();
+          }}
+          canUndo={history.past.length > 0}
+          canRedo={history.future.length > 0}
+          services={services}
+          slug={slug}
+          dirty={dirty}
+          revision={revision}
+          pending={pending}
+          live={live !== null}
+          onSave={() => save(editorNote)}
+          onPublish={() => publish(editorNote)}
+          note={editorNote.element}
+          issues={issues}
+          onClose={() => setEditorOpen(false)}
+        />
+      )}
     </>
   );
 }

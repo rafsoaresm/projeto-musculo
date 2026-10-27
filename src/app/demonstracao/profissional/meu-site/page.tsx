@@ -16,10 +16,12 @@ export default async function DemoSite() {
       />
       <Notice>
         <p>
-          Na demonstração não há espaço nem site para publicar. Na área real, o proprietário ou a gestão montam a página com blocos
-          (destaque, texto, serviços, perguntas frequentes e chamada para contato), conferem na prévia e publicam. Cada publicação é uma
-          versão que não muda depois; dá para tirar o site do ar e voltar a uma versão anterior. A página não tem formulário, imagens nem
-          rastreadores, e os botões levam só ao WhatsApp, ao e-mail ou ao Instagram que você informar.
+          Na demonstração não há espaço nem site para publicar. Na área real, o proprietário ou a gestão montam a página num editor visual:
+          arrastam blocos (destaque, texto, serviços, sobre mim, depoimento, indicadores, perguntas frequentes e chamada para contato) e
+          elementos (título, parágrafo e botão), organizam em duas colunas, escrevem direto na página, escolhem a cor e a aparência, conferem
+          em tela de computador e de celular e publicam. Cada publicação é uma versão que não muda depois; dá para tirar o site do ar e voltar
+          a uma versão anterior. A página não tem formulário, imagens nem rastreadores, e os botões levam só ao WhatsApp, ao e-mail ou ao
+          Instagram que você informar.
         </p>
       </Notice>
     </>

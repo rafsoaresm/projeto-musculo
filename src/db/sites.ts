@@ -1,10 +1,13 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import {
+  parseContent,
   publishIssues,
-  siteContent,
+  resolveServices,
+  safeParseContent,
   slugSchema,
   starterContent,
   titleSchema,
+  withoutResolvedServices,
   type PublishIssue,
   type SiteContent,
 } from "@/modules/meu-site/contracts";
@@ -29,6 +32,7 @@ export const SITE_ADDRESS_CHANGED = "SITE_ADDRESS_CHANGED";
 export interface ServiceChoice {
   id: string;
   name: string;
+  description: string | null;
   delivery: Delivery;
 }
 export interface ReleaseRow {
@@ -63,38 +67,7 @@ export type PublishOutcome =
 export type AddressOutcome = { status: "changed" } | { status: "slug_taken" } | { status: "public" } | { status: "not_found" };
 export type RestoreOutcome = { status: "restored"; revision: number } | { status: "conflict" } | { status: "not_found" };
 
-/** The services chosen in each block, written as they are on offer now. A draft does not carry them. */
-export function resolveServices(content: SiteContent, live: Map<string, { name: string; description: string | null; delivery: Delivery }>): SiteContent {
-  return {
-    ...content,
-    blocks: content.blocks.map((block) =>
-      block.type === "services"
-        ? {
-            ...block,
-            items: block.serviceIds.flatMap((serviceId) => {
-              const service = live.get(serviceId);
-              return service
-                ? [{ name: service.name, ...(service.description ? { description: service.description } : {}), delivery: service.delivery }]
-                : [];
-            }),
-          }
-        : block,
-    ),
-  };
-}
-
-/** What the draft keeps: a release brought back as a draft loses the resolved services, which are made again. */
-function withoutResolvedServices(content: SiteContent): SiteContent {
-  return {
-    ...content,
-    blocks: content.blocks.map((block) => {
-      if (block.type !== "services") return block;
-      const { items: _items, ...rest } = block;
-      void _items;
-      return rest;
-    }),
-  };
-}
+export { resolveServices, withoutResolvedServices };
 
 export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
   const { userId, organizationId } = assertContext(context);
@@ -158,10 +131,10 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
       ]);
       return {
         site: { id: draft.siteId, slug: draft.slug },
-        draft: { content: siteContent.parse(JSON.parse(draft.content)), revision: draft.revision, updatedAt: draft.updatedAt },
+        draft: { content: parseContent(JSON.parse(draft.content)), revision: draft.revision, updatedAt: draft.updatedAt },
         live: liveRow ?? null,
         releases: releases.results.map((r) => ({ ...r, live: r.live === 1 })),
-        services: services.map((s) => ({ id: s.id, name: s.name, delivery: s.delivery })),
+        services: services.map((s) => ({ id: s.id, name: s.name, description: s.description, delivery: s.delivery })),
       };
     },
 
@@ -170,7 +143,7 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
       const draft = await draftRow();
       if (!draft) return null;
       const services = await liveServices();
-      const content = siteContent.parse(JSON.parse(draft.content));
+      const content = parseContent(JSON.parse(draft.content));
       return { slug: draft.slug, content: resolveServices(content, new Map(services.map((s) => [s.id, s]))) };
     },
 
@@ -210,7 +183,7 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
 
     /** Saves the draft if it is still the revision the person was looking at. Incomplete drafts are fine. */
     async saveDraft(raw: unknown, expectedRevision: number, now = new Date()): Promise<SaveDraftOutcome> {
-      const content = siteContent.parse(raw);
+      const content = parseContent(raw);
       const result = await db
         .prepare(
           `UPDATE site_drafts SET content = ?3, revision = revision + 1, updated_by = ?2, updated_at = ?5
@@ -258,7 +231,7 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
       const draft = await draftRow();
       if (!draft) return { status: "not_found" };
       if (draft.revision !== expectedRevision) return { status: "conflict" };
-      const content = siteContent.parse(JSON.parse(draft.content));
+      const content = parseContent(JSON.parse(draft.content));
       const services = await liveServices();
       const live = new Map(services.map((s) => [s.id, s]));
       const issues = publishIssues(content, new Set(live.keys()));
@@ -323,7 +296,7 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
         .bind(organizationId, userId, releaseId)
         .first<{ content: string }>();
       if (!release) return { status: "not_found" };
-      const content = withoutResolvedServices(siteContent.parse(JSON.parse(release.content)));
+      const content = withoutResolvedServices(parseContent(JSON.parse(release.content)));
       const result = await db
         .prepare(
           `UPDATE site_drafts SET content = ?3, revision = revision + 1, updated_by = ?2, updated_at = ?5
@@ -355,11 +328,13 @@ export async function publishedSiteBySlug(db: D1Database, rawSlug: string): Prom
     .bind(slug.data)
     .first<{ slug: string; number: number; content: string; publishedAt: string }>();
   if (!row) return null;
-  let parsed;
+  let raw: unknown;
   try {
-    parsed = siteContent.safeParse(JSON.parse(row.content));
+    raw = JSON.parse(row.content);
   } catch {
     return null;
   }
+  // A release made in an earlier version of the document is read as the current one; the stored text is not touched.
+  const parsed = safeParseContent(raw);
   return parsed.success ? { slug: row.slug, number: row.number, publishedAt: row.publishedAt, content: parsed.data } : null;
 }
