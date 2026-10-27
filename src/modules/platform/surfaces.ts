@@ -247,14 +247,7 @@ const profissional: NavGroup[] = [
   {
     label: "MARKETING E CAPTAÇÃO",
     items: [
-      planned("meu-site", "Meu Site", "globe", {
-        epic: "E3",
-        reference: "Handoff V2, seções 9, 10 e 11",
-        summary:
-          "Site público do profissional com editor de blocos por arrastar e soltar, rascunho separado do publicado, prévia e publicação explícita. Nunca exibe dados de alunos.",
-        needs:
-          "Provas no Webflow Cloud: vários hosts por app, domínios, TLS e o editor Puck.",
-      }),
+      { slug: "meu-site", label: "Meu Site", icon: "globe", status: "available" },
       { slug: "leads", label: "Leads", icon: "inbox", status: "available" },
       { slug: "servicos", label: "Serviços", icon: "handshake", status: "available" },
     ],

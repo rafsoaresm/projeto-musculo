@@ -99,6 +99,7 @@ describe("navigation by area (handoff V2, section 3)", () => {
       "profissional/configuracoes",
       "profissional/conta",
       "profissional/leads",
+      "profissional/meu-site",
       "profissional/prescricao",
       "profissional/servicos",
     ]);
