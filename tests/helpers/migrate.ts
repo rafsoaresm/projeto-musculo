@@ -58,4 +58,5 @@ export const ALL_MIGRATIONS = [
   "0019_platform_admin_invites.sql",
   "0020_terms_drafts.sql",
   "0021_two_factor.sql",
+  "0022_sign_in_trail.sql",
 ];

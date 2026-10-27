@@ -97,6 +97,7 @@ Correspondência com os papéis do handoff V2:
 | Leads | `/profissional/leads` | Planejado | E3 |
 | Configurações | `/profissional/configuracoes` | Disponível: o proprietário muda o nome do espaço, cada profissional o próprio nome de exibição, e a lista de quem tem acesso é só de leitura. **Equipe, papéis e permissões continuam planejados** (dependem do e-mail verificado). Na demonstração há uma prévia que só explica | E1 |
 | Gestor: organizações, auditoria, termos | `/gestor/...` | Disponível: os termos são editados, **guardados como rascunho no servidor** (um por público, compartilhado entre gestores, com trava de revisão), revisados e publicados em versões | E1 |
+| Minha conta: aparelhos conectados e entradas recentes | `/profissional/conta`, `/aluno/conta`, `/gestor/conta` | Disponível (0.32): a pessoa vê onde a conta está aberta, desconecta um aparelho específico e lê as 10 últimas entradas (só data e hora) | E1 |
 | Gestor e profissional: verificação em duas etapas | `/gestor/conta`, `/profissional/conta` | Disponível (0.31): opcional, com aplicativo autenticador e 10 códigos de recuperação; o gestor redefine a etapa de quem perdeu o celular e os códigos, em `/gestor/organizacoes/<id>` e `/gestor/gestores`. O aluno não tem a tela | E1 |
 | Gestor: planos e cobrança, afiliados, templates, biblioteca, integrações | `/gestor/...` | Planejado | E3, E5, E6, E7 |
 | Aluno: início | `/aluno` | Disponível: vínculo e estado do treino | E4 |

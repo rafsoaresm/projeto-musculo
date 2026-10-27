@@ -107,8 +107,12 @@ export function ManagersPanel({ managers, invites }: { managers: ManagerRow[]; i
                     {manager.twoFactor && <small className="cell-sub">Duas etapas ativas</small>}
                   </td>
                   <td>
-                    {!manager.revoked && !manager.self && manager.twoFactor && (
-                      <ResetTwoFactor name={manager.name} reset={resetManagerTwoFactor.bind(null, manager.userId)} />
+                    {!manager.revoked && !manager.self && (
+                      <ResetTwoFactor
+                        name={manager.name}
+                        enabled={manager.twoFactor}
+                        reset={resetManagerTwoFactor.bind(null, manager.userId)}
+                      />
                     )}
                     {!manager.revoked && !manager.self && (
                       confirming === manager.userId ? (

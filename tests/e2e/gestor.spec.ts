@@ -118,6 +118,8 @@ test("the platform manager is activated once and manages organizations without s
   await expect(manager.page.getByRole("link", { name: "Minha conta" }).first()).toHaveAttribute("aria-current", "page");
   await expect(manager.page.getByRole("heading", { name: "Alterar a senha" })).toBeVisible();
   await expect(manager.page.getByRole("heading", { name: "Verificação em duas etapas" })).toBeVisible();
+  await expect(manager.page.getByRole("heading", { name: "Aparelhos conectados", level: 2 })).toBeVisible();
+  await expect(manager.page.getByText("Este aparelho")).toBeVisible();
   await expect(manager.page.getByText("Desativada.")).toBeVisible();
   await noHorizontalOverflow(manager.page);
 
