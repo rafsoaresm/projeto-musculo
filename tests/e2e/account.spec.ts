@@ -124,6 +124,13 @@ test("a student changes the password and sees what can be asked about their data
   await client.page.goto("./aluno/conta");
   await expect(client.page.getByRole("heading", { name: "Minha conta", level: 1 })).toBeVisible();
   await expect(client.page.getByText(clientEmail)).toBeVisible();
+  // The student also sees where the account is open: this device, and nothing to disconnect yet.
+  await expect(client.page.getByRole("heading", { name: "Aparelhos conectados", level: 2 })).toBeVisible();
+  await expect(client.page.getByText("Este aparelho")).toBeVisible();
+  const devicesPanel = client.page.locator("section", {
+    has: client.page.getByRole("heading", { name: "Aparelhos conectados", level: 2 }),
+  });
+  await expect(devicesPanel.getByRole("button", { name: /^Desconectar / })).toHaveCount(0);
   await expect(client.page.getByRole("heading", { name: "Consentimentos e solicitações" })).toBeVisible();
   // What was a note saying that nothing could be asked is now the place to ask (0.25).
   await expect(client.page.getByRole("heading", { name: "Pedidos sobre os seus dados" })).toBeVisible();

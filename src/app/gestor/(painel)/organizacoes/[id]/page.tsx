@@ -105,9 +105,10 @@ export default async function OrganizationDetail({
                         name={member.displayName ?? member.email}
                       />
                     )}
-                    {!member.revoked && member.userId !== context.userId && member.twoFactor && (
+                    {!member.revoked && member.userId !== context.userId && (
                       <ResetTwoFactor
                         name={member.displayName ?? member.email}
+                        enabled={member.twoFactor}
                         reset={resetMemberTwoFactor.bind(null, organization.id, member.userId)}
                       />
                     )}

@@ -87,6 +87,7 @@ const loadIdentity = cache(async () => {
   return {
     db: env.DB,
     user: session.user,
+    sessionId: session.session.id,
     blocked: Boolean(identity?.disabled_at),
   };
 });
@@ -106,7 +107,7 @@ export async function requireIdentity() {
   const identity = await loadIdentity();
   if (!identity) redirect("/entrar");
   if (identity.blocked) redirect("/entrar?bloqueado=1");
-  return { db: identity.db, user: identity.user };
+  return { db: identity.db, user: identity.user, sessionId: identity.sessionId };
 }
 
 /** Professional area: an active membership resolved on the server. */

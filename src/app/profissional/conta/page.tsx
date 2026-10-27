@@ -3,6 +3,7 @@ import { requireWorkspace, recoveryAvailable } from "@/modules/auth/server";
 import { PageHeading } from "@/components/ui";
 import { SecurityPanel } from "@/modules/auth/components/security-panel";
 import { TwoFactorPanel } from "@/modules/auth/components/two-factor-panel";
+import { AccountAccess } from "@/modules/auth/components/account-access";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Minha conta" };
@@ -36,6 +37,7 @@ export default async function ProfessionalAccount() {
         </p>
         <SecurityPanel />
       </section>
+      <AccountAccess />
       <section className="panel" aria-labelledby="duas-etapas">
         <p className="eyebrow">SEGURANÇA</p>
         <h2 id="duas-etapas">Verificação em duas etapas</h2>

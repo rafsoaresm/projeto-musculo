@@ -20,7 +20,7 @@ Estado conhecido em 27/10/2026: a 0.25.0 está no ar, com as migrations até a 0
 | R8 | Escolher o **canal e o responsável pelo titular** (encarregado/DPO) e um plano de resposta a incidentes | Hoje não existem | `REVISAO-JURIDICA.md` §7 item 8 |
 | R9 | **Contrato de operação** entre a plataforma e o profissional | Não existe | `REVISAO-JURIDICA.md` §7 item 8 |
 | R10 | **O texto aprovado diz uma coisa que deixou de ser verdade**: tanto o do aluno ("Os seus direitos") quanto o do profissional ("Pedidos do aluno") afirmam "Hoje a ferramenta ainda não tem uma tela para esses pedidos". Desde a 0.25 o aluno faz os pedidos em Minha conta e desde a 0.28 baixa uma cópia do que vê | Quem aceita lê uma frase falsa. Trocar o texto exige o aval do advogado e gera versão nova: junte com R2 e R7 numa só publicação para ninguém aceitar três vezes. O editor com rascunho (0.30) serve para preparar o texto antes | `REVISAO-JURIDICA.md` §5.2 e §7 item 6a; `/gestor/termos` |
-| R11 | **Decidir se a verificação em duas etapas passa a ser obrigatória** para o gestor da plataforma (e, depois, para o profissional) | Hoje é opcional (0.31): uma conta de gestor com senha fraca ou vazada ainda entra só com a senha, e o gestor vê todas as organizações. Obrigar exige uma regra de transição (quem já é gestor, quem perde o celular) e depende de R1 para a pessoa se recuperar sem outro gestor | `AUTENTICACAO.md`, "Verificação em duas etapas" |
+| R11 | **Adiado em 27/10/2026 por decisão do Responsável.** Decidir se a verificação em duas etapas passa a ser obrigatória para o gestor da plataforma (e, depois, para o profissional). *Recomendação:* até lá, ligar a sua em `/gestor/conta` e guardar os 10 códigos de recuperação; obrigar quando houver um segundo gestor ou o e-mail (R1) estiver ligado | Hoje é opcional (0.31): uma conta de gestor com senha fraca ou vazada ainda entra só com a senha, e o gestor vê todas as organizações. Obrigar exige uma regra de transição (quem já é gestor, quem perde o celular) e depende de R1 para a pessoa se recuperar sem outro gestor | `AUTENTICACAO.md`, "Verificação em duas etapas" |
 
 ## 2. Depende do Advogado (pacote em `REVISAO-JURIDICA.md`)
 
@@ -34,7 +34,8 @@ Estado conhecido em 27/10/2026: a 0.25.0 está no ar, com as migrations até a 0
 | J6 | **Retirada do aceite** dos termos como um todo: efeito sobre os dados | Só existe como pedido respondido em palavras |
 | J7 | Transferência internacional: dados em infraestrutura do Webflow/Cloudflare e e-mail pela AWS, em regiões que não escolhemos | Perguntar ao Webflow onde ficam os dados e as cópias |
 | J8 | **Aviso de privacidade** completo, separado dos termos e público antes do cadastro | Hoje é um texto só, mostrado na entrada |
-| J9 | Prazo de descarte dos registros técnicos (IP e navegador das sessões, `email_messages`, logs) | Sem prazo |
+| J9 | Prazo de descarte dos registros técnicos (IP e navegador das sessões, data e hora de cada entrada desde a 0.32, `email_messages`, logs) | Sem prazo |
+| J11 | **Registros de acesso**: a lei (Marco Civil da Internet) manda guardar data, hora e IP dos acessos à aplicação por algum prazo? Quem guarda: a plataforma, o profissional, o Webflow ou a Cloudflare? | Pergunta 11a em `REVISAO-JURIDICA.md`; hoje o IP só existe enquanto a sessão existe |
 | J10 | Base legal para dados e imagens de saúde (consentimento específico e destacado, como desenhado) | Proposta aprovada pelo responsável; falta o parecer |
 
 ## 3. Depende do Técnico (conteúdo clínico: não será inventado)
@@ -53,7 +54,7 @@ Estado conhecido em 27/10/2026: a 0.25.0 está no ar, com as migrations até a 0
 
 | # | Conferência |
 |---|---|
-| C1 | `https://projeto-musculo.webflow.io/app/api/health`: versão `0.31.0`; `"photos": "open"`; `"passwordRecovery": "not_configured"` até R1 |
+| C1 | `https://projeto-musculo.webflow.io/app/api/health`: versão `0.32.0`; `"photos": "open"`; `"passwordRecovery": "not_configured"` até R1 |
 | C2 | Se `"photos": "closed"`: criar `PHOTOS_ENABLED=true` como variável do ambiente (a documentação do Webflow diz que `vars` do `wrangler.json` são ignoradas) e publicar de novo |
 | ~~C3~~ | ~~Após o deploy da 0.26 e da 0.27: `0018_email_messages.sql ✅` e `0019_platform_admin_invites.sql ✅` no log do deploy~~ **Conferido em 26/10/2026** nos dois deploys |
 | C4 | Depois de R1: pedir um link para uma conta de teste (no sandbox da AWS, um endereço verificado), abri-lo e entrar com a senha nova; se a AWS recusar, o código fica em `email_messages.error_code` |
@@ -63,6 +64,7 @@ Estado conhecido em 27/10/2026: a 0.25.0 está no ar, com as migrations até a 0
 | C8 | Em produção, em `/profissional/configuracoes`: corrigir o nome do espaço e o nome de exibição de uma conta de teste e ver o nome novo na área de um aluno de teste; `/api/health` com a versão `0.29.0` |
 | C9 | ~~`0020_terms_drafts.sql ✅` no log do deploy~~ **Conferido em 27/10/2026.** Falta, em `/gestor/termos` salvar um rascunho, recarregar e achá-lo; `/api/health` com a versão `0.30.0` (**não publique nada para testar: publicar pede novo aceite a todos**) |
 | C10 | ~~`0021_two_factor.sql ✅` no log do deploy~~ **Conferido em 27/10/2026.** Falta `/api/health` com a versão `0.31.0`. Com uma conta de teste (**não** a do gestor real, até a conferência): ligar a etapa em `/profissional/conta` **lendo o QR com um aplicativo autenticador de verdade** (nenhum foi usado até aqui, só um gerador de código da suíte), sair, entrar com o código, entrar com um código de recuperação, e pedir ao gestor que redefina |
+| C11 | Depois do deploy da 0.32: `0022_sign_in_trail.sql ✅` no log do deploy e `/api/health` com a versão `0.32.0`. Em `/profissional/conta`: ver o aparelho atual, entrar por outro navegador ou celular, desconectar o outro e conferir que ele cai na tela de entrada; a lista de entradas só mostra as feitas depois do deploy |
 
 ## 5. Construir agora (Código; não depende de ninguém)
 
@@ -76,7 +78,7 @@ Estado conhecido em 27/10/2026: a 0.25.0 está no ar, com as migrations até a 0
 | B6 | **Documentos** do aluno: PDFs de plano que o profissional compartilhou | O PDF e o armazenamento privado já existem. **Parada em 27/10/2026 por falta de decisão, não por falta de código:** hoje o aluno já baixa o PDF da revisão entregue no próprio treino (uma lista de documentos o repetiria) e mostrar revisões substituídas pede uma decisão do Técnico sobre o que o aluno deve poder reler |
 | ~~B7~~ | ~~Configurações do profissional (dados do espaço)~~ **Feito na 0.29** (nome do espaço, nome de exibição e quem tem acesso, só leitura). Equipe, papéis e permissões seguem em D4 | `ROADMAP-IMPLEMENTACAO.md` (0.29) |
 | B8 | Check-ins: campos configuráveis pelo profissional; check-in de dias anteriores; o profissional responder ao aluno | Hoje só registra a leitura |
-| B9 | Trilha de auditoria de **login e leitura** | Hoje cobre criação, ativação, bloqueio, convite, revogação, pedidos e fotos |
+| B9 | Trilha de auditoria de **login** e de **leitura** | **Login feito na 0.32** (cada entrada deixa uma linha com quem e quando; a pessoa vê as suas em Minha conta). Falha de login e **leitura dos dados do aluno pelo profissional** seguem sem registro: a leitura exige decidir o que contar (abrir a ficha? uma avaliação?) e por quanto tempo guardar (J3, J9) |
 | B10 | Fotos: **anotação sobre a imagem**; geração do PDF com pendências | Constam como critério restante de E2 |
 | B11 | ~~MFA~~ **Feito na 0.31** (opcional; ver R11, B16). Resta a **política de senha contra vazamentos** (o plugin `haveIBeenPwned` da biblioteca existe e não está ligado) | Consulta um serviço de terceiros, mesmo enviando só o início do hash da senha: decidir com o Responsável e o advogado antes de ligar |
 | B12 | Rotina de **retenção** (depende de J3, mas o mecanismo se constrói antes) | Nada apaga hoje |

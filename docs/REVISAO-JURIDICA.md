@@ -25,7 +25,8 @@ Roda no Webflow Cloud (Workers, banco SQLite D1 e armazenamento de objetos R2, d
 | Dado | Onde | Quem vê | Sensível? |
 |---|---|---|---|
 | Nome, e-mail de acesso, senha (guardada só como hash) | `auth_user`, `auth_account` | A própria pessoa; o profissional vê o nome do aluno | Não |
-| IP e navegador de cada sessão | `auth_session` (`ip_address`, `user_agent`) | Ninguém pela interface | Não |
+| IP e navegador de cada sessão | `auth_session` (`ip_address`, `user_agent`) | Ninguém pela interface. Desde a 0.32 a pessoa vê, em "Minha conta", o nome curto do navegador ("Chrome em Windows") e a data de entrada de cada aparelho conectado; o IP e o texto do navegador não aparecem | Não |
+| Data e hora de cada entrada (0.32) | `access_audit_events` (ação `SIGN_IN`, só quem e quando; **sem IP e sem navegador**) | A própria pessoa, em "Minha conta" (as 10 últimas). Não aparece na auditoria do gestor | Não |
 | Cadastro do aluno: nome, nascimento, sexo, e-mail, telefone, altura, objetivo, nível, rotina, local, equipamentos | `students`, `student_profiles` | Só o profissional com vínculo técnico ativo | Parte (saúde e rotina) |
 | Ficha de saúde: lesões, cirurgias, dores, limitações, medicamentos e condições, observações | `student_profiles` | Só o profissional com vínculo técnico ativo | **Sim** |
 | Avaliações: seis itens de triagem (dor no esforço, tontura, dor no peito, lesão em tratamento, cirurgia recente, restrição médica), indicadores (frequência cardíaca de repouso, pressão, cintura, gordura corporal, medidas), postura e movimento, notas | `assessments`, `assessment_metrics`, `assessment_findings`, `assessment_reviews` | Só o profissional com vínculo técnico ativo | **Sim** |
@@ -121,7 +122,7 @@ Versão `2026-10-25-base`, SHA-256 do texto aceito `b1d146c9686d4e2b05326b480312
 7. **Termos fora do login:** o texto só aparece para quem está entrando; não há página pública dos termos nem aviso de privacidade completo separado dos termos.
 8. **Encarregado (DPO), canal do titular e plano de resposta a incidentes** não existem; **contrato de operação** entre plataforma e profissional também não.
 9. **O check-in não avisa ninguém por conta própria e não tem prazo de resposta.** A tela diz ao aluno que não é um canal de urgência; o profissional lê quando abrir a ferramenta. Não há e-mail, push nem alerta, e a política de resposta do profissional não está definida na ferramenta.
-10. **Registros técnicos:** o IP e o navegador de cada sessão ficam no banco sem prazo de descarte; os logs de execução do Webflow têm retenção própria que não controlamos.
+10. **Registros técnicos:** o IP e o navegador de cada sessão ficam no banco sem prazo de descarte, e a data e a hora de cada entrada (0.32) também não têm prazo; os logs de execução do Webflow têm retenção própria que não controlamos.
 
 ## 8. Perguntas ao advogado
 
@@ -137,7 +138,8 @@ Cada uma traz a **proposta atual**, aprovada pelo responsável do produto, para 
 8. **Retirada do aceite.** O que acontece com os dados já guardados quando o aluno retira o aceite ou só a autorização das fotos? As fotos precisam ser apagadas na hora? *Proposta (já em funcionamento):* o aluno retira só a autorização das fotos em "Minha conta", como nova linha do histórico, e isso impede fotos novas; o destino das fotos já guardadas fica para o advogado decidir. *Estado (0.25):* o aluno pode pedir a retirada do aceite e o apagamento das fotos como pedidos; a retirada só da autorização das fotos segue como estava.
 9. **Transferência internacional.** Os dados ficam em infraestrutura do Webflow/Cloudflare, em região que não escolhemos. É preciso informar isso no aviso e adotar alguma salvaguarda? Convém perguntar ao Webflow onde ficam os dados e por quanto tempo ficam as cópias de segurança.
 10. **Aviso de privacidade completo.** Os termos e o aviso devem ser documentos separados, públicos e acessíveis antes do cadastro? Quem é o encarregado e qual o canal? *Proposta:* hoje é um texto só, mostrado na entrada.
-11. **Registros técnicos e auditoria.** O IP e o navegador das sessões e a trilha de auditoria precisam de prazo de descarte e de menção no aviso?
+11. **Registros técnicos e auditoria.** O IP e o navegador das sessões, a data e a hora de cada entrada (0.32) e a trilha de auditoria precisam de prazo de descarte e de menção no aviso?
+11a. **Registros de acesso (Marco Civil da Internet).** A lei exige que o provedor de uma aplicação guarde, por um prazo, os registros de acesso a ela (data, hora e endereço IP)? Se exige, isso se aplica à plataforma, ao profissional, ou ao Webflow e à Cloudflare, que hoje guardam os logs de execução? A ferramenta guarda o IP só enquanto a sessão existe, e a lista de entradas guarda só data e hora: **hoje não há um registro de acesso com IP por prazo definido.** *Proposta:* não mudar nada até o advogado responder.
 12. **O check-in e o texto.** O texto aprovado diz que são guardados "o que você registrar depois de treinar: séries, cargas, esforço, dor ou desconforto e observações". O check-in (feito fora do treino, com esforço, recuperação, relato de desconforto e observações) cabe nessa frase ou o texto deve citá-lo expressamente? *Proposta:* citar numa próxima versão, publicada pelo gestor depois da revisão; o texto aprovado não foi alterado.
 13. **Texto.** O advogado revisou as seções 5.1 e 5.2 e aprovou o texto inicial. Qualquer mudança futura (por exemplo, citar o check-in, pergunta 12) se faz em `/gestor/termos`: gera nova versão e novo hash, e todos aceitam de novo.
 

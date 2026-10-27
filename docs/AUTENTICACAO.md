@@ -44,12 +44,21 @@ O DB continua nativo; não há URL de banco externo. Migrations 0001 e 0002 são
 - A ferramenta não envia e-mails: o profissional copia o link do convite e o envia por um canal seguro. O token é mostrado uma única vez; só o hash fica no banco.
 - O portal do aluno ainda usa a mesma origem do painel. Antes de dados reais de alunos, publique painel e portal em origens privadas separadas e sem scripts de marketing.
 - Há um gestor por ativação (código do ambiente) e mais gestores **por convite de uso único** (0.27, abaixo). Recuperar o último gestor perdido continua exigindo mexer no banco (ver "Mais de um gestor").
-- Auditoria cobre criação de organização/aluno, ativação do gestor, bloqueios, convites e revogação de acesso. Não é ainda uma trilha de login, leitura e alterações.
+- Auditoria cobre criação de organização/aluno, ativação do gestor, bloqueios, convites e revogação de acesso, e (0.32) cada entrada, que só a própria pessoa vê. Não registra entradas que falharam nem a leitura dos dados dos alunos.
 - Há testes de revogação no banco. O profissional revoga o acesso do aluno e o gestor bloqueia identidades pela interface; revogação de membros de equipe ainda é pendente.
 - Drizzle/Better Auth usa operações sequenciais para credenciais porque D1 não aceita transações interativas. Testar recuperação de falhas parciais de cadastro antes de liberar acesso operacional. Batches do domínio são atômicos e têm teste de rollback.
 - O planejador segue exportando rascunhos sem associá-los ao aluno. Avaliações, planos salvos, aprovação e entrega usam a mesma regra: só profissional com vínculo técnico ativo, reavaliada em cada consulta.
 
 Esta entrega permite experimentar os três papéis com dados fictícios em homologação; não fecha E1 nem o piloto operacional.
+
+## Aparelhos conectados e entradas recentes (0.32)
+
+Em "Minha conta" do profissional, do aluno e do gestor. Quem vê é sempre a pessoa da sessão verificada; nada vem do corpo da requisição.
+
+- **Aparelhos conectados:** as sessões da pessoa que ainda valem, a mais recente primeiro, com o nome curto do navegador ("Chrome em Windows", "Safari em iPhone"), a data de entrada e a validade, e o aparelho atual marcado. A biblioteca renova a sessão uma vez por dia, então **não há "última atividade"**: a tela só diz quando entrou e que a validade se renova com o uso. O texto do navegador e o IP não aparecem; o token da sessão nunca é lido.
+- **Desconectar um aparelho:** apaga aquela sessão, e o aparelho cai na tela de entrada no próximo pedido. A instrução repete de quem é a sessão, que não é a que está pedindo (para sair deste aparelho existe "Sair") e que o login não está bloqueado, e só então grava `DEVICE_DISCONNECTED`. "Desconectar os outros aparelhos" (0.18) continua existindo, e ela não deixa linha na trilha.
+- **Entradas recentes:** um gatilho do banco grava `SIGN_IN` toda vez que uma sessão nasce (com a etapa de duas etapas ligada, só depois do código), para quem já tem perfil na ferramenta; o cadastro em si não conta. A linha diz quem e quando, **sem IP e sem navegador**. A pessoa vê as 10 últimas; a auditoria do gestor não lista essa ação. **Só existem as entradas feitas depois da 0.32.**
+- **O que não existe:** registro de entradas que falharam, aviso por e-mail de uma entrada nova (depende de R1), prazo de descarte das linhas (J9) e resposta sobre o dever de guardar registros de acesso com IP (J11).
 
 ## Verificação em duas etapas (0.31)
 

@@ -7,6 +7,7 @@ import { studentRequestsFor } from "@/db/data-requests";
 import { formatCalendarDate } from "@/modules/training/format";
 import { PageHeading } from "@/components/ui";
 import { SecurityPanel } from "@/modules/auth/components/security-panel";
+import { AccountAccess } from "@/modules/auth/components/account-access";
 import { PhotosChoice } from "@/modules/consentimento/photos-choice";
 import { StudentRequests } from "@/modules/pedidos/student-requests";
 import { EXPORTS_PER_HOUR, EXPORT_INCLUDED, EXPORT_NOT_INCLUDED } from "@/modules/pedidos/export";
@@ -49,6 +50,7 @@ export default async function StudentAccount() {
         </p>
         <SecurityPanel />
       </section>
+      <AccountAccess />
       <section className="panel" aria-labelledby="solicitacoes-conta">
         <p className="eyebrow">SEUS DADOS</p>
         <h2 id="solicitacoes-conta">Consentimentos e solicitações</h2>
