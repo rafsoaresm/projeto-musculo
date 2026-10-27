@@ -57,7 +57,7 @@ export async function saveSiteDraft(content: unknown, revision: number): Promise
   } catch (error) {
     return {
       status: "error",
-      message: error instanceof ZodError ? "O conteúdo não é válido: confira o tamanho dos textos, no máximo 20 blocos, e que nenhum texto tenha caracteres especiais." : FAILED,
+      message: error instanceof ZodError ? "O conteúdo não é válido: confira o tamanho dos textos, o limite de blocos e que nenhum texto tenha caracteres invisíveis (alguns emojis compostos têm)." : FAILED,
     };
   }
 }

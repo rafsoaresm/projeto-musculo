@@ -20,13 +20,14 @@ const count = async (sql: string, ...binds: unknown[]) => (await one<{ c: number
 
 /** A page that can be published once the contact is there. */
 const complete = (overrides: Partial<SiteContent> = {}): SiteContent => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   title: "Marina Treinos",
   description: "Treino com acompanhamento",
   contact: { whatsapp: "(11) 91234-5678", email: "", instagram: "" },
+  theme: { accent: "blue", mode: "light" },
   blocks: [
-    { id: "h1", type: "hero", heading: "Treino sob medida", subheading: "", buttonLabel: "Falar comigo", buttonChannel: "whatsapp" },
-    { id: "t1", type: "text", heading: "Sobre", text: "Texto <b>com marcação</b>" },
+    { id: "h1", type: "hero", eyebrow: "", heading: "Treino sob medida", subheading: "", buttonLabel: "Falar comigo", buttonChannel: "whatsapp" },
+    { id: "t1", type: "text", eyebrow: "", heading: "Sobre", text: "Texto <b>com marcação</b>" },
   ],
   ...overrides,
 });
@@ -51,19 +52,19 @@ beforeAll(async () => {
   );
   db = await mf.getD1Database("DB");
   await migrate(db, ALL_MIGRATIONS);
-  const people = ["owner-a", "manager-a", "commercial-a", "tech-a", "finance-a", "owner-b", "outsider", "blocked-a", "revoked-a", "commercial-c"];
+  const people = ["owner-a", "manager-a", "commercial-a", "tech-a", "finance-a", "owner-b", "outsider", "blocked-a", "revoked-a", "commercial-c", "owner-d"];
   await db.batch([
     ...people.map((id) =>
       db.prepare("INSERT INTO auth_user(id,name,email,created_at,updated_at) VALUES (?1,?1,?2,0,0)").bind(id, `${id}@example.test`),
     ),
     db.prepare(`INSERT INTO users(id) VALUES ${people.filter((p) => p !== "blocked-a").map((p) => `('${p}')`).join(",")}`),
     db.prepare("INSERT INTO users(id, disabled_at) VALUES ('blocked-a', '2026-10-01T00:00:00.000Z')"),
-    db.prepare("INSERT INTO organizations(id,name) VALUES ('org-a','Studio A'),('org-b','Studio B'),('org-c','Studio C')"),
+    db.prepare("INSERT INTO organizations(id,name) VALUES ('org-a','Studio A'),('org-b','Studio B'),('org-c','Studio C'),('org-d','Studio D')"),
     db.prepare(
       `INSERT INTO memberships(organization_id,user_id,role,revoked_at) VALUES
        ('org-a','owner-a','OWNER',NULL),('org-a','manager-a','MANAGER',NULL),('org-a','commercial-a','COMMERCIAL',NULL),
        ('org-a','tech-a','TECHNICAL',NULL),('org-a','finance-a','FINANCE',NULL),('org-b','owner-b','OWNER',NULL),
-       ('org-a','blocked-a','MANAGER',NULL),('org-a','revoked-a','MANAGER','2026-10-02T00:00:00.000Z'),('org-c','commercial-c','COMMERCIAL',NULL)`,
+       ('org-a','blocked-a','MANAGER',NULL),('org-a','revoked-a','MANAGER','2026-10-02T00:00:00.000Z'),('org-c','commercial-c','COMMERCIAL',NULL),('org-d','owner-d','OWNER',NULL)`,
     ),
   ]);
 });
@@ -263,7 +264,7 @@ describe("the services shown on the page", () => {
     const created = await services.create({ name: "Consultoria online", description: "Plano mensal", delivery: "ONLINE" }, at(50));
     if (created.status !== "saved") throw new Error("not saved");
     const draft = complete({
-      blocks: [...complete().blocks, { id: "s1", type: "services", heading: "O que ofereço", intro: "", serviceIds: [created.id] }],
+      blocks: [...complete().blocks, { id: "s1", type: "services", eyebrow: "", heading: "O que ofereço", intro: "", serviceIds: [created.id] }],
     });
     const revision = await readyDraft("owner-a", draft);
     const outcome = await owner().publish(revision, at(51));
@@ -287,7 +288,7 @@ describe("the services shown on the page", () => {
     const foreign = await servicesFor(db, scope("owner-b", "org-b")).create({ name: "Serviço da B", delivery: "ONLINE" }, at(55));
     if (foreign.status !== "saved") throw new Error("not saved");
     const revision = (await owner().overview())!.draft.revision;
-    const saved = await owner().saveDraft(complete({ blocks: [{ id: "s1", type: "services", heading: "S", intro: "", serviceIds: [foreign.id] }] }), revision, at(56));
+    const saved = await owner().saveDraft(complete({ blocks: [{ id: "s1", type: "services", eyebrow: "", heading: "S", intro: "", serviceIds: [foreign.id] }] }), revision, at(56));
     if (saved.status !== "saved") throw new Error("not saved");
     expect((await owner().publish(saved.revision, at(57))).status).toBe("invalid");
   });
@@ -373,5 +374,122 @@ describe("taking the page offline and bringing a version back", () => {
     expect(await owner().restore(withServices.id, revision, at(81))).toEqual({ status: "conflict" });
     expect((await sitesFor(db, scope("commercial-a")).restore(withServices.id, revision + 1, at(82))).status).toBe("conflict");
     expect((await owner().restore("nao-existe", revision + 1, at(83))).status).toBe("not_found");
+  });
+});
+
+describe("the pages made before the editor was visual (version 1 of the document)", () => {
+  const v1 = {
+    schemaVersion: 1,
+    title: "Antigo",
+    description: "",
+    contact: { whatsapp: "(11) 91234-5678", email: "", instagram: "" },
+    blocks: [
+      { id: "h1", type: "hero", heading: "Título antigo", subheading: "", buttonLabel: "Falar", buttonChannel: "whatsapp" },
+      { id: "t1", type: "text", heading: "", text: "Texto antigo" },
+    ],
+  };
+  const repo = () => sitesFor(db, scope("owner-d", "org-d"));
+  let siteId = "";
+
+  it("opens a draft stored in version 1 as version 2, and saves it as version 2", async () => {
+    expect(await repo().create({ slug: "estudio-d", title: "Estudio D" }, at(100))).toEqual({ status: "created" });
+    siteId = (await one<{ id: string }>("SELECT id FROM sites WHERE organization_id = 'org-d'"))!.id;
+    await db.prepare("UPDATE site_drafts SET content = ?, revision = revision + 1 WHERE site_id = ?").bind(JSON.stringify(v1), siteId).run();
+    const overview = (await repo().overview())!;
+    expect(overview.draft.content.schemaVersion).toBe(2);
+    expect(overview.draft.content.theme).toEqual({ accent: "blue", mode: "light" });
+    expect(overview.draft.content.blocks.map((b) => b.id)).toEqual(["h1", "t1"]);
+    expect((await repo().preview())!.content.schemaVersion).toBe(2);
+    // A tab opened before the change sends version 1 back: it is stored as version 2.
+    expect(await repo().saveDraft(v1, overview.draft.revision, at(101))).toEqual({ status: "saved", revision: overview.draft.revision + 1 });
+    const stored = JSON.parse((await one<{ content: string }>("SELECT content FROM site_drafts WHERE site_id = ?", siteId))!.content);
+    expect(stored.schemaVersion).toBe(2);
+    expect(stored.blocks[0]).toMatchObject({ id: "h1", eyebrow: "", heading: "Título antigo" });
+  });
+  it("publishes a draft that came from version 1 as a release in version 2", async () => {
+    const revision = (await repo().overview())!.draft.revision;
+    expect(await repo().publish(revision, at(102))).toEqual({ status: "published", number: 1 });
+    const stored = JSON.parse((await one<{ content: string }>("SELECT content FROM site_releases WHERE site_id = ? AND number = 1", siteId))!.content);
+    expect(stored.schemaVersion).toBe(2);
+  });
+  it("keeps serving a release stored in version 1, read as version 2, without touching what is stored", async () => {
+    const json = JSON.stringify({ ...v1, title: "Release antigo" });
+    const sha = await sha256Hex(json);
+    await db.batch([
+      db.prepare("INSERT INTO site_releases(id,site_id,number,draft_revision,content,content_sha256,created_by) VALUES ('rel-v1', ?, 2, 1, ?, ?, 'owner-d')").bind(siteId, json, sha),
+      db.prepare("UPDATE site_published SET release_id = 'rel-v1' WHERE site_id = ?").bind(siteId),
+    ]);
+    const served = (await publishedSiteBySlug(db, "estudio-d"))!;
+    expect(served.number).toBe(2);
+    expect(served.content.schemaVersion).toBe(2);
+    expect(served.content.title).toBe("Release antigo");
+    expect(served.content.theme).toEqual({ accent: "blue", mode: "light" });
+    const stored = (await one<{ content: string; content_sha256: string }>("SELECT content, content_sha256 FROM site_releases WHERE id = 'rel-v1'"))!;
+    expect(stored.content).toBe(json);
+    expect(await sha256Hex(stored.content)).toBe(stored.content_sha256);
+  });
+  it("brings a release stored in version 1 back as a draft in version 2", async () => {
+    const revision = (await repo().overview())!.draft.revision;
+    expect(await repo().restore("rel-v1", revision, at(103))).toEqual({ status: "restored", revision: revision + 1 });
+    const draft = (await repo().overview())!.draft;
+    expect(draft.content.schemaVersion).toBe(2);
+    expect(draft.content.title).toBe("Release antigo");
+    expect(JSON.parse((await one<{ content: string }>("SELECT content FROM site_drafts WHERE site_id = ?", siteId))!.content).schemaVersion).toBe(2);
+  });
+  it("serves nothing for a release that is not a document at all, instead of failing", async () => {
+    await db.batch([
+      db.prepare("INSERT INTO site_releases(id,site_id,number,draft_revision,content,content_sha256,created_by) VALUES ('rel-bad', ?, 3, 1, '{\"schemaVersion\":9}', ?, 'owner-d')").bind(siteId, "b".repeat(64)),
+      db.prepare("UPDATE site_published SET release_id = 'rel-bad' WHERE site_id = ?").bind(siteId),
+    ]);
+    expect(await publishedSiteBySlug(db, "estudio-d")).toBeNull();
+  });
+});
+
+describe("a page with columns, a testimony and a look", () => {
+  const repo = () => sitesFor(db, scope("owner-d", "org-d"));
+  const rich = (): SiteContent => ({
+    ...complete(),
+    title: "Estudio D",
+    theme: { accent: "green", mode: "dark" },
+    blocks: [
+      { id: "hero", type: "hero", eyebrow: "Personal", heading: "Treino com método", subheading: "", buttonLabel: "Falar", buttonChannel: "whatsapp" },
+      { id: "cols", type: "columns", ratio: "left", left: [{ id: "l1", type: "heading", text: "Esquerda" }, { id: "l2", type: "paragraph", text: "Texto <i>solto</i>" }], right: [{ id: "r1", type: "button", label: "Falar", channel: "whatsapp" }] },
+      { id: "q", type: "quote", eyebrow: "", quote: "Gostei muito", author: "Ana", authorized: true },
+      { id: "st", type: "stats", eyebrow: "", heading: "Método", items: [{ value: "1", label: "Avaliação" }, { value: "2", label: "Plano" }] },
+      { id: "ab", type: "about", eyebrow: "", heading: "Sobre mim", text: "Texto", stat: "", statLabel: "" },
+    ],
+  });
+  it("saves, publishes and serves it whole, with the elements inside the columns and the look", async () => {
+    const revision = (await repo().overview())!.draft.revision;
+    const saved = await repo().saveDraft(rich(), revision, at(110));
+    if (saved.status !== "saved") throw new Error(JSON.stringify(saved));
+    expect(await repo().publish(saved.revision, at(111))).toEqual({ status: "published", number: 4 });
+    const served = (await publishedSiteBySlug(db, "estudio-d"))!;
+    expect(served.content.theme).toEqual({ accent: "green", mode: "dark" });
+    expect(served.content.blocks.map((b) => b.type)).toEqual(["hero", "columns", "quote", "stats", "about"]);
+    expect(served.content.blocks[1]).toMatchObject({ ratio: "left", left: [{ id: "l1" }, { id: "l2" }], right: [{ id: "r1", channel: "whatsapp" }] });
+  });
+  it("refuses to save a section or another \"2 columns\" inside a column, and a repeated identifier between a column and the page", async () => {
+    const revision = (await repo().overview())!.draft.revision;
+    const bad = (blocks: unknown[]) => repo().saveDraft({ ...rich(), blocks }, revision, at(112));
+    await expect(bad([{ id: "c", type: "columns", ratio: "equal", left: [emptyBlock("hero", "in")], right: [] }])).rejects.toThrow();
+    await expect(bad([{ id: "c", type: "columns", ratio: "equal", left: [emptyBlock("columns", "in")], right: [] }])).rejects.toThrow();
+    await expect(bad([emptyBlock("text", "same"), { id: "c", type: "columns", ratio: "equal", left: [emptyBlock("heading", "same")], right: [] }])).rejects.toThrow();
+    await expect(bad([{ id: "c", type: "columns", ratio: "wide", left: [], right: [] }])).rejects.toThrow();
+    expect((await repo().overview())!.draft.revision).toBe(revision);
+  });
+  it("does not publish a testimony without the person's authorization, and a button in a column without its contact", async () => {
+    const content = rich();
+    const revision = (await repo().overview())!.draft.revision;
+    const blocks = content.blocks.map((b) => (b.type === "quote" ? { ...b, authorized: false } : b));
+    const saved = await repo().saveDraft({ ...content, blocks, contact: { whatsapp: "", email: "", instagram: "" } }, revision, at(113));
+    if (saved.status !== "saved") throw new Error("not saved");
+    const outcome = await repo().publish(saved.revision, at(114));
+    expect(outcome.status).toBe("invalid");
+    if (outcome.status === "invalid") {
+      expect(outcome.issues.map((i) => i.blockId).sort()).toEqual(["hero", "q", "r1"]);
+      expect(outcome.issues.some((i) => i.message.includes("autorizou"))).toBe(true);
+    }
+    expect((await publishedSiteBySlug(db, "estudio-d"))!.number).toBe(4);
   });
 });

@@ -28,7 +28,7 @@ export default async function MySite() {
       <PageHeading
         eyebrow={workspace.name}
         title="Meu Site"
-        description="A página pública do seu trabalho: você monta com blocos, confere na prévia e publica quando quiser."
+        description="A página pública do seu trabalho: você arrasta os blocos no editor visual, confere na prévia e publica quando quiser."
       />
       {overview ? (
         <SiteWorkspace
