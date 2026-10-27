@@ -56,4 +56,5 @@ export const ALL_MIGRATIONS = [
   "0017_data_subject_requests.sql",
   "0018_email_messages.sql",
   "0019_platform_admin_invites.sql",
+  "0020_terms_drafts.sql",
 ];

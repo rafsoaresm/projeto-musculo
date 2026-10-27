@@ -7,6 +7,8 @@ const actionLabel: Record<string, string> = {
   USER_UNBLOCKED: "Acesso restabelecido",
   TERMS_PUBLISHED_STUDENT: "Termos do aluno publicados",
   TERMS_PUBLISHED_PROFESSIONAL: "Termos do profissional publicados",
+  TERMS_DRAFT_DISCARDED_STUDENT: "Rascunho dos termos do aluno descartado",
+  TERMS_DRAFT_DISCARDED_PROFESSIONAL: "Rascunho dos termos do profissional descartado",
   PLATFORM_ADMIN_INVITED: "Convite de gestor criado",
   PLATFORM_ADMIN_INVITE_REVOKED: "Convite de gestor cancelado",
   PLATFORM_ADMIN_GRANTED: "Gestor acrescentado",
