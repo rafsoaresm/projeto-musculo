@@ -4,7 +4,7 @@ O que está aberto, quem destrava e onde cada coisa está contada em detalhe. **
 
 Quem: **Responsável** (dono do produto: contas, domínios, decisões), **Advogado**, **Técnico** (responsável técnico em educação física: conteúdo clínico), **Código** (o que se constrói sem esperar ninguém).
 
-Estado conhecido em 27/10/2026: a 0.25.0 está no ar, com as migrations até a 0017 aplicadas (conferido no log do deploy). A 0.26.0 (recuperação de senha por e-mail, migration 0018) foi implantada com sucesso e `0018_email_messages.sql ✅` aparece no log; a 0.27.0 (mais de um gestor, migration 0019) também foi implantada com sucesso (commit `e7788ef`) e `0019_platform_admin_invites.sql ✅` aparece no log do deploy. A 0.28.0 ("Baixar meus dados", sem migration) também foi implantada com sucesso (commit `2298dce`; não há linha de migration nova no log, porque não há migration). A 0.29.0 (Configurações do profissional, sem migration) também foi implantada com sucesso (commit `0ff37a0`). A 0.30.0 (rascunho dos termos, migration 0020) também foi implantada com sucesso (commit `c44faac`) e `0020_terms_drafts.sql ✅` aparece no log do deploy. A 0.31.0 (verificação em duas etapas, migration 0021) também foi implantada com sucesso (commit `f5a6dce`) e `0021_two_factor.sql ✅` aparece no log do deploy. **Nada foi lido ao vivo**: o ambiente onde o código é escrito não alcança `projeto-musculo.webflow.io`.
+Estado conhecido em 27/10/2026: a 0.25.0 está no ar, com as migrations até a 0017 aplicadas (conferido no log do deploy). A 0.26.0 (recuperação de senha por e-mail, migration 0018) foi implantada com sucesso e `0018_email_messages.sql ✅` aparece no log; a 0.27.0 (mais de um gestor, migration 0019) também foi implantada com sucesso (commit `e7788ef`) e `0019_platform_admin_invites.sql ✅` aparece no log do deploy. A 0.28.0 ("Baixar meus dados", sem migration) também foi implantada com sucesso (commit `2298dce`; não há linha de migration nova no log, porque não há migration). A 0.29.0 (Configurações do profissional, sem migration) também foi implantada com sucesso (commit `0ff37a0`). A 0.30.0 (rascunho dos termos, migration 0020) também foi implantada com sucesso (commit `c44faac`) e `0020_terms_drafts.sql ✅` aparece no log do deploy. A 0.31.0 (verificação em duas etapas, migration 0021) também foi implantada com sucesso (commit `f5a6dce`) e `0021_two_factor.sql ✅` aparece no log do deploy. A 0.32.0 (aparelhos conectados e entradas recentes, migration 0022) também foi implantada com sucesso (commit `f92cd9d`) e `0022_sign_in_trail.sql ✅` aparece no log do deploy. **Nada foi lido ao vivo**: o ambiente onde o código é escrito não alcança `projeto-musculo.webflow.io`.
 
 ## 1. Depende do Responsável (conta, domínio, decisão)
 
@@ -35,8 +35,9 @@ Estado conhecido em 27/10/2026: a 0.25.0 está no ar, com as migrations até a 0
 | J7 | Transferência internacional: dados em infraestrutura do Webflow/Cloudflare e e-mail pela AWS, em regiões que não escolhemos | Perguntar ao Webflow onde ficam os dados e as cópias |
 | J8 | **Aviso de privacidade** completo, separado dos termos e público antes do cadastro | Hoje é um texto só, mostrado na entrada |
 | J9 | Prazo de descarte dos registros técnicos (IP e navegador das sessões, data e hora de cada entrada desde a 0.32, `email_messages`, logs) | Sem prazo |
-| J11 | **Registros de acesso**: a lei (Marco Civil da Internet) manda guardar data, hora e IP dos acessos à aplicação por algum prazo? Quem guarda: a plataforma, o profissional, o Webflow ou a Cloudflare? | Pergunta 11a em `REVISAO-JURIDICA.md`; hoje o IP só existe enquanto a sessão existe |
 | J10 | Base legal para dados e imagens de saúde (consentimento específico e destacado, como desenhado) | Proposta aprovada pelo responsável; falta o parecer |
+| J11 | **Registros de acesso**: a lei (Marco Civil da Internet) manda guardar data, hora e IP dos acessos à aplicação por algum prazo? Quem guarda: a plataforma, o profissional, o Webflow ou a Cloudflare? | Pergunta 11a em `REVISAO-JURIDICA.md`; hoje o IP só existe enquanto a sessão existe |
+| J12 | **Leads (0.33)**: base legal para guardar o contato de quem se interessou, o que o profissional diz a essa pessoa, prazo de guarda de lead não contratado e se o termo do profissional deve mencioná-los | Pergunta 14 em `REVISAO-JURIDICA.md`. O cadastro manual já existe; o formulário público (0.35) só abre depois do parecer |
 
 ## 3. Depende do Técnico (conteúdo clínico: não será inventado)
 
@@ -54,7 +55,7 @@ Estado conhecido em 27/10/2026: a 0.25.0 está no ar, com as migrations até a 0
 
 | # | Conferência |
 |---|---|
-| C1 | `https://projeto-musculo.webflow.io/app/api/health`: versão `0.32.0`; `"photos": "open"`; `"passwordRecovery": "not_configured"` até R1 |
+| C1 | `https://projeto-musculo.webflow.io/app/api/health`: versão `0.33.0`; `"photos": "open"`; `"passwordRecovery": "not_configured"` até R1 |
 | C2 | Se `"photos": "closed"`: criar `PHOTOS_ENABLED=true` como variável do ambiente (a documentação do Webflow diz que `vars` do `wrangler.json` são ignoradas) e publicar de novo |
 | ~~C3~~ | ~~Após o deploy da 0.26 e da 0.27: `0018_email_messages.sql ✅` e `0019_platform_admin_invites.sql ✅` no log do deploy~~ **Conferido em 26/10/2026** nos dois deploys |
 | C4 | Depois de R1: pedir um link para uma conta de teste (no sandbox da AWS, um endereço verificado), abri-lo e entrar com a senha nova; se a AWS recusar, o código fica em `email_messages.error_code` |
@@ -64,7 +65,8 @@ Estado conhecido em 27/10/2026: a 0.25.0 está no ar, com as migrations até a 0
 | C8 | Em produção, em `/profissional/configuracoes`: corrigir o nome do espaço e o nome de exibição de uma conta de teste e ver o nome novo na área de um aluno de teste; `/api/health` com a versão `0.29.0` |
 | C9 | ~~`0020_terms_drafts.sql ✅` no log do deploy~~ **Conferido em 27/10/2026.** Falta, em `/gestor/termos` salvar um rascunho, recarregar e achá-lo; `/api/health` com a versão `0.30.0` (**não publique nada para testar: publicar pede novo aceite a todos**) |
 | C10 | ~~`0021_two_factor.sql ✅` no log do deploy~~ **Conferido em 27/10/2026.** Falta `/api/health` com a versão `0.31.0`. Com uma conta de teste (**não** a do gestor real, até a conferência): ligar a etapa em `/profissional/conta` **lendo o QR com um aplicativo autenticador de verdade** (nenhum foi usado até aqui, só um gerador de código da suíte), sair, entrar com o código, entrar com um código de recuperação, e pedir ao gestor que redefina |
-| C11 | Depois do deploy da 0.32: `0022_sign_in_trail.sql ✅` no log do deploy e `/api/health` com a versão `0.32.0`. Em `/profissional/conta`: ver o aparelho atual, entrar por outro navegador ou celular, desconectar o outro e conferir que ele cai na tela de entrada; a lista de entradas só mostra as feitas depois do deploy |
+| C11 | ~~`0022_sign_in_trail.sql ✅` no log do deploy~~ **Conferido em 27/10/2026.** Falta `/api/health` com a versão `0.32.0`. Em `/profissional/conta`: ver o aparelho atual, entrar por outro navegador ou celular, desconectar o outro e conferir que ele cai na tela de entrada; a lista de entradas só mostra as feitas depois do deploy |
+| C12 | Depois do deploy da 0.33: `0023_leads_services.sql ✅` no log e `/api/health` com a versão `0.33.0`. Em `/profissional/servicos` cadastrar um serviço; em `/profissional/leads` registrar um lead de teste, movê-lo até Contratado e converter em aluno; conferir o aluno em Alunos. **Não use dados de pessoas reais** até J12 |
 
 ## 5. Construir agora (Código; não depende de ninguém)
 
@@ -86,6 +88,9 @@ Estado conhecido em 27/10/2026: a 0.25.0 está no ar, com as migrations até a 0
 | B14 | **Formato legível** da cópia (página ou PDF) para quem não lê JSON | Hoje só o JSON; a tela explica que abre em um editor de texto |
 | B15 | Guardar **o nome de quem entregou no momento da entrega** e o **histórico de nomes anteriores** do espaço e do profissional | Hoje o nome é lido na hora: renomear muda como as entregas já feitas dizem quem as entregou (o conteúdo não muda). Exige migration aditiva e decide-se com o advogado se o nome da entrega deve ser fixo (J1) |
 | B16 | **Último gestor sem celular e sem códigos**: ninguém na ferramenta redefine a etapa dele (o gestor não redefine a si mesmo) | Hoje só mexendo no banco (zerar `auth_user.two_factor_enabled` e apagar a linha em `auth_two_factor` e as sessões da pessoa), e isso **não foi testado**. Juntar com o caminho do último gestor perdido (B2) e com R1 |
+| B17 | **Meu Site** (0.34): blocos tipados, rascunho, prévia, publicação imutável e página pública sob o endereço do app | Sem domínio próprio nem pixels até haver prova de vários hosts e TLS (E0) e a origem privada do portal (R3). Editor de arrastar e soltar (Puck) só depois de validar API, licença e versão. Ver `ROADMAP-IMPLEMENTACAO.md` (0.33) |
+| B18 | **Formulário público que gera lead** (0.35) | Fechado por padrão até J8 (aviso de privacidade público) e J12; limite por endereço, campo-isca e tamanho |
+| B19 | Leads: **tarefas e lembretes**, mensagens, rodízio entre profissionais, campos configuráveis, importação, paginação (hoje 300 por consulta) | E5; mensagens e avisos dependem de R1 (D2, D3) |
 
 ## 6. Construir depois de outra pendência
 

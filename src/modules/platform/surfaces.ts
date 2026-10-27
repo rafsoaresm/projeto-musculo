@@ -255,13 +255,8 @@ const profissional: NavGroup[] = [
         needs:
           "Provas no Webflow Cloud: vários hosts por app, domínios, TLS e o editor Puck.",
       }),
-      planned("leads", "Leads", "inbox", {
-        epic: "E3",
-        reference: "Handoff V2, seções 9 e 11.4",
-        summary:
-          "Interessados vindos do formulário do site, com origem e conversão deliberada em aluno. O formulário comercial não recebe dados de saúde.",
-        needs: "Site publicado e um CRM mínimo com conversão idempotente.",
-      }),
+      { slug: "leads", label: "Leads", icon: "inbox", status: "available" },
+      { slug: "servicos", label: "Serviços", icon: "handshake", status: "available" },
     ],
   },
   {

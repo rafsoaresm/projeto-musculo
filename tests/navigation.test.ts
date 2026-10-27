@@ -98,7 +98,9 @@ describe("navigation by area (handoff V2, section 3)", () => {
       "gestor/conta",
       "profissional/configuracoes",
       "profissional/conta",
+      "profissional/leads",
       "profissional/prescricao",
+      "profissional/servicos",
     ]);
   });
 });
