@@ -53,6 +53,8 @@ export function AccountForm({
   const mountPath = useMountPath();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  // After the password, an account with the second step on gets no session until a code is accepted.
+  const [challenge, setChallenge] = useState<"app" | "recovery" | null>(null);
   const text = signup ? copy[audience] : copy.login;
   const alternate = switchTo ?? {
     href: signup ? "/entrar" : "/cadastro",
@@ -91,6 +93,11 @@ export function AccountForm({
         );
         return;
       }
+      const answer = (await response.json().catch(() => ({}))) as { twoFactorRedirect?: boolean };
+      if (!signup && answer.twoFactorRedirect) {
+        setChallenge("app");
+        return;
+      }
       router.push(redirectTo);
       router.refresh();
     } catch {
@@ -99,6 +106,96 @@ export function AccountForm({
       setPending(false);
     }
   }
+  async function verify(event: React.SubmitEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!challenge) return;
+    setPending(true);
+    setError("");
+    const data = new FormData(event.currentTarget);
+    const typed = String(data.get("code") ?? "").replace(/\s/g, "");
+    try {
+      const response = await fetch(
+        `${mountPath()}/api/auth/two-factor/${challenge === "app" ? "verify-totp" : "verify-backup-code"}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: typed }),
+        },
+      );
+      if (!response.ok) {
+        const body = (await response.json().catch(() => ({}))) as { code?: string };
+        // The challenge is gone (too many wrong codes, or it expired): back to the password.
+        if (
+          body.code === "INVALID_TWO_FACTOR_COOKIE" ||
+          body.code === "TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE"
+        ) {
+          setChallenge(null);
+          setError("A verificação expirou ou teve tentativas demais. Entre de novo com a senha.");
+        } else if (response.status === 429) {
+          setError("Muitas tentativas. Aguarde alguns minutos e tente novamente.");
+        } else if (response.status === 401 || response.status === 400) {
+          setError(
+            challenge === "app"
+              ? "Esse código não confere. Confira o aplicativo e digite o código atual, com 6 dígitos."
+              : "Esse código de recuperação não confere ou já foi usado.",
+          );
+        } else {
+          setError("O serviço de acesso não respondeu como esperado. Tente novamente em instantes.");
+        }
+        return;
+      }
+      router.push(redirectTo);
+      router.refresh();
+    } catch {
+      setError("Não foi possível conectar. Tente novamente.");
+    } finally {
+      setPending(false);
+    }
+  }
+  if (challenge)
+    return (
+      <section className="account-card">
+        <p className="eyebrow">VERIFICAÇÃO EM DUAS ETAPAS</p>
+        <h1>Digite o código.</h1>
+        <p>
+          {challenge === "app"
+            ? "Abra o aplicativo autenticador e digite o código de 6 dígitos de Trainer Prescription."
+            : "Digite um dos códigos de recuperação que você guardou. Cada um vale uma vez."}
+        </p>
+        <form className="stack-form" onSubmit={verify} aria-label="Verificação em duas etapas">
+          <label>
+            {challenge === "app" ? "Código do aplicativo" : "Código de recuperação"}
+            <input
+              key={challenge}
+              name="code"
+              autoComplete="one-time-code"
+              inputMode={challenge === "app" ? "numeric" : "text"}
+              autoFocus
+              required
+              maxLength={challenge === "app" ? 7 : 24}
+            />
+          </label>
+          {error && (
+            <p className="form-error" role="alert">
+              {error}
+            </p>
+          )}
+          <button className="button primary" disabled={pending}>
+            {pending ? "Aguarde…" : "Confirmar"}
+          </button>
+        </form>
+        <button
+          type="button"
+          className="account-link"
+          onClick={() => {
+            setError("");
+            setChallenge(challenge === "app" ? "recovery" : "app");
+          }}
+        >
+          {challenge === "app" ? "Perdi o celular: usar um código de recuperação" : "Voltar ao código do aplicativo"}
+        </button>
+      </section>
+    );
   return (
     <section className="account-card">
       <p className="eyebrow">{text.eyebrow}</p>

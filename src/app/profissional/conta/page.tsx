@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { requireWorkspace, recoveryAvailable } from "@/modules/auth/server";
 import { PageHeading } from "@/components/ui";
 import { SecurityPanel } from "@/modules/auth/components/security-panel";
+import { TwoFactorPanel } from "@/modules/auth/components/two-factor-panel";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Minha conta" };
@@ -34,6 +35,16 @@ export default async function ProfessionalAccount() {
             : "Você precisa da senha atual. A recuperação de senha por e-mail ainda não está disponível: guarde a nova senha em um lugar seguro."}
         </p>
         <SecurityPanel />
+      </section>
+      <section className="panel" aria-labelledby="duas-etapas">
+        <p className="eyebrow">SEGURANÇA</p>
+        <h2 id="duas-etapas">Verificação em duas etapas</h2>
+        <p className="muted">
+          Além da senha, entrar pede um código de 6 dígitos que só o seu celular gera, em um aplicativo autenticador.
+          É opcional e recomendado: este espaço guarda dados de saúde dos seus alunos, e uma senha descoberta sozinha
+          deixa de bastar para abri-los.
+        </p>
+        <TwoFactorPanel enabled={Boolean(user.twoFactorEnabled)} />
       </section>
     </>
   );

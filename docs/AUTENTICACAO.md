@@ -39,7 +39,7 @@ O DB continua nativo; não há URL de banco externo. Migrations 0001 e 0002 são
 ## Limites desta fatia
 
 - E-mails ainda não são verificados. Não autorizar convites, vínculos ou mesclagem de identidades por simples coincidência de e-mail.
-- A recuperação de senha existe (0.26), mas só liga com o e-mail configurado. Envio de mensagens, MFA, convites e gestão de equipe ainda não estão disponíveis; não se simula e-mail enviado.
+- A recuperação de senha existe (0.26), mas só liga com o e-mail configurado. A verificação em duas etapas existe (0.31) e é opcional. Envio de mensagens, convites e gestão de equipe ainda não estão disponíveis; não se simula e-mail enviado.
 - Um espaço provisionado por identidade. Não há seletor de organizações nem provisionamento automático após revogação.
 - A ferramenta não envia e-mails: o profissional copia o link do convite e o envia por um canal seguro. O token é mostrado uma única vez; só o hash fica no banco.
 - O portal do aluno ainda usa a mesma origem do painel. Antes de dados reais de alunos, publique painel e portal em origens privadas separadas e sem scripts de marketing.
@@ -51,6 +51,18 @@ O DB continua nativo; não há URL de banco externo. Migrations 0001 e 0002 são
 
 Esta entrega permite experimentar os três papéis com dados fictícios em homologação; não fecha E1 nem o piloto operacional.
 
+## Verificação em duas etapas (0.31)
+
+Opcional, por pessoa, com aplicativo autenticador (TOTP: 6 dígitos, a cada 30 segundos). Em `/profissional/conta` e `/gestor/conta`.
+
+- **Ligar** pede a senha. A tela mostra o QR (desenhado no navegador), a chave para digitar e 10 códigos de recuperação, **uma única vez**: o servidor guarda tudo cifrado e não consegue mostrar de novo. **Só vale depois de a pessoa digitar um código do aplicativo**; antes disso o cadastro fica "não verificado" e o login não pede nada.
+- **Entrar:** com a etapa ligada, a senha certa **não cria sessão**; a resposta manda pedir o código (cookie de desafio por 5 minutos). O código do aplicativo ou um código de recuperação (cada um vale uma vez) cria a sessão. Erros repetidos encerram o desafio; 10 códigos errados bloqueiam a conta por 15 minutos; as rotas de duas etapas aceitam 3 chamadas a cada 10 segundos por endereço.
+- **Desligar** pede a senha e uma entrada recente; **gerar novos códigos** pede a senha e aposenta todos os anteriores.
+- **Rotas abertas ao navegador:** só `two-factor/enable`, `verify-totp`, `verify-backup-code`, `generate-backup-codes` e `disable`. Não há código por e-mail nem por SMS e o segredo não pode ser relido (404).
+- **Trilha:** o banco grava `TWO_FACTOR_ENABLED` e `TWO_FACTOR_DISABLED` (sem o segredo).
+- **Perdeu o celular e os códigos:** um **gestor da plataforma** redefine a etapa em `/gestor/organizacoes/<id>` (profissional) ou em `/gestor/gestores` (outro gestor). A ferramenta **não tem como saber** que é a pessoa quem pede: o gestor atesta, por outro canal, e a tela diz isso. A redefinição desliga a etapa, apaga os segredos, **encerra todas as sessões** da pessoa e grava `PLATFORM_TWO_FACTOR_RESET` com quem fez. Um gestor não redefine a própria. **Se o único gestor perde o celular e os códigos, ninguém na ferramenta resolve; só no banco** (B16 em `PENDENCIAS.md`; não testado).
+- **O que não existe:** obrigatoriedade (nem para o gestor: R11), a tela para o aluno, aviso por e-mail e a recuperação pelo próprio titular sem depender de um gestor (depende de R1). **Não foi testado com um aplicativo autenticador de verdade**, só com um gerador de código próprio da suíte.
+
 ## Minha conta: senha e sessões (0.18)
 
 Quem já está conectado troca a senha em `/profissional/conta` ou `/aluno/conta`. A troca exige a **senha atual** (conferida no servidor, 12 a 128 caracteres para a nova) e a sessão; com a opção marcada, as sessões dos outros aparelhos são encerradas na mesma chamada e o aparelho que trocou continua conectado. "Desconectar os outros aparelhos" faz só o encerramento. A senha atual é conferida a cada troca, então uma sessão roubada não basta para tomar a conta: o limite de 5 tentativas por minuto também vale contra o palpite da senha atual.
@@ -61,7 +73,7 @@ Quem já está conectado troca a senha em `/profissional/conta` ou `/aluno/conta
 - **O link** vale 1 hora, uma vez, e aponta para a nossa página `/redefinir-senha#token=…`, não para o endereço de retorno da biblioteca (que nem está acessível). **O token fica no fragmento do endereço (depois do `#`), que o navegador nunca envia**: não chega ao nosso servidor, não entra em log de execução nem em cabeçalho de referência. A página o lê no navegador, tira-o do endereço na hora, não é indexada e o envia no corpo de um POST. Um link colado na mesma aba, que só muda o fragmento, também é lido.
 - **Definir a nova senha** exige 12 a 128 caracteres e **encerra todas as sessões da conta**, inclusive a de quem tinha a senha antiga. Limite de 5 tentativas por minuto por IP. Quando a pessoa já terminou de entrar na ferramenta, fica uma linha na trilha (`PASSWORD_RESET_COMPLETED`, sem o token); a de quem se cadastrou e ainda não terminou não grava linha, e a redefinição funciona do mesmo jeito.
 - **O que o e-mail contém:** o link e como ignorar a mensagem. Nenhum dado de treino, avaliação, foto ou check-in, em texto simples. A tabela `email_messages` guarda o endereço, o resultado (`SENT`, `FAILED`, `THROTTLED`) e o código do erro do provedor, **nunca o link, o token nem o texto**; o banco recusa um texto para qualquer provedor que não seja a captura local.
-- **O que não existe:** verificação do e-mail no cadastro (a conta continua válida sem ela), troca de e-mail, MFA e aviso por e-mail de qualquer outra coisa. Quem se cadastra com um e-mail que não é seu ainda pode criar uma conta nele; por isso a recuperação nunca muda o e-mail de uma conta, só a senha, e só para quem controla a caixa de entrada.
+- **O que não existe:** verificação do e-mail no cadastro (a conta continua válida sem ela), troca de e-mail e aviso por e-mail de qualquer outra coisa (inclusive de que a verificação em duas etapas foi ligada, desligada ou redefinida). Quem se cadastra com um e-mail que não é seu ainda pode criar uma conta nele; por isso a recuperação nunca muda o e-mail de uma conta, só a senha, e só para quem controla a caixa de entrada.
 - **Não foi testado contra a AWS real.** A assinatura (Signature Version 4) foi conferida contra os exemplos publicados pela AWS e o envio contra um provedor simulado; o primeiro envio de verdade depende de credenciais que só o responsável tem. A conferência é o item "e-mail" de `docs/VALIDACAO.md`.
 
 ## Mais de um gestor (0.27)

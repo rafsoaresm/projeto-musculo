@@ -36,6 +36,16 @@ export async function revokeManagerInvite(inviteId: string): Promise<string> {
   return done ? "Convite cancelado." : "Este convite já não está aberto.";
 }
 
+/** A manager turns off the second step of another manager who lost the phone and the recovery codes. */
+export async function resetManagerTwoFactor(targetUserId: string): Promise<string> {
+  const { db, context } = await requirePlatformAdmin();
+  const done = await platformFor(db, context).resetTwoFactor(targetUserId).catch(() => false);
+  revalidatePath("/gestor/gestores");
+  return done
+    ? "Verificação em duas etapas redefinida. A pessoa foi desconectada e entra só com a senha."
+    : "Não foi possível redefinir. Ela já pode ter desativado a verificação; atualize a página.";
+}
+
 export async function revokeManager(targetUserId: string): Promise<string> {
   const { db, context } = await requirePlatformAdmin();
   const done = await platformFor(db, context).revokeManager(targetUserId).catch(() => false);

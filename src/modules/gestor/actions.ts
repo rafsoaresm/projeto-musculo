@@ -36,6 +36,16 @@ export async function activateManager(
   return activationMessages[result];
 }
 
+/** A manager turns off the second step of a member who lost the phone and the recovery codes. */
+export async function resetMemberTwoFactor(organizationId: string, targetUserId: string): Promise<string> {
+  const { db, context } = await requirePlatformAdmin();
+  const done = await platformFor(db, context).resetTwoFactor(targetUserId).catch(() => false);
+  revalidatePath(`/gestor/organizacoes/${organizationId}`);
+  return done
+    ? "Verificação em duas etapas redefinida. A pessoa foi desconectada e entra só com a senha."
+    : "Não foi possível redefinir. Ela já pode ter desativado a verificação; atualize a página.";
+}
+
 export async function setMemberAccess(
   organizationId: string,
   targetUserId: string,

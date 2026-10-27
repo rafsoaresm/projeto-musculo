@@ -37,6 +37,7 @@ Uma mesma conta pode ter mais de uma área (por exemplo, gestor e profissional).
 
 /gestor                   visão geral            /gestor/organizacoes[/id]
 /gestor/auditoria         /gestor/termos (editar os termos, com rascunho salvo no servidor)
+/gestor/conta             minha conta: senha e verificação em duas etapas (0.31)
 /gestor/ativar            primeiro acesso
 /gestor/[módulo]          planejados: planos-saas, afiliados, templates, biblioteca-global, integracoes
 
@@ -45,6 +46,7 @@ Uma mesma conta pode ter mais de uma área (por exemplo, gestor e profissional).
 /profissional/periodizacao        /profissional/alunos/[id]/planos/novo
                           /profissional/alunos/[id]/planos/[planId]/[revisionId]
 /profissional/configuracoes   nome do espaço, nome de exibição e quem tem acesso (0.29)
+/profissional/conta       minha conta: senha, outros aparelhos e verificação em duas etapas (0.31)
 /profissional/[módulo]    planejados: fontes, meu-site, leads
 
 /aluno                    início                 /aluno/treino
@@ -95,6 +97,7 @@ Correspondência com os papéis do handoff V2:
 | Leads | `/profissional/leads` | Planejado | E3 |
 | Configurações | `/profissional/configuracoes` | Disponível: o proprietário muda o nome do espaço, cada profissional o próprio nome de exibição, e a lista de quem tem acesso é só de leitura. **Equipe, papéis e permissões continuam planejados** (dependem do e-mail verificado). Na demonstração há uma prévia que só explica | E1 |
 | Gestor: organizações, auditoria, termos | `/gestor/...` | Disponível: os termos são editados, **guardados como rascunho no servidor** (um por público, compartilhado entre gestores, com trava de revisão), revisados e publicados em versões | E1 |
+| Gestor e profissional: verificação em duas etapas | `/gestor/conta`, `/profissional/conta` | Disponível (0.31): opcional, com aplicativo autenticador e 10 códigos de recuperação; o gestor redefine a etapa de quem perdeu o celular e os códigos, em `/gestor/organizacoes/<id>` e `/gestor/gestores`. O aluno não tem a tela | E1 |
 | Gestor: planos e cobrança, afiliados, templates, biblioteca, integrações | `/gestor/...` | Planejado | E3, E5, E6, E7 |
 | Aluno: início | `/aluno` | Disponível: vínculo e estado do treino | E4 |
 | Aluno: treino atual | `/aluno/treino` | Disponível: a revisão entregue de cada plano, somente leitura (**prévia** com execução na demonstração) | E4 |

@@ -6,6 +6,8 @@ import { requirePlatformAdmin } from "@/modules/auth/server";
 import { platformFor } from "@/db/platform";
 import { Kpi, Notice, PageHeading, Pill, formatDate } from "@/components/ui";
 import { MemberAccess } from "@/modules/gestor/member-access";
+import { ResetTwoFactor } from "@/modules/gestor/reset-two-factor";
+import { resetMemberTwoFactor } from "@/modules/gestor/actions";
 import { MEMBERSHIP_ROLE_LABEL } from "@/modules/platform/areas";
 
 export const dynamic = "force-dynamic";
@@ -85,6 +87,7 @@ export default async function OrganizationDetail({
                     {MEMBERSHIP_ROLE_LABEL[member.role] ?? member.role}
                   </td>
                   <td data-label="Situação">
+                    {member.twoFactor && <small className="cell-sub">Duas etapas ativas</small>}
                     {member.revoked ? (
                       <Pill>Vínculo encerrado</Pill>
                     ) : member.blocked ? (
@@ -100,6 +103,12 @@ export default async function OrganizationDetail({
                         userId={member.userId}
                         blocked={member.blocked}
                         name={member.displayName ?? member.email}
+                      />
+                    )}
+                    {!member.revoked && member.userId !== context.userId && member.twoFactor && (
+                      <ResetTwoFactor
+                        name={member.displayName ?? member.email}
+                        reset={resetMemberTwoFactor.bind(null, organization.id, member.userId)}
                       />
                     )}
                   </td>

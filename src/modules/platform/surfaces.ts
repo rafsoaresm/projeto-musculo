@@ -129,6 +129,7 @@ const gestor: NavGroup[] = [
       },
       { slug: "termos", label: "Termos", icon: "file", status: "available" },
       { slug: "gestores", label: "Gestores", icon: "users", status: "available" },
+      { slug: "conta", label: "Minha conta", icon: "user", status: "available" },
     ],
   },
   {

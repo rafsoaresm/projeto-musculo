@@ -1,4 +1,5 @@
 import zlib from "node:zlib";
+import { totpCode } from "../helpers/totp";
 import { expect, type Browser, type Page } from "@playwright/test";
 
 export const password = "only-for-local-browser-testing";
@@ -174,4 +175,23 @@ export function png(width = 120, height = 160): Buffer {
     chunk("IDAT", zlib.deflateSync(rows)),
     chunk("IEND", Buffer.alloc(0)),
   ]);
+}
+
+/**
+ * From the account page of someone signed in: starts the second step with the password, reads the key
+ * and the recovery codes the screen shows, and confirms with a code computed from that key. Returns what a
+ * person would have written down.
+ */
+export async function turnOnTwoFactor(page: Page, accountPath: string) {
+  await page.goto(accountPath);
+  await page.waitForLoadState("networkidle");
+  await page.getByRole("button", { name: "Ativar a verificação em duas etapas" }).click();
+  await page.getByLabel("Sua senha").fill(password);
+  await page.getByRole("button", { name: "Continuar" }).click();
+  const key = (await page.locator(".two-factor-key").innerText()).replace(/\s/g, "");
+  const recovery = await page.getByRole("list", { name: "Códigos de recuperação" }).getByRole("listitem").allInnerTexts();
+  await page.getByLabel("Código do aplicativo").fill(totpCode(key));
+  await page.getByRole("button", { name: "Ativar a verificação" }).click();
+  await expect(page.getByText("Verificação em duas etapas ativada.", { exact: false })).toBeVisible();
+  return { key, recovery };
 }

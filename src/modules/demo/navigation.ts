@@ -8,7 +8,7 @@ import {
 
 /** Planned modules that have an illustrated preview in the demonstration. */
 const PREVIEWS: Record<SurfaceId, string[]> = {
-  gestor: [],
+  gestor: ["conta"],
   profissional: ["prescricao", "conta", "configuracoes"],
   aluno: ["treino", "evolucao", "conta"],
 };

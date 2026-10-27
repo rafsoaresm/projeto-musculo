@@ -1,5 +1,6 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { betterAuth } from "better-auth";
+import { twoFactor } from "better-auth/plugins";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { drizzle } from "drizzle-orm/d1";
 import type { PasswordResetSender } from "@/modules/email/service";
@@ -110,6 +111,18 @@ export function createAuth(db: D1Database, settings: AuthSettings) {
       // with an account as for one without.
       ...(settings.background ? { backgroundTasks: { handler: settings.background } } : {}),
     },
+    plugins: [
+      // The second step of the sign-in: an authenticator app (TOTP) and single-use recovery codes.
+      // Chosen by each person, never forced. No code is sent by e-mail or by phone (there is no
+      // `sendOTP`), no device is remembered by the screens, and the library locks an account after ten
+      // wrong codes in a row for fifteen minutes.
+      twoFactor({
+        issuer: "Trainer Prescription",
+        totpOptions: { digits: 6, period: 30 },
+        backupCodeOptions: { amount: 10, length: 10 },
+        twoFactorCookieMaxAge: 60 * 5,
+      }),
+    ],
     logger: { disabled: true },
   });
 }
