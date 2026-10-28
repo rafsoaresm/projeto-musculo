@@ -2,7 +2,8 @@ import { z } from "zod";
 import { DELIVERIES, type Delivery } from "@/modules/leads/contracts";
 import { ALT_MAX, CAPTION_MAX } from "./images";
 import { ACCENTS, DEFAULT_THEME, MODES, WIDTHS } from "./site-theme";
-import { styleAssetIds, styleSchema, type Style } from "./style";
+import { nodeAssetIds } from "./screens";
+import { styleSchema, type Style } from "./style";
 
 /**
  * The page of a professional, as a document: a tree of typed nodes. A node is a container (which holds other nodes),
@@ -100,8 +101,11 @@ const plain = (max: number) =>
     .pipe(z.string().max(max).refine((value) => !/[\p{Cc}\p{Cf}]/u.test(value.replace(/\n/g, ""))));
 
 const id = z.string().regex(/^[a-z0-9-]{1,40}$/);
-/** What every node has: its identifier, an optional name for the layers, and its style. */
-const base = { id, name: plain(NAME_MAX).optional(), style: styleSchema.optional() };
+/**
+ * What every node has: its identifier, an optional name for the layers, and its style: the computer's in `style`, and
+ * only what is different on the tablet and on the phone in `styleTablet` and `styleMobile` (see screens.ts).
+ */
+const base = { id, name: plain(NAME_MAX).optional(), style: styleSchema.optional(), styleTablet: styleSchema.optional(), styleMobile: styleSchema.optional() };
 
 const deliveryEnum = z.enum(DELIVERIES);
 export const resolvedService = z
@@ -223,6 +227,8 @@ export interface BoxNode {
   id: string;
   name?: string;
   style?: Style;
+  styleTablet?: Style;
+  styleMobile?: Style;
   type: "box";
   tag: BoxTag;
   children: SiteNode[];
@@ -493,7 +499,7 @@ export function referencedAssetIds(content: SiteContent): string[] {
   const ids: string[] = [];
   for (const entry of allNodes(content.blocks)) {
     if (entry.type === "image" && entry.assetId) ids.push(entry.assetId);
-    ids.push(...styleAssetIds(entry.style));
+    ids.push(...nodeAssetIds(entry));
   }
   if (content.logoAssetId) ids.push(content.logoAssetId);
   return [...new Set(ids)];
@@ -682,7 +688,7 @@ export function publishIssues(content: SiteContent, liveServiceIds: ReadonlySet<
         ? `Bloco ${at} (${BLOCK_LABEL[b.type]})`
         : `Bloco ${at} (${BLOCK_LABEL[root.type]}), camada ${trail.map((position) => position + 1).join(".")} (${BLOCK_LABEL[b.type]})`;
     if (assetIds)
-      for (const assetId of styleAssetIds(b.style))
+      for (const assetId of nodeAssetIds(b))
         if (!assetIds.has(assetId)) add(at, b.id, `${label}: a imagem de fundo escolhida não está mais na biblioteca. Escolha outra ou tire o fundo.`);
     switch (b.type) {
       case "hero":

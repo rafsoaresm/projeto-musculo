@@ -34,7 +34,8 @@ import {
 import { ancestorsOf, locate, updateBlock } from "./editor-model";
 import { nodeText, nodeTitle } from "./node-label";
 import { ACCENTS, ACCENT_LABEL, MODES, MODE_LABEL, WIDTHS, WIDTH_LABEL, type Accent, type Mode, type Width } from "./site-theme";
-import { patchSide, patchStyle } from "./style-model";
+import { ownStyle, type Screen } from "./screens";
+import { clearStyles, patchSide, patchStyle, resetScreen, setHidden, withScreenStyle } from "./style-model";
 import { StylePanel } from "./style-panel";
 import type { Style } from "./style";
 import { DELIVERY_LABEL } from "@/modules/leads/contracts";
@@ -213,6 +214,8 @@ export function BlockInspector({
   images,
   tab,
   onTab,
+  screen,
+  onScreen,
   onChange,
   act,
   select,
@@ -223,6 +226,9 @@ export function BlockInspector({
   images: ImageSupport;
   tab: "content" | "style";
   onTab: (tab: "content" | "style") => void;
+  /** The size of the screen being edited, and a way to change it. */
+  screen: Screen;
+  onScreen: (screen: Screen) => void;
   onChange: Change;
   act: (id: string, action: NodeAction) => void;
   select: (id: string) => void;
@@ -232,16 +238,10 @@ export function BlockInspector({
   const entry = found.node;
   const patch = (changes: Record<string, unknown>) =>
     onChange(updateBlock(content, id, (current) => ({ ...current, ...changes }) as SiteNode), `${id}:${Object.keys(changes).join(",")}`);
+  // A change of style is always to one size of the screen: the computer's style, or what the tablet or the phone does differently.
   const withStyle = (change: (style: Style | undefined) => Style | undefined, key: string) =>
-    onChange(
-      updateBlock(content, id, (current) => {
-        const next = change(current.style);
-        const { style: _old, ...rest } = current;
-        void _old;
-        return (next ? { ...rest, style: next } : rest) as SiteNode;
-      }),
-      `${id}:style:${key}`,
-    );
+    onChange(updateBlock(content, id, (current) => withScreenStyle(current, screen, change(ownStyle(current, screen)))), `${id}:style:${screen}:${key}`);
+  const onNode = (change: (current: SiteNode) => SiteNode, key: string) => onChange(updateBlock(content, id, change), `${id}:style:${screen}:${key}`);
   const known = new Set(services.map((service) => service.id));
   const label = nodeTitle(entry);
   const above = ancestorsOf(content, id);
@@ -274,12 +274,15 @@ export function BlockInspector({
       {tab === "style" ? (
         <StylePanel
           node={entry}
+          screen={screen}
+          onScreen={onScreen}
           inFlex={inFlex}
           theme={content.theme}
           images={images}
           onStyle={(changes) => withStyle((style) => patchStyle(style, changes), Object.keys(changes).join(","))}
           onSide={(group, side, value) => withStyle((style) => patchSide(style, group, side, value), `${group}.${side}`)}
-          onClear={() => withStyle(() => undefined, "clear")}
+          onHidden={(hide) => onNode((current) => setHidden(current, screen, hide), "hidden")}
+          onClear={() => onNode((current) => (screen === "desktop" ? clearStyles(current) : resetScreen(current, screen)), "clear")}
         />
       ) : (
         <>

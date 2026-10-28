@@ -73,7 +73,7 @@ test("images: sent in the editor, shown on the page, public only through the pub
   await expect.poll(() => drawn.evaluate((image) => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
 
   // A JPEG too, which ends up only in the library (newest first). It is used nowhere, so it can be removed; the PNG cannot.
-  await stage(page).locator(".ve-stage-scroll").click({ position: { x: 4, y: 4 } });
+  await stage(page).locator(".ve-canvas").click({ position: { x: 4, y: 4 } });
   await panel(page, "Propriedades");
   await expect(inspector(page).getByRole("heading", { name: "Página", level: 2 })).toBeVisible();
   const logo = inspector(page).getByRole("group", { name: "Logotipo" });

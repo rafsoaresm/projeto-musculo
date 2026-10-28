@@ -9,6 +9,8 @@ import {
   Columns2,
   Columns3,
   Grid3x3,
+  Eye,
+  EyeOff,
   Heading,
   Image as ImageIcon,
   LayoutGrid,
@@ -28,6 +30,8 @@ import { type SiteContent, type SiteNode } from "./contracts";
 import type { Drag } from "./editor-canvas";
 import type { Slot } from "./editor-model";
 import { nodeText, nodeTitle } from "./node-label";
+import { SCREEN_LABEL, isHiddenAt, type Screen } from "./screens";
+import { SCREEN_ICON } from "./screen-ui";
 import { CATALOGUE, GROUP_LABEL, type Group } from "./presets";
 
 const ICON: Record<string, LucideIcon> = {
@@ -117,8 +121,10 @@ const END = Number.MAX_SAFE_INTEGER;
  */
 export function Layers({
   content,
+  screen,
   selectedId,
   select,
+  toggleHidden,
   drag,
   startDrag,
   endDrag,
@@ -126,14 +132,18 @@ export function Layers({
   drop,
 }: {
   content: SiteContent;
+  /** The size of the screen being edited: the eye of each layer is about it. */
+  screen: Screen;
   selectedId: string | null;
   select: (id: string | null) => void;
+  toggleHidden: (id: string) => void;
   drag: Drag | null;
   startDrag: (drag: Drag) => void;
   endDrag: () => void;
   canDrop: (slot: Slot) => boolean;
   drop: (slot: Slot) => void;
 }) {
+  const ScreenIcon = SCREEN_ICON[screen];
   const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
   const [hint, setHint] = useState<{ id: string; zone: Zone } | null>(null);
 
@@ -159,12 +169,14 @@ export function Layers({
     const open = holds && !closed.has(entry.id);
     const text = nodeText(entry);
     const marked = hint?.id === entry.id ? hint.zone : undefined;
+    const hidden = isHiddenAt(entry, screen);
     return (
       <li key={entry.id}>
         <div
           className="ve-layer-row"
           data-depth={depth}
           data-drop={drag ? marked : undefined}
+          data-hidden={hidden || undefined}
           draggable
           onDragStart={(event) => {
             event.stopPropagation();
@@ -210,6 +222,16 @@ export function Layers({
             <strong>{nodeTitle(entry)}</strong>
             {text && <span className="ve-layer-text">{text}</span>}
           </button>
+          <button
+            type="button"
+            className="ve-layer-eye"
+            aria-pressed={hidden}
+            aria-label={`${hidden ? "Mostrar" : "Ocultar"} ${nodeTitle(entry)} no ${SCREEN_LABEL[screen].toLowerCase()}`}
+            title={hidden ? `Oculto no ${SCREEN_LABEL[screen].toLowerCase()}: clique para mostrar` : `Ocultar no ${SCREEN_LABEL[screen].toLowerCase()}`}
+            onClick={() => toggleHidden(entry.id)}
+          >
+            {hidden ? <EyeOff size={14} aria-hidden="true" /> : <Eye size={14} aria-hidden="true" />}
+          </button>
         </div>
         {open && entry.type === "box" && (
           <ul className="ve-layers-nested" aria-label={`Dentro de ${nodeTitle(entry)}`}>
@@ -223,6 +245,9 @@ export function Layers({
   return (
     <div className="ve-library">
       <h3 className="ve-subtitle">Estrutura da página</h3>
+      <p className="ve-layers-size small muted">
+        <ScreenIcon size={14} aria-hidden="true" /> {SCREEN_LABEL[screen]}
+      </p>
       <ul className="ve-layers" aria-label="Blocos da página">
         <li>
           <div className="ve-layer-row" data-depth={0}>

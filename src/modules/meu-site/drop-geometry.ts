@@ -13,11 +13,16 @@ export interface Rect {
   right: number;
   bottom: number;
 }
-/** A node as drawn: `id` is null for the page itself, `holds` says whether it may have children, `children` are in the order of the document. */
+/**
+ * A node as drawn: `id` is null for the page itself, `holds` says whether it may have children, `children` are in the order of the document.
+ * A node that takes no room at this size of the screen (hidden) is still in the list, so the positions stay those of the document, but it is
+ * never a place to drop next to, and it does not decide whether its siblings are in a row.
+ */
 export interface LayoutNode {
   id: string | null;
   rect: Rect;
   holds: boolean;
+  hidden?: boolean;
   children: LayoutNode[];
 }
 export interface Landing {
@@ -47,7 +52,8 @@ function distance(rect: Rect, x: number, y: number): number {
  * Whether siblings are laid out side by side ("x": a row, a wrapped row, a grid) or one under the other ("y"): they are
  * side by side when two of them share most of their height.
  */
-export function flowOf(siblings: readonly LayoutNode[]): "x" | "y" {
+export function flowOf(all: readonly LayoutNode[]): "x" | "y" {
+  const siblings = all.filter((entry) => !entry.hidden);
   for (let at = 0; at < siblings.length; at++) {
     for (let next = at + 1; next < siblings.length; next++) {
       const a = siblings[at].rect;
@@ -78,10 +84,11 @@ function around(siblings: readonly LayoutNode[], index: number, parent: string |
 
 /** Among the children of a container, next to the one the pointer is nearest to. */
 function amongChildren(children: readonly LayoutNode[], parent: string | null, pageRect: Rect, x: number, y: number): Landing {
-  if (children.length === 0) return { slot: { parent, index: 0 }, line: null, box: pageRect };
+  if (children.every((child) => child.hidden)) return { slot: { parent, index: children.length }, line: null, box: pageRect };
   let nearest = 0;
   let best = Infinity;
   children.forEach((child, at) => {
+    if (child.hidden) return;
     const d = distance(child.rect, x, y);
     if (d < best) {
       best = d;
@@ -96,7 +103,7 @@ function pathAt(page: LayoutNode, x: number, y: number): LayoutNode[] {
   const path = [page];
   let current = page;
   for (;;) {
-    const inside = current.children.find((child) => contains(child.rect, x, y));
+    const inside = current.children.find((child) => !child.hidden && contains(child.rect, x, y));
     if (!inside) return path;
     path.push(inside);
     current = inside;

@@ -4,20 +4,27 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useImperativeHandle,
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type ClipboardEvent,
   type DragEvent,
   type KeyboardEvent,
   type MouseEvent,
+  type PointerEvent,
   type ReactNode,
+  type Ref,
 } from "react";
-import { ArrowDown, ArrowUp, Copy, GripVertical, Group, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Copy, GripVertical, Group, Maximize, Minus, Plus, Trash2 } from "lucide-react";
+import { actualSize as actualView, fitView, moveBy, percent, reveal as revealBox, steppedScale, wheelScale, zoomAt, type Size, type View } from "./canvas-view";
 import { BLOCK_LABEL, type SiteContent, type SiteNode } from "./contracts";
 import { landingAt, type Landing, type LayoutNode } from "./drop-geometry";
 import { locate, type Slot } from "./editor-model";
 import type { EditHooks, FieldSpec } from "./renderer";
+import { SCREENS, SCREEN_LABEL, SCREEN_WIDTH, type Screen } from "./screens";
+import { SCREEN_ICON } from "./screen-ui";
 
 /**
  * What the editor puts over the page: the fields that can be typed over, the outline and tools of the selected block,
@@ -35,7 +42,8 @@ export type NodeAction = "up" | "down" | "duplicate" | "delete" | "out" | "into"
 export interface EditorApi {
   content: SiteContent;
   selectedId: string | null;
-  select: (id: string | null) => void;
+  /** Selects a block (or nothing). A click in a frame also says which size of the screen it was in, and that size becomes the one being edited. */
+  select: (id: string | null, screen?: Screen) => void;
   commitText: (blockId: string, path: string, value: string) => void;
   drag: Drag | null;
   startDrag: (drag: Drag) => void;
@@ -85,7 +93,7 @@ function EditableText({ field }: { field: FieldSpec }) {
   }, [editing]);
 
   const start = () => {
-    api.select(field.blockId);
+    api.select(field.blockId, (ref.current?.closest("[data-frame]") as HTMLElement | null)?.dataset.frame as Screen | undefined);
     setMode(plainTextOnly() ? "plaintext-only" : "true");
     setEditing(true);
   };
@@ -150,14 +158,20 @@ export function canvasHooks(): EditHooks {
 // ---- measuring the page ----
 
 const nodeSelector = (id: string) => `[data-block-id="${CSS.escape(id)}"]`;
+const frameOf = (target: EventTarget | null): HTMLElement | null => (target as Element | null)?.closest?.<HTMLElement>("[data-frame]") ?? null;
+const screenOf = (frame: HTMLElement | null): Screen | undefined => (frame?.dataset.frame as Screen | undefined) ?? undefined;
 
-/** The page as the browser drew it: each node's rectangle, relative to `origin`, in the order of the document. */
+/**
+ * The page as the browser drew it: each node's rectangle, relative to `origin`, in the order of the document. A node that takes
+ * no room (hidden at this size of the screen) is marked, so the places to drop stay those of the document without it.
+ */
 function readLayout(element: Element, origin: DOMRect, isPage: boolean): LayoutNode {
   const rect = element.getBoundingClientRect();
   return {
     id: isPage ? null : element.getAttribute("data-block-id"),
     rect: { left: rect.left - origin.left, top: rect.top - origin.top, right: rect.right - origin.left, bottom: rect.bottom - origin.top },
     holds: isPage || element.getAttribute("data-type") === "box",
+    hidden: !isPage && rect.width === 0 && rect.height === 0,
     children: Array.from(element.children)
       .filter((child) => child.hasAttribute("data-block-id"))
       .map((child) => readLayout(child, origin, false)),
@@ -186,7 +200,7 @@ function SelectionBox({ node, boxRef }: { node: SiteNode; boxRef: React.RefObjec
             event.stopPropagation();
             event.dataTransfer.effectAllowed = "move";
             event.dataTransfer.setData("text/plain", node.id);
-            const element = event.currentTarget.closest(".ve-surface")?.querySelector(nodeSelector(node.id));
+            const element = event.currentTarget.closest(".ve-canvas")?.querySelector(`[data-frame][data-active] ${nodeSelector(node.id)}`);
             if (element) event.dataTransfer.setDragImage(element, 16, 16);
             api.startDrag({ kind: "move", id: node.id });
           }}
@@ -214,28 +228,98 @@ function SelectionBox({ node, boxRef }: { node: SiteNode; boxRef: React.RefObjec
   );
 }
 
+// ---- the canvas ----
+
+/** What the keys and the rest of the editor can ask of the canvas. */
+export interface CanvasControls {
+  zoomIn: () => void;
+  zoomOut: () => void;
+  /** 100%, the world centered. */
+  actualSize: () => void;
+  /** The whole width of the frames in the canvas. */
+  fit: () => void;
+  /** Moves the content by (dx, dy) screen pixels. */
+  pan: (dx: number, dy: number) => void;
+  /** Brings a block into view, in the frame being edited. */
+  reveal: (id: string) => void;
+}
+
+/** Below this the editor shows one panel at a time (see globals.css) and the canvas is a plain scrolling area: no zoom, no moving it by hand. */
+export const COMPACT_QUERY = "(max-width: 900px)";
+const subscribeCompact = (notify: () => void) => {
+  const list = window.matchMedia(COMPACT_QUERY);
+  list.addEventListener("change", notify);
+  return () => list.removeEventListener("change", notify);
+};
+export function useCompact(): boolean {
+  return useSyncExternalStore(subscribeCompact, () => window.matchMedia(COMPACT_QUERY).matches, () => false);
+}
+
+
 /**
- * The page with the editor's layer on top. The click selects the innermost block under the pointer; the pointer shows
- * what it would select; a block dragged over it shows where it would land (a line between two blocks, or the outline of
- * an empty container) and is dropped there.
+ * The canvas: the frames of the sizes of the screen side by side (each as wide as its size), in a world that is zoomed with
+ * Ctrl/Cmd + wheel (or the buttons and keys), moved with the wheel, the space bar or the middle button, or by dragging the empty
+ * canvas, and fitted with one click. The page in each frame is drawn by the same component as the published page, at the
+ * width of the frame. The layer of the editor (outline, tools, line of a drop) is over the canvas, not inside the world, so it
+ * keeps its size at any zoom, and it is measured from the page's own elements, in the frame being edited.
+ *
+ * The view (scale and position) is kept in a ref and written to the DOM, not held as state: a turn of the wheel moves the world and the outline
+ * without drawing the page again. On a narrow screen the world is simply laid out at full size in a scrolling area.
  */
-export function CanvasSurface({ children }: { children: ReactNode }) {
+export function CanvasSurface({
+  ref,
+  screen,
+  onScreen,
+  visible,
+  onVisible,
+  interactive,
+  page,
+}: {
+  ref?: Ref<CanvasControls>;
+  /** The size of the screen being edited: its frame is the active one. */
+  screen: Screen;
+  onScreen: (screen: Screen) => void;
+  visible: Record<Screen, boolean>;
+  onVisible: (visible: Record<Screen, boolean>) => void;
+  /** False in the preview: the pages are only shown (zoom and position still work). */
+  interactive: boolean;
+  /** The page, drawn for the frame of a size. */
+  page: (screen: Screen) => ReactNode;
+}) {
   const api = useEditor();
-  const surface = useRef<HTMLDivElement>(null);
+  const compact = useCompact();
+  const shell = useRef<HTMLDivElement>(null);
+  const canvas = useRef<HTMLDivElement>(null);
+  const inner = useRef<HTMLDivElement>(null);
+  const world = useRef<HTMLDivElement>(null);
   const selection = useRef<HTMLDivElement>(null);
   const hover = useRef<HTMLDivElement>(null);
-  const selected = api.selectedId ? locate(api.content, api.selectedId)?.node ?? null : null;
+  const readout = useRef<HTMLSpanElement>(null);
+  const view = useRef<View>({ scale: 1, x: 0, y: 0 });
+  /** Whether the view is still the one "fit" made (so a change of the window's size fits it again). */
+  const fitted = useRef(true);
+  const hand = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  const spaceHeld = useRef(false);
+  const justMoved = useRef(false);
+  const selected = interactive && api.selectedId ? locate(api.content, api.selectedId)?.node ?? null : null;
+  const frames = SCREENS.filter((size) => visible[size]);
 
-  /** Puts a box over an element of the page, in the coordinates of the surface. */
+  const size = useCallback((): { canvas: Size; world: Size } => {
+    const area = canvas.current;
+    const content = world.current;
+    return { canvas: { width: area?.clientWidth ?? 0, height: area?.clientHeight ?? 0 }, world: { width: content?.offsetWidth ?? 0, height: content?.offsetHeight ?? 0 } };
+  }, []);
+
+  /** Puts a box over an element of the page, in the coordinates of the canvas; hides it when there is no element, or it takes no room. */
   const cover = useCallback((box: HTMLElement | null, element: Element | null) => {
-    const host = surface.current;
+    const host = inner.current;
     if (!box || !host) return;
-    if (!element) {
+    const rect = element?.getBoundingClientRect();
+    if (!element || !rect || (rect.width === 0 && rect.height === 0)) {
       box.hidden = true;
       return;
     }
     const origin = host.getBoundingClientRect();
-    const rect = element.getBoundingClientRect();
     box.hidden = false;
     box.style.left = `${rect.left - origin.left}px`;
     box.style.top = `${rect.top - origin.top}px`;
@@ -243,87 +327,343 @@ export function CanvasSurface({ children }: { children: ReactNode }) {
     box.style.height = `${rect.height}px`;
   }, []);
   const place = useCallback(() => {
-    const host = surface.current;
-    cover(selection.current, host && api.selectedId ? host.querySelector(nodeSelector(api.selectedId)) : null);
-  }, [api.selectedId, cover]);
+    const host = inner.current;
+    const element = host && interactive && api.selectedId ? host.querySelector(`[data-frame="${screen}"] ${nodeSelector(api.selectedId)}`) : null;
+    cover(selection.current, element);
+  }, [api.selectedId, screen, interactive, cover]);
+  const latestPlace = useRef(place);
+  // After every render (a style, a text or an image may have moved things).
+  useLayoutEffect(() => {
+    latestPlace.current = place;
+    place();
+  });
 
-  // After every render (a style, a text or an image may have moved things) and when the size of the page changes.
-  useLayoutEffect(place);
+  /** Draws the world at a view. */
+  const apply = useCallback(
+    (next: View) => {
+      view.current = next;
+      const content = world.current;
+      if (content) {
+        content.style.transform = `translate(${next.x}px, ${next.y}px) scale(${next.scale})`;
+        content.style.setProperty("--ve-scale", String(next.scale));
+      }
+      if (readout.current) readout.current.textContent = `${percent(next.scale)}%`;
+      cover(hover.current, null);
+      latestPlace.current();
+    },
+    [cover],
+  );
+  const fit = useCallback(() => {
+    fitted.current = true;
+    const measured = size();
+    apply(fitView(measured.canvas, measured.world));
+  }, [apply, size]);
+  const moved = useCallback(
+    (next: View) => {
+      fitted.current = false;
+      apply(next);
+    },
+    [apply],
+  );
+  const zoomBy = useCallback(
+    (direction: 1 | -1) => {
+      const measured = size();
+      moved(zoomAt(view.current, steppedScale(view.current.scale, direction), measured.canvas.width / 2, measured.canvas.height / 2));
+    },
+    [moved, size],
+  );
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      zoomIn: () => !compact && zoomBy(1),
+      zoomOut: () => !compact && zoomBy(-1),
+      actualSize: () => {
+        if (compact) return;
+        const measured = size();
+        moved(actualView(measured.canvas, measured.world));
+      },
+      fit: () => !compact && fit(),
+      pan: (dx, dy) => !compact && moved(moveBy(view.current, dx, dy)),
+      reveal: (id) => {
+        const host = inner.current;
+        const area = canvas.current;
+        const element = host?.querySelector(`[data-frame="${screen}"] ${nodeSelector(id)}`) ?? host?.querySelector(nodeSelector(id));
+        if (!element || !area) return;
+        if (compact) {
+          element.scrollIntoView({ block: "nearest", inline: "nearest" });
+          return;
+        }
+        const origin = area.getBoundingClientRect();
+        const rect = element.getBoundingClientRect();
+        if (rect.width === 0 && rect.height === 0) return;
+        moved(revealBox(view.current, { left: rect.left - origin.left, top: rect.top - origin.top, right: rect.right - origin.left, bottom: rect.bottom - origin.top }, size().canvas));
+      },
+    }),
+    [compact, fit, moved, screen, size, zoomBy],
+  );
+
+  // The frames that are shown change (or the window goes from wide to narrow): fit them again.
+  const framesKey = frames.join();
+  useLayoutEffect(() => {
+    if (compact) {
+      world.current?.style.removeProperty("transform");
+      world.current?.style.removeProperty("--ve-scale");
+      return;
+    }
+    fit();
+  }, [framesKey, compact, fit]);
+
+  // The canvas changes its size (the window, the panels): the outline follows, and a view that is still the fitted one is fitted again.
   useEffect(() => {
-    const host = surface.current;
-    if (!host) return;
-    const observer = new ResizeObserver(place);
-    observer.observe(host);
+    const area = canvas.current;
+    const host = inner.current;
+    if (!area || !host) return;
+    const observer = new ResizeObserver(() => {
+      if (!compact && fitted.current) fit();
+      else latestPlace.current();
+    });
+    observer.observe(area);
+    if (world.current) observer.observe(world.current);
     host.addEventListener("load", place, true);
-    window.addEventListener("resize", place);
     return () => {
       observer.disconnect();
       host.removeEventListener("load", place, true);
-      window.removeEventListener("resize", place);
     };
-  }, [place]);
+  }, [compact, fit, place]);
+
+  // The wheel moves the world; with Ctrl/Cmd (also what a pinch on a trackpad sends) it zooms around the pointer.
+  useEffect(() => {
+    // Heard on the whole canvas, the buttons over it included: the wheel over the zoom box moves the page too.
+    const area = shell.current;
+    const surface = canvas.current;
+    if (!area || !surface || compact) return;
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const origin = surface.getBoundingClientRect();
+      if (event.ctrlKey || event.metaKey) moved(zoomAt(view.current, wheelScale(view.current.scale, event.deltaY), event.clientX - origin.left, event.clientY - origin.top));
+      else if (event.shiftKey && event.deltaX === 0) moved(moveBy(view.current, -event.deltaY, 0));
+      else moved(moveBy(view.current, -event.deltaX, -event.deltaY));
+    };
+    area.addEventListener("wheel", onWheel, { passive: false });
+    return () => area.removeEventListener("wheel", onWheel);
+  }, [compact, moved]);
+
+  // The space bar turns the pointer into a hand, as long as it is held (and the focus is not on something that uses the key).
+  useEffect(() => {
+    const area = canvas.current;
+    const plain = (target: EventTarget | null) => !(target as HTMLElement | null)?.closest?.("input, textarea, select, button, a, summary, [contenteditable], [role='button'], [role='toolbar']");
+    const down = (event: globalThis.KeyboardEvent) => {
+      if (event.code !== "Space" || !plain(event.target) || compact) return;
+      event.preventDefault();
+      spaceHeld.current = true;
+      area?.setAttribute("data-hand", "");
+    };
+    const up = (event: globalThis.KeyboardEvent) => {
+      if (event.code !== "Space") return;
+      spaceHeld.current = false;
+      area?.removeAttribute("data-hand");
+    };
+    document.addEventListener("keydown", down);
+    document.addEventListener("keyup", up);
+    return () => {
+      document.removeEventListener("keydown", down);
+      document.removeEventListener("keyup", up);
+    };
+  }, [compact]);
+
+  const toggle = (which: Screen, only: boolean) => {
+    const next = only ? { desktop: false, tablet: false, mobile: false, [which]: true } : { ...visible, [which]: !visible[which] };
+    if (!SCREENS.some((entry) => next[entry])) next[which] = true;
+    onVisible(next);
+    if (next[which]) onScreen(which);
+    else if (screen === which) onScreen([...SCREENS].reverse().find((entry) => next[entry]) ?? which);
+  };
 
   const nodeAt = (event: MouseEvent | DragEvent) => (event.target as Element).closest?.("[data-block-id]") ?? null;
   const landingFor = (event: DragEvent<HTMLElement>): Landing | null => {
-    const host = surface.current;
-    const page = host?.querySelector("[data-page-root]");
-    if (!host || !page) return null;
+    const host = inner.current;
+    const pageRoot = frameOf(event.target)?.querySelector("[data-page-root]");
+    if (!host || !pageRoot) return null;
     const origin = host.getBoundingClientRect();
-    const landing = landingAt(readLayout(page, origin, true), event.clientX - origin.left, event.clientY - origin.top);
+    const landing = landingAt(readLayout(pageRoot, origin, true), event.clientX - origin.left, event.clientY - origin.top);
     return api.canDrop(landing.slot) ? landing : null;
   };
 
+  const startHand = (event: PointerEvent<HTMLDivElement>) => {
+    if (compact) return;
+    const target = event.target as Element;
+    const onBackground = !target.closest("[data-frame], button, [role='toolbar']");
+    if (!(event.button === 1 || (event.button === 0 && (spaceHeld.current || onBackground)))) return;
+    // Taking the pointer for the hand keeps the browser from moving the focus; the focus leaves what had it (a button, a field), so the keys of the canvas are heard.
+    event.preventDefault();
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    hand.current = { x: event.clientX, y: event.clientY, moved: false };
+  };
+  const moveHand = (event: PointerEvent<HTMLDivElement>) => {
+    const grip = hand.current;
+    if (!grip) return;
+    const dx = event.clientX - grip.x;
+    const dy = event.clientY - grip.y;
+    if (!grip.moved && Math.hypot(dx, dy) < 3) return;
+    grip.moved = true;
+    grip.x = event.clientX;
+    grip.y = event.clientY;
+    event.currentTarget.setAttribute("data-moving", "");
+    moved(moveBy(view.current, dx, dy));
+  };
+  const endHand = (event: PointerEvent<HTMLDivElement>) => {
+    const grip = hand.current;
+    if (!grip) return;
+    hand.current = null;
+    event.currentTarget.removeAttribute("data-moving");
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    if (grip.moved) {
+      // The click that ends a drag of the canvas is not a click on the page.
+      justMoved.current = true;
+      setTimeout(() => (justMoved.current = false), 0);
+    }
+  };
+
   return (
-    <div
-      ref={surface}
-      className="ve-surface"
-      data-dragging={api.drag ? "" : undefined}
-      onClick={(event) => {
-        event.stopPropagation();
-        api.select(nodeAt(event)?.getAttribute("data-block-id") ?? null);
-      }}
-      onMouseMove={(event) => {
-        if (api.drag) return;
-        const element = nodeAt(event);
-        cover(hover.current, element && element.getAttribute("data-block-id") !== api.selectedId ? element : null);
-      }}
-      onMouseLeave={() => cover(hover.current, null)}
-      onDragOver={(event) => {
-        if (!api.drag) return;
-        const landing = landingFor(event);
-        api.setTarget(landing);
-        if (!landing) return;
-        event.preventDefault();
-        event.dataTransfer.dropEffect = api.drag.kind === "new" ? "copy" : "move";
-      }}
-      onDrop={(event) => {
-        if (!api.drag) return;
-        const landing = landingFor(event);
-        if (!landing) return;
-        event.preventDefault();
-        api.drop(landing.slot);
-      }}
-      onDragLeave={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as globalThis.Node | null)) api.setTarget(null);
-      }}
-    >
-      {children}
-      <div className="ve-overlay" aria-hidden={false}>
-        <div ref={hover} className="ve-hover" hidden />
-        {selected && <SelectionBox node={selected} boxRef={selection} />}
-        {api.drag && api.target?.line && (
-          <div
-            className="ve-drop-line"
-            style={{ left: api.target.line.left, top: api.target.line.top, width: api.target.line.right - api.target.line.left, height: api.target.line.bottom - api.target.line.top }}
-          />
-        )}
-        {api.drag && api.target?.box && (
-          <div
-            className="ve-drop-box"
-            style={{ left: api.target.box.left, top: api.target.box.top, width: api.target.box.right - api.target.box.left, height: api.target.box.bottom - api.target.box.top }}
-          />
-        )}
+    <div ref={shell} className="ve-canvas-shell">
+      <div
+        ref={canvas}
+        className="ve-canvas"
+        data-compact={compact || undefined}
+        data-interactive={interactive || undefined}
+        data-dragging={api.drag ? "" : undefined}
+        onPointerDown={startHand}
+        onPointerMove={moveHand}
+        onPointerUp={endHand}
+        onPointerCancel={endHand}
+        onClick={(event) => {
+          if (!interactive || justMoved.current) return;
+          const frame = frameOf(event.target);
+          const element = nodeAt(event);
+          api.select(element?.getAttribute("data-block-id") ?? null, element ? screenOf(frame) : undefined);
+        }}
+        onMouseMove={(event) => {
+          if (!interactive || api.drag || hand.current) return;
+          const element = nodeAt(event);
+          const isSelected = element !== null && element.getAttribute("data-block-id") === api.selectedId && screenOf(frameOf(event.target)) === screen;
+          cover(hover.current, element && !isSelected ? element : null);
+        }}
+        onMouseLeave={() => cover(hover.current, null)}
+        onDragOver={(event) => {
+          if (!interactive || !api.drag) return;
+          const landing = landingFor(event);
+          api.setTarget(landing);
+          if (!landing) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = api.drag.kind === "new" ? "copy" : "move";
+        }}
+        onDrop={(event) => {
+          if (!interactive || !api.drag) return;
+          const landing = landingFor(event);
+          if (!landing) return;
+          event.preventDefault();
+          api.drop(landing.slot);
+        }}
+        onDragLeave={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as globalThis.Node | null)) api.setTarget(null);
+        }}
+      >
+        <div ref={inner} className="ve-canvas-inner">
+          <div ref={world} className="ve-world">
+            {frames.map((frameSize) => {
+              const Icon = SCREEN_ICON[frameSize];
+              return (
+                <section
+                  key={frameSize}
+                  className="ve-frame"
+                  data-frame={frameSize}
+                  data-active={frameSize === screen || undefined}
+                  aria-label={`Quadro do ${SCREEN_LABEL[frameSize].toLowerCase()}`}
+                  style={{ width: SCREEN_WIDTH[frameSize], ...(compact && frameSize === "mobile" ? { maxWidth: "100%" } : null) }}
+                >
+                  <button
+                    type="button"
+                    className="ve-frame-label"
+                    aria-pressed={frameSize === screen}
+                    title={`Editar o ${SCREEN_LABEL[frameSize].toLowerCase()}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onScreen(frameSize);
+                    }}
+                  >
+                    <Icon size={14} aria-hidden="true" />
+                    {SCREEN_LABEL[frameSize]}
+                    <small>{SCREEN_WIDTH[frameSize]}</small>
+                  </button>
+                  <div className="ve-frame-page">{page(frameSize)}</div>
+                </section>
+              );
+            })}
+          </div>
+          {interactive && (
+            <div className="ve-overlay" aria-hidden={false}>
+              <div ref={hover} className="ve-hover" hidden />
+              {selected && <SelectionBox node={selected} boxRef={selection} />}
+              {api.drag && api.target?.line && (
+                <div
+                  className="ve-drop-line"
+                  style={{ left: api.target.line.left, top: api.target.line.top, width: api.target.line.right - api.target.line.left, height: api.target.line.bottom - api.target.line.top }}
+                />
+              )}
+              {api.drag && api.target?.box && (
+                <div
+                  className="ve-drop-box"
+                  style={{ left: api.target.box.left, top: api.target.box.top, width: api.target.box.right - api.target.box.left, height: api.target.box.bottom - api.target.box.top }}
+                />
+              )}
+            </div>
+          )}
+        </div>
       </div>
+      <div className="ve-canvas-bar" role="group" aria-label="Quadros da tela">
+        {SCREENS.map((entry) => {
+          const Icon = SCREEN_ICON[entry];
+          return (
+            <button
+              key={entry}
+              type="button"
+              aria-pressed={visible[entry]}
+              aria-label={`Mostrar o quadro do ${SCREEN_LABEL[entry].toLowerCase()}`}
+              title={`${SCREEN_LABEL[entry]} (${SCREEN_WIDTH[entry]} px). Com Ctrl ou Cmd, mostra só este.`}
+              onClick={(event) => toggle(entry, event.ctrlKey || event.metaKey)}
+            >
+              <Icon size={18} aria-hidden="true" />
+            </button>
+          );
+        })}
+      </div>
+      {!compact && (
+        <div className="ve-zoom" role="group" aria-label="Zoom">
+          <button type="button" aria-label="Diminuir o zoom" title="Diminuir (Ctrl/Cmd e -)" onClick={() => zoomBy(-1)}>
+            <Minus size={14} aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="ve-zoom-value"
+            aria-label="Zoom: voltar a 100%"
+            title="Voltar a 100% (Ctrl/Cmd e 0)"
+            onClick={() => {
+              const measured = size();
+              moved(actualView(measured.canvas, measured.world));
+            }}
+          >
+            <span ref={readout}>100%</span>
+          </button>
+          <button type="button" aria-label="Aumentar o zoom" title="Aumentar (Ctrl/Cmd e +)" onClick={() => zoomBy(1)}>
+            <Plus size={14} aria-hidden="true" />
+          </button>
+          <button type="button" aria-label="Ajustar à tela" title="Ajustar à tela (Ctrl/Cmd, Shift e 0)" onClick={fit}>
+            <Maximize size={14} aria-hidden="true" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

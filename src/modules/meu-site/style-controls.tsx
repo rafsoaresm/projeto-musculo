@@ -21,7 +21,7 @@ function Reset({ label, onClick }: { label: string; onClick: () => void }) {
 const UNIT_LABEL: Record<Unit | "auto", string> = { px: "px", "%": "%", rem: "rem", vw: "vw", vh: "vh", auto: "auto" };
 
 /** A length: a number and a unit, in the range of the property. Cleared with the button, or by emptying the number. */
-export function LengthField({ label, name = label, value, spec, onChange }: { label: string; /** What assistive technology says (the visible label may be short because a group names it). */ name?: string; value: string | undefined; spec: LengthSpec; onChange: (value: string | undefined) => void }) {
+export function LengthField({ label, name = label, value, inherited, spec, onChange }: { label: string; /** What assistive technology says (the visible label may be short because a group names it). */ name?: string; value: string | undefined; /** The value comes from a larger size of the screen: it is shown, and there is nothing of this size to take back. */ inherited?: boolean; spec: LengthSpec; onChange: (value: string | undefined) => void }) {
   const id = useId();
   const units = UNITS.filter((unit) => spec[unit] !== undefined);
   const parsed = value && value !== "auto" ? parseLength(value) : null;
@@ -58,10 +58,10 @@ export function LengthField({ label, name = label, value, spec, onChange }: { la
     else if (value === "auto") onChange(undefined);
   };
   return (
-    <div className="ve-length" data-invalid={draft !== null || undefined}>
+    <div className="ve-length" data-invalid={draft !== null || undefined} data-inherited={inherited || undefined}>
       <div className="ve-length-head">
         <label htmlFor={id}>{label}</label>
-        {value !== undefined && (
+        {value !== undefined && !inherited && (
           <Reset
             label={name}
             onClick={() => {
@@ -108,9 +108,9 @@ export interface Option<T extends string | number> {
 }
 
 /** One of a short list, as buttons. Pressing the one that is chosen takes the choice back. */
-export function ChoiceField<T extends string | number>({ label, value, options, onChange }: { label: string; value: T | undefined; options: readonly Option<T>[]; onChange: (value: T | undefined) => void }) {
+export function ChoiceField<T extends string | number>({ label, value, inherited, options, onChange }: { label: string; value: T | undefined; inherited?: boolean; options: readonly Option<T>[]; onChange: (value: T | undefined) => void }) {
   return (
-    <div className="ve-choice-field" role="group" aria-label={label}>
+    <div className="ve-choice-field" role="group" aria-label={label} data-inherited={inherited || undefined}>
       <span className="ve-field-label" aria-hidden="true">
         {label}
       </span>
@@ -122,7 +122,11 @@ export function ChoiceField<T extends string | number>({ label, value, options, 
             aria-pressed={value === option.value}
             title={option.label}
             aria-label={`${label}: ${option.label}`}
-            onClick={() => onChange(value === option.value ? undefined : option.value)}
+            onClick={() => {
+              // Pressing the choice that is on takes it back, unless it is not this size's: then there is nothing to take back.
+              if (value !== option.value) onChange(option.value);
+              else if (!inherited) onChange(undefined);
+            }}
           >
             {option.icon ?? option.label}
           </button>
@@ -133,9 +137,9 @@ export function ChoiceField<T extends string | number>({ label, value, options, 
 }
 
 /** One of a long list, as a menu; the empty choice is "no value" (the page's own). */
-export function SelectField<T extends string | number>({ label, value, options, onChange, empty = "Padrão" }: { label: string; value: T | undefined; options: readonly Option<T>[]; onChange: (value: T | undefined) => void; empty?: string }) {
+export function SelectField<T extends string | number>({ label, value, inherited, options, onChange, empty = "Padrão" }: { label: string; value: T | undefined; inherited?: boolean; options: readonly Option<T>[]; onChange: (value: T | undefined) => void; empty?: string }) {
   return (
-    <label className="ve-select-field">
+    <label className="ve-select-field" data-inherited={inherited || undefined}>
       {label}
       <select
         value={value === undefined ? "" : String(value)}
@@ -156,14 +160,14 @@ export function SelectField<T extends string | number>({ label, value, options, 
 }
 
 /** A number in a range that `valid` decides (whole, in steps...). Emptying it takes the value back. */
-export function NumberField({ label, value, valid, min, max, step = 1, onChange }: { label: string; value: number | undefined; valid: (value: number) => boolean; min: number; max: number; step?: number; onChange: (value: number | undefined) => void }) {
+export function NumberField({ label, value, inherited, valid, min, max, step = 1, onChange }: { label: string; value: number | undefined; inherited?: boolean; valid: (value: number) => boolean; min: number; max: number; step?: number; onChange: (value: number | undefined) => void }) {
   const id = useId();
   const [draft, setDraft] = useState<string | null>(null);
   return (
-    <div className="ve-length" data-invalid={draft !== null || undefined}>
+    <div className="ve-length" data-invalid={draft !== null || undefined} data-inherited={inherited || undefined}>
       <div className="ve-length-head">
         <label htmlFor={id}>{label}</label>
-        {value !== undefined && (
+        {value !== undefined && !inherited && (
           <Reset
             label={label}
             onClick={() => {
@@ -211,11 +215,11 @@ export function NumberField({ label, value, valid, min, max, step = 1, onChange 
  * A color: the theme's own names (drawn with the page's colors, so they follow light and dark), or `#rrggbb` from the
  * browser's picker or typed as `#rrggbb` or `#rrggbbaa`. Nothing else is accepted.
  */
-export function ColorField({ label, value, theme, onChange }: { label: string; value: Color | undefined; theme: Theme; onChange: (value: Color | undefined) => void }) {
+export function ColorField({ label, value, inherited, theme, onChange }: { label: string; value: Color | undefined; inherited?: boolean; theme: Theme; onChange: (value: Color | undefined) => void }) {
   const [draft, setDraft] = useState<string | null>(null);
   const custom = value !== undefined && isHexColor(value) ? value : undefined;
   return (
-    <div className="ve-color-field" role="group" aria-label={label}>
+    <div className="ve-color-field" role="group" aria-label={label} data-inherited={inherited || undefined}>
       <span className="ve-field-label" aria-hidden="true">
         {label}
       </span>
@@ -229,7 +233,10 @@ export function ColorField({ label, value, theme, onChange }: { label: string; v
             aria-pressed={value === token}
             title={COLOR_TOKEN_LABEL[token]}
             aria-label={`${label}: ${COLOR_TOKEN_LABEL[token]}`}
-            onClick={() => onChange(value === token ? undefined : token)}
+            onClick={() => {
+              if (value !== token) onChange(token);
+              else if (!inherited) onChange(undefined);
+            }}
           />
         ))}
       </div>
@@ -262,7 +269,7 @@ export function ColorField({ label, value, theme, onChange }: { label: string; v
           }}
           onBlur={() => setDraft(null)}
         />
-        {value !== undefined && (
+        {value !== undefined && !inherited && (
           <Reset
             label={label}
             onClick={() => {
