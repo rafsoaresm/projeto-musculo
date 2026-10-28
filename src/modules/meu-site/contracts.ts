@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { DELIVERIES, type Delivery } from "@/modules/leads/contracts";
+import { ALT_MAX, CAPTION_MAX } from "./images";
 import { ACCENTS, DEFAULT_THEME, MODES } from "./site-theme";
 
 /**
@@ -49,7 +50,7 @@ export const RATIO_LABEL: Record<Ratio, string> = { equal: "50 / 50", left: "60 
 
 export const SECTION_TYPES = ["hero", "text", "services", "about", "quote", "stats", "faq", "cta"] as const;
 /** What fits inside a column: small elements only, never a section and never another "2 columns". */
-export const COLUMN_TYPES = ["heading", "paragraph", "button"] as const;
+export const COLUMN_TYPES = ["heading", "paragraph", "button", "image"] as const;
 export const BLOCK_TYPES = [...SECTION_TYPES, "columns", ...COLUMN_TYPES] as const;
 export type BlockType = (typeof BLOCK_TYPES)[number];
 export type ColumnType = (typeof COLUMN_TYPES)[number];
@@ -66,6 +67,7 @@ export const BLOCK_LABEL: Record<BlockType, string> = {
   heading: "Título",
   paragraph: "Parágrafo",
   button: "Botão",
+  image: "Imagem",
 };
 
 export const PUBLIC_WARNING =
@@ -169,8 +171,22 @@ const paragraphElement = z.object({ id, type: z.literal("paragraph"), text: plai
 const buttonElement = z
   .object({ id, type: z.literal("button"), label: plain(BUTTON_MAX), channel: z.enum(CHANNELS).optional() })
   .strict();
+export const IMAGE_SIZES = ["full", "medium", "small"] as const;
+export type ImageSize = (typeof IMAGE_SIZES)[number];
+export const IMAGE_SIZE_LABEL: Record<ImageSize, string> = { full: "Largura toda", medium: "Média", small: "Pequena" };
+/** An image of the site's library. `assetId` is "" until one is chosen; the description is for who cannot see it. */
+const imageElement = z
+  .object({
+    id,
+    type: z.literal("image"),
+    assetId: z.string().max(64),
+    alt: plain(ALT_MAX),
+    caption: plain(CAPTION_MAX),
+    size: z.enum(IMAGE_SIZES),
+  })
+  .strict();
 /** An element that fits in a column (and also stands on the page by itself). */
-export const columnItem = z.discriminatedUnion("type", [headingElement, paragraphElement, buttonElement]);
+export const columnItem = z.discriminatedUnion("type", [headingElement, paragraphElement, buttonElement, imageElement]);
 export type ColumnItem = z.infer<typeof columnItem>;
 
 const columns = z
@@ -196,6 +212,7 @@ export const block = z.discriminatedUnion("type", [
   headingElement,
   paragraphElement,
   buttonElement,
+  imageElement,
 ]);
 export type Block = z.infer<typeof block>;
 export type BlockOf<T extends BlockType> = Extract<Block, { type: T }>;
@@ -220,6 +237,8 @@ export const siteContent = z
     description: plain(DESCRIPTION_MAX),
     contact,
     theme,
+    /** The logo, an image of the site's library; absent or "" for none. */
+    logoAssetId: z.string().max(64).optional(),
     blocks: z.array(block).max(MAX_BLOCKS),
   })
   .strict()
@@ -312,7 +331,16 @@ export function emptyBlock(type: BlockType, blockId = newBlockId()): Block {
       return { id: blockId, type, text: "" };
     case "button":
       return { id: blockId, type, label: "", channel: undefined };
+    case "image":
+      return { id: blockId, type, assetId: "", alt: "", caption: "", size: "full" };
   }
+}
+
+/** The images of the library that the document uses: the ones in image blocks, in columns too, and the logo. */
+export function referencedAssetIds(content: SiteContent): string[] {
+  const ids = allBlocks(content.blocks).flatMap((b) => (b.type === "image" && b.assetId ? [b.assetId] : []));
+  if (content.logoAssetId) ids.push(content.logoAssetId);
+  return [...new Set(ids)];
 }
 
 /** What a new site starts with: the name as the title, a highlight and a call to get in touch. No invented claims. */
@@ -446,8 +474,11 @@ export interface PublishIssue {
   message: string;
 }
 
-/** The problems that stop a publication. `liveServiceIds` are the services on offer right now. */
-export function publishIssues(content: SiteContent, liveServiceIds: ReadonlySet<string>): PublishIssue[] {
+/**
+ * The problems that stop a publication. `liveServiceIds` are the services on offer right now; `assetIds` the images
+ * of the site's library (null when the caller has not looked: then only what the document itself says is checked).
+ */
+export function publishIssues(content: SiteContent, liveServiceIds: ReadonlySet<string>, assetIds: ReadonlySet<string> | null = null): PublishIssue[] {
   const issues: PublishIssue[] = [];
   const add = (block: number | null, blockId: string | null, message: string) => issues.push({ block, blockId, message });
   if (!content.title) add(null, null, "Dê um título ao site.");
@@ -467,6 +498,10 @@ export function publishIssues(content: SiteContent, liveServiceIds: ReadonlySet<
     else if (item.type === "button") {
       if (!item.label && !item.channel) add(at, item.id, `${label}: o botão precisa de texto e de um contato.`);
       else button(at, item.id, label, item.label, item.channel);
+    } else if (item.type === "image") {
+      if (!item.assetId) add(at, item.id, `${label}: escolha a imagem.`);
+      else if (assetIds && !assetIds.has(item.assetId)) add(at, item.id, `${label}: a imagem escolhida não está mais na biblioteca. Escolha outra.`);
+      if (item.assetId && !item.alt) add(at, item.id, `${label}: descreva a imagem para quem não consegue vê-la (texto alternativo).`);
     }
   };
 
@@ -520,9 +555,11 @@ export function publishIssues(content: SiteContent, liveServiceIds: ReadonlySet<
       case "heading":
       case "paragraph":
       case "button":
+      case "image":
         element(at, label, b);
         break;
     }
   });
+  if (content.logoAssetId && assetIds && !assetIds.has(content.logoAssetId)) add(null, null, "O logotipo escolhido não está mais na biblioteca. Escolha outro ou tire o logotipo.");
   return issues;
 }

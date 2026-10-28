@@ -15,6 +15,13 @@ declare global {
      */
     PHOTOS?: R2Bucket;
     /**
+     * Private object storage for the images of the public page (Meu Site), a bucket of its own so the photos of
+     * students and the pictures of a public page never share one. Read only through this app's routes: the
+     * login-protected one for the editor, and the public one that serves an image only if a published version
+     * uses it. Absent where the Object Storage is not provisioned: the editor then offers no image upload.
+     */
+    SITE_MEDIA?: R2Bucket;
+    /**
      * "true" opens the photo upload and the photo route. The bucket can be provisioned and still be
      * closed: photos only open on purpose, once the student's consent exists. Absent means closed.
      */

@@ -324,7 +324,8 @@ describe("reading the public page", () => {
   });
   it("finds the page whatever the case of the address, and returns nothing of the organization", async () => {
     const found = (await publishedSiteBySlug(db, "MARINA-Treinos"))!;
-    expect(Object.keys(found).sort()).toEqual(["content", "number", "publishedAt", "slug"]);
+    expect(Object.keys(found).sort()).toEqual(["content", "images", "number", "publishedAt", "slug"]);
+    expect(found.images).toEqual({});
     expect(JSON.stringify(found)).not.toContain("org-a");
     expect(JSON.stringify(found)).not.toContain("owner-a");
   });

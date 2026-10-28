@@ -2,6 +2,7 @@ import type { D1Database } from "@cloudflare/workers-types";
 import {
   parseContent,
   publishIssues,
+  referencedAssetIds,
   resolveServices,
   safeParseContent,
   slugSchema,
@@ -55,6 +56,8 @@ export interface PublicSite {
   number: number;
   publishedAt: string;
   content: SiteContent;
+  /** The images the release uses, by id, with the size, so the page can reserve the space. */
+  images: Record<string, { width: number; height: number }>;
 }
 
 export type CreateSiteOutcome = { status: "created" } | { status: "exists" } | { status: "slug_taken" } | { status: "forbidden" };
@@ -69,13 +72,20 @@ export type RestoreOutcome = { status: "restored"; revision: number } | { status
 
 export { resolveServices, withoutResolvedServices };
 
+/**
+ * Who may read the site and who may write it, as SQL conditions for a statement that binds the organization as ?1 and
+ * the acting login as ?2. The owner and the managers write; the commercial members read. The images of the site
+ * (site-assets.ts) use the same two, so the rule is written once.
+ */
+export const SITE_READS = `EXISTS (SELECT 1 FROM memberships m WHERE m.organization_id = ?1 AND m.user_id = ?2
+    AND m.revoked_at IS NULL AND m.role IN ('OWNER','MANAGER','COMMERCIAL')) AND ${activeUser("?2")}`;
+export const SITE_WRITES = `EXISTS (SELECT 1 FROM memberships m WHERE m.organization_id = ?1 AND m.user_id = ?2
+    AND m.revoked_at IS NULL AND m.role IN ('OWNER','MANAGER')) AND ${activeUser("?2")}`;
+
 export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
   const { userId, organizationId } = assertContext(context);
-  // ?1 organization, ?2 acting login.
-  const reads = `EXISTS (SELECT 1 FROM memberships m WHERE m.organization_id = ?1 AND m.user_id = ?2
-    AND m.revoked_at IS NULL AND m.role IN ('OWNER','MANAGER','COMMERCIAL')) AND ${activeUser("?2")}`;
-  const writes = `EXISTS (SELECT 1 FROM memberships m WHERE m.organization_id = ?1 AND m.user_id = ?2
-    AND m.revoked_at IS NULL AND m.role IN ('OWNER','MANAGER')) AND ${activeUser("?2")}`;
+  const reads = SITE_READS;
+  const writes = SITE_WRITES;
   const audit = (action: string, subject: string, stamp: string) =>
     db
       .prepare(
@@ -234,7 +244,14 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
       const content = parseContent(JSON.parse(draft.content));
       const services = await liveServices();
       const live = new Map(services.map((s) => [s.id, s]));
-      const issues = publishIssues(content, new Set(live.keys()));
+      // The images the page uses must be in this site's library right now; the release insert below checks it again.
+      const used = referencedAssetIds(content);
+      const usedJson = JSON.stringify(used);
+      const found = await db
+        .prepare(`SELECT a.id FROM site_assets a WHERE a.site_id = ?3 AND a.id IN (SELECT value FROM json_each(?4)) AND ${reads}`)
+        .bind(organizationId, userId, draft.siteId, usedJson)
+        .all<{ id: string }>();
+      const issues = publishIssues(content, new Set(live.keys()), new Set(found.results.map((row) => row.id)));
       if (issues.length > 0) return { status: "invalid", issues };
       const json = JSON.stringify(resolveServices(content, live));
       const hash = await sha256Hex(json);
@@ -247,9 +264,10 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
              SELECT ?3, s.id, (SELECT COALESCE(MAX(r.number), 0) + 1 FROM site_releases r WHERE r.site_id = s.id),
                     d.revision, ?4, ?5, ?2, ?6
              FROM sites s JOIN site_drafts d ON d.site_id = s.id
-             WHERE s.organization_id = ?1 AND d.revision = ?7 AND ${writes}`,
+             WHERE s.organization_id = ?1 AND d.revision = ?7 AND ${writes}
+               AND (SELECT COUNT(*) FROM site_assets a WHERE a.site_id = s.id AND a.id IN (SELECT value FROM json_each(?8))) = ?9`,
           )
-          .bind(organizationId, userId, releaseId, json, hash, stamp, expectedRevision),
+          .bind(organizationId, userId, releaseId, json, hash, stamp, expectedRevision, usedJson, used.length),
         db
           .prepare(
             `INSERT INTO site_published (site_id, release_id, published_by, published_at)
@@ -259,6 +277,15 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
           )
           .bind(releaseId, userId, stamp),
         audit(SITE_PUBLISHED, releaseId, stamp),
+        // Last, and not conditioned on a previous statement's changes: the images this release uses, so the public
+        // route can serve them. It runs only if the release exists (the whole batch is one transaction).
+        db
+          .prepare(
+            `INSERT INTO site_release_assets (release_id, asset_id, site_id)
+             SELECT r.id, a.id, r.site_id FROM site_releases r JOIN site_assets a ON a.site_id = r.site_id
+             WHERE r.id = ?1 AND a.id IN (SELECT value FROM json_each(?2))`,
+          )
+          .bind(releaseId, usedJson),
       ]);
       if (results[0].meta.changes > 0) {
         const number = await db.prepare("SELECT number FROM site_releases WHERE id = ?").bind(releaseId).first<{ number: number }>();
@@ -319,14 +346,14 @@ export async function publishedSiteBySlug(db: D1Database, rawSlug: string): Prom
   if (!slug.success) return null;
   const row = await db
     .prepare(
-      `SELECT s.slug, r.number, r.content, p.published_at AS publishedAt
+      `SELECT s.slug, r.id AS releaseId, r.number, r.content, p.published_at AS publishedAt
        FROM sites s
        JOIN site_published p ON p.site_id = s.id
        JOIN site_releases r ON r.site_id = p.site_id AND r.id = p.release_id
        WHERE s.slug = ?`,
     )
     .bind(slug.data)
-    .first<{ slug: string; number: number; content: string; publishedAt: string }>();
+    .first<{ slug: string; releaseId: string; number: number; content: string; publishedAt: string }>();
   if (!row) return null;
   let raw: unknown;
   try {
@@ -336,5 +363,19 @@ export async function publishedSiteBySlug(db: D1Database, rawSlug: string): Prom
   }
   // A release made in an earlier version of the document is read as the current one; the stored text is not touched.
   const parsed = safeParseContent(raw);
-  return parsed.success ? { slug: row.slug, number: row.number, publishedAt: row.publishedAt, content: parsed.data } : null;
+  if (!parsed.success) return null;
+  const assets = await db
+    .prepare(
+      `SELECT a.id, a.width, a.height FROM site_release_assets ra
+       JOIN site_assets a ON a.site_id = ra.site_id AND a.id = ra.asset_id WHERE ra.release_id = ?`,
+    )
+    .bind(row.releaseId)
+    .all<{ id: string; width: number; height: number }>();
+  return {
+    slug: row.slug,
+    number: row.number,
+    publishedAt: row.publishedAt,
+    content: parsed.data,
+    images: Object.fromEntries(assets.results.map((asset) => [asset.id, { width: asset.width, height: asset.height }])),
+  };
 }

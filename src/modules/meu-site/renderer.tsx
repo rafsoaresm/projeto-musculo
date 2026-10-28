@@ -37,6 +37,14 @@ export interface Place {
   index: number;
   count: number;
 }
+/** How an image of the library is drawn here: where it is served from and its size, or null when it is not there. */
+export interface ResolvedImage {
+  src: string;
+  width: number;
+  height: number;
+}
+export type ImageResolver = (assetId: string) => ResolvedImage | null;
+
 export interface EditHooks {
   /** A text of a block, as a field that can be typed over. */
   text: (field: FieldSpec) => ReactNode;
@@ -53,6 +61,7 @@ export interface EditHooks {
 interface Ctx {
   content: SiteContent;
   edit?: EditHooks;
+  images?: ImageResolver;
 }
 
 /** A text of the document: printed as it is, or, in the editor, a field. Empty texts print nothing on the public page. */
@@ -92,6 +101,7 @@ function Action({ ctx, id, labelPath, label, channel }: { ctx: Ctx; id: string; 
 /** Whether an element has anything to show on the public page: a text, or a button with a label and a contact. */
 function visible(item: ColumnItem, ctx: Ctx): boolean {
   if (ctx.edit) return true;
+  if (item.type === "image") return Boolean(item.assetId && ctx.images?.(item.assetId));
   return item.type === "button" ? Boolean(item.label && channelUrl(ctx.content.contact, item.channel)) : item.text !== "";
 }
 
@@ -102,6 +112,24 @@ function ElementView({ item, ctx }: { item: ColumnItem; ctx: Ctx }) {
       <h2 className="site-heading">
         <T ctx={ctx} id={item.id} path="text" value={item.text} placeholder="Escreva o título" max={120} />
       </h2>
+    );
+  }
+  if (item.type === "image") {
+    const image = item.assetId ? ctx.images?.(item.assetId) ?? null : null;
+    return (
+      <figure className="site-image" data-size={item.size}>
+        {image ? (
+          // eslint-disable-next-line @next/next/no-img-element -- served by this app from a private bucket; the size is known
+          <img src={image.src} width={image.width} height={image.height} alt={item.alt} loading="lazy" decoding="async" />
+        ) : (
+          <div className="site-image-empty">Escolha a imagem no painel à direita.</div>
+        )}
+        {shown(ctx, item.caption) && (
+          <figcaption>
+            <T ctx={ctx} id={item.id} path="caption" value={item.caption} placeholder="Legenda (opcional)" max={200} />
+          </figcaption>
+        )}
+      </figure>
     );
   }
   if (item.type === "paragraph") {
@@ -346,7 +374,8 @@ function BlockView({ block, ctx, heroHeading }: { block: Block; ctx: Ctx; heroHe
     }
     case "heading":
     case "paragraph":
-    case "button": {
+    case "button":
+    case "image": {
       return visible(block, ctx) ? (
         <section className="site-section site-basic">
           <ElementView item={block} ctx={ctx} />
@@ -356,8 +385,15 @@ function BlockView({ block, ctx, heroHeading }: { block: Block; ctx: Ctx; heroHe
   }
 }
 
-export function SiteRenderer({ content, edit }: { content: SiteContent; edit?: EditHooks }) {
-  const ctx: Ctx = { content, edit };
+/** The logo is decoration next to the name, which is text: its description would only repeat it. */
+function SiteLogo({ logo }: { logo: ResolvedImage }) {
+  // eslint-disable-next-line @next/next/no-img-element -- served by this app from a private bucket
+  return <img className="site-logo" src={logo.src} width={logo.width} height={logo.height} alt="" decoding="async" />;
+}
+
+export function SiteRenderer({ content, edit, images }: { content: SiteContent; edit?: EditHooks; images?: ImageResolver }) {
+  const ctx: Ctx = { content, edit, images };
+  const logo = content.logoAssetId ? images?.(content.logoAssetId) ?? null : null;
   const firstHero = content.blocks.findIndex((block) => block.type === "hero");
   const contacts = [
     { label: "WhatsApp", href: whatsappUrl(content.contact.whatsapp), external: true },
@@ -367,7 +403,17 @@ export function SiteRenderer({ content, edit }: { content: SiteContent; edit?: E
   return (
     <div className="site" {...themeAttributes(content.theme)}>
       <header className="site-header">
-        {firstHero === -1 ? <h1 className="site-brand">{content.title}</h1> : <p className="site-brand">{content.title}</p>}
+        {firstHero === -1 ? (
+          <h1 className="site-brand">
+            {logo && <SiteLogo logo={logo} />}
+            {content.title}
+          </h1>
+        ) : (
+          <p className="site-brand">
+            {logo && <SiteLogo logo={logo} />}
+            {content.title}
+          </p>
+        )}
       </header>
       <main className="site-main">
         <List

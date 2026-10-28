@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { requireWorkspace } from "@/modules/auth/server";
+import { getSiteMediaBucket } from "@/db/binding";
+import { siteAssetsFor } from "@/db/site-assets";
 import { sitesFor } from "@/db/sites";
 import { Notice, PageHeading } from "@/components/ui";
 import { canEditSite, canSeeSite } from "@/modules/meu-site/access";
@@ -23,6 +25,8 @@ export default async function MySite() {
     );
   const overview = await sitesFor(db, context).overview();
   const canEdit = canEditSite(workspace.role);
+  const bucket = await getSiteMediaBucket();
+  const library = overview ? await siteAssetsFor(db, bucket, context).list() : [];
   return (
     <>
       <PageHeading
@@ -37,6 +41,7 @@ export default async function MySite() {
           live={overview.live}
           releases={overview.releases}
           services={overview.services}
+          images={{ available: bucket !== null, library }}
           canEdit={canEdit}
         />
       ) : canEdit ? (

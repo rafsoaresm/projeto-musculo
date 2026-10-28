@@ -1,10 +1,11 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { createElement, type ReactNode } from "react";
 import { describe, expect, it } from "vitest";
-import { SiteRenderer, type EditHooks, type FieldSpec } from "@/modules/meu-site/renderer";
+import { SiteRenderer, type EditHooks, type FieldSpec, type ImageResolver } from "@/modules/meu-site/renderer";
+import { libraryImages, publicImages } from "@/modules/meu-site/image-urls";
 import { emptyBlock, starterContent, type Block, type SiteContent } from "@/modules/meu-site/contracts";
 
-const render = (content: SiteContent, edit?: EditHooks) => renderToStaticMarkup(createElement(SiteRenderer, { content, edit }));
+const render = (content: SiteContent, edit?: EditHooks, images?: ImageResolver) => renderToStaticMarkup(createElement(SiteRenderer, { content, edit, images }));
 
 const page = (over: Partial<SiteContent> = {}): SiteContent => ({
   schemaVersion: 2,
@@ -241,5 +242,57 @@ describe("the same page, as the canvas of the editor", () => {
     const chosen = render(page({ blocks: [of("services", "s", { items: [{ name: "Consultoria", delivery: "ONLINE" }] })] }), edit);
     expect(chosen).not.toContain("site-hint");
     expect(chosen).toContain("Consultoria");
+  });
+});
+
+describe("images on the public page", () => {
+  const pub = publicImages("/treinador", "marina", { "a-1": { width: 800, height: 600 }, "a-2": { width: 100, height: 100 } });
+  const image = (id: string, over: object = {}) => of("image", id, { assetId: "a-1", alt: "Marina no estúdio", caption: "No estúdio", size: "medium", ...over } as never);
+  it("draws an image of the release from the address of the page, with its size, its description, and lazily", () => {
+    const html = render(page({ blocks: [image("i")] }), undefined, pub);
+    expect(html).toContain('<img src="/treinador/s/marina/m/a-1" width="800" height="600" alt="Marina no estúdio" loading="lazy" decoding="async"/>');
+    expect(html).toContain('<figure class="site-image" data-size="medium">');
+    expect(html).toContain("<figcaption>No estúdio</figcaption>");
+  });
+  it("loads from nowhere but the page's own address: every src, even with a hostile id or title", () => {
+    const hostile = { "a\"onerror=\"x": { width: 1, height: 1 } };
+    const html = render(page({ blocks: [image("i"), image("j", { assetId: "a\"onerror=\"x", alt: '"><script>alert(1)</script>' })], logoAssetId: "a-2", title: "<b>x</b>" }), undefined, (id) => publicImages("", "marina", { ...hostile, "a-1": { width: 1, height: 1 }, "a-2": { width: 1, height: 1 } })(id));
+    const sources = [...html.matchAll(/ src="([^"]*)"/g)].map((m) => m[1]);
+    expect(sources.length).toBe(3);
+    for (const source of sources) expect(source).toMatch(/^\/s\/marina\/m\//);
+    expect(html).not.toMatch(/\sonerror\s*=/i);
+    expect(html).not.toMatch(/<script/i);
+    expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+  });
+  it("shows nothing for an image that is not in the release, or for a block with no image chosen", () => {
+    const html = render(page({ blocks: [image("i", { assetId: "gone" }), image("j", { assetId: "" })] }), undefined, pub);
+    expect(html).not.toContain("<img");
+    expect(html).not.toContain("site-image");
+    expect(html).not.toContain("site-basic");
+  });
+  it("draws the logo before the name, with no description of its own (the name is right there), in the h1 too", () => {
+    const withLogo = render(page({ logoAssetId: "a-2" }), undefined, pub);
+    expect(withLogo).toContain('<p class="site-brand"><img class="site-logo" src="/treinador/s/marina/m/a-2" width="100" height="100" alt="" decoding="async"/>Marina Treinos</p>');
+    const noHero = render(page({ logoAssetId: "a-2", blocks: [of("text", "t", { text: "Só um texto" })] }), undefined, pub);
+    expect(noHero).toContain('<h1 class="site-brand"><img class="site-logo"');
+    expect(render(page({ logoAssetId: "a-9" }), undefined, pub)).not.toContain("site-logo");
+    expect(render(page({ logoAssetId: "a-2" }))).not.toContain("<img");
+  });
+  it("draws an image inside a column", () => {
+    const html = render(page({ blocks: [of("columns", "c", { left: [{ id: "in", type: "image", assetId: "a-1", alt: "Na coluna", caption: "", size: "full" }], right: [] })] }), undefined, pub);
+    expect(html).toContain('alt="Na coluna"');
+    expect(html).toContain("site-columns");
+  });
+  it("shows no image at all when the page is drawn without a way to find them (no storage)", () => {
+    const html = render(page({ blocks: [image("i")], logoAssetId: "a-1" }));
+    expect(html).not.toContain("<img");
+  });
+  it("in the editor, uses the editor's address with the session, and asks for the image where none is chosen", () => {
+    const lib = libraryImages("", [{ id: "a-1", width: 800, height: 600 }]);
+    const { edit, fields } = hooks();
+    const html = render(page({ blocks: [image("i", { caption: "Legenda" }), image("j", { assetId: "" })] }), edit, lib);
+    expect(html).toContain('src="/profissional/meu-site/imagens/a-1"');
+    expect(html).toContain("Escolha a imagem no painel à direita.");
+    expect(fields.filter((f) => f.path === "caption").map((f) => f.blockId)).toEqual(["i", "j"]);
   });
 });

@@ -20,6 +20,10 @@
     {
       "binding": "PHOTOS",
       "bucket_name": "photos"
+    },
+    {
+      "binding": "SITE_MEDIA",
+      "bucket_name": "site-media"
     }
   ],
   "d1_databases": [
