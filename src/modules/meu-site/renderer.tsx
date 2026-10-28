@@ -1,41 +1,43 @@
-import { Fragment, type HTMLAttributes, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import {
+  allNodes,
   channelUrl,
   emailUrl,
   instagramUrl,
   whatsappUrl,
-  type Block,
+  type BoxNode,
   type Channel,
-  type ColumnItem,
+  type ElementNode,
   type SiteContent,
+  type SiteNode,
 } from "./contracts";
-import { columnKey, type ContainerKey, type Side } from "./editor-model";
+import { anchorDomId, nodeClass } from "./site-css";
 import { themeAttributes } from "./site-theme";
+import { isEmptyStyle } from "./style";
 import { DELIVERY_LABEL } from "@/modules/leads/contracts";
 
 /**
  * The public page, from a document. The editor's canvas, its preview and the published page use this same
  * component, so what is seen before publishing is what is published. Everything it prints is text that React
  * escapes; the only links are made from the contact fields by `channelUrl` and friends, which accept nothing
- * but a phone number, an e-mail address and a handle. No script, no third-party resource, no form, no image.
+ * but a phone number, an e-mail address and a handle, or point at another node of the same page. No script, no
+ * third-party resource, no form. Images are only those of the site's library, from the page's own address.
  *
- * Without `edit` (the public page and the preview) it prints the page and nothing else. With `edit` (the
- * canvas of the editor) the same markup is wrapped by the editor: each text becomes a field that can be
- * typed over, each block is framed with its tools, and the places where a block can be dropped appear.
+ * A node with a style carries the class of its own identifier (`s-<id>`), which the stylesheet made by `buildSiteCss`
+ * is keyed by; the page itself has no `style` attribute. Without `edit` (the public page and the preview) it prints
+ * the page and nothing else. With `edit` (the canvas of the editor) the same markup gets, on each node, the
+ * identifier the canvas finds it by, and each text becomes a field that can be typed over: the frames, the tools and
+ * the lines that show where a block would land are drawn by the editor over the page, not inside it, so the
+ * layout in the editor is the layout of the published page.
  */
 export interface FieldSpec {
   blockId: string;
-  /** Where in the block: "heading", "items.2.question"... */
+  /** Where in the node: "heading", "items.2.question"... */
   path: string;
   value: string;
   placeholder: string;
   max: number;
   multiline?: boolean;
-}
-export interface Place {
-  container: ContainerKey;
-  index: number;
-  count: number;
 }
 /** How an image of the library is drawn here: where it is served from and its size, or null when it is not there. */
 export interface ResolvedImage {
@@ -46,22 +48,30 @@ export interface ResolvedImage {
 export type ImageResolver = (assetId: string) => ResolvedImage | null;
 
 export interface EditHooks {
-  /** A text of a block, as a field that can be typed over. */
+  /** A text of a node, as a field that can be typed over. */
   text: (field: FieldSpec) => ReactNode;
-  /** A block with its frame, tools and the lines that show where a dragged block would land. */
-  frame: (entry: Block | ColumnItem, view: ReactNode, place: Place) => ReactNode;
-  /** What stands where a container has no block at all (the page, or one column). */
-  empty: (container: ContainerKey) => ReactNode;
-  /** The drag handlers of one column, so a block can be dropped at the end of it. */
-  columnProps: (columnsId: string, side: Side) => HTMLAttributes<HTMLDivElement>;
-  /** What closes one column: the buttons that add an element to it without dragging. */
-  columnTools: (columnsId: string, side: Side, count: number) => ReactNode;
 }
 
 interface Ctx {
   content: SiteContent;
   edit?: EditHooks;
   images?: ImageResolver;
+  /** The nodes that a button or a link of the page goes to: they get a DOM id. */
+  anchors: ReadonlySet<string>;
+  /** The first highlight of the page, which holds its only first-level heading. */
+  firstHero: string | null;
+}
+
+/** The attributes every node's element carries: its classes (the page's own and the node's), its anchor id, and in the editor the id the canvas finds it by. */
+function attrsOf(node: SiteNode, ctx: Ctx, classes: string) {
+  const own = isEmptyStyle(node.style) ? "" : ` ${nodeClass(node.id)}`;
+  return {
+    className: `${classes}${own}`,
+    id: ctx.anchors.has(node.id) ? anchorDomId(node.id) : undefined,
+    "data-block-id": ctx.edit ? node.id : undefined,
+    "data-type": ctx.edit ? node.type : undefined,
+    "data-empty": ctx.edit && node.type === "box" && node.children.length === 0 ? "" : undefined,
+  };
 }
 
 /** A text of the document: printed as it is, or, in the editor, a field. Empty texts print nothing on the public page. */
@@ -98,26 +108,40 @@ function Action({ ctx, id, labelPath, label, channel }: { ctx: Ctx; id: string; 
   );
 }
 
-/** Whether an element has anything to show on the public page: a text, or a button with a label and a contact. */
-function visible(item: ColumnItem, ctx: Ctx): boolean {
-  if (ctx.edit) return true;
-  if (item.type === "image") return Boolean(item.assetId && ctx.images?.(item.assetId));
-  return item.type === "button" ? Boolean(item.label && channelUrl(ctx.content.contact, item.channel)) : item.text !== "";
+/** Where a button or a link goes: a contact (its own address), or another node of this page (an anchor). Null when it goes nowhere. */
+function destinationOf(item: { channel?: Channel; anchor?: string }, ctx: Ctx): { href: string; external: boolean } | null {
+  if (item.channel) {
+    const href = channelUrl(ctx.content.contact, item.channel);
+    return href ? { href, external: href.startsWith("https://") } : null;
+  }
+  if (item.anchor && ctx.anchors.has(item.anchor)) return { href: `#${anchorDomId(item.anchor)}`, external: false };
+  return null;
 }
 
-function ElementView({ item, ctx }: { item: ColumnItem; ctx: Ctx }) {
+/** Whether an element has anything to show on the public page: a text, a button or a link with a label and a place to go, an image of the library. */
+function visible(item: ElementNode, ctx: Ctx): boolean {
+  if (ctx.edit) return true;
+  if (item.type === "image") return Boolean(item.assetId && ctx.images?.(item.assetId));
+  if (item.type === "button" || item.type === "link") return Boolean(item.label && destinationOf(item, ctx));
+  return item.text !== "";
+}
+
+const HEADINGS = { 2: "h2", 3: "h3", 4: "h4", 5: "h5", 6: "h6" } as const;
+
+function ElementView({ item, ctx }: { item: ElementNode; ctx: Ctx }) {
   if (!visible(item, ctx)) return null;
   if (item.type === "heading") {
+    const Heading = HEADINGS[item.level as keyof typeof HEADINGS] ?? "h2";
     return (
-      <h2 className="site-heading">
+      <Heading {...attrsOf(item, ctx, "site-heading site-leaf")}>
         <T ctx={ctx} id={item.id} path="text" value={item.text} placeholder="Escreva o título" max={120} />
-      </h2>
+      </Heading>
     );
   }
   if (item.type === "image") {
     const image = item.assetId ? ctx.images?.(item.assetId) ?? null : null;
     return (
-      <figure className="site-image" data-size={item.size}>
+      <figure {...attrsOf(item, ctx, "site-image site-leaf")} data-size={item.size}>
         {image ? (
           // eslint-disable-next-line @next/next/no-img-element -- served by this app from a private bucket; the size is known
           <img src={image.src} width={image.width} height={image.height} alt={item.alt} loading="lazy" decoding="async" />
@@ -134,89 +158,97 @@ function ElementView({ item, ctx }: { item: ColumnItem; ctx: Ctx }) {
   }
   if (item.type === "paragraph") {
     return (
-      <p className="site-text">
+      <p {...attrsOf(item, ctx, "site-text site-leaf")}>
         <T ctx={ctx} id={item.id} path="text" value={item.text} placeholder="Escreva o texto" max={2000} multiline />
       </p>
     );
   }
+  // A button or a link: in the editor a stand-in that does not navigate, on the page an anchor made from the destination.
+  const link = item.type === "link";
+  const classes = link ? "site-link site-leaf" : "button primary site-leaf";
+  if (ctx.edit) {
+    return (
+      <span {...attrsOf(item, ctx, `${classes}${link ? "" : " site-button-stand-in"}`)}>
+        <T ctx={ctx} id={item.id} path="label" value={item.label} placeholder={link ? "Texto do link" : "Texto do botão"} max={40} />
+      </span>
+    );
+  }
+  const where = destinationOf(item, ctx)!;
   return (
-    <div className="site-actions">
-      <Action ctx={ctx} id={item.id} labelPath="label" label={item.label} channel={item.channel} />
-    </div>
+    <a {...attrsOf(item, ctx, classes)} href={where.href} {...(where.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
+      {item.label}
+    </a>
   );
 }
 
-/** The elements of a list (the page, or one column), each framed in the editor. */
-function List({ items, container, ctx, render }: { items: readonly (Block | ColumnItem)[]; container: ContainerKey; ctx: Ctx; render: (entry: Block | ColumnItem, index: number) => ReactNode }) {
-  const { edit } = ctx;
-  if (!edit) return <>{items.map((entry, index) => <Fragment key={entry.id}>{render(entry, index)}</Fragment>)}</>;
-  if (items.length === 0) return <>{edit.empty(container)}</>;
+function BoxView({ node, ctx }: { node: BoxNode; ctx: Ctx }) {
+  const Tag = node.tag;
   return (
-    <>
-      {items.map((entry, index) => (
-        <Fragment key={entry.id}>{edit.frame(entry, render(entry, index), { container, index, count: items.length })}</Fragment>
+    <Tag {...attrsOf(node, ctx, "site-box")}>
+      {node.children.map((child) => (
+        <NodeView key={child.id} node={child} ctx={ctx} />
       ))}
-    </>
+    </Tag>
   );
 }
 
-function BlockView({ block, ctx, heroHeading }: { block: Block; ctx: Ctx; heroHeading: boolean }) {
+function NodeView({ node, ctx }: { node: SiteNode; ctx: Ctx }) {
   const { edit } = ctx;
-  const id = block.id;
-  switch (block.type) {
+  const id = node.id;
+  switch (node.type) {
     case "hero": {
-      const Heading = heroHeading ? "h1" : "h2";
+      const Heading = node.id === ctx.firstHero ? "h1" : "h2";
       return (
-        <section className="site-section site-hero" aria-label={block.heading || "Destaque"}>
-          <Eyebrow ctx={ctx} id={id} value={block.eyebrow} />
-          {shown(ctx, block.heading) && (
+        <section {...attrsOf(node, ctx, "site-section site-hero")} aria-label={node.heading || "Destaque"}>
+          <Eyebrow ctx={ctx} id={id} value={node.eyebrow} />
+          {shown(ctx, node.heading) && (
             <Heading>
-              <T ctx={ctx} id={id} path="heading" value={block.heading} placeholder="Título do destaque" max={120} />
+              <T ctx={ctx} id={id} path="heading" value={node.heading} placeholder="Título do destaque" max={120} />
             </Heading>
           )}
-          {shown(ctx, block.subheading) && (
+          {shown(ctx, node.subheading) && (
             <p className="site-lead">
-              <T ctx={ctx} id={id} path="subheading" value={block.subheading} placeholder="Subtítulo" max={300} multiline />
+              <T ctx={ctx} id={id} path="subheading" value={node.subheading} placeholder="Subtítulo" max={300} multiline />
             </p>
           )}
           <div className="site-actions">
-            <Action ctx={ctx} id={id} labelPath="buttonLabel" label={block.buttonLabel} channel={block.buttonChannel} />
+            <Action ctx={ctx} id={id} labelPath="buttonLabel" label={node.buttonLabel} channel={node.buttonChannel} />
           </div>
         </section>
       );
     }
     case "text":
       return (
-        <section className="site-section">
-          <Eyebrow ctx={ctx} id={id} value={block.eyebrow} />
-          {shown(ctx, block.heading) && (
+        <section {...attrsOf(node, ctx, "site-section")}>
+          <Eyebrow ctx={ctx} id={id} value={node.eyebrow} />
+          {shown(ctx, node.heading) && (
             <h2>
-              <T ctx={ctx} id={id} path="heading" value={block.heading} placeholder="Título (opcional)" max={120} />
+              <T ctx={ctx} id={id} path="heading" value={node.heading} placeholder="Título (opcional)" max={120} />
             </h2>
           )}
-          {shown(ctx, block.text) && (
+          {shown(ctx, node.text) && (
             <p className="site-text">
-              <T ctx={ctx} id={id} path="text" value={block.text} placeholder="Escreva o texto" max={2000} multiline />
+              <T ctx={ctx} id={id} path="text" value={node.text} placeholder="Escreva o texto" max={2000} multiline />
             </p>
           )}
         </section>
       );
     case "services":
       return (
-        <section className="site-section">
-          <Eyebrow ctx={ctx} id={id} value={block.eyebrow} />
-          {shown(ctx, block.heading) && (
+        <section {...attrsOf(node, ctx, "site-section")}>
+          <Eyebrow ctx={ctx} id={id} value={node.eyebrow} />
+          {shown(ctx, node.heading) && (
             <h2>
-              <T ctx={ctx} id={id} path="heading" value={block.heading} placeholder="Título da seção" max={120} />
+              <T ctx={ctx} id={id} path="heading" value={node.heading} placeholder="Título da seção" max={120} />
             </h2>
           )}
-          {shown(ctx, block.intro) && (
+          {shown(ctx, node.intro) && (
             <p className="site-text">
-              <T ctx={ctx} id={id} path="intro" value={block.intro} placeholder="Introdução (opcional)" max={300} multiline />
+              <T ctx={ctx} id={id} path="intro" value={node.intro} placeholder="Introdução (opcional)" max={300} multiline />
             </p>
           )}
           <ul className="site-services">
-            {(block.items ?? []).map((item, index) => (
+            {(node.items ?? []).map((item, index) => (
               <li key={`${item.name}-${index}`}>
                 <h3>{item.name}</h3>
                 <p className="site-delivery">{DELIVERY_LABEL[item.delivery]}</p>
@@ -224,35 +256,35 @@ function BlockView({ block, ctx, heroHeading }: { block: Block; ctx: Ctx; heroHe
               </li>
             ))}
           </ul>
-          {edit && (block.items ?? []).length === 0 && (
+          {edit && (node.items ?? []).length === 0 && (
             <p className="site-hint">Escolha os serviços deste bloco no painel à direita. Eles vêm da lista de Serviços.</p>
           )}
         </section>
       );
     case "about":
       return (
-        <section className="site-section site-about">
+        <section {...attrsOf(node, ctx, "site-section site-about")}>
           <div className="site-about-grid">
             <div className="site-about-copy">
-              <Eyebrow ctx={ctx} id={id} value={block.eyebrow} />
-              {shown(ctx, block.heading) && (
+              <Eyebrow ctx={ctx} id={id} value={node.eyebrow} />
+              {shown(ctx, node.heading) && (
                 <h2>
-                  <T ctx={ctx} id={id} path="heading" value={block.heading} placeholder="Título" max={120} />
+                  <T ctx={ctx} id={id} path="heading" value={node.heading} placeholder="Título" max={120} />
                 </h2>
               )}
-              {shown(ctx, block.text) && (
+              {shown(ctx, node.text) && (
                 <p className="site-text">
-                  <T ctx={ctx} id={id} path="text" value={block.text} placeholder="Conte sobre o seu trabalho" max={2000} multiline />
+                  <T ctx={ctx} id={id} path="text" value={node.text} placeholder="Conte sobre o seu trabalho" max={2000} multiline />
                 </p>
               )}
             </div>
-            {(block.stat !== "" || edit) && (
+            {(node.stat !== "" || edit) && (
               <div className="site-stat">
                 <strong>
-                  <T ctx={ctx} id={id} path="stat" value={block.stat} placeholder="Número" max={16} />
+                  <T ctx={ctx} id={id} path="stat" value={node.stat} placeholder="Número" max={16} />
                 </strong>
                 <span>
-                  <T ctx={ctx} id={id} path="statLabel" value={block.statLabel} placeholder="Legenda" max={80} />
+                  <T ctx={ctx} id={id} path="statLabel" value={node.statLabel} placeholder="Legenda" max={80} />
                 </span>
               </div>
             )}
@@ -261,30 +293,30 @@ function BlockView({ block, ctx, heroHeading }: { block: Block; ctx: Ctx; heroHe
       );
     case "quote":
       return (
-        <section className="site-section site-quote">
-          <Eyebrow ctx={ctx} id={id} value={block.eyebrow} />
+        <section {...attrsOf(node, ctx, "site-section site-quote")}>
+          <Eyebrow ctx={ctx} id={id} value={node.eyebrow} />
           <figure>
-            {shown(ctx, block.quote) && (
+            {shown(ctx, node.quote) && (
               <blockquote>
-                “<T ctx={ctx} id={id} path="quote" value={block.quote} placeholder="Escreva o depoimento" max={600} multiline />”
+                “<T ctx={ctx} id={id} path="quote" value={node.quote} placeholder="Escreva o depoimento" max={600} multiline />”
               </blockquote>
             )}
-            {shown(ctx, block.author) && (
+            {shown(ctx, node.author) && (
               <figcaption>
-                <T ctx={ctx} id={id} path="author" value={block.author} placeholder="Quem deu o depoimento" max={80} />
+                <T ctx={ctx} id={id} path="author" value={node.author} placeholder="Quem deu o depoimento" max={80} />
               </figcaption>
             )}
           </figure>
         </section>
       );
     case "stats": {
-      const items = edit ? block.items : block.items.filter((item) => item.value && item.label);
+      const items = edit ? node.items : node.items.filter((item) => item.value && item.label);
       return (
-        <section className="site-section">
-          <Eyebrow ctx={ctx} id={id} value={block.eyebrow} />
-          {shown(ctx, block.heading) && (
+        <section {...attrsOf(node, ctx, "site-section")}>
+          <Eyebrow ctx={ctx} id={id} value={node.eyebrow} />
+          {shown(ctx, node.heading) && (
             <h2>
-              <T ctx={ctx} id={id} path="heading" value={block.heading} placeholder="Título da seção" max={120} />
+              <T ctx={ctx} id={id} path="heading" value={node.heading} placeholder="Título da seção" max={120} />
             </h2>
           )}
           <ul className="site-stats">
@@ -303,17 +335,17 @@ function BlockView({ block, ctx, heroHeading }: { block: Block; ctx: Ctx; heroHe
       );
     }
     case "faq": {
-      const items = block.items.filter((item) => item.question && item.answer);
+      const items = node.items.filter((item) => item.question && item.answer);
       return (
-        <section className="site-section site-faq">
-          <Eyebrow ctx={ctx} id={id} value={block.eyebrow} />
-          {shown(ctx, block.heading) && (
+        <section {...attrsOf(node, ctx, "site-section site-faq")}>
+          <Eyebrow ctx={ctx} id={id} value={node.eyebrow} />
+          {shown(ctx, node.heading) && (
             <h2>
-              <T ctx={ctx} id={id} path="heading" value={block.heading} placeholder="Título da seção" max={120} />
+              <T ctx={ctx} id={id} path="heading" value={node.heading} placeholder="Título da seção" max={120} />
             </h2>
           )}
           {edit
-            ? block.items.map((item, index) => (
+            ? node.items.map((item, index) => (
                 <div className="site-faq-open" key={index}>
                   <p className="site-faq-question">
                     <T ctx={ctx} id={id} path={`items.${index}.question`} value={item.question} placeholder="Pergunta" max={160} />
@@ -334,54 +366,31 @@ function BlockView({ block, ctx, heroHeading }: { block: Block; ctx: Ctx; heroHe
     }
     case "cta":
       return (
-        <section className="site-section site-cta">
-          <Eyebrow ctx={ctx} id={id} value={block.eyebrow} />
-          {shown(ctx, block.heading) && (
+        <section {...attrsOf(node, ctx, "site-section site-cta")}>
+          <Eyebrow ctx={ctx} id={id} value={node.eyebrow} />
+          {shown(ctx, node.heading) && (
             <h2>
-              <T ctx={ctx} id={id} path="heading" value={block.heading} placeholder="Título da chamada" max={120} />
+              <T ctx={ctx} id={id} path="heading" value={node.heading} placeholder="Título da chamada" max={120} />
             </h2>
           )}
-          {shown(ctx, block.text) && (
+          {shown(ctx, node.text) && (
             <p className="site-text">
-              <T ctx={ctx} id={id} path="text" value={block.text} placeholder="Texto (opcional)" max={300} multiline />
+              <T ctx={ctx} id={id} path="text" value={node.text} placeholder="Texto (opcional)" max={300} multiline />
             </p>
           )}
           <div className="site-actions">
-            <Action ctx={ctx} id={id} labelPath="buttonLabel" label={block.buttonLabel} channel={block.buttonChannel} />
+            <Action ctx={ctx} id={id} labelPath="buttonLabel" label={node.buttonLabel} channel={node.buttonChannel} />
           </div>
         </section>
       );
-    case "columns": {
-      const sides = (["left", "right"] as const).filter((side) => edit || block[side].length > 0);
-      if (sides.length === 0) return null;
-      return (
-        <section className="site-section site-columns-section">
-          <div className={`site-columns site-columns-${block.ratio}`} data-single={sides.length === 1 ? "" : undefined}>
-            {sides.map((side) => (
-              <div className="site-column" key={side} data-side={side} {...edit?.columnProps(id, side)}>
-                <List
-                  items={block[side]}
-                  container={columnKey(id, side)}
-                  ctx={ctx}
-                  render={(entry) => <ElementView item={entry as ColumnItem} ctx={ctx} />}
-                />
-                {edit?.columnTools(id, side, block[side].length)}
-              </div>
-            ))}
-          </div>
-        </section>
-      );
-    }
+    case "box":
+      return <BoxView node={node} ctx={ctx} />;
     case "heading":
     case "paragraph":
     case "button":
-    case "image": {
-      return visible(block, ctx) ? (
-        <section className="site-section site-basic">
-          <ElementView item={block} ctx={ctx} />
-        </section>
-      ) : null;
-    }
+    case "link":
+    case "image":
+      return <ElementView item={node} ctx={ctx} />;
   }
 }
 
@@ -392,9 +401,14 @@ function SiteLogo({ logo }: { logo: ResolvedImage }) {
 }
 
 export function SiteRenderer({ content, edit, images }: { content: SiteContent; edit?: EditHooks; images?: ImageResolver }) {
-  const ctx: Ctx = { content, edit, images };
+  const nodes = allNodes(content.blocks);
+  const existing = new Set(nodes.map((entry) => entry.id));
+  const anchors = new Set(
+    nodes.flatMap((entry): string[] => ((entry.type === "button" || entry.type === "link") && entry.anchor && existing.has(entry.anchor) ? [entry.anchor] : [])),
+  );
+  const firstHero = nodes.find((entry) => entry.type === "hero")?.id ?? null;
+  const ctx: Ctx = { content, edit, images, anchors, firstHero };
   const logo = content.logoAssetId ? images?.(content.logoAssetId) ?? null : null;
-  const firstHero = content.blocks.findIndex((block) => block.type === "hero");
   const contacts = [
     { label: "WhatsApp", href: whatsappUrl(content.contact.whatsapp), external: true },
     { label: "E-mail", href: emailUrl(content.contact.email), external: false },
@@ -403,7 +417,7 @@ export function SiteRenderer({ content, edit, images }: { content: SiteContent; 
   return (
     <div className="site" {...themeAttributes(content.theme)}>
       <header className="site-header">
-        {firstHero === -1 ? (
+        {firstHero === null ? (
           <h1 className="site-brand">
             {logo && <SiteLogo logo={logo} />}
             {content.title}
@@ -415,13 +429,13 @@ export function SiteRenderer({ content, edit, images }: { content: SiteContent; 
           </p>
         )}
       </header>
-      <main className="site-main">
-        <List
-          items={content.blocks}
-          container="root"
-          ctx={ctx}
-          render={(entry, index) => <BlockView block={entry as Block} ctx={ctx} heroHeading={index === firstHero} />}
-        />
+      <main className="site-main" data-page-root={edit ? "" : undefined}>
+        {content.blocks.map((entry) => (
+          <NodeView key={entry.id} node={entry} ctx={ctx} />
+        ))}
+        {edit && content.blocks.length === 0 && (
+          <p className="site-hint">A página está sem blocos. Arraste um bloco da biblioteca para cá, ou clique em um deles para acrescentar.</p>
+        )}
       </main>
       {contacts.length > 0 && (
         <footer className="site-footer">

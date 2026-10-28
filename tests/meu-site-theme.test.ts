@@ -55,8 +55,11 @@ describe("the colors of the public page", () => {
       });
     }
   }
-  it("gives the page only the two names of the look, which select the rules", () => {
-    expect(themeAttributes(DEFAULT_THEME)).toEqual({ "data-site-accent": "blue", "data-site-mode": "light" });
-    expect(themeAttributes({ accent: "red", mode: "dark" })).toEqual({ "data-site-accent": "red", "data-site-mode": "dark" });
+  it("gives the page only the three names of the look (accent, mode and width), which select the rules", () => {
+    expect(themeAttributes(DEFAULT_THEME)).toEqual({ "data-site-accent": "blue", "data-site-mode": "light", "data-site-width": "narrow" });
+    expect(themeAttributes({ accent: "red", mode: "dark", width: "full" })).toEqual({ "data-site-accent": "red", "data-site-mode": "dark", "data-site-width": "full" });
+  });
+  it("has a rule for each width of the page, keyed by the same attribute", () => {
+    for (const width of ["wide", "full"]) expect(css, width).toContain(`[data-site-width="${width}"]`);
   });
 });

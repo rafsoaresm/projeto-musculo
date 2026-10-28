@@ -1,34 +1,38 @@
 "use client";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Eye, Pencil, Redo2, Undo2, X } from "lucide-react";
-import { BLOCK_LABEL, referencedAssetIds, resolveServices, type BlockType, type ColumnType, type PublishIssue, type SiteContent } from "./contracts";
-import { EditorContext, canvasHooks, type BlockAction, type Drag, type EditorApi } from "./editor-canvas";
+import { referencedAssetIds, resolveServices, type PublishIssue, type SiteContent } from "./contracts";
+import { CanvasSurface, EditorContext, canvasHooks, type Drag, type EditorApi, type NodeAction } from "./editor-canvas";
 import { BlockInspector, PageSettings, type ImageSupport } from "./editor-inspector";
-import { editorImageUrl, libraryImages } from "./image-urls";
+import { editorImageUrl, libraryCssImages, libraryImages } from "./image-urls";
 import type { RemoveResult, UploadResult } from "./image-picker";
 import type { AssetRow } from "@/db/site-assets";
 import { useMountPath } from "@/components/use-mount-path";
 import { Layers, Library } from "./editor-library";
+import type { Landing } from "./drop-geometry";
 import {
   REFUSAL_MESSAGE,
-  accepts,
-  columnKey,
   duplicateBlock,
-  endOfPage,
-  insertBlock,
+  insertNode,
   locate,
   moveBlock,
+  moveIntoPrevious,
+  moveOut,
   removeBlock,
-  sendToOtherColumn,
   setIn,
   shiftBlock,
+  unwrapBlock,
   updateBlock,
+  wrapBlock,
   type Outcome,
-  type Side,
   type Slot,
 } from "./editor-model";
+import { nodeTitle } from "./node-label";
+import { catalogueItem } from "./presets";
 import { PublicAddress } from "./public-address";
 import { SiteRenderer } from "./renderer";
+import { buildSiteCss } from "./site-css";
+import { InlineSiteStyles } from "./site-styles";
 import type { ServiceChoice } from "@/db/sites";
 
 export interface VisualEditorProps {
@@ -58,6 +62,17 @@ export interface VisualEditorProps {
 const END = Number.MAX_SAFE_INTEGER;
 
 /**
+ * Where a block added without dragging goes: inside the container that is selected, after the block that is selected, or at
+ * the end of the page.
+ */
+function addSlot(content: SiteContent, selectedId: string | null): Slot {
+  const found = selectedId ? locate(content, selectedId) : null;
+  if (!found) return { parent: null, index: END };
+  if (found.node.type === "box") return { parent: found.node.id, index: END };
+  return { parent: found.parentId, index: found.index + 1 };
+}
+
+/**
  * The visual editor: the page itself in the middle, the blocks to add on the left, the settings of what is
  * selected on the right. It works on the same document the rest of the screen holds (the draft, with its
  * undo history); saving and publishing are done by the screen that opened it. It takes the whole window, as a
@@ -71,9 +86,10 @@ export function VisualEditor(props: VisualEditorProps) {
   const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   const [leftTab, setLeftTab] = useState<"blocks" | "layers">("blocks");
+  const [inspectorTab, setInspectorTab] = useState<"content" | "style">("content");
   const [panel, setPanel] = useState<"blocks" | "page" | "props">("page");
   const [drag, setDrag] = useState<Drag | null>(null);
-  const [target, setTarget] = useState<Slot | null>(null);
+  const [target, setTarget] = useState<Landing | null>(null);
   const [message, setMessage] = useState("");
   /** A block to bring into view (one just added, or chosen from a list). A new object each time, so the same block can be asked again. */
   const [scrollTo, setScrollTo] = useState<{ id: string } | null>(null);
@@ -114,7 +130,49 @@ export function VisualEditor(props: VisualEditorProps) {
     }
   };
 
+  const canDrop = (slot: Slot): boolean => {
+    if (!drag) return false;
+    if (drag.kind === "new") {
+      const item = catalogueItem(drag.key);
+      return item ? insertNode(content, item.create(), slot).ok : false;
+    }
+    return moveBlock(content, drag.id, slot).ok;
+  };
+  const act = (id: string, action: NodeAction) => {
+    if (action === "up" || action === "down") onEdit(shiftBlock(content, id, action === "up" ? -1 : 1));
+    else if (action === "duplicate") apply(duplicateBlock(content, id));
+    else if (action === "out") apply(moveOut(content, id));
+    else if (action === "into") apply(moveIntoPrevious(content, id));
+    else if (action === "wrap") apply(wrapBlock(content, id));
+    else if (action === "unwrap") apply(unwrapBlock(content, id));
+    else {
+      onEdit(removeBlock(content, id));
+      setSelectedId(null);
+    }
+  };
+  const dropAt = (slot: Slot) => {
+    if (drag) {
+      if (drag.kind === "new") {
+        const item = catalogueItem(drag.key);
+        if (item) apply(insertNode(content, item.create(), slot));
+      } else {
+        apply(moveBlock(content, drag.id, slot));
+      }
+    }
+    setDrag(null);
+    setTarget(null);
+  };
+  const startDrag = (next: Drag) => {
+    // The screen changes after the browser has taken the drag: changing it inside `dragstart` can cancel it.
+    setTimeout(() => setDrag(next), 0);
+  };
+  const endDrag = () => {
+    setDrag(null);
+    setTarget(null);
+  };
+
   const api: EditorApi = {
+    content,
     selectedId: mode === "edit" ? selected : null,
     select: (id) => {
       setSelectedId(id);
@@ -122,34 +180,21 @@ export function VisualEditor(props: VisualEditorProps) {
     },
     commitText: (blockId, path, value) => onEdit(updateBlock(content, blockId, (entry) => setIn(entry, path, value))),
     drag,
-    // The screen changes after the browser has taken the drag: changing it inside `dragstart` can cancel it.
-    startDrag: (next) => void setTimeout(() => setDrag(next), 0),
-    endDrag: () => {
-      setDrag(null);
-      setTarget(null);
-    },
-    acceptsDrag: (slot) => drag !== null && accepts(slot.container, drag.type),
+    startDrag,
+    endDrag,
     target,
-    setTarget: (slot) => setTarget((previous) => (previous && slot && previous.container === slot.container && previous.index === slot.index ? previous : slot)),
-    drop: (slot) => {
-      if (drag) apply(drag.kind === "new" ? insertBlock(content, drag.type, slot) : moveBlock(content, drag.id, slot));
-      setDrag(null);
-      setTarget(null);
-    },
-    act: (id, action: BlockAction) => {
-      if (action === "up" || action === "down") onEdit(shiftBlock(content, id, action === "up" ? -1 : 1));
-      else if (action === "duplicate") apply(duplicateBlock(content, id));
-      else if (action === "other-column") apply(sendToOtherColumn(content, id));
-      else {
-        onEdit(removeBlock(content, id));
-        setSelectedId(null);
-      }
-    },
-    addToColumn: (columnsId: string, side: Side, type: ColumnType) =>
-      apply(insertBlock(content, type, { container: columnKey(columnsId, side), index: END })),
+    setTarget: (landing) =>
+      setTarget((previous) => (previous && landing && previous.slot.parent === landing.slot.parent && previous.slot.index === landing.slot.index ? previous : landing)),
+    canDrop,
+    drop: dropAt,
+    act,
   };
-  const hooks = canvasHooks(api);
-  const add = (type: BlockType) => apply(insertBlock(content, type, endOfPage(content)));
+  const hooks = canvasHooks();
+  const add = (key: string) => {
+    const item = catalogueItem(key);
+    if (item) apply(insertNode(content, item.create(), addSlot(content, selected)));
+  };
+  const styles = useMemo(() => buildSiteCss(resolved, libraryCssImages(base, props.images.library)), [resolved, base, props.images.library]);
 
   // Shortcuts: Ctrl/Cmd+S saves, Ctrl/Cmd+Z undoes, Ctrl/Cmd+Shift+Z (or Y) redoes. Heard on the document, not on
   // the dialog: after a click on the page itself the focus may be on the body, and the shortcut must still work.
@@ -179,7 +224,7 @@ export function VisualEditor(props: VisualEditorProps) {
   }, [dirty, pending, onSave, undo, redo]);
 
   const statusText = props.dirty ? "Alterações não salvas" : `Rascunho salvo (revisão ${props.revision})`;
-  const selectedLabel = selected ? BLOCK_LABEL[locate(content, selected)!.block.type] : null;
+  const selectedLabel = selected ? nodeTitle(locate(content, selected)!.node) : null;
 
   return (
     <dialog
@@ -281,7 +326,7 @@ export function VisualEditor(props: VisualEditorProps) {
             </button>
           </div>
           {leftTab === "blocks" ? (
-            <Library onAdd={add} startDrag={api.startDrag} endDrag={api.endDrag} />
+            <Library onAdd={add} startDrag={startDrag} endDrag={endDrag} />
           ) : (
             <Layers
               content={content}
@@ -291,6 +336,11 @@ export function VisualEditor(props: VisualEditorProps) {
                 if (id) setScrollTo({ id });
                 setPanel("props");
               }}
+              drag={drag}
+              startDrag={startDrag}
+              endDrag={endDrag}
+              canDrop={canDrop}
+              drop={dropAt}
             />
           )}
         </aside>
@@ -327,8 +377,15 @@ export function VisualEditor(props: VisualEditorProps) {
                 </span>
                 <PublicAddress slug={props.slug} className="ve-address" />
               </div>
+              <InlineSiteStyles css={styles} />
               <EditorContext.Provider value={api}>
-                <SiteRenderer content={resolved} edit={mode === "edit" ? hooks : undefined} images={imageResolver} />
+                {mode === "edit" ? (
+                  <CanvasSurface>
+                    <SiteRenderer content={resolved} edit={hooks} images={imageResolver} />
+                  </CanvasSurface>
+                ) : (
+                  <SiteRenderer content={resolved} images={imageResolver} />
+                )}
               </EditorContext.Provider>
             </div>
           </div>
@@ -339,7 +396,21 @@ export function VisualEditor(props: VisualEditorProps) {
             <h2>{selectedLabel ?? "Página"}</h2>
           </div>
           {selected ? (
-            <BlockInspector key={selected} content={content} id={selected} services={services} images={imageSupport} onChange={onEdit} act={api.act} />
+            <BlockInspector
+              key={selected}
+              content={content}
+              id={selected}
+              services={services}
+              images={imageSupport}
+              tab={inspectorTab}
+              onTab={setInspectorTab}
+              onChange={onEdit}
+              act={act}
+              select={(id) => {
+                setSelectedId(id);
+                setScrollTo({ id });
+              }}
+            />
           ) : (
             <PageSettings content={content} onChange={onEdit} images={imageSupport} />
           )}

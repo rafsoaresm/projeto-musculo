@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 import { createProfessional, localIP, newActor, noHorizontalOverflow } from "./helpers";
 
 const state = (page: Page) => page.getByRole("region", { name: "Estado do site" });
@@ -20,25 +20,32 @@ async function closeEditor(page: Page) {
   await editor(page).getByRole("button", { name: "Fechar o editor" }).click();
   await expect(editor(page)).toHaveCount(0);
 }
-/** Adds a block to the end of the page from the library (no dragging: a click does it). */
-async function addBlock(page: Page, name: string) {
-  await panel(page, "Blocos");
-  await library(page).getByRole("button", { name: "Blocos", exact: true }).click();
-  await library(page).getByRole("button", { name: `Acrescentar ${name} ao fim da página` }).click();
-}
 /** Selects a block by the list of layers, the way that works with a keyboard and on a phone. */
-async function selectLayer(page: Page, label: RegExp | string) {
+async function selectLayer(page: Page, label: RegExp | string, nth = 0) {
   await panel(page, "Blocos");
   await library(page).getByRole("button", { name: "Camadas", exact: true }).click();
-  await library(page).getByRole("list", { name: "Blocos da página" }).getByRole("button", { name: label }).first().click();
+  await library(page).getByRole("list", { name: "Blocos da página" }).locator(".ve-layer").filter({ hasText: label }).nth(nth).click();
   await panel(page, "Propriedades");
 }
-const layers = async (page: Page) => {
+/** The names of the layers, from the first to the last (the tree, as a list). */
+const layerNames = async (page: Page) => {
   await panel(page, "Blocos");
   await library(page).getByRole("button", { name: "Camadas", exact: true }).click();
-  return library(page).getByRole("list", { name: "Blocos da página" }).getByRole("button");
+  return library(page).getByRole("list", { name: "Blocos da página" }).locator(".ve-layer strong").allInnerTexts();
 };
-const layerNames = async (page: Page) => (await (await layers(page)).allInnerTexts()).map((text) => text.replace(/^\d+\s*/, "").trim());
+/** Adds a block from the library by a click. It goes inside the container that is selected, or after the block that is selected. */
+async function addSelected(page: Page, name: string) {
+  await panel(page, "Blocos");
+  await library(page).getByRole("button", { name: "Blocos", exact: true }).click();
+  await library(page).getByRole("button", { name: `Acrescentar ${name}`, exact: true }).click();
+}
+/** Adds a block at the end of the page: nothing selected first, so it goes to the end. */
+async function addAtEnd(page: Page, name: string) {
+  await selectLayer(page, "Configurações da página");
+  await addSelected(page, name);
+}
+const styleTab = (page: Page) => inspector(page).getByRole("button", { name: "Estilo", exact: true });
+const contentTab = (page: Page) => inspector(page).getByRole("button", { name: "Conteúdo", exact: true });
 
 test("a professional builds a page in the visual editor, previews it, publishes it, changes it without touching what is public, takes it offline and changes its address", async ({
   page,
@@ -104,49 +111,79 @@ test("a professional builds a page in the visual editor, previews it, publishes 
   await expect(stage(page).getByText("Personal trainer")).toBeVisible();
 
   // More blocks, from the library: questions, services, a testimony, indicators and two columns.
-  await addBlock(page, "Perguntas frequentes");
+  await addAtEnd(page, "Perguntas frequentes");
   await panel(page, "Propriedades");
   await inspector(page).getByLabel("Pergunta", { exact: true }).fill("Atende online?");
   await inspector(page).getByLabel("Resposta").fill("Sim, por vídeo e pelo aplicativo.");
-  await addBlock(page, "Serviços");
+  await addAtEnd(page, "Serviços");
   await panel(page, "Propriedades");
   await inspector(page).getByRole("group", { name: "Serviços que aparecem" }).getByLabel(/Consultoria online/).check();
-  await addBlock(page, "Depoimento");
+  await addAtEnd(page, "Depoimento");
   await panel(page, "Propriedades");
   await inspector(page).getByLabel("Depoimento", { exact: true }).fill("Finalmente um treino que cabe na minha rotina.");
   await inspector(page).getByLabel("Quem deu o depoimento").fill("Ana, aluna");
-  await addBlock(page, "Indicadores");
+  await addAtEnd(page, "Indicadores");
   await panel(page, "Propriedades");
   const first = inspector(page).getByRole("group", { name: "Indicador 1" });
   await first.getByLabel("Número ou passo").fill("01");
   await first.getByLabel("Legenda").fill("Avaliação inicial");
   await inspector(page).getByRole("button", { name: "Remover o indicador 3" }).click();
   await inspector(page).getByRole("button", { name: "Remover o indicador 2" }).click();
-  await addBlock(page, "2 colunas");
-  await panel(page, "Propriedades");
-  await inspector(page).getByLabel("Largura das colunas").selectOption({ label: "60 / 40" });
-  await panel(page, "Página");
-  await stage(page).getByRole("button", { name: "Acrescentar título à coluna da esquerda" }).click();
-  await stage(page).getByRole("button", { name: "Acrescentar parágrafo à coluna da esquerda" }).click();
-  await stage(page).getByRole("button", { name: "Acrescentar botão à coluna da direita" }).click();
+  // Two columns: a row container with two column containers, which take blocks by a click (inside the one that is selected).
+  await addAtEnd(page, "2 colunas");
+  await selectLayer(page, /^Coluna/, 0);
+  await addSelected(page, "Título");
+  await addSelected(page, "Parágrafo");
+  await selectLayer(page, /^Coluna/, 1);
+  await addSelected(page, "Botão");
   expect(await layerNames(page)).toEqual([
-    "Configurações da página", "Destaque", "Chamada para contato", "Perguntas frequentes", "Serviços", "Depoimento", "Indicadores", "2 colunas", "Título", "Parágrafo", "Botão",
+    "Configurações da página", "Destaque", "Chamada para contato", "Perguntas frequentes", "Serviços", "Depoimento", "Indicadores", "2 colunas", "Coluna", "Título", "Parágrafo", "Coluna", "Botão",
   ]);
-  await selectLayer(page, /Título$/);
+  await selectLayer(page, /^Título/);
   await inspector(page).getByLabel("Título", { exact: true }).fill("Treino sem achismo");
-  await selectLayer(page, /Parágrafo$/);
+  await selectLayer(page, /^Parágrafo/);
   await inspector(page).getByLabel("Parágrafo", { exact: true }).fill("Plano ajustado a cada semana, de acordo com a sua resposta.");
-  await selectLayer(page, /Botão$/);
+  await selectLayer(page, /^Botão/);
   await inspector(page).getByLabel("Texto do botão").fill("Chamar no WhatsApp");
-  await inspector(page).getByLabel("O botão leva a").selectOption({ label: "WhatsApp" });
+  await inspector(page).getByLabel("O botão leva a").selectOption({ label: "Um contato" });
+  await inspector(page).getByLabel("Contato de destino", { exact: true }).selectOption({ label: "WhatsApp" });
+
+  // The style of the row: the gap and a background, written as typed values; what is out of range is not taken.
+  await selectLayer(page, /^2 colunas/);
+  await styleTab(page).click();
+  const gap = inspector(page).getByLabel("Espaço entre os blocos", { exact: true });
+  await gap.fill("32");
+  await inspector(page).locator("summary", { hasText: "Fundo" }).click();
+  await inspector(page).getByRole("button", { name: "Cor de fundo: Destaque suave" }).click();
+  await panel(page, "Página");
+  const row = stage(page).locator('.site-main > [data-type="box"]');
+  await expect(row).toHaveCSS("gap", "32px");
+  await expect(row).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await panel(page, "Propriedades");
+  await gap.fill("999");
+  await expect(gap).toHaveAttribute("aria-invalid", "true");
+  await panel(page, "Página");
+  await expect(row).toHaveCSS("gap", "32px");
+  await panel(page, "Propriedades");
+  await gap.blur();
+  await expect(gap).toHaveValue("32");
+  await expect(gap).not.toHaveAttribute("aria-invalid", "true");
+  await contentTab(page).click();
 
   // Order: the call to action goes to the end (down, down, ... with the block's own buttons).
   await selectLayer(page, /Chamada para contato/);
   for (let i = 0; i < 5; i++) await inspector(page).getByRole("button", { name: "Abaixo" }).click();
   await expect(inspector(page).getByRole("button", { name: "Abaixo" })).toBeDisabled();
-  expect((await layerNames(page)).filter((name) => !["Título", "Parágrafo", "Botão"].includes(name))).toEqual([
+  expect((await layerNames(page)).filter((name) => !["Título", "Parágrafo", "Botão", "Coluna"].includes(name))).toEqual([
     "Configurações da página", "Destaque", "Perguntas frequentes", "Serviços", "Depoimento", "Indicadores", "2 colunas", "Chamada para contato",
   ]);
+
+  // A link that goes to another block of the page (an anchor), after everything else.
+  await addAtEnd(page, "Link");
+  await panel(page, "Propriedades");
+  await inspector(page).getByLabel("Texto do link").fill("Ver os serviços");
+  await inspector(page).getByLabel("O link leva a").selectOption({ label: "Outro bloco desta página" });
+  await inspector(page).getByLabel("Bloco de destino").selectOption({ label: "Serviços · Serviços" });
 
   // A testimony needs the person's authorization to be published: the editor says which block and goes to it.
   await editor(page).getByRole("button", { name: "Salvar rascunho" }).click();
@@ -224,6 +261,24 @@ test("a professional builds a page in the visual editor, previews it, publishes 
   await expect(anonymous.page.getByText("Sim, por vídeo e pelo aplicativo.")).toBeVisible();
   const headings = await anonymous.page.locator("main h2").allInnerTexts();
   expect(headings).toEqual(["Perguntas frequentes", "Serviços", "Treino sem achismo", "Fale comigo"]);
+  // The link goes to the block it was given, by an anchor that is on the page.
+  const jump = anonymous.page.getByRole("link", { name: "Ver os serviços" });
+  const anchor = (await jump.getAttribute("href"))!;
+  expect(anchor).toMatch(/^#s-[a-z0-9-]+$/);
+  await expect(anonymous.page.locator(anchor)).toContainText("Consultoria online");
+  // The style of the row reaches the page by a sheet from the page's own address: nothing of the page has a style attribute or a style element (the framework's own scripts and tools are not the page).
+  const sheet = anonymous.page.locator('link[rel="stylesheet"][href*="/estilo.css"]');
+  await expect(sheet).toHaveCount(1);
+  await expect(anonymous.page.locator(".site-main > .site-box").first()).toHaveCSS("gap", "32px");
+  await expect(anonymous.page.locator(".site-main > .site-box").first()).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(anonymous.page.locator(".site[style], .site [style], .site style")).toHaveCount(0);
+  const sheetUrl = new URL((await sheet.getAttribute("href"))!, anonymous.page.url()).toString();
+  const css = await anonymous.page.request.get(sheetUrl);
+  expect(css.status()).toBe(200);
+  expect(css.headers()["content-type"]).toContain("text/css");
+  expect(css.headers()["x-content-type-options"]).toBe("nosniff");
+  expect(await css.text()).toMatch(/^\.site \.s-[a-z0-9-]+\.s-[a-z0-9-]+\.s-[a-z0-9-]+\{[^{}]*gap:32px[^{}]*\}/m);
+  expect((await anonymous.page.request.get(sheetUrl, { headers: { "If-None-Match": css.headers()["etag"] } })).status()).toBe(304);
   // Nothing of the tool, nothing from elsewhere: no form, no image, no editor, and every script is the app's own.
   await expect(anonymous.page.locator("form, img, iframe, dialog, [contenteditable], [data-block-id]")).toHaveCount(0);
   const origin = new URL(anonymous.page.url()).origin;
@@ -289,6 +344,7 @@ test("a professional builds a page in the visual editor, previews it, publishes 
   await state(page).getByRole("button", { name: "Tirar do ar" }).click();
   await expect(state(page).getByText("O site saiu do ar.")).toBeVisible();
   expect((await anonymous.page.request.get(`./s/${slug}`)).status()).toBe(404);
+  expect((await anonymous.page.request.get(sheetUrl)).status()).toBe(404);
   await expect(page.getByRole("list", { name: "Versões publicadas" }).getByText("Versão 2")).toBeVisible();
   const address = page.getByRole("form", { name: "Mudar o endereço do site" });
   await address.getByLabel(/^Endereço/).fill("gestor");
@@ -309,7 +365,7 @@ test("a professional builds a page in the visual editor, previews it, publishes 
 // A tall window: the blocks being dragged and the places they go to are on the screen at the same time.
 test.describe("drag and drop", () => {
 test.use({ viewport: { width: 1440, height: 1200 } });
-test("blocks go from the library to the page, move between places, fill the columns, and what does not fit a column stays out", async ({ page }, testInfo) => {
+test("blocks go from the library into the tree: between blocks, into containers at any depth; by the handle and by the layers; a container does not go into itself", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "Dragging is for a pointer; the phone adds and moves blocks with buttons, which the scenario above does.");
   await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
   const unique = crypto.randomUUID().slice(0, 8);
@@ -319,53 +375,87 @@ test("blocks go from the library to the page, move between places, fill the colu
   await expect(state(page).getByText("Fora do ar")).toBeVisible();
   await openEditor(page);
 
-  const frame = (type: string) => stage(page).locator(`.ve-frame[data-type="${type}"]`);
-  const tile = (name: string) => library(page).getByRole("button", { name: `Acrescentar ${name} ao fim da página` });
-  const order = async () => (await stage(page).locator(".site-main > .ve-frame").evaluateAll((nodes) => nodes.map((n) => (n as HTMLElement).dataset.type)));
+  const tile = (name: string) => library(page).getByRole("button", { name: `Acrescentar ${name}`, exact: true });
+  const onPage = (type: string) => stage(page).locator(`.site-main > [data-type="${type}"]`);
+  const typesOf = (container: Locator) => container.locator(":scope > [data-block-id]").evaluateAll((nodes) => nodes.map((n) => (n as HTMLElement).dataset.type));
+  const order = () => typesOf(stage(page).locator(".site-main"));
+  const near = async (target: Locator, edge: "top" | "bottom") => ({ x: 40, y: edge === "top" ? 2 : (await target.boundingBox())!.height - 2 });
 
-  // Dropped on the lower half of a block, it goes after it; on the upper half, before.
+  // Dropped on the lower half of a block, it goes after it; on the upper half, before; and it is the one selected.
   expect(await order()).toEqual(["hero", "cta"]);
-  await tile("Perguntas frequentes").dragTo(frame("hero"), { targetPosition: { x: 200, y: (await frame("hero").boundingBox())!.height - 10 } });
+  await tile("Perguntas frequentes").dragTo(onPage("hero"), { targetPosition: { x: 200, y: (await onPage("hero").boundingBox())!.height - 10 } });
   expect(await order()).toEqual(["hero", "faq", "cta"]);
-  await tile("Depoimento").dragTo(frame("hero"), { targetPosition: { x: 200, y: 8 } });
+  await tile("Depoimento").dragTo(onPage("hero"), { targetPosition: { x: 200, y: 8 } });
   expect(await order()).toEqual(["quote", "hero", "faq", "cta"]);
-  await expect(frame("quote")).toHaveAttribute("data-selected", "true");
+  await expect(stage(page).locator(".ve-select .ve-chip")).toHaveText("Depoimento");
+  // The outline of the selected block is over the block itself, measured from the page as drawn.
+  const outline = (await stage(page).locator(".ve-select").boundingBox())!;
+  const drawn = (await onPage("quote").boundingBox())!;
+  for (const [a, b] of [[outline.x, drawn.x], [outline.y, drawn.y], [outline.width, drawn.width], [outline.height, drawn.height]]) expect(Math.abs(a - b)).toBeLessThan(2);
 
   // A block that is there moves by its handle, and keeps what was written in it.
-  await frame("faq").locator(".site-editable").first().dblclick();
+  await onPage("faq").locator(".site-editable").first().dblclick();
   await page.keyboard.type("Perguntas do arrasto");
   await page.keyboard.press("Enter");
-  await expect(frame("faq").getByText("Perguntas do arrasto")).toBeVisible();
-  await frame("faq").click({ position: { x: 20, y: 40 } });
-  await frame("faq").getByRole("button", { name: /^Arrastar Bloco 3/ }).dragTo(frame("quote"), { targetPosition: { x: 200, y: 8 } });
+  await expect(onPage("faq").getByText("Perguntas do arrasto")).toBeVisible();
+  await onPage("faq").click({ position: { x: 20, y: 40 } });
+  await stage(page).getByRole("button", { name: "Arrastar Perguntas frequentes" }).dragTo(onPage("quote"), { targetPosition: { x: 200, y: 8 } });
   expect(await order()).toEqual(["faq", "quote", "hero", "cta"]);
-  await expect(frame("faq").getByText("Perguntas do arrasto")).toBeVisible();
+  await expect(onPage("faq").getByText("Perguntas do arrasto")).toBeVisible();
 
-  // Two columns: they take title, paragraph and button, in either column; a section dropped over them stays out.
-  await tile("2 colunas").dragTo(frame("cta"), { targetPosition: { x: 200, y: 8 } });
-  expect(await order()).toEqual(["faq", "quote", "hero", "columns", "cta"]);
-  const left = stage(page).locator('.site-column[data-side="left"]');
-  const right = stage(page).locator('.site-column[data-side="right"]');
-  await expect(left.locator(".ve-empty")).toBeVisible();
-  await tile("Título").dragTo(left.locator(".ve-empty"));
-  await expect(left.locator('.ve-frame[data-type="heading"]')).toHaveCount(1);
-  await tile("Botão").dragTo(right.locator(".ve-empty"));
-  await expect(right.locator('.ve-frame[data-type="button"]')).toHaveCount(1);
-  await tile("Parágrafo").dragTo(left.locator('.ve-frame[data-type="heading"]'), { targetPosition: { x: 40, y: 2 } });
-  await expect(left.locator(".ve-frame").evaluateAll((nodes) => nodes.map((n) => (n as HTMLElement).dataset.type))).resolves.toEqual(["paragraph", "heading"]);
-  await tile("Serviços").dragTo(left.locator('.ve-frame[data-type="heading"]'));
-  await expect(left.locator('.ve-frame[data-type="services"]')).toHaveCount(0);
-  await expect(frame("services")).toHaveCount(1);
-  expect((await order()).filter((type) => type === "services")).toHaveLength(1);
+  // Two columns come as a row of two empty columns; each takes what is dropped in it, and any kind of block fits (a section too).
+  await tile("2 colunas").dragTo(onPage("cta"), { targetPosition: { x: 200, y: 8 } });
+  expect(await order()).toEqual(["faq", "quote", "hero", "box", "cta"]);
+  const row = onPage("box");
+  const columns = row.locator(':scope > [data-type="box"]');
+  await expect(columns).toHaveCount(2);
+  await expect(stage(page).locator("[data-empty]")).toHaveCount(2);
+  await tile("Título").dragTo(columns.nth(0));
+  await expect(stage(page).locator("[data-empty]")).toHaveCount(1);
+  await tile("Botão").dragTo(columns.nth(1));
+  await expect(stage(page).locator("[data-empty]")).toHaveCount(0);
+  const heading = columns.nth(0).locator(':scope > [data-type="heading"]');
+  await tile("Parágrafo").dragTo(heading, { targetPosition: await near(heading, "top") });
+  expect(await typesOf(columns.nth(0))).toEqual(["paragraph", "heading"]);
+  await tile("Serviços").dragTo(heading, { targetPosition: await near(heading, "bottom") });
+  expect(await typesOf(columns.nth(0))).toEqual(["paragraph", "heading", "services"]);
+  expect(await order()).toEqual(["faq", "quote", "hero", "box", "cta"]);
 
-  // Dragging an element from one column to the other, and out of the columns onto the page.
-  await left.locator('.ve-frame[data-type="paragraph"]').click({ position: { x: 20, y: 6 } });
-  await left.locator('.ve-frame[data-type="paragraph"]').getByRole("button", { name: /^Arrastar Elemento 1/ }).dragTo(right.locator(".ve-frame").first(), { targetPosition: { x: 40, y: 2 } });
-  await expect(right.locator(".ve-frame").evaluateAll((nodes) => nodes.map((n) => (n as HTMLElement).dataset.type))).resolves.toEqual(["paragraph", "button"]);
-  await expect(left.locator(".ve-frame")).toHaveCount(1);
+  // From one column to the other by the handle, as a row of blocks side by side (the line goes by the row's own direction).
+  await columns.nth(0).locator(':scope > [data-type="paragraph"]').click({ position: { x: 20, y: 6 } });
+  const button = columns.nth(1).locator(':scope > [data-type="button"]');
+  await stage(page).getByRole("button", { name: "Arrastar Parágrafo" }).dragTo(button, { targetPosition: await near(button, "top") });
+  expect(await typesOf(columns.nth(1))).toEqual(["paragraph", "button"]);
+  expect(await typesOf(columns.nth(0))).toEqual(["heading", "services"]);
+
+  // A container does not go into itself, nor into what it holds: nothing changes.
+  await selectLayer(page, /^2 colunas/);
+  const before = await layerNames(page);
+  await stage(page).getByRole("button", { name: "Arrastar 2 colunas" }).dragTo(columns.nth(0));
+  await stage(page).getByRole("button", { name: "Arrastar 2 colunas" }).dragTo(heading);
+  expect(await layerNames(page)).toEqual(before);
+  expect(await order()).toEqual(["faq", "quote", "hero", "box", "cta"]);
+
+  // The layers are a tree, and it takes drags too: a layer dropped on the middle of a container goes inside it, at the end.
+  const layerRow = (text: RegExp | string) => library(page).locator(".ve-layer-row").filter({ hasText: text });
+  await panel(page, "Blocos");
+  await library(page).getByRole("button", { name: "Camadas", exact: true }).click();
+  expect(await layerNames(page)).toEqual(["Configurações da página", "Perguntas frequentes", "Depoimento", "Destaque", "2 colunas", "Coluna", "Título", "Serviços", "Coluna", "Parágrafo", "Botão", "Chamada para contato"]);
+  await layerRow("Perguntas frequentes").dragTo(layerRow(/^Coluna/).first());
+  expect(await order()).toEqual(["quote", "hero", "box", "cta"]);
+  expect(await typesOf(columns.nth(0))).toEqual(["heading", "services", "faq"]);
+  await expect(columns.nth(0).locator(':scope > [data-type="faq"]').getByText("Perguntas do arrasto")).toBeVisible();
+  // Before and after a layer: the upper part of a row puts it before.
+  await layerRow("Depoimento").dragTo(layerRow("Chamada para contato"), { targetPosition: { x: 60, y: 30 } });
+  expect(await order()).toEqual(["hero", "box", "cta", "quote"]);
+  // A container opens and closes in the list.
+  await library(page).getByRole("button", { name: "Fechar 2 colunas" }).click();
+  expect(await layerNames(page)).toEqual(["Configurações da página", "Destaque", "2 colunas", "Chamada para contato", "Depoimento"]);
+  await library(page).getByRole("button", { name: "Abrir 2 colunas" }).click();
+  expect((await layerNames(page)).length).toBe(12);
 
   // Writing straight on the page: double click, type, Enter keeps it; Escape gives it up; the panel agrees.
-  const title = left.locator('.ve-frame[data-type="heading"] .site-editable');
+  const title = columns.nth(0).locator('[data-type="heading"] .site-editable');
   await title.dblclick();
   await page.keyboard.type("Título escrito na página");
   await page.keyboard.press("Enter");
@@ -382,21 +472,35 @@ test("blocks go from the library to the page, move between places, fill the colu
   await page.locator("body").press("Control+Shift+z");
   await expect(title).toHaveText("Título escrito na página");
 
-  // Selecting by a click on the page shows that block's settings; a click on the background shows the page's.
-  await frame("quote").click({ position: { x: 20, y: 40 } });
+  // Selecting by a click on the page selects the innermost block; the way up is the trail above the settings, or the layers.
+  await title.click();
+  await expect(inspector(page).getByRole("heading", { name: "Título", level: 2 })).toBeVisible();
+  await inspector(page).getByRole("navigation", { name: "Onde este bloco está" }).getByRole("button", { name: /^Coluna/ }).click();
+  await expect(inspector(page).getByRole("heading", { name: "Coluna", level: 2 })).toBeVisible();
+  await expect(stage(page).locator(".ve-select .ve-chip")).toHaveText("Coluna");
+  await onPage("quote").click({ position: { x: 20, y: 40 } });
   await expect(inspector(page).getByRole("heading", { name: "Depoimento", level: 2 })).toBeVisible();
   await stage(page).locator(".ve-stage-scroll").click({ position: { x: 4, y: 4 } });
   await expect(inspector(page).getByRole("heading", { name: "Página", level: 2 })).toBeVisible();
 
-  // Nothing is saved until asked: leaving shows the page as it was.
+  // Grouping wraps a block in a container where it stands, and ungrouping takes the container away again.
+  await onPage("quote").click({ position: { x: 20, y: 40 } });
+  await stage(page).getByRole("button", { name: "Agrupar Depoimento em um contêiner" }).click();
+  expect(await order()).toEqual(["hero", "box", "cta", "box"]);
+  await expect(inspector(page).getByRole("heading", { name: "Contêiner", level: 2 })).toBeVisible();
+  await inspector(page).getByRole("button", { name: "Desagrupar" }).click();
+  expect(await order()).toEqual(["hero", "box", "cta", "quote"]);
+
+  // Nothing is saved until asked: after saving and reloading, the tree is as it was left.
   await expect(editor(page).getByText("Alterações não salvas")).toBeVisible();
   await editor(page).getByRole("button", { name: "Salvar rascunho" }).click();
   await expect(editor(page).getByText("Rascunho salvo.")).toBeVisible();
   await closeEditor(page);
   await page.reload();
   await openEditor(page);
-  // The section dropped over the upper half of the columns went before them, on the page.
-  expect(await order()).toEqual(["faq", "quote", "hero", "services", "columns", "cta"]);
-  await expect(left.locator('.ve-frame[data-type="heading"] .site-editable')).toHaveText("Título escrito na página");
+  expect(await order()).toEqual(["hero", "box", "cta", "quote"]);
+  expect(await typesOf(columns.nth(0))).toEqual(["heading", "services", "faq"]);
+  expect(await typesOf(columns.nth(1))).toEqual(["paragraph", "button"]);
+  await expect(columns.nth(0).locator('[data-type="heading"] .site-editable')).toHaveText("Título escrito na página");
 });
 });

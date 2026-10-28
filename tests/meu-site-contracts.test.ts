@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   BLOCK_TYPES,
-  COLUMN_TYPES,
   MAX_BLOCKS,
-  MAX_COLUMN_ITEMS,
+  MAX_CHILDREN,
+  MAX_DEPTH,
   MAX_NODES,
+  allNodes,
+  boxDepth,
   channelUrl,
   emailUrl,
   emptyBlock,
@@ -25,11 +27,11 @@ import {
 } from "@/modules/meu-site/contracts";
 
 const full = (over: Partial<SiteContent> = {}): SiteContent => ({
-  schemaVersion: 2,
+  schemaVersion: 3,
   title: "Marina Treinos",
   description: "Treino com acompanhamento",
   contact: { whatsapp: "(11) 91234-5678", email: "marina@example.test", instagram: "@marina.treinos" },
-  theme: { accent: "blue", mode: "light" },
+  theme: { accent: "blue", mode: "light", width: "narrow" },
   blocks: [
     { id: "a1", type: "hero", eyebrow: "", heading: "Treino sob medida", subheading: "", buttonLabel: "Falar comigo", buttonChannel: "whatsapp" },
     { id: "a2", type: "text", eyebrow: "", heading: "Sobre", text: "Texto" },
@@ -39,6 +41,8 @@ const full = (over: Partial<SiteContent> = {}): SiteContent => ({
 const withBlocks = (blocks: Block[]) => full({ blocks });
 const block = <T extends Block["type"]>(type: T, id: string, over: Partial<Extract<Block, { type: T }>> = {}) =>
   ({ ...emptyBlock(type, id), ...over }) as Block;
+/** A container holding what is given. */
+const box = (id: string, children: Block[], over: object = {}) => ({ ...emptyBlock("box", id), children, ...over }) as Block;
 
 describe("the address of the page", () => {
   it("accepts a short lower-case address with digits and single hyphens", () => {
@@ -90,63 +94,106 @@ describe("the document of the page", () => {
     expect(siteContent.safeParse(full({ title: "", blocks: [emptyBlock("hero"), emptyBlock("services"), emptyBlock("faq")] })).success).toBe(true);
     expect(siteContent.safeParse(starterContent("Marina")).success).toBe(true);
   });
-  it("accepts every kind of block, empty, on the page; the elements also inside a column", () => {
+  it("accepts every kind of node, empty, on the page and inside a container: a container takes sections too", () => {
+    expect([...BLOCK_TYPES]).toEqual(["hero", "text", "services", "about", "quote", "stats", "faq", "cta", "box", "heading", "paragraph", "button", "link", "image"]);
     for (const type of BLOCK_TYPES) {
       const made = emptyBlock(type, `b-${type}`);
       expect(siteContent.safeParse(withBlocks([made])).success, type).toBe(true);
+      expect(siteContent.safeParse(withBlocks([box("c", [emptyBlock(type, `in-${type}`)])])).success, `${type} in a container`).toBe(true);
     }
-    const columns = block("columns", "c", {
-      left: [emptyBlock("heading", "l1"), emptyBlock("paragraph", "l2")] as never,
-      right: [emptyBlock("button", "r1")] as never,
-    });
-    expect(siteContent.safeParse(withBlocks([columns])).success).toBe(true);
   });
-  it("refuses a field that is not part of it, another version, and a block of another kind", () => {
+  it("accepts containers inside containers, as many as the limit, and refuses one more", () => {
+    const nested = (levels: number): Block => {
+      let inner: Block = emptyBlock("paragraph", "leaf");
+      for (let level = levels; level >= 1; level--) inner = box(`box${level}`, [inner]);
+      return inner;
+    };
+    expect(boxDepth([nested(MAX_DEPTH)])).toBe(MAX_DEPTH);
+    expect(siteContent.safeParse(withBlocks([nested(MAX_DEPTH)])).success).toBe(true);
+    expect(siteContent.safeParse(withBlocks([nested(MAX_DEPTH + 1)])).success).toBe(false);
+    expect(boxDepth([emptyBlock("hero", "h")])).toBe(0);
+  });
+  it("refuses a field that is not part of it, another version, and a node of another kind", () => {
     expect(siteContent.safeParse({ ...full(), html: "<b>x</b>" }).success).toBe(false);
-    expect(siteContent.safeParse({ ...full(), schemaVersion: 3 }).success).toBe(false);
+    expect(siteContent.safeParse({ ...full(), schemaVersion: 4 }).success).toBe(false);
+    expect(siteContent.safeParse({ ...full(), schemaVersion: 2 }).success).toBe(false);
     expect(siteContent.safeParse({ ...full(), schemaVersion: 1 }).success).toBe(false);
     expect(siteContent.safeParse(full({ blocks: [{ id: "x", type: "script", src: "https://evil.test" } as never] })).success).toBe(false);
+    expect(siteContent.safeParse(full({ blocks: [{ id: "x", type: "columns", ratio: "equal", left: [], right: [] } as never] })).success).toBe(false);
     expect(siteContent.safeParse(full({ blocks: [{ ...(emptyBlock("text") as object), onClick: "x" } as never] })).success).toBe(false);
+    expect(siteContent.safeParse(full({ blocks: [box("c", [], { html: "<b>" })] })).success).toBe(false);
   });
-  it("refuses, inside a column, a section and another \"2 columns\": only title, paragraph, button and image fit", () => {
-    expect([...COLUMN_TYPES]).toEqual(["heading", "paragraph", "button", "image"]);
-    for (const type of ["hero", "text", "services", "about", "quote", "stats", "faq", "cta", "columns"] as const) {
-      const inside = block("columns", "c", { left: [emptyBlock(type, "in")] as never });
-      expect(siteContent.safeParse(withBlocks([inside])).success, type).toBe(false);
-    }
-  });
-  it("takes the look from a closed list: an accent and a mode, never a color typed by a person", () => {
-    expect(siteContent.safeParse(full({ theme: { accent: "graphite", mode: "dark" } })).success).toBe(true);
-    for (const bad of [{ accent: "#ff0000", mode: "light" }, { accent: "blue", mode: "sepia" }, { accent: "blue" }, { accent: "blue", mode: "light", css: "x" }])
+  it("takes the look from a closed list: an accent, a mode and a width, never a color typed by a person", () => {
+    expect(siteContent.safeParse(full({ theme: { accent: "graphite", mode: "dark", width: "full" } })).success).toBe(true);
+    for (const bad of [
+      { accent: "#ff0000", mode: "light", width: "narrow" },
+      { accent: "blue", mode: "sepia", width: "narrow" },
+      { accent: "blue", mode: "light", width: "huge" },
+      { accent: "blue", mode: "light" },
+      { accent: "blue", width: "narrow" },
+      { accent: "blue", mode: "light", width: "narrow", css: "x" },
+    ])
       expect(siteContent.safeParse(full({ theme: bad as never })).success, JSON.stringify(bad)).toBe(false);
     expect(siteContent.safeParse({ ...full(), theme: undefined }).success).toBe(false);
   });
-  it("bounds the number of blocks, the elements in a column, the total, the length of the texts and the repetition of identifiers", () => {
+  it("bounds the number of blocks on the page, in a container, in all, the length of the texts and the repetition of identifiers", () => {
     const many = Array.from({ length: MAX_BLOCKS + 1 }, (_, i) => ({ ...(emptyBlock("text") as object), id: `b${i}` }));
     expect(siteContent.safeParse(full({ blocks: many as never })).success).toBe(false);
     expect(siteContent.safeParse(full({ blocks: many.slice(0, MAX_BLOCKS) as never })).success).toBe(true);
     const items = (n: number, prefix: string) => Array.from({ length: n }, (_, i) => emptyBlock("paragraph", `${prefix}${i}`));
-    expect(siteContent.safeParse(withBlocks([block("columns", "c", { left: items(MAX_COLUMN_ITEMS, "l") as never })])).success).toBe(true);
-    expect(siteContent.safeParse(withBlocks([block("columns", "c", { left: items(MAX_COLUMN_ITEMS + 1, "l") as never })])).success).toBe(false);
-    // 5 columns blocks with 6 + 6 elements are 65 blocks in all, over the total.
-    const heavy = Array.from({ length: 5 }, (_, i) => block("columns", `c${i}`, { left: items(6, `l${i}-`) as never, right: items(6, `r${i}-`) as never }));
-    expect(heavy.length + heavy.length * 12).toBeGreaterThan(MAX_NODES);
+    expect(siteContent.safeParse(withBlocks([box("c", items(MAX_CHILDREN, "l"))])).success).toBe(true);
+    expect(siteContent.safeParse(withBlocks([box("c", items(MAX_CHILDREN + 1, "l"))])).success).toBe(false);
+    // Six containers with 40 elements each are 246 nodes in all, over the total.
+    const heavy = Array.from({ length: 6 }, (_, i) => box(`c${i}`, items(MAX_CHILDREN, `l${i}-`)));
+    expect(allNodes(heavy).length).toBeGreaterThan(MAX_NODES);
     expect(siteContent.safeParse(withBlocks(heavy)).success).toBe(false);
+    expect(siteContent.safeParse(withBlocks(heavy.slice(0, 4))).success).toBe(true);
     expect(siteContent.safeParse(full({ title: "x".repeat(81) })).success).toBe(false);
     expect(siteContent.safeParse(full({ blocks: [{ id: "same", type: "text", eyebrow: "", heading: "", text: "a" }, { id: "same", type: "text", eyebrow: "", heading: "", text: "b" }] })).success).toBe(false);
     expect(siteContent.safeParse(full({ blocks: [{ id: "BAD ID", type: "text", eyebrow: "", heading: "", text: "a" }] })).success).toBe(false);
   });
-  it("does not let an identifier repeat between the page and a column, or between two columns", () => {
-    const inside = block("columns", "c", { left: [emptyBlock("heading", "dup")] as never, right: [emptyBlock("paragraph", "dup")] as never });
-    expect(siteContent.safeParse(withBlocks([inside])).success).toBe(false);
-    const clash = block("columns", "c", { left: [emptyBlock("heading", "a1")] as never });
-    expect(siteContent.safeParse(full({ blocks: [...full().blocks, clash] })).success).toBe(false);
+  it("does not let an identifier repeat anywhere in the tree: page and container, container and container, grandchild and page", () => {
+    expect(siteContent.safeParse(withBlocks([box("c", [emptyBlock("heading", "dup")]), box("d", [emptyBlock("paragraph", "dup")])])).success).toBe(false);
+    expect(siteContent.safeParse(full({ blocks: [...full().blocks, box("c", [emptyBlock("heading", "a1")])] })).success).toBe(false);
+    expect(siteContent.safeParse(withBlocks([box("c", [box("d", [emptyBlock("heading", "c")])])])).success).toBe(false);
+  });
+  it("keeps a heading's level between 2 and 6 (the first level is the page's own), and a button or a link to a contact or to a block, not both", () => {
+    expect(emptyBlock("heading", "h")).toMatchObject({ level: 2 });
+    for (const level of [2, 3, 4, 5, 6]) expect(siteContent.safeParse(withBlocks([block("heading", "h", { level } as never)])).success, String(level)).toBe(true);
+    for (const level of [1, 7, 0, 2.5, "2"]) expect(siteContent.safeParse(withBlocks([block("heading", "h", { level } as never)])).success, String(level)).toBe(false);
+    for (const type of ["button", "link"] as const) {
+      expect(siteContent.safeParse(withBlocks([block(type, "x", { label: "Ir", channel: "whatsapp" } as never)])).success).toBe(true);
+      expect(siteContent.safeParse(withBlocks([block(type, "x", { label: "Ir", anchor: "a1" } as never)])).success).toBe(true);
+      expect(siteContent.safeParse(withBlocks([block(type, "x", { label: "Ir", channel: "whatsapp", anchor: "a1" } as never)])).success).toBe(false);
+      expect(siteContent.safeParse(withBlocks([block(type, "x", { label: "Ir", anchor: "not an id!" } as never)])).success).toBe(false);
+      expect(siteContent.safeParse(withBlocks([block(type, "x", { label: "Ir", url: "https://evil.test" } as never)])).success).toBe(false);
+    }
+  });
+  it("gives a node a name for the layers (plain text, at most 40 characters) and a typed style, and nothing else", () => {
+    expect(siteContent.safeParse(withBlocks([box("c", [], { name: "Barra de topo", style: { display: "flex", gap: "12px" } })])).success).toBe(true);
+    expect(siteContent.safeParse(withBlocks([box("c", [], { name: "x".repeat(41) })])).success).toBe(false);
+    expect(siteContent.safeParse(withBlocks([box("c", [], { style: { display: "flex", unknown: "x" } })])).success).toBe(false);
+    expect(siteContent.safeParse(withBlocks([box("c", [], { style: { width: "50em" } })])).success).toBe(false);
+    expect(siteContent.safeParse(withBlocks([block("hero", "h", { style: { color: "red" } } as never)])).success).toBe(false);
+    expect(siteContent.safeParse(withBlocks([block("hero", "h", { style: { color: "#a1b2c3" } } as never)])).success).toBe(true);
+  });
+  it("refuses a document that nests far too deep without running out of stack, and a document that is too large", () => {
+    let hostile: unknown = { id: "x", type: "paragraph", text: "" };
+    for (let level = 0; level < 6000; level++) hostile = { id: `b${level}`, type: "box", tag: "div", children: [hostile] };
+    const raw = { ...full(), blocks: [hostile] };
+    expect(() => parseContent(raw)).toThrow();
+    expect(safeParseContent(raw).success).toBe(false);
+    const big = withBlocks([block("text", "t", { text: "x".repeat(2000) }), ...Array.from({ length: 39 }, (_, i) => block("text", `t${i}`, { text: "x".repeat(2000) }))]);
+    expect(JSON.stringify(big).length).toBeGreaterThan(60_000);
+    expect(siteContent.safeParse(big).success).toBe(true);
+    const huge = withBlocks(Array.from({ length: 40 }, (_, i) => block("text", `h${i}`, { text: "x".repeat(2000), heading: "y".repeat(120), eyebrow: "z".repeat(60), style: { padding: { top: "1px", bottom: "1px", left: "1px", right: "1px" }, margin: { top: "1px", bottom: "1px", left: "1px", right: "1px" } } } as never)));
+    expect(JSON.stringify(huge).length).toBeLessThanOrEqual(150_000);
   });
   it("keeps the line breaks of a text, refuses control and invisible characters, and keeps markup as plain text", () => {
     const withText = (value: string) => siteContent.safeParse(full({ blocks: [{ id: "t1", type: "text", eyebrow: "", heading: "", text: value }] }));
     expect(withText("linha 1\r\nlinha 2").success).toBe(true);
     expect(withText("a\u0000b").success).toBe(false);
-    expect(withText("a\u202eb").success).toBe(false);
+    expect(withText("a‮b").success).toBe(false);
     const parsed = withText("<script>alert(1)</script>");
     expect(parsed.success).toBe(true);
     if (parsed.success) expect((parsed.data.blocks[0] as { text: string }).text).toBe("<script>alert(1)</script>");
@@ -171,10 +218,10 @@ describe("the first version of the document, still read", () => {
       { id: "c", type: "cta", heading: "Vamos", text: "", buttonLabel: "Escrever", buttonChannel: "email" },
     ],
   };
-  it("reads it as version 2: an empty eyebrow on each block, the default look, everything else as it was", () => {
+  it("reads it as version 3: an empty eyebrow on each block, the default look, everything else as it was", () => {
     const upgraded = parseContent(v1);
-    expect(upgraded.schemaVersion).toBe(2);
-    expect(upgraded.theme).toEqual({ accent: "blue", mode: "light" });
+    expect(upgraded.schemaVersion).toBe(3);
+    expect(upgraded.theme).toEqual({ accent: "blue", mode: "light", width: "narrow" });
     expect(upgraded.title).toBe("Marina Treinos");
     expect(upgraded.blocks.map((b) => b.type)).toEqual(["hero", "text", "services", "faq", "cta"]);
     for (const b of upgraded.blocks) expect((b as { eyebrow: string }).eyebrow).toBe("");
@@ -182,14 +229,78 @@ describe("the first version of the document, still read", () => {
     expect(upgraded.blocks[2]).toMatchObject({ serviceIds: ["x"], items: [{ name: "Consultoria", delivery: "ONLINE" }] });
     expect(siteContent.safeParse(upgraded).success).toBe(true);
   });
-  it("does not read it if it was not valid then either, and reads version 2 as it is", () => {
+  it("does not read it if it was not valid then either, and reads version 3 as it is", () => {
     expect(safeParseContent({ ...v1, html: "x" }).success).toBe(false);
     expect(safeParseContent({ ...v1, blocks: [{ id: "q", type: "quote" }] }).success).toBe(false);
-    expect(safeParseContent({ ...v1, schemaVersion: 3 }).success).toBe(false);
+    expect(safeParseContent({ ...v1, schemaVersion: 4 }).success).toBe(false);
     expect(safeParseContent(null).success).toBe(false);
     expect(safeParseContent("x").success).toBe(false);
     expect(parseContent(full())).toEqual(full());
     expect(() => parseContent({ ...v1, title: "x".repeat(81) })).toThrow();
+  });
+});
+
+describe("the second version of the document (sections and \"2 columns\"), still read", () => {
+  const item = (type: string, id: string, extra: object = {}) => ({ id, type, ...extra });
+  const v2 = (blocks: unknown[], extra: object = {}) => ({
+    schemaVersion: 2,
+    title: "Marina Treinos",
+    description: "",
+    contact: { whatsapp: "(11) 91234-5678", email: "", instagram: "" },
+    theme: { accent: "green", mode: "dark" },
+    blocks,
+    ...extra,
+  });
+  const columns = (ratio: string, left: unknown[], right: unknown[]) => ({ id: "cols", type: "columns", ratio, left, right });
+
+  it("keeps the sections as they were, gives the page the narrow width it had, and a heading level 2", () => {
+    const upgraded = parseContent(
+      v2([{ id: "h", type: "hero", eyebrow: "Olá", heading: "Treino", subheading: "", buttonLabel: "Falar", buttonChannel: "whatsapp" }, item("heading", "t", { text: "Título solto" })], { logoAssetId: "logo-1" }),
+    );
+    expect(upgraded.schemaVersion).toBe(3);
+    expect(upgraded.theme).toEqual({ accent: "green", mode: "dark", width: "narrow" });
+    expect(upgraded.logoAssetId).toBe("logo-1");
+    expect(upgraded.blocks[0]).toMatchObject({ type: "hero", eyebrow: "Olá" });
+    expect(upgraded.blocks[1]).toEqual({ id: "t", type: "heading", text: "Título solto", level: 2 });
+  });
+  it("makes a \"2 columns\" block a row container of two column containers, with the same elements in the same order", () => {
+    const upgraded = parseContent(
+      v2([columns("equal", [item("heading", "l1", { text: "A" }), item("paragraph", "l2", { text: "B" })], [item("button", "r1", { label: "Ir", channel: "whatsapp" })])]),
+    );
+    const row = upgraded.blocks[0];
+    expect(row).toMatchObject({ id: "cols", type: "box", tag: "div", name: "2 colunas", style: { display: "flex", direction: "row", wrap: "wrap", gap: "24px" } });
+    if (row.type !== "box") throw new Error("not a container");
+    expect(row.children.map((c) => c.id)).toEqual(["cols-l", "cols-r"]);
+    const [left, right] = row.children;
+    if (left.type !== "box" || right.type !== "box") throw new Error("not containers");
+    expect(left.children).toEqual([{ id: "l1", type: "heading", text: "A", level: 2 }, { id: "l2", type: "paragraph", text: "B" }]);
+    expect(right.children).toEqual([{ id: "r1", type: "button", label: "Ir", channel: "whatsapp" }]);
+    expect(left.style).toMatchObject({ display: "flex", direction: "column", grow: 1, basis: "240px" });
+    expect(right.style).toMatchObject({ grow: 1 });
+    expect(siteContent.safeParse(upgraded).success).toBe(true);
+  });
+  it("keeps the ratio as the weight of each column, and leaves out a side that had nothing, as the page of version 2 did", () => {
+    const grows = (ratio: string, left: unknown[], right: unknown[]) => {
+      const row = parseContent(v2([columns(ratio, left, right)])).blocks[0];
+      if (row.type !== "box") throw new Error("not a container");
+      return row.children.map((c) => (c.style as { grow: number }).grow);
+    };
+    const one = [item("paragraph", "p", { text: "x" })];
+    expect(grows("equal", one, [item("paragraph", "q", { text: "y" })])).toEqual([1, 1]);
+    expect(grows("left", one, [item("paragraph", "q", { text: "y" })])).toEqual([3, 2]);
+    expect(grows("right", one, [item("paragraph", "q", { text: "y" })])).toEqual([2, 3]);
+    expect(grows("left", one, [])).toEqual([3]);
+    expect(grows("left", [], [])).toEqual([]);
+  });
+  it("does not read it if it was not valid then (a section inside a column, a repeated id), or too large", () => {
+    expect(safeParseContent(v2([columns("equal", [{ id: "h", type: "hero", eyebrow: "", heading: "", subheading: "", buttonLabel: "" }], [])])).success).toBe(false);
+    expect(safeParseContent(v2([item("heading", "a", { text: "x" }), columns("equal", [item("heading", "a", { text: "y" })], [])])).success).toBe(false);
+    expect(safeParseContent(v2([], { html: "x" })).success).toBe(false);
+    expect(safeParseContent(v2([], { theme: { accent: "green", mode: "dark", width: "full" } })).success).toBe(false);
+  });
+  it("keeps the images of a page of version 2, in a column too, on the list of what it uses", () => {
+    const upgraded = parseContent(v2([columns("equal", [item("image", "i", { assetId: "asset-7", alt: "x", caption: "", size: "full" })], [])], { logoAssetId: "asset-8" }));
+    expect(referencedAssetIds(upgraded).sort()).toEqual(["asset-7", "asset-8"]);
   });
 });
 
@@ -203,6 +314,14 @@ describe("the services written into a block", () => {
       { name: "Consultoria online", description: "Plano mensal", delivery: "ONLINE" },
     ]);
     expect(out.blocks[1]).toEqual(content.blocks[1]);
+    expect(withoutResolvedServices(out)).toEqual(content);
+  });
+  it("does the same for a block deep inside containers, and leaves what is around it untouched", () => {
+    const content = withBlocks([box("c", [box("d", [block("services", "s", { serviceIds: ["svc-1"] }), emptyBlock("paragraph", "p")])])]);
+    const out = resolveServices(content, live);
+    const inner = allNodes(out.blocks).find((b) => b.id === "s");
+    expect((inner as { items: unknown }).items).toEqual([{ name: "Consultoria online", description: "Plano mensal", delivery: "ONLINE" }]);
+    expect(allNodes(out.blocks).map((b) => b.id)).toEqual(["c", "d", "s", "p"]);
     expect(withoutResolvedServices(out)).toEqual(content);
   });
 });
@@ -261,22 +380,40 @@ describe("what stops a publication", () => {
     expect(messages(withBlocks([block("stats", "s", { items: [{ value: "1", label: "Avaliação" }] })]))).toEqual([]);
     expect(messages(withBlocks([block("stats", "s", { items: [{ value: "1", label: "Avaliação" }, { value: "2", label: "" }] })]))).toEqual([expect.stringContaining("número e legenda")]);
   });
-  it("looks inside the columns: empty ones, empty elements and a button that leads nowhere, each with the element's id", () => {
-    expect(messages(withBlocks([block("columns", "c")]))).toEqual([expect.stringContaining("colunas estão vazias")]);
-    const columns = block("columns", "c", {
-      left: [emptyBlock("heading", "h"), { ...emptyBlock("paragraph", "p"), text: "ok" }] as never,
-      right: [{ ...emptyBlock("button", "b"), label: "Falar", channel: "whatsapp" }, emptyBlock("button", "b2")] as never,
-    });
-    const issues = publishIssues(full({ blocks: [columns], contact: { whatsapp: "", email: "", instagram: "" } }), live);
-    expect(issues.map((i) => i.blockId)).toEqual(["h", "b", "b2"]);
-    expect(issues[0].message).toContain("coluna da esquerda, elemento 1 (Título)");
-    expect(issues[1].message).toContain("coluna da direita");
+  it("looks inside the containers at any depth, saying where: the block, the path inside it and the id of the node", () => {
+    const inner = box("c", [
+      emptyBlock("heading", "h"),
+      box("d", [{ ...emptyBlock("button", "b"), label: "Falar", channel: "whatsapp" } as Block, emptyBlock("link", "k")]),
+    ]);
+    const issues = publishIssues(full({ blocks: [inner], contact: { whatsapp: "", email: "", instagram: "" } }), live);
+    expect(issues.map((i) => i.blockId)).toEqual(["h", "b", "k"]);
+    expect(issues.every((i) => i.block === 1)).toBe(true);
+    expect(issues[0].message).toContain("Bloco 1 (Contêiner), camada 1 (Título)");
+    expect(issues[1].message).toContain("camada 2.1 (Botão)");
     expect(issues[1].message).toContain("WhatsApp");
-    expect(messages(full({ blocks: [{ ...columns, left: [{ ...emptyBlock("heading", "h"), text: "Oi" }] as never, right: [{ ...emptyBlock("button", "b"), label: "Falar", channel: "whatsapp" }] as never } as Block] }))).toEqual([]);
+    expect(issues[2].message).toContain("camada 2.2 (Link)");
+    const ok = box("c", [{ ...emptyBlock("heading", "h"), text: "Oi" } as Block, { ...emptyBlock("button", "b"), label: "Falar", channel: "whatsapp" } as Block]);
+    expect(messages(full({ blocks: [ok] }))).toEqual([]);
   });
-  it("checks the elements that stand on the page by themselves, as the ones in a column", () => {
-    expect(messages(withBlocks([block("heading", "h"), block("paragraph", "p"), block("button", "b")])).length).toBe(3);
-    expect(messages(withBlocks([block("heading", "h", { text: "Oi" }), block("paragraph", "p", { text: "Texto" }), block("button", "b", { label: "Falar", channel: "whatsapp" })]))).toEqual([]);
+  it("lets an empty container through (it is a space or a background), but not an empty page", () => {
+    expect(messages(withBlocks([box("c", [])]))).toEqual([]);
+    expect(messages(withBlocks([]))).toEqual(["Acrescente pelo menos um bloco."]);
+  });
+  it("checks the elements that stand on the page by themselves, as the ones in a container", () => {
+    expect(messages(withBlocks([block("heading", "h"), block("paragraph", "p"), block("button", "b"), block("link", "l")])).length).toBe(4);
+    expect(messages(withBlocks([block("heading", "h", { text: "Oi" }), block("paragraph", "p", { text: "Texto" }), block("button", "b", { label: "Falar", channel: "whatsapp" }), block("link", "l", { label: "Contato", channel: "email" })]))).toEqual([]);
+  });
+  it("checks where a button or a link goes: a text and a destination, a contact that exists, a block that is still there", () => {
+    const target = (over: object) => messages(withBlocks([block("hero", "top", { heading: "H" }), block("link", "l", over as never)]));
+    expect(target({ label: "Ver", anchor: "top" })).toEqual([]);
+    expect(target({ label: "Ver", anchor: "gone" })).toEqual([expect.stringContaining("não existe mais")]);
+    expect(target({ label: "", anchor: "top" })).toEqual([expect.stringContaining("escreva o texto do link")]);
+    expect(target({ label: "Ver" })).toEqual([expect.stringContaining("para onde o link leva")]);
+    expect(target({})).toEqual([expect.stringContaining("texto e de um destino")]);
+    const noInstagram = full({ blocks: [block("link", "l", { label: "Ver", channel: "instagram" } as never)], contact: { whatsapp: "(11) 91234-5678", email: "", instagram: "" } });
+    expect(messages(noInstagram)).toEqual([expect.stringContaining("Instagram")]);
+    expect(target({ label: "Ver", channel: "instagram" })).toEqual([]);
+    expect(messages(withBlocks([block("heading", "h", { text: "Oi" }), block("button", "b", { label: "Ver", anchor: "h" })]))).toEqual([]);
   });
   it("shows that a new site is not publishable until the contact it points to is filled in", () => {
     const issues = publishIssues(starterContent("Marina"), live);
@@ -297,17 +434,23 @@ describe("images on the page", () => {
     expect(siteContent.safeParse(withBlocks([imageBlock("a", { alt: "x".repeat(201) })])).success).toBe(false);
     expect(siteContent.safeParse(withBlocks([imageBlock("a", { caption: "x".repeat(201) })])).success).toBe(false);
   });
-  it("fits in a column, and the logo is an id too", () => {
-    const columns = block("columns", "c", { left: [imageBlock("in")] as never });
-    expect(siteContent.safeParse(withBlocks([columns])).success).toBe(true);
+  it("fits in a container, and the logo is an id too", () => {
+    expect(siteContent.safeParse(withBlocks([box("c", [imageBlock("in")])])).success).toBe(true);
     expect(siteContent.safeParse(full({ logoAssetId: "asset-9" })).success).toBe(true);
     expect(siteContent.safeParse(full({ logoAssetId: "x".repeat(65) })).success).toBe(false);
     expect(siteContent.safeParse(full({ logoAssetId: 5 as never })).success).toBe(false);
   });
-  it("lists the images the document uses, once each: on the page, in a column and the logo", () => {
-    const columns = block("columns", "c", { left: [imageBlock("in", { assetId: "asset-2" })] as never, right: [imageBlock("in2", { assetId: "asset-1" })] as never });
-    const content = full({ blocks: [imageBlock("a"), columns, imageBlock("empty", { assetId: "" })], logoAssetId: "asset-3" });
-    expect(referencedAssetIds(content).sort()).toEqual(["asset-1", "asset-2", "asset-3"]);
+  it("lists the images the document uses, once each: in an image, deep in containers, in the style of any node (a background) and the logo", () => {
+    const content = full({
+      blocks: [
+        imageBlock("a"),
+        box("c", [imageBlock("in", { assetId: "asset-2" }), box("d", [imageBlock("in2", { assetId: "asset-1" })], { style: { bgImage: "asset-4" } })]),
+        imageBlock("empty", { assetId: "" }),
+        block("hero", "h", { style: { bgImage: "asset-5" } } as never),
+      ],
+      logoAssetId: "asset-3",
+    });
+    expect(referencedAssetIds(content).sort()).toEqual(["asset-1", "asset-2", "asset-3", "asset-4", "asset-5"]);
     expect(referencedAssetIds(full())).toEqual([]);
   });
   it("is not publishable without the image, without its description, or with an image that is not in the library", () => {
@@ -320,10 +463,17 @@ describe("images on the page", () => {
     expect(issues(full({ blocks: [imageBlock("a")], logoAssetId: "gone" }))).toEqual([expect.stringContaining("logotipo")]);
     expect(issues(full({ blocks: [imageBlock("a")], logoAssetId: "asset-1" }))).toEqual([]);
   });
-  it("is checked inside a column too, with the element's id", () => {
-    const columns = block("columns", "c", { left: [imageBlock("in", { alt: "" })] as never });
-    const found = publishIssues(withBlocks([columns]), live, new Set(["asset-1"]));
+  it("does not publish a background that is not in the library, wherever the node is", () => {
+    const content = withBlocks([box("c", [block("paragraph", "p", { text: "x", style: { bgImage: "gone" } } as never)])]);
+    const found = publishIssues(content, live, new Set(["asset-1"]));
+    expect(found.map((i) => i.blockId)).toEqual(["p"]);
+    expect(found[0].message).toContain("imagem de fundo");
+    expect(publishIssues(content, live, null)).toEqual([]);
+    expect(publishIssues(withBlocks([box("c", [block("paragraph", "p", { text: "x", style: { bgImage: "asset-1" } } as never)])]), live, new Set(["asset-1"]))).toEqual([]);
+  });
+  it("is checked inside a container too, with the element's id", () => {
+    const found = publishIssues(withBlocks([box("c", [imageBlock("in", { alt: "" })])]), live, new Set(["asset-1"]));
     expect(found.map((i) => i.blockId)).toEqual(["in"]);
-    expect(found[0].message).toContain("coluna da esquerda");
+    expect(found[0].message).toContain("camada 1 (Imagem)");
   });
 });

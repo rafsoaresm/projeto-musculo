@@ -15,7 +15,7 @@ async function panel(page: Page, name: "Blocos" | "Página" | "Propriedades") {
 async function addBlock(page: Page, name: string) {
   await panel(page, "Blocos");
   await library(page).getByRole("button", { name: "Blocos", exact: true }).click();
-  await library(page).getByRole("button", { name: `Acrescentar ${name} ao fim da página` }).click();
+  await library(page).getByRole("button", { name: `Acrescentar ${name}`, exact: true }).click();
 }
 /** A real JPEG, drawn by the browser itself: nothing in the repository to keep up to date. */
 async function jpeg(page: Page): Promise<Buffer> {

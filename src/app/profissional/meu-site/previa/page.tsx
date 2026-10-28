@@ -8,8 +8,10 @@ import { siteAssetsFor } from "@/db/site-assets";
 import { sitesFor } from "@/db/sites";
 import { Notice, PageHeading } from "@/components/ui";
 import { canSeeSite } from "@/modules/meu-site/access";
-import { libraryImages } from "@/modules/meu-site/image-urls";
+import { libraryCssImages, libraryImages } from "@/modules/meu-site/image-urls";
 import { SiteRenderer } from "@/modules/meu-site/renderer";
+import { buildSiteCss } from "@/modules/meu-site/site-css";
+import { InlineSiteStyles } from "@/modules/meu-site/site-styles";
 
 export const dynamic = "force-dynamic";
 // The preview is for the person editing: nobody indexes it, and nothing here is cached.
@@ -38,6 +40,7 @@ export default async function SitePreview() {
         <p>Prévia: os botões de contato funcionam, mas o site só vai ao ar quando você publicar. O que ainda não foi salvo no editor não aparece aqui.</p>
       </Notice>
       <div className="site-preview" aria-label="Prévia da página">
+        <InlineSiteStyles css={buildSiteCss(preview.content, libraryCssImages(process.env.NEXT_PUBLIC_BASE_PATH || "", library))} />
         <SiteRenderer content={preview.content} images={libraryImages(process.env.NEXT_PUBLIC_BASE_PATH || "", library)} />
       </div>
     </>
