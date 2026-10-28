@@ -1,51 +1,6 @@
-import { test, expect, type Locator, type Page } from "@playwright/test";
+import { test, expect, type Locator } from "@playwright/test";
 import { createProfessional, localIP, newActor, noHorizontalOverflow } from "./helpers";
-
-const state = (page: Page) => page.getByRole("region", { name: "Estado do site" });
-const editor = (page: Page) => page.getByRole("dialog", { name: "Editor visual do site" });
-const stage = (page: Page) => editor(page).getByRole("main", { name: "Página" });
-const inspector = (page: Page) => editor(page).getByRole("complementary", { name: "Propriedades" });
-const library = (page: Page) => editor(page).getByRole("complementary", { name: "Blocos e camadas" });
-
-/** On a phone the editor shows one panel at a time; on a computer all three are there. */
-async function panel(page: Page, name: "Blocos" | "Página" | "Propriedades") {
-  const tabs = editor(page).getByRole("group", { name: "Painéis do editor" });
-  if (await tabs.isVisible()) await tabs.getByRole("button", { name, exact: true }).click();
-}
-async function openEditor(page: Page) {
-  await state(page).getByRole("button", { name: "Abrir o editor visual" }).click();
-  await expect(editor(page)).toBeVisible();
-}
-async function closeEditor(page: Page) {
-  await editor(page).getByRole("button", { name: "Fechar o editor" }).click();
-  await expect(editor(page)).toHaveCount(0);
-}
-/** Selects a block by the list of layers, the way that works with a keyboard and on a phone. */
-async function selectLayer(page: Page, label: RegExp | string, nth = 0) {
-  await panel(page, "Blocos");
-  await library(page).getByRole("button", { name: "Camadas", exact: true }).click();
-  await library(page).getByRole("list", { name: "Blocos da página" }).locator(".ve-layer").filter({ hasText: label }).nth(nth).click();
-  await panel(page, "Propriedades");
-}
-/** The names of the layers, from the first to the last (the tree, as a list). */
-const layerNames = async (page: Page) => {
-  await panel(page, "Blocos");
-  await library(page).getByRole("button", { name: "Camadas", exact: true }).click();
-  return library(page).getByRole("list", { name: "Blocos da página" }).locator(".ve-layer strong").allInnerTexts();
-};
-/** Adds a block from the library by a click. It goes inside the container that is selected, or after the block that is selected. */
-async function addSelected(page: Page, name: string) {
-  await panel(page, "Blocos");
-  await library(page).getByRole("button", { name: "Blocos", exact: true }).click();
-  await library(page).getByRole("button", { name: `Acrescentar ${name}`, exact: true }).click();
-}
-/** Adds a block at the end of the page: nothing selected first, so it goes to the end. */
-async function addAtEnd(page: Page, name: string) {
-  await selectLayer(page, "Configurações da página");
-  await addSelected(page, name);
-}
-const styleTab = (page: Page) => inspector(page).getByRole("button", { name: "Estilo", exact: true });
-const contentTab = (page: Page) => inspector(page).getByRole("button", { name: "Conteúdo", exact: true });
+import { addAtEnd, addSelected, closeEditor, contentTab, editor, inspector, layerNames, library, openEditor, panel, selectLayer, stage, state, styleTab } from "./site-helpers";
 
 test("a professional builds a page in the visual editor, previews it, publishes it, changes it without touching what is public, takes it offline and changes its address", async ({
   page,
@@ -151,6 +106,8 @@ test("a professional builds a page in the visual editor, previews it, publishes 
   // The style of the row: the gap and a background, written as typed values; what is out of range is not taken.
   await selectLayer(page, /^2 colunas/);
   await styleTab(page).click();
+  // The style is the computer's (a phone starts on its own size): the sheet below is the base, the sizes are the next scenario.
+  await inspector(page).getByRole("button", { name: "Estilo do computador" }).click();
   const gap = inspector(page).getByLabel("Espaço entre os blocos", { exact: true });
   await gap.fill("32");
   await inspector(page).locator("summary", { hasText: "Fundo" }).click();
@@ -212,16 +169,17 @@ test("a professional builds a page in the visual editor, previews it, publishes 
   await selectLayer(page, /Perguntas frequentes/);
   await expect(inspector(page).getByLabel("Resposta")).toHaveValue("Sim, por vídeo e pelo aplicativo.");
 
-  // The preview inside the editor is the page as it will be published, on a computer and on a phone.
+  // The preview inside the editor is the page as it will be published, in the frame of the size being edited and, side by side, of another.
   await panel(page, "Página");
   await editor(page).getByRole("button", { name: "Prévia", exact: true }).click();
   await expect(stage(page).getByRole("link", { name: "Falar comigo" })).toHaveAttribute("href", "https://wa.me/5511912345678");
   await expect(stage(page).getByRole("heading", { name: "Consultoria online", level: 3 })).toBeVisible();
   await expect(stage(page).locator(".ve-tools")).toHaveCount(0);
-  await editor(page).getByRole("button", { name: "Celular" }).click();
-  // The frame narrows with a short transition; the page inside answers to its own width, not to the screen's.
-  await expect.poll(async () => (await stage(page).locator(".ve-browser").boundingBox())!.width).toBeLessThanOrEqual(391);
-  await editor(page).getByRole("button", { name: "Computador" }).click();
+  await editor(page).getByRole("button", { name: "Mostrar o quadro do tablet" }).click();
+  await expect(stage(page).locator("[data-frame]")).toHaveCount(2);
+  await expect(stage(page).locator('[data-frame="tablet"]').getByRole("heading", { name: "Consultoria online", level: 3 })).toBeVisible();
+  await editor(page).getByRole("button", { name: "Mostrar o quadro do tablet" }).click();
+  await expect(stage(page).locator("[data-frame]")).toHaveCount(1);
   await editor(page).getByRole("button", { name: "Voltar a editar" }).click();
   await noHorizontalOverflow(page);
 
@@ -480,7 +438,7 @@ test("blocks go from the library into the tree: between blocks, into containers 
   await expect(stage(page).locator(".ve-select .ve-chip")).toHaveText("Coluna");
   await onPage("quote").click({ position: { x: 20, y: 40 } });
   await expect(inspector(page).getByRole("heading", { name: "Depoimento", level: 2 })).toBeVisible();
-  await stage(page).locator(".ve-stage-scroll").click({ position: { x: 4, y: 4 } });
+  await stage(page).locator(".ve-canvas").click({ position: { x: 4, y: 4 } });
   await expect(inspector(page).getByRole("heading", { name: "Página", level: 2 })).toBeVisible();
 
   // Grouping wraps a block in a container where it stands, and ungrouping takes the container away again.

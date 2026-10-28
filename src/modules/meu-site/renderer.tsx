@@ -13,7 +13,7 @@ import {
 } from "./contracts";
 import { anchorDomId, nodeClass } from "./site-css";
 import { themeAttributes } from "./site-theme";
-import { isEmptyStyle } from "./style";
+import { hasAnyStyle } from "./screens";
 import { DELIVERY_LABEL } from "@/modules/leads/contracts";
 
 /**
@@ -60,14 +60,17 @@ interface Ctx {
   anchors: ReadonlySet<string>;
   /** The first highlight of the page, which holds its only first-level heading. */
   firstHero: string | null;
+  /** In front of the DOM id of an anchor, so a page drawn more than once in one window (the frames of the editor) does not repeat an id. */
+  scope: string;
 }
 
 /** The attributes every node's element carries: its classes (the page's own and the node's), its anchor id, and in the editor the id the canvas finds it by. */
 function attrsOf(node: SiteNode, ctx: Ctx, classes: string) {
-  const own = isEmptyStyle(node.style) ? "" : ` ${nodeClass(node.id)}`;
+  const own = hasAnyStyle(node) ? ` ${nodeClass(node.id)}` : "";
   return {
     className: `${classes}${own}`,
-    id: ctx.anchors.has(node.id) ? anchorDomId(node.id) : undefined,
+    // The canvas finds a node by its data attribute; its links are stand-ins that go nowhere, so it needs no anchor id (the frames repeat the page).
+    id: !ctx.edit && ctx.anchors.has(node.id) ? `${ctx.scope}${anchorDomId(node.id)}` : undefined,
     "data-block-id": ctx.edit ? node.id : undefined,
     "data-type": ctx.edit ? node.type : undefined,
     "data-empty": ctx.edit && node.type === "box" && node.children.length === 0 ? "" : undefined,
@@ -114,7 +117,7 @@ function destinationOf(item: { channel?: Channel; anchor?: string }, ctx: Ctx): 
     const href = channelUrl(ctx.content.contact, item.channel);
     return href ? { href, external: href.startsWith("https://") } : null;
   }
-  if (item.anchor && ctx.anchors.has(item.anchor)) return { href: `#${anchorDomId(item.anchor)}`, external: false };
+  if (item.anchor && ctx.anchors.has(item.anchor)) return { href: `#${ctx.scope}${anchorDomId(item.anchor)}`, external: false };
   return null;
 }
 
@@ -400,14 +403,14 @@ function SiteLogo({ logo }: { logo: ResolvedImage }) {
   return <img className="site-logo" src={logo.src} width={logo.width} height={logo.height} alt="" decoding="async" />;
 }
 
-export function SiteRenderer({ content, edit, images }: { content: SiteContent; edit?: EditHooks; images?: ImageResolver }) {
+export function SiteRenderer({ content, edit, images, scope = "" }: { content: SiteContent; edit?: EditHooks; images?: ImageResolver; scope?: string }) {
   const nodes = allNodes(content.blocks);
   const existing = new Set(nodes.map((entry) => entry.id));
   const anchors = new Set(
     nodes.flatMap((entry): string[] => ((entry.type === "button" || entry.type === "link") && entry.anchor && existing.has(entry.anchor) ? [entry.anchor] : [])),
   );
   const firstHero = nodes.find((entry) => entry.type === "hero")?.id ?? null;
-  const ctx: Ctx = { content, edit, images, anchors, firstHero };
+  const ctx: Ctx = { content, edit, images, anchors, firstHero, scope };
   const logo = content.logoAssetId ? images?.(content.logoAssetId) ?? null : null;
   const contacts = [
     { label: "WhatsApp", href: whatsappUrl(content.contact.whatsapp), external: true },

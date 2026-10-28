@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 import type { SiteNode } from "./contracts";
 import type { ImageSupport } from "./editor-inspector";
 import { ImagePicker } from "./image-picker";
+import { SCREENS, SCREEN_LABEL, hasOverrides, isHiddenAt, ownStyle, resolveStyle, type Screen } from "./screens";
+import { SCREEN_ICON, screenTitle } from "./screen-ui";
 import type { Theme } from "./site-theme";
 import { ChoiceField, ColorField, LengthField, NumberField, Section, SelectField, type Option } from "./style-controls";
 import { SPECS, type Style } from "./style";
@@ -10,6 +12,9 @@ import { SPECS, type Style } from "./style";
 /**
  * The style panel: the properties of the selected block, in groups, as in the builders people know. Every control writes a
  * typed value (see style.ts) and every one can be taken back; nothing here accepts text of a stylesheet.
+ *
+ * The panel is about one size of the screen at a time (the computer, the tablet or the phone). The controls show what the
+ * block really has at that size; what comes from a larger size is shown in grey, and a change is written to this size alone.
  */
 const option = <T extends string | number>(value: T, label: string): Option<T> => ({ value, label });
 
@@ -55,7 +60,21 @@ const whole = (min: number, max: number) => (value: number) => Number.isInteger(
 type Patch = Partial<Record<keyof Style, unknown>>;
 type Sides = "padding" | "margin";
 
-function SidesGroup({ group, label, style, spec, onSide }: { group: Sides; label: string; style: Style; spec: typeof SPECS.space | typeof SPECS.margin; onSide: (group: Sides, side: "top" | "right" | "bottom" | "left", value: string | undefined) => void }) {
+function SidesGroup({
+  group,
+  label,
+  style,
+  inherited,
+  spec,
+  onSide,
+}: {
+  group: Sides;
+  label: string;
+  style: Style;
+  inherited: (group: Sides, side: "top" | "right" | "bottom" | "left") => boolean;
+  spec: typeof SPECS.space | typeof SPECS.margin;
+  onSide: (group: Sides, side: "top" | "right" | "bottom" | "left", value: string | undefined) => void;
+}) {
   const sides = [
     ["top", "cima"],
     ["right", "direita"],
@@ -74,6 +93,7 @@ function SidesGroup({ group, label, style, spec, onSide }: { group: Sides; label
             label={name.charAt(0).toUpperCase() + name.slice(1)}
             name={`${label} · ${name}`}
             value={style[group]?.[side]}
+            inherited={inherited(group, side)}
             spec={spec}
             onChange={(value) => onSide(group, side, value)}
           />
@@ -83,52 +103,79 @@ function SidesGroup({ group, label, style, spec, onSide }: { group: Sides; label
   );
 }
 
+const EXPLANATION: Record<Screen, string> = {
+  desktop: "O que você muda aqui vale para todos os tamanhos, a não ser que o tablet ou o celular tenham o seu próprio valor.",
+  tablet: "O que você muda aqui vale para o tablet e para o celular, a não ser que o celular tenha o seu próprio valor. Em cinza, o que vem do computador.",
+  mobile: "O que você muda aqui vale só para o celular. Em cinza, o que vem do tablet ou do computador.",
+};
+
 export function StylePanel({
   node,
+  screen,
+  onScreen,
   inFlex,
   theme,
   images,
   onStyle,
   onSide,
+  onHidden,
   onClear,
 }: {
   node: SiteNode;
+  /** The size of the screen being edited. */
+  screen: Screen;
+  onScreen: (screen: Screen) => void;
   /** Whether the container that holds the block lays out its content as a flex row or column. */
   inFlex: boolean;
   theme: Theme;
   images: ImageSupport;
   onStyle: (patch: Patch) => void;
   onSide: (group: Sides, side: "top" | "right" | "bottom" | "left", value: string | undefined) => void;
+  /** Hide or show the block at this size. */
+  onHidden: (hide: boolean) => void;
+  /** The computer: take all the styles of the block away. The others: take this size's own changes back. */
   onClear: () => void;
 }) {
-  const style: Style = node.style ?? {};
+  // What the block really has at this size, and what this size says by itself.
+  const style: Style = resolveStyle(node, screen);
+  const own: Style = ownStyle(node, screen) ?? {};
   const isBox = node.type === "box";
-  const hasStyle = Object.keys(style).length > 0;
+  const hidden = isHiddenAt(node, screen);
+  const hasChanges = screen === "desktop" ? SCREENS.some((size) => Object.keys(ownStyle(node, size) ?? {}).length > 0) : hasOverrides(node, screen);
   const flex = style.display === "flex";
   const grid = style.display === "grid";
-  const set = <K extends keyof Style>(key: K) => (value: Style[K] | undefined) => onStyle({ [key]: value });
+  const isInherited = (key: keyof Style) => screen !== "desktop" && own[key] === undefined && style[key] !== undefined;
+  const sideInherited = (group: Sides, side: "top" | "right" | "bottom" | "left") => screen !== "desktop" && own[group]?.[side] === undefined && style[group]?.[side] !== undefined;
+  /** The three things every control takes: what the block has at this size, whether that is this size's own, and how to change it. */
+  const field = <K extends keyof Style>(key: K) => ({
+    value: style[key],
+    inherited: isInherited(key),
+    onChange: (value: Style[K] | undefined) => onStyle({ [key]: value }),
+  });
+  // The image the size below would draw: a smaller size that does not want it says "no image" (see the background below).
+  const belowImage = screen === "desktop" ? "" : (resolveStyle(node, screen === "tablet" ? "desktop" : "tablet").bgImage ?? "");
 
   const sections: ReactNode[] = [];
   if (isBox) {
     sections.push(
       <Section key="layout" title="Layout" defaultOpen>
-        <ChoiceField label="Tipo" value={style.display} options={DISPLAYS} onChange={set("display")} />
+        <ChoiceField label="Tipo" {...field("display")} options={DISPLAYS} />
         {flex && (
           <>
-            <ChoiceField label="Direção" value={style.direction} options={DIRECTIONS} onChange={set("direction")} />
-            <ChoiceField label="Quebra de linha" value={style.wrap} options={WRAPS} onChange={set("wrap")} />
-            <SelectField label="Alinhar (cruzado)" value={style.align} options={ALIGNS} onChange={set("align")} />
-            <SelectField label="Distribuir" value={style.justify} options={JUSTIFIES} onChange={set("justify")} />
+            <ChoiceField label="Direção" {...field("direction")} options={DIRECTIONS} />
+            <ChoiceField label="Quebra de linha" {...field("wrap")} options={WRAPS} />
+            <SelectField label="Alinhar (cruzado)" {...field("align")} options={ALIGNS} />
+            <SelectField label="Distribuir" {...field("justify")} options={JUSTIFIES} />
           </>
         )}
         {grid && (
           <>
-            <NumberField label="Colunas" value={style.columns} valid={whole(1, 12)} min={1} max={12} onChange={set("columns")} />
-            <SelectField label="Alinhar" value={style.align} options={ALIGNS} onChange={set("align")} />
-            <SelectField label="Distribuir" value={style.justify} options={JUSTIFIES} onChange={set("justify")} />
+            <NumberField label="Colunas" {...field("columns")} valid={whole(1, 12)} min={1} max={12} />
+            <SelectField label="Alinhar" {...field("align")} options={ALIGNS} />
+            <SelectField label="Distribuir" {...field("justify")} options={JUSTIFIES} />
           </>
         )}
-        {(flex || grid) && <LengthField label="Espaço entre os blocos" value={style.gap} spec={SPECS.gap} onChange={set("gap")} />}
+        {(flex || grid) && <LengthField label="Espaço entre os blocos" {...field("gap")} spec={SPECS.gap} />}
         {!flex && !grid && <p className="small muted">Escolha Flex ou Grade para organizar o que está dentro deste contêiner.</p>}
       </Section>,
     );
@@ -136,59 +183,59 @@ export function StylePanel({
   if (inFlex) {
     sections.push(
       <Section key="child" title="Posição no contêiner">
-        <NumberField label="Crescer" value={style.grow} valid={whole(0, 10)} min={0} max={10} onChange={set("grow")} />
-        <NumberField label="Encolher" value={style.shrink} valid={whole(0, 10)} min={0} max={10} onChange={set("shrink")} />
-        <LengthField label="Tamanho base" value={style.basis} spec={SPECS.width} onChange={set("basis")} />
-        <SelectField label="Alinhar este bloco" value={style.selfAlign} options={SELF_ALIGNS} onChange={set("selfAlign")} />
+        <NumberField label="Crescer" {...field("grow")} valid={whole(0, 10)} min={0} max={10} />
+        <NumberField label="Encolher" {...field("shrink")} valid={whole(0, 10)} min={0} max={10} />
+        <LengthField label="Tamanho base" {...field("basis")} spec={SPECS.width} />
+        <SelectField label="Alinhar este bloco" {...field("selfAlign")} options={SELF_ALIGNS} />
       </Section>,
     );
   }
   sections.push(
     <Section key="spacing" title="Espaçamento">
-      <SidesGroup group="padding" label="Margem interna" style={style} spec={SPECS.space} onSide={onSide} />
-      <SidesGroup group="margin" label="Margem externa" style={style} spec={SPECS.margin} onSide={onSide} />
+      <SidesGroup group="padding" label="Margem interna" style={style} inherited={sideInherited} spec={SPECS.space} onSide={onSide} />
+      <SidesGroup group="margin" label="Margem externa" style={style} inherited={sideInherited} spec={SPECS.margin} onSide={onSide} />
     </Section>,
     <Section key="size" title="Tamanho">
-      <LengthField label="Largura" value={style.width} spec={SPECS.width} onChange={set("width")} />
-      <LengthField label="Largura mínima" value={style.minWidth} spec={SPECS.widthLimit} onChange={set("minWidth")} />
-      <LengthField label="Largura máxima" value={style.maxWidth} spec={SPECS.widthLimit} onChange={set("maxWidth")} />
-      <LengthField label="Altura" value={style.height} spec={SPECS.height} onChange={set("height")} />
-      <LengthField label="Altura mínima" value={style.minHeight} spec={SPECS.heightLimit} onChange={set("minHeight")} />
-      <LengthField label="Altura máxima" value={style.maxHeight} spec={SPECS.heightLimit} onChange={set("maxHeight")} />
+      <LengthField label="Largura" {...field("width")} spec={SPECS.width} />
+      <LengthField label="Largura mínima" {...field("minWidth")} spec={SPECS.widthLimit} />
+      <LengthField label="Largura máxima" {...field("maxWidth")} spec={SPECS.widthLimit} />
+      <LengthField label="Altura" {...field("height")} spec={SPECS.height} />
+      <LengthField label="Altura mínima" {...field("minHeight")} spec={SPECS.heightLimit} />
+      <LengthField label="Altura máxima" {...field("maxHeight")} spec={SPECS.heightLimit} />
     </Section>,
   );
   if (node.type !== "image") {
     sections.push(
       <Section key="type" title="Tipografia">
-        <SelectField label="Fonte" value={style.fontFamily} options={FONT_FAMILIES} onChange={set("fontFamily")} />
-        <LengthField label="Tamanho da letra" value={style.fontSize} spec={SPECS.fontSize} onChange={set("fontSize")} />
-        <SelectField label="Peso" value={style.fontWeight} options={FONT_WEIGHTS} onChange={set("fontWeight")} />
+        <SelectField label="Fonte" {...field("fontFamily")} options={FONT_FAMILIES} />
+        <LengthField label="Tamanho da letra" {...field("fontSize")} spec={SPECS.fontSize} />
+        <SelectField label="Peso" {...field("fontWeight")} options={FONT_WEIGHTS} />
         <NumberField
           label="Altura da linha"
-          value={style.lineHeight}
+          {...field("lineHeight")}
           valid={(value) => value >= 0.8 && value <= 3 && Math.abs(value * 20 - Math.round(value * 20)) < 1e-9}
           min={0.8}
           max={3}
           step={0.05}
-          onChange={set("lineHeight")}
         />
-        <LengthField label="Espaço entre letras" value={style.letterSpacing} spec={SPECS.letter} onChange={set("letterSpacing")} />
-        <ChoiceField label="Alinhamento do texto" value={style.textAlign} options={TEXT_ALIGNS} onChange={set("textAlign")} />
-        <SelectField label="Caixa" value={style.textTransform} options={TEXT_TRANSFORMS} onChange={set("textTransform")} />
-        <SelectField label="Decoração" value={style.textDecoration} options={TEXT_DECORATIONS} onChange={set("textDecoration")} />
-        <ColorField label="Cor do texto" value={style.color} theme={theme} onChange={set("color")} />
+        <LengthField label="Espaço entre letras" {...field("letterSpacing")} spec={SPECS.letter} />
+        <ChoiceField label="Alinhamento do texto" {...field("textAlign")} options={TEXT_ALIGNS} />
+        <SelectField label="Caixa" {...field("textTransform")} options={TEXT_TRANSFORMS} />
+        <SelectField label="Decoração" {...field("textDecoration")} options={TEXT_DECORATIONS} />
+        <ColorField label="Cor do texto" {...field("color")} theme={theme} />
       </Section>,
     );
   }
   sections.push(
     <Section key="background" title="Fundo">
-      <ColorField label="Cor de fundo" value={style.background} theme={theme} onChange={set("background")} />
+      <ColorField label="Cor de fundo" {...field("background")} theme={theme} />
       <ImagePicker
         legend="Imagem de fundo"
         name={`bg-${node.id}`}
         library={images.library}
         value={style.bgImage ?? ""}
-        onChange={(assetId) => onStyle({ bgImage: assetId || undefined })}
+        // "No image" at the computer is no key. At a smaller size that inherits an image it has to be said: an empty image takes it off there.
+        onChange={(assetId) => onStyle({ bgImage: assetId || (belowImage ? "" : undefined) })}
         allowNone
         noneLabel="Sem imagem"
         usedIds={images.usedIds}
@@ -199,8 +246,8 @@ export function StylePanel({
       />
       {style.bgImage && (
         <>
-          <ChoiceField label="Tamanho da imagem" value={style.bgSize} options={BG_SIZES} onChange={set("bgSize")} />
-          <SelectField label="Posição da imagem" value={style.bgPosition} options={BG_POSITIONS} onChange={set("bgPosition")} />
+          <ChoiceField label="Tamanho da imagem" {...field("bgSize")} options={BG_SIZES} />
+          <SelectField label="Posição da imagem" {...field("bgPosition")} options={BG_POSITIONS} />
           <label className="check-row">
             <input type="checkbox" checked={style.bgRepeat === true} onChange={(event) => onStyle({ bgRepeat: event.target.checked ? true : undefined })} />
             <span>Repetir a imagem</span>
@@ -210,25 +257,41 @@ export function StylePanel({
       )}
     </Section>,
     <Section key="border" title="Borda, sombra e efeitos">
-      <LengthField label="Espessura da borda" value={style.borderWidth} spec={SPECS.border} onChange={set("borderWidth")} />
-      <SelectField label="Estilo da borda" value={style.borderStyle} options={BORDER_STYLES} onChange={set("borderStyle")} />
-      <ColorField label="Cor da borda" value={style.borderColor} theme={theme} onChange={set("borderColor")} />
-      <LengthField label="Arredondamento" value={style.radius} spec={SPECS.radius} onChange={set("radius")} />
-      <SelectField label="Sombra" value={style.shadow} options={SHADOWS} onChange={set("shadow")} />
-      <NumberField label="Opacidade (%)" value={style.opacity} valid={whole(0, 100)} min={0} max={100} onChange={set("opacity")} />
-      <SelectField label="Conteúdo que passa da caixa" value={style.overflow} options={OVERFLOWS} onChange={set("overflow")} />
+      <LengthField label="Espessura da borda" {...field("borderWidth")} spec={SPECS.border} />
+      <SelectField label="Estilo da borda" {...field("borderStyle")} options={BORDER_STYLES} />
+      <ColorField label="Cor da borda" {...field("borderColor")} theme={theme} />
+      <LengthField label="Arredondamento" {...field("radius")} spec={SPECS.radius} />
+      <SelectField label="Sombra" {...field("shadow")} options={SHADOWS} />
+      <NumberField label="Opacidade (%)" {...field("opacity")} valid={whole(0, 100)} min={0} max={100} />
+      <SelectField label="Conteúdo que passa da caixa" {...field("overflow")} options={OVERFLOWS} />
     </Section>,
   );
 
   return (
-    <div className="ve-fields ve-style-panel">
-      <p className="small muted">
-        O que você muda aqui vale para este bloco. Cada campo tem um limite e uma lista de valores: nada é digitado como código. Para um campo voltar ao
-        padrão, use o botão ao lado dele.
-      </p>
+    <div className="ve-fields ve-style-panel" data-screen={screen}>
+      <div className="ve-screens" role="group" aria-label="Tamanho da tela em edição">
+        {SCREENS.map((size) => {
+          const Icon = SCREEN_ICON[size];
+          return (
+            <button key={size} type="button" aria-pressed={screen === size} title={screenTitle(size)} aria-label={`Estilo do ${SCREEN_LABEL[size].toLowerCase()}`} onClick={() => onScreen(size)}>
+              <Icon size={16} aria-hidden="true" />
+              <span>{SCREEN_LABEL[size]}</span>
+              {size !== "desktop" && hasOverrides(node, size) && <i className="ve-dot" aria-hidden="true" />}
+            </button>
+          );
+        })}
+      </div>
+      <p className="small muted">{EXPLANATION[screen]} Para um campo voltar ao padrão, use o botão ao lado dele.</p>
+      <Section key="visibility" title="Visibilidade" defaultOpen>
+        <label className="check-row">
+          <input type="checkbox" checked={hidden} onChange={(event) => onHidden(event.target.checked)} />
+          <span>Ocultar no {SCREEN_LABEL[screen].toLowerCase()}</span>
+        </label>
+        <p className="small muted">{hidden ? "O bloco não aparece neste tamanho e não ocupa espaço." : "O bloco aparece neste tamanho."}</p>
+      </Section>
       {sections}
-      <button type="button" className="button small secondary" disabled={!hasStyle} onClick={onClear}>
-        Limpar todo o estilo deste bloco
+      <button type="button" className="button small secondary" disabled={!hasChanges} onClick={onClear}>
+        {screen === "desktop" ? "Limpar todo o estilo deste bloco" : `Voltar o ${SCREEN_LABEL[screen].toLowerCase()} ao que vem do tamanho de cima`}
       </button>
     </div>
   );

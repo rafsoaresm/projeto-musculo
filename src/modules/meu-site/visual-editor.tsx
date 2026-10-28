@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Eye, Pencil, Redo2, Undo2, X } from "lucide-react";
 import { referencedAssetIds, resolveServices, type PublishIssue, type SiteContent } from "./contracts";
-import { CanvasSurface, EditorContext, canvasHooks, type Drag, type EditorApi, type NodeAction } from "./editor-canvas";
+import { COMPACT_QUERY, CanvasSurface, EditorContext, canvasHooks, type CanvasControls, type Drag, type EditorApi, type NodeAction } from "./editor-canvas";
 import { BlockInspector, PageSettings, type ImageSupport } from "./editor-inspector";
 import { editorImageUrl, libraryCssImages, libraryImages } from "./image-urls";
 import type { RemoveResult, UploadResult } from "./image-picker";
@@ -28,6 +28,8 @@ import {
   type Slot,
 } from "./editor-model";
 import { nodeTitle } from "./node-label";
+import { toggleHidden } from "./style-model";
+import type { Screen } from "./screens";
 import { catalogueItem } from "./presets";
 import { PublicAddress } from "./public-address";
 import { SiteRenderer } from "./renderer";
@@ -83,7 +85,22 @@ export function VisualEditor(props: VisualEditorProps) {
   const mountPath = useMountPath();
   const dialog = useRef<HTMLDialogElement>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
+  /**
+   * The size of the screen being edited: its frame is the active one, and the style panel and the eye of the layers are about it. A window
+   * that shows one panel at a time starts on the phone's frame, the others on the computer's.
+   */
+  const [screen, setScreen] = useState<Screen>(() => (window.matchMedia(COMPACT_QUERY).matches ? "mobile" : "desktop"));
+  /** Which frames are on the canvas. */
+  const [visible, setVisible] = useState<Record<Screen, boolean>>(() => {
+    const phone = window.matchMedia(COMPACT_QUERY).matches;
+    return { desktop: !phone, tablet: false, mobile: phone };
+  });
+  const canvasControls = useRef<CanvasControls>(null);
+  /** Edits a size of the screen: its frame is shown if it was not. */
+  const chooseScreen = (next: Screen) => {
+    setScreen(next);
+    setVisible((previous) => (previous[next] ? previous : { ...previous, [next]: true }));
+  };
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   const [leftTab, setLeftTab] = useState<"blocks" | "layers">("blocks");
   const [inspectorTab, setInspectorTab] = useState<"content" | "style">("content");
@@ -102,10 +119,14 @@ export function VisualEditor(props: VisualEditorProps) {
   }, []);
 
   useEffect(() => {
-    if (scrollTo) dialog.current?.querySelector(`[data-block-id="${scrollTo.id}"]`)?.scrollIntoView({ block: "nearest" });
+    if (scrollTo) canvasControls.current?.reveal(scrollTo.id);
   }, [scrollTo]);
 
   const selected = selectedId && locate(content, selectedId) ? selectedId : null;
+  const selectedNow = useRef<string | null>(null);
+  useEffect(() => {
+    selectedNow.current = selected;
+  });
   const resolved = useMemo(() => resolveServices(content, new Map(services.map((service) => [service.id, service]))), [content, services]);
   // The editor is never drawn on the server (it opens on a click), so the browser's address is there.
   const base = mountPath();
@@ -174,9 +195,10 @@ export function VisualEditor(props: VisualEditorProps) {
   const api: EditorApi = {
     content,
     selectedId: mode === "edit" ? selected : null,
-    select: (id) => {
+    select: (id, size) => {
       setSelectedId(id);
       if (id) setPanel("page");
+      if (size && size !== screen) chooseScreen(size);
     },
     commitText: (blockId, path, value) => onEdit(updateBlock(content, blockId, (entry) => setIn(entry, path, value))),
     drag,
@@ -194,11 +216,13 @@ export function VisualEditor(props: VisualEditorProps) {
     const item = catalogueItem(key);
     if (item) apply(insertNode(content, item.create(), addSlot(content, selected)));
   };
-  const styles = useMemo(() => buildSiteCss(resolved, libraryCssImages(base, props.images.library)), [resolved, base, props.images.library]);
+  // The frames of the canvas are different widths in one window, so their sizes of the screen are container queries (see site-css.ts).
+  const styles = useMemo(() => buildSiteCss(resolved, { ...libraryCssImages(base, props.images.library), container: true }), [resolved, base, props.images.library]);
 
-  // Shortcuts: Ctrl/Cmd+S saves, Ctrl/Cmd+Z undoes, Ctrl/Cmd+Shift+Z (or Y) redoes. Heard on the document, not on
+  // Shortcuts: Ctrl/Cmd+S saves, Ctrl/Cmd+Z undoes, Ctrl/Cmd+Shift+Z (or Y) redoes; Ctrl/Cmd with + or - zooms the canvas, with 0 puts it back
+  // to 100% (with Shift, fits it to the window); the arrows move the canvas when no block is selected. Heard on the document, not on
   // the dialog: after a click on the page itself the focus may be on the body, and the shortcut must still work.
-  // Inside a field, undo is the field's own; save works everywhere.
+  // Inside a field, undo is the field's own; save and zoom work everywhere.
   const { dirty, pending, onSave, undo, redo } = props;
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -209,7 +233,29 @@ export function VisualEditor(props: VisualEditorProps) {
         if (dirty && !pending) onSave();
         return;
       }
+      if (modifier && (event.code === "Equal" || event.code === "NumpadAdd" || key === "+")) {
+        event.preventDefault();
+        canvasControls.current?.zoomIn();
+        return;
+      }
+      if (modifier && (event.code === "Minus" || event.code === "NumpadSubtract")) {
+        event.preventDefault();
+        canvasControls.current?.zoomOut();
+        return;
+      }
+      if (modifier && (event.code === "Digit0" || event.code === "Numpad0")) {
+        event.preventDefault();
+        if (event.shiftKey) canvasControls.current?.fit();
+        else canvasControls.current?.actualSize();
+        return;
+      }
       if ((event.target as HTMLElement).closest?.("input, textarea, select, [contenteditable]")) return;
+      const arrow: Record<string, [number, number]> = { ArrowLeft: [20, 0], ArrowRight: [-20, 0], ArrowUp: [0, 20], ArrowDown: [0, -20] };
+      if (!modifier && !event.altKey && !event.shiftKey && arrow[event.key] && !selectedNow.current && !(event.target as HTMLElement).closest?.("button, a, summary, [role='button']")) {
+        event.preventDefault();
+        canvasControls.current?.pan(...arrow[event.key]);
+        return;
+      }
       if (modifier && key === "z") {
         event.preventDefault();
         if (event.shiftKey) redo();
@@ -330,6 +376,8 @@ export function VisualEditor(props: VisualEditorProps) {
           ) : (
             <Layers
               content={content}
+              screen={screen}
+              toggleHidden={(blockId) => onEdit(updateBlock(content, blockId, (entry) => toggleHidden(entry, screen)), `${blockId}:hidden:${screen}`)}
               selectedId={selected}
               select={(id) => {
                 setSelectedId(id);
@@ -351,44 +399,22 @@ export function VisualEditor(props: VisualEditorProps) {
               <strong>Seu site</strong>
               <small>{mode === "edit" ? "Arraste, solte e clique em um bloco para editar" : "Prévia: é assim que a página aparece"}</small>
             </div>
-            <div className="ve-device" role="group" aria-label="Tamanho da tela">
-              <button type="button" aria-pressed={device === "desktop"} onClick={() => setDevice("desktop")}>
-                Computador
-              </button>
-              <button type="button" aria-pressed={device === "mobile"} onClick={() => setDevice("mobile")}>
-                Celular
-              </button>
-            </div>
+            <PublicAddress slug={props.slug} className="ve-address" />
           </div>
-          <div
-            className="ve-stage-scroll"
-            data-dragging={drag ? "" : undefined}
-            onClick={() => setSelectedId(null)}
-            onDragLeave={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setTarget(null);
-            }}
-          >
-            <div className="ve-browser" data-device={device} data-mode={mode}>
-              <div className="ve-browserbar" aria-hidden="true">
-                <span className="ve-dots">
-                  <i />
-                  <i />
-                  <i />
-                </span>
-                <PublicAddress slug={props.slug} className="ve-address" />
-              </div>
-              <InlineSiteStyles css={styles} />
-              <EditorContext.Provider value={api}>
-                {mode === "edit" ? (
-                  <CanvasSurface>
-                    <SiteRenderer content={resolved} edit={hooks} images={imageResolver} />
-                  </CanvasSurface>
-                ) : (
-                  <SiteRenderer content={resolved} images={imageResolver} />
-                )}
-              </EditorContext.Provider>
-            </div>
-          </div>
+          <InlineSiteStyles css={styles} />
+          <EditorContext.Provider value={api}>
+            <CanvasSurface
+              ref={canvasControls}
+              screen={screen}
+              onScreen={chooseScreen}
+              visible={visible}
+              onVisible={setVisible}
+              interactive={mode === "edit"}
+              page={(size) =>
+                mode === "edit" ? <SiteRenderer content={resolved} edit={hooks} images={imageResolver} /> : <SiteRenderer content={resolved} images={imageResolver} scope={`${size}-`} />
+              }
+            />
+          </EditorContext.Provider>
         </main>
 
         <aside className="ve-right" aria-label="Propriedades">
@@ -404,6 +430,8 @@ export function VisualEditor(props: VisualEditorProps) {
               images={imageSupport}
               tab={inspectorTab}
               onTab={setInspectorTab}
+              screen={screen}
+              onScreen={chooseScreen}
               onChange={onEdit}
               act={act}
               select={(id) => {

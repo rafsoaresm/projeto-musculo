@@ -212,6 +212,8 @@ export const styleSchema = z
     shadow: z.enum(SHADOWS).optional(),
     opacity: whole(0, 100).optional(),
     overflow: z.enum(OVERFLOWS).optional(),
+    // seen or not: the block takes no room at the sizes where it is hidden (see screens.ts for how it carries down)
+    hidden: z.boolean().optional(),
   })
   .strict();
 export type Style = z.infer<typeof styleSchema>;
@@ -227,6 +229,11 @@ export const styleAssetIds = (style: Style | undefined): string[] => (style?.bgI
 export interface CssContext {
   /** Where an image of the library is served from, or null when it must not be drawn. */
   imageUrl: (assetId: string) => string | null;
+  /**
+   * The sheet is for the frames of the editor, where the width that matters is the frame's and not the window's: the
+   * sizes of the screen are then container queries, and `vw` is the frame's width (`cqw`). The published page uses the window.
+   */
+  container?: boolean;
 }
 
 /**
@@ -244,7 +251,9 @@ export function cssDeclarations(input: unknown, context: CssContext): string[] {
   if (!parsed.success) return [];
   const s = parsed.data;
   const out: string[] = [];
-  const add = (property: string, value: string | number) => void out.push(`${property}:${value}`);
+  // A length in `vw` is a share of the frame in the editor (`cqw`); the values are checked above, so the unit is the end of the text.
+  const add = (property: string, value: string | number) =>
+    void out.push(`${property}:${context.container && typeof value === "string" ? value.replace(/(\d)vw$/, "$1cqw") : value}`);
 
   if (s.display) add("display", s.display);
   if (s.direction) add("flex-direction", s.direction);
