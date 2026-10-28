@@ -15,6 +15,23 @@ As pendências de todas as frentes (o que depende do responsável, do advogado e
 | E6 — SaaS/afiliados | Planejado | Inbox/outbox, conciliação, recorrência, ajustes e repasses |
 | E7 — evoluções | Planejado | RAG com armazenamento compatível, progressão assistida e booking |
 
+## Iniciativa: o construtor do Meu Site no nível do Frappe Builder (0.36 em diante)
+
+**Pedido (28/10/2026):** ajustar o construtor de sites para algo **próximo ou igual ao Frappe Builder** (clonado, só leitura, em `rafsoaresm/builder`). O Frappe Builder é uma **árvore livre de blocos** (seção, contêiner, linha, coluna, grade, texto, título, botão, link, imagem, vídeo, formulário, HTML) com **um painel de estilo por bloco** (layout flex e grade, espaçamento, tamanho, posição, tipografia, fundo, borda, sombra, transição), **três tamanhos de tela** (computador, tablet, celular) com sobreposição de estilo por tamanho, **componentes reutilizáveis**, camadas arrastáveis, alças de arrastar e redimensionar na própria tela, guias de alinhamento, seleção múltipla, copiar e colar, variáveis, modo escuro, várias páginas, histórico de versões, e também **HTML, CSS e scripts livres** e dados dinâmicos do Frappe.
+
+**Decisões do usuário (28/10/2026):**
+1. **Mesma experiência, estilos controlados.** Tudo o que o editor do Frappe faz de visual e de organização entra; **HTML, CSS e JavaScript livres não entram**. Cada propriedade de estilo tem um conjunto de valores válidos, conferido no servidor, e a página pública continua sem script do profissional, sem HTML livre e sem `style` embutido (o CSS da página é gerado a partir dos valores válidos). Motivo: a página pública divide a origem com o painel (R3) e as regras de AGENTS.md. **Rever** só depois de a página pública ter origem própria.
+2. **Imagens: provar o armazenamento agora, antes de tudo.** O Webflow Cloud **não tem bucket público** (ver `WEBFLOW-CLOUD.md`); "público" aqui é: **um segundo bucket privado (`SITE_MEDIA`), servido pela rota do próprio app, só para imagens que estão numa versão publicada**.
+
+**Fatias, em ordem (cada uma só depois de a anterior estar no ar):**
+- **0.36 Imagens do Meu Site:** bucket `SITE_MEDIA`, migration 0025 (`site_assets`, `site_release_assets`), envio pelo editor (JPEG ou PNG, reencodado no navegador e conferido no servidor, sem metadados), biblioteca de imagens do site, bloco **Imagem** e **logotipo**, rota pública que só serve imagem de versão publicada. Prova local; a prova real é o deploy criar o bucket.
+- **0.37 Árvore livre de blocos:** documento versão 3 (nós de contêiner, linha, coluna, grade, texto, título, botão, link, imagem e os blocos de dados como Serviços), com leitura da versão 2; CSS da página gerado dos estilos válidos; camadas em árvore arrastável; painel de estilo (layout, espaçamento, tamanho, tipografia, cor, fundo, borda, sombra).
+- **0.38 Tamanhos de tela:** computador, tablet e celular com sobreposição de estilo por tamanho e "ocultar neste tamanho".
+- **0.39 Manipulação direta na tela:** alças de redimensionar, de espaçamento e de intervalo, guias de alinhamento, seleção múltipla, copiar e colar, menu de contexto, atalhos.
+- **0.40 Componentes e modelos:** componentes reutilizáveis (criar da seleção, instâncias, atualizar), modelos de seção (destaque, barra de navegação, rodapé, depoimentos).
+- **0.41 Tema, páginas e versões:** variáveis de cor e fonte do site, modo escuro automático, mais de uma página, SEO por página, histórico visual de versões.
+- **Depois:** formulário público que gera lead (era a 0.36; segue fechado até J8 e J12), vídeo e embeds de lista fixa (mudam o texto de privacidade), domínio próprio (E0), analytics da página.
+
 ## Fatia entregue: editor visual do Meu Site (0.35)
 
 1. Implementado (sem migration): o usuário indicou, com um protótipo e um handoff (`docs/referencias/prototipo-editor-drag-drop.html` e `HANDOFF-EDITOR-DRAG-DROP.md`), que esperava o editor **visual, de arrastar e soltar**. Em `/profissional/meu-site`, "Abrir o editor visual" abre uma janela sobre a tela inteira: biblioteca de blocos e camadas à esquerda, **a página de verdade** no meio (o mesmo componente da prévia e da página pública) e as propriedades do que está selecionado à direita. Arrastar da biblioteca para a página, mover pela alça, **duas colunas** que recebem título, parágrafo e botão, escrever no texto com dois cliques, desfazer e refazer, computador e celular, prévia, salvar e publicar.
