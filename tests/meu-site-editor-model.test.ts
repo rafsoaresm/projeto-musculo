@@ -108,6 +108,9 @@ describe("adding a node", () => {
     expect(deep.ok && ids(deep.content, "left")).toEqual(["h1", "p1", deep.ok ? deep.id : ""]);
     const first = insertBlock(content, "link", at("right", -5));
     expect(first.ok && ids(first.content, "right")[0]).toBe(first.ok ? first.id : "");
+    // A negative index is the start of the list, not "counted from the end" as the array method would.
+    const start = insertBlock(content, "link", at("left", -1));
+    expect(start.ok && ids(start.content, "left")).toEqual([start.ok ? start.id : "", "h1", "p1"]);
     const ready = insertNode(content, box("mine", [el("paragraph", "inside", "x")]), at("left", 1));
     expect(ready.ok && ids(ready.content, "left")).toEqual(["h1", "mine", "p1"]);
     expect(ready.ok && ids(ready.content, "mine")).toEqual(["inside"]);

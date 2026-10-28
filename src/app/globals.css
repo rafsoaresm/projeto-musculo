@@ -2828,7 +2828,7 @@ label.check input {
 }
 .ve-body {
   display: grid;
-  grid-template-columns: 264px minmax(0, 1fr) 320px;
+  grid-template-columns: 264px minmax(0, 1fr) 340px;
   flex: 1;
   min-height: 0;
 }
@@ -3122,6 +3122,7 @@ button.ve-layer-toggle {
 }
 .ve-fields {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   padding: 12px 16px 28px;
 }
@@ -3327,6 +3328,7 @@ button.ve-layer-toggle {
 }
 .ve-section-body {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   padding: 12px;
 }
@@ -3337,7 +3339,30 @@ button.ve-layer-toggle {
 }
 .ve-length {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 4px;
+  min-width: 0;
+}
+.ve-sides-group {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.ve-length-inputs input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.ve-length-inputs input[type="number"]::-webkit-inner-spin-button,
+.ve-length-inputs input[type="number"]::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+.ve-length-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  min-height: 24px;
 }
 .ve-length label {
   color: var(--color-ink);
@@ -3351,13 +3376,15 @@ button.ve-layer-toggle {
 }
 .ve-fields .ve-length-inputs input {
   flex: 1;
-  width: auto;
+  width: 100%;
   min-width: 0;
+  padding-inline: 8px;
 }
 .ve-fields .ve-length-inputs select {
   flex: none;
-  width: auto;
-  padding-inline: 8px;
+  width: 58px;
+  min-width: 0;
+  padding-inline: 4px;
 }
 .ve-length[data-invalid] input {
   border-color: var(--color-error);
@@ -3367,8 +3394,8 @@ button.ve-layer-toggle {
   display: inline-grid;
   flex: none;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 24px;
+  height: 24px;
   border: 1px solid var(--color-line);
   border-radius: 8px;
   background: var(--color-surface);
@@ -3380,7 +3407,7 @@ button.ve-layer-toggle {
 }
 .ve-sides {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px 8px;
 }
 .ve-choice-field,

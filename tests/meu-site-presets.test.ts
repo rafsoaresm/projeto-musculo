@@ -48,6 +48,8 @@ describe("what the library offers", () => {
     }
     expect(catalogueItem("section")!.create()).toMatchObject({ tag: "section" });
     expect(catalogueItem("grid")!.create().style).toMatchObject({ display: "grid", columns: 3 });
+    // A column shares the row and wraps when narrow, as the columns of the old "2 columns" did.
+    expect(catalogueItem("column")!.create().style).toMatchObject({ grow: 1, shrink: 1, basis: "240px", minWidth: "0px" });
     const two = catalogueItem("columns2")!.create();
     expect(allNodes([two]).map((n) => n.type)).toEqual(["box", "box", "box"]);
     expect(two.type === "box" && two.children).toHaveLength(2);

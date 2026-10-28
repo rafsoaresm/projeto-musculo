@@ -63,10 +63,22 @@ function SidesGroup({ group, label, style, spec, onSide }: { group: Sides; label
     ["left", "esquerda"],
   ] as const;
   return (
-    <div className="ve-sides" role="group" aria-label={label}>
-      {sides.map(([side, name]) => (
-        <LengthField key={side} label={`${label} · ${name}`} value={style[group]?.[side]} spec={spec} onChange={(value) => onSide(group, side, value)} />
-      ))}
+    <div className="ve-sides-group" role="group" aria-label={label}>
+      <span className="ve-field-label" aria-hidden="true">
+        {label}
+      </span>
+      <div className="ve-sides">
+        {sides.map(([side, name]) => (
+          <LengthField
+            key={side}
+            label={name.charAt(0).toUpperCase() + name.slice(1)}
+            name={`${label} · ${name}`}
+            value={style[group]?.[side]}
+            spec={spec}
+            onChange={(value) => onSide(group, side, value)}
+          />
+        ))}
+      </div>
     </div>
   );
 }

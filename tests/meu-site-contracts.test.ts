@@ -181,8 +181,11 @@ describe("the document of the page", () => {
     let hostile: unknown = { id: "x", type: "paragraph", text: "" };
     for (let level = 0; level < 6000; level++) hostile = { id: `b${level}`, type: "box", tag: "div", children: [hostile] };
     const raw = { ...full(), blocks: [hostile] };
-    expect(() => parseContent(raw)).toThrow();
+    // Refused by the guard before the checks run (and not by running out of stack in them).
+    expect(() => parseContent(raw)).toThrow(/nested too deep/);
     expect(safeParseContent(raw).success).toBe(false);
+    const sane = { ...full(), blocks: [box("a", [box("b", [box("c", [emptyBlock("paragraph", "p")])])])] };
+    expect(() => parseContent(sane)).not.toThrow();
     const big = withBlocks([block("text", "t", { text: "x".repeat(2000) }), ...Array.from({ length: 39 }, (_, i) => block("text", `t${i}`, { text: "x".repeat(2000) }))]);
     expect(JSON.stringify(big).length).toBeGreaterThan(60_000);
     expect(siteContent.safeParse(big).success).toBe(true);

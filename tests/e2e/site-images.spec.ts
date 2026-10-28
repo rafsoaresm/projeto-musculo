@@ -108,6 +108,8 @@ test("images: sent in the editor, shown on the page, public only through the pub
   // A visitor sees the image from the page's own address, and nothing from the editor's.
   const anonymous = await newActor(browser, baseURL);
   await anonymous.page.goto(`./s/${slug}`);
+  // This page has no style of its own, so it does not ask for a sheet.
+  await expect(anonymous.page.locator('link[rel="stylesheet"][href*="/estilo.css"]')).toHaveCount(0);
   const published = anonymous.page.locator(".site-image img");
   await expect(published).toHaveAttribute("src", new RegExp(`/s/${slug}/m/${used}$`));
   await expect(published).toHaveAttribute("alt", "Marina no estúdio");

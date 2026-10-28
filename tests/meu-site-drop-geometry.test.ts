@@ -61,6 +61,9 @@ describe("where a dragged block lands", () => {
     expect(line.top).toBe(10);
     expect(line.bottom).toBe(90);
     expect(line.right - line.left).toBe(4);
+    // After a block of a row: the line is at its right edge.
+    const after = landingAt(p, 250, 50).line!;
+    expect(after).toEqual(rect(258, 10, 262, 90));
   });
   it("lands in a gap between two children of a container, next to the nearer one", () => {
     const row = box("row", rect(0, 0, 400, 100), [leaf("a", rect(20, 20, 150, 80)), leaf("b", rect(250, 20, 380, 80))]);

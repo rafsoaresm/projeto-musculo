@@ -21,7 +21,7 @@ function Reset({ label, onClick }: { label: string; onClick: () => void }) {
 const UNIT_LABEL: Record<Unit | "auto", string> = { px: "px", "%": "%", rem: "rem", vw: "vw", vh: "vh", auto: "auto" };
 
 /** A length: a number and a unit, in the range of the property. Cleared with the button, or by emptying the number. */
-export function LengthField({ label, value, spec, onChange }: { label: string; value: string | undefined; spec: LengthSpec; onChange: (value: string | undefined) => void }) {
+export function LengthField({ label, name = label, value, spec, onChange }: { label: string; /** What assistive technology says (the visible label may be short because a group names it). */ name?: string; value: string | undefined; spec: LengthSpec; onChange: (value: string | undefined) => void }) {
   const id = useId();
   const units = UNITS.filter((unit) => spec[unit] !== undefined);
   const parsed = value && value !== "auto" ? parseLength(value) : null;
@@ -59,10 +59,22 @@ export function LengthField({ label, value, spec, onChange }: { label: string; v
   };
   return (
     <div className="ve-length" data-invalid={draft !== null || undefined}>
-      <label htmlFor={id}>{label}</label>
+      <div className="ve-length-head">
+        <label htmlFor={id}>{label}</label>
+        {value !== undefined && (
+          <Reset
+            label={name}
+            onClick={() => {
+              setDraft(null);
+              onChange(undefined);
+            }}
+          />
+        )}
+      </div>
       <div className="ve-length-inputs">
         <input
           id={id}
+          aria-label={name}
           type="number"
           inputMode="decimal"
           step={unit === "rem" ? 0.1 : 1}
@@ -76,7 +88,7 @@ export function LengthField({ label, value, spec, onChange }: { label: string; v
           onChange={(event) => typed(event.target.value)}
           onBlur={() => setDraft(null)}
         />
-        <select aria-label={`${label}: unidade`} value={unit} onChange={(event) => chose(event.target.value as Unit | "auto")}>
+        <select aria-label={`${name}: unidade`} value={unit} onChange={(event) => chose(event.target.value as Unit | "auto")}>
           {units.map((option) => (
             <option key={option} value={option}>
               {UNIT_LABEL[option]}
@@ -84,15 +96,6 @@ export function LengthField({ label, value, spec, onChange }: { label: string; v
           ))}
           {spec.auto && <option value="auto">auto</option>}
         </select>
-        {value !== undefined && (
-          <Reset
-            label={label}
-            onClick={() => {
-              setDraft(null);
-              onChange(undefined);
-            }}
-          />
-        )}
       </div>
     </div>
   );
@@ -158,7 +161,18 @@ export function NumberField({ label, value, valid, min, max, step = 1, onChange 
   const [draft, setDraft] = useState<string | null>(null);
   return (
     <div className="ve-length" data-invalid={draft !== null || undefined}>
-      <label htmlFor={id}>{label}</label>
+      <div className="ve-length-head">
+        <label htmlFor={id}>{label}</label>
+        {value !== undefined && (
+          <Reset
+            label={label}
+            onClick={() => {
+              setDraft(null);
+              onChange(undefined);
+            }}
+          />
+        )}
+      </div>
       <div className="ve-length-inputs">
         <input
           id={id}
@@ -188,15 +202,6 @@ export function NumberField({ label, value, valid, min, max, step = 1, onChange 
           }}
           onBlur={() => setDraft(null)}
         />
-        {value !== undefined && (
-          <Reset
-            label={label}
-            onClick={() => {
-              setDraft(null);
-              onChange(undefined);
-            }}
-          />
-        )}
       </div>
     </div>
   );
