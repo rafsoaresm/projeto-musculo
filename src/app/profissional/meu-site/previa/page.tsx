@@ -40,8 +40,8 @@ export default async function SitePreview() {
         <p>Prévia: os botões de contato funcionam, mas o site só vai ao ar quando você publicar. O que ainda não foi salvo no editor não aparece aqui.</p>
       </Notice>
       <div className="site-preview" aria-label="Prévia da página">
-        <InlineSiteStyles css={buildSiteCss(preview.content, libraryCssImages(process.env.NEXT_PUBLIC_BASE_PATH || "", library))} />
-        <SiteRenderer content={preview.content} images={libraryImages(process.env.NEXT_PUBLIC_BASE_PATH || "", library)} />
+        <InlineSiteStyles css={buildSiteCss(preview.content, libraryCssImages(null, library))} />
+        <SiteRenderer content={preview.content} images={libraryImages(null, library)} />
       </div>
     </>
   );

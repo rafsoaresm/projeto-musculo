@@ -9,6 +9,7 @@ import { useUnsavedGuard } from "@/components/use-unsaved-guard";
 import type { AssetRow } from "@/db/site-assets";
 import type { ReleaseRow, ServiceChoice } from "@/db/sites";
 import { PUBLIC_WARNING, type PublishIssue, type SiteContent } from "./contracts";
+import { PublishIssues } from "./publish-issues";
 import { historyReducer, startHistory } from "./editor-history";
 import { PREPARE_MESSAGE, prepareImage } from "./image-upload";
 import type { RemoveResult, UploadResult } from "./image-picker";
@@ -123,16 +124,20 @@ export function SiteWorkspace({ slug, initial, live, releases, services, images,
       }
     });
   }
-  function publish(note: Note) {
+  /** `withWarnings` is the person's "publish anyway": the warnings found before do not stop it. */
+  function publish(note: Note, withWarnings = false) {
     startTransition(async () => {
       setIssues([]);
-      const result = await publishSite(revision);
+      const result = await publishSite(revision, withWarnings);
       if (result.status === "published") {
         note.say(`Publicado: o site está no ar na versão ${result.number}.`);
         router.refresh();
       } else if (result.status === "invalid") {
         setIssues(result.issues);
         note.say("Falta completar o site antes de publicar.", true);
+      } else if (result.status === "warnings") {
+        setIssues(result.issues);
+        note.say("O site tem avisos. Corrija o que quiser ou publique mesmo assim.");
       } else {
         note.say(result.message, true);
       }
@@ -191,20 +196,7 @@ export function SiteWorkspace({ slug, initial, live, releases, services, images,
         )}
         {unpublished && <p className="small">Há alterações salvas que ainda não foram publicadas.</p>}
         <p className="small muted">{PUBLIC_WARNING}</p>
-        {!editorOpen && issues.length > 0 && (
-          <div className="notice warning" role="alert">
-            <div>
-              <p>
-                <strong>Antes de publicar:</strong>
-              </p>
-              <ul aria-label="O que falta para publicar">
-                {issues.map((issue, index) => (
-                  <li key={index}>{issue.message}</li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        )}
+        {!editorOpen && <PublishIssues issues={issues} pending={pending} onPublishAnyway={() => publish(stateNote, true)} />}
         <div className="persist-actions">
           {canEdit && (
             <button type="button" className="button primary" onClick={() => setEditorOpen(true)}>
@@ -338,6 +330,7 @@ export function SiteWorkspace({ slug, initial, live, releases, services, images,
           live={live !== null}
           onSave={() => save(editorNote)}
           onPublish={() => publish(editorNote)}
+          onPublishAnyway={() => publish(editorNote, true)}
           note={editorNote.element}
           issues={issues}
           onClose={() => setEditorOpen(false)}

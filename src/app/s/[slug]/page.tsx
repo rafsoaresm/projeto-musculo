@@ -29,14 +29,14 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 export default async function PublicSite({ params }: { params: Promise<{ slug: string }> }) {
   const site = await load((await params).slug);
   if (!site) notFound();
-  const base = process.env.NEXT_PUBLIC_BASE_PATH || "";
+  // Every address below is relative to this page's (see image-urls.ts): the mount path of the platform comes along by itself.
   // The styles of the blocks come as a sheet from the page's own address (no `style` attribute, no <style> in the page).
   // A page that has none does not ask for one.
-  const hasStyles = buildSiteCss(site.content, publicCssImages(base, site.slug, site.images)) !== "";
+  const hasStyles = buildSiteCss(site.content, publicCssImages(site.images)) !== "";
   return (
     <>
-      {hasStyles && <link rel="stylesheet" href={publicStyleUrl(base, site.slug, site.number)} precedence="default" />}
-      <SiteRenderer content={site.content} images={publicImages(base, site.slug, site.images)} />
+      {hasStyles && <link rel="stylesheet" href={publicStyleUrl(site.slug, site.number)} precedence="default" />}
+      <SiteRenderer content={site.content} images={publicImages(site.slug, site.images)} />
     </>
   );
 }

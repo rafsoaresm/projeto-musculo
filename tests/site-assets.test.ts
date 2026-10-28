@@ -46,12 +46,12 @@ const withImage = (assetId: string, over: Partial<SiteContent> = {}): SiteConten
   ...over,
 });
 
-async function saveAndPublish(content: SiteContent, minute: number, who = "owner-a", org = "org-a") {
+async function saveAndPublish(content: SiteContent, minute: number, who = "owner-a", org = "org-a", withWarnings = false) {
   const repo = sites(who, org);
   const overview = (await repo.overview())!;
   const saved = await repo.saveDraft(content, overview.draft.revision, at(minute));
   if (saved.status !== "saved") throw new Error(JSON.stringify(saved));
-  return repo.publish(saved.revision, at(minute + 1));
+  return repo.publish(saved.revision, at(minute + 1), { withWarnings });
 }
 
 beforeAll(async () => {
@@ -224,7 +224,7 @@ describe("publishing with images", () => {
     const foreign = (await assets("owner-b", "org-b").list())[0].id;
     const messages = async (content: SiteContent) => {
       const outcome = await saveAndPublish(content, 20);
-      return outcome.status === "invalid" ? outcome.issues.map((i) => i.message) : [outcome.status];
+      return outcome.status === "warnings" ? outcome.issues.map((i) => i.message) : [outcome.status];
     };
     expect(await messages(withImage("not-there"))).toEqual([expect.stringContaining("não está mais na biblioteca")]);
     expect(await messages(withImage(foreign))).toEqual([expect.stringContaining("não está mais na biblioteca")]);
@@ -241,11 +241,24 @@ describe("publishing with images", () => {
     expect(referencedAssetIds(inColumn)).toEqual([firstId]);
     const bad = { ...inColumn, logoAssetId: "gone" };
     const refused = await saveAndPublish(bad, 22);
-    expect(refused.status).toBe("invalid");
-    if (refused.status === "invalid") expect(refused.issues.map((i) => i.message)).toEqual([expect.stringContaining("logotipo")]);
+    expect(refused.status).toBe("warnings");
+    if (refused.status === "warnings") expect(refused.issues.map((i) => i.message)).toEqual([expect.stringContaining("logotipo")]);
     expect((await saveAndPublish(inColumn, 24)).status).toBe("published");
     const page = (await publishedSiteBySlug(db, "marina-a"))!;
     expect(Object.keys(page.images)).toEqual([firstId]);
+  });
+  it("publishes anyway an image that is not in the library, a background and a logo that are not, and leaves them out of what is public", async () => {
+    const content = withImage("not-there");
+    content.blocks = [content.blocks[0], content.blocks[1], { ...emptyBlock("box", "bg"), children: [], style: { bgImage: "gone-too" } } as SiteContent["blocks"][number], { ...emptyBlock("image", "ok"), assetId: firstId, alt: "Aqui" } as SiteContent["blocks"][number]];
+    content.logoAssetId = "no-logo";
+    expect((await saveAndPublish(content, 26)).status).toBe("warnings");
+    const outcome = await saveAndPublish(content, 28, "owner-a", "org-a", true);
+    expect(outcome.status).toBe("published");
+    const page = (await publishedSiteBySlug(db, "marina-a"))!;
+    // The release keeps what the person wrote, and serves only the images that are there.
+    expect(Object.keys(page.images)).toEqual([firstId]);
+    expect(await count("SELECT 1 FROM site_release_assets ra JOIN site_releases r ON r.id = ra.release_id WHERE r.number = ? AND ra.asset_id IN ('not-there', 'gone-too', 'no-logo')", page.number)).toBe(0);
+    expect(await count("SELECT 1 FROM site_release_assets ra JOIN site_releases r ON r.id = ra.release_id WHERE r.number = ? AND ra.asset_id = ?", page.number, firstId)).toBe(1);
   });
 });
 

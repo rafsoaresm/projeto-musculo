@@ -2817,11 +2817,17 @@ label.check input {
   cursor: not-allowed;
 }
 .ve-issues {
+  max-height: 30vh;
+  overflow: auto;
+}
+.ve-issues .notice {
   margin: 0;
   border-radius: 0;
   border-width: 0 0 1px;
-  max-height: 30vh;
-  overflow: auto;
+}
+.ve-issues ul + p,
+.notice ul + p {
+  margin-top: 10px;
 }
 .ve-compact-tabs {
   display: none;

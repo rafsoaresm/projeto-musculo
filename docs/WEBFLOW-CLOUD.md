@@ -111,7 +111,7 @@ SMOKE_ORIGIN=http://127.0.0.1:8787 npm run smoke
 PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium npm run test:e2e
 ```
 
-Para verificar subcaminho, passe `BASE_URL=/treinador` no build, preview, smoke e testes. Não faça builds simultâneos sobre `.next`/`.open-next` nem troque o bundle de um processo antigo. `BASE_URL` é só uma simulação local: no Webflow o builder aplica o mount path e o código do navegador o descobre pela barra de endereço (ver `AUTENTICACAO.md`).
+Para verificar subcaminho, passe `BASE_URL=/treinador` no build, preview, smoke e testes. Não faça builds simultâneos sobre `.next`/`.open-next` nem troque o bundle de um processo antigo. `BASE_URL` é só uma simulação local: no Webflow o builder aplica o mount path e o código do navegador o descobre pela barra de endereço (ver `AUTENTICACAO.md`). **O servidor também não pode depender de `NEXT_PUBLIC_BASE_PATH`** (vazio no Webflow): os endereços que ele escreve em HTML e CSS são relativos (0.38.1, `image-urls.ts`). Para reproduzir localmente o build do Webflow (mount path aplicado, variável vazia), compile e rode o preview com `BASE_URL=/treinador SIMULATE_PLATFORM_MOUNT=1` (**só no build de nuvem e no `preview:cloud`: com `next dev` a página recarrega em laço, causa não investigada**).
 
 ## Publicar e ver as tabelas
 

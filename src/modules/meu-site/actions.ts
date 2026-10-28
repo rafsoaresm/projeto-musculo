@@ -15,6 +15,7 @@ export type SaveResult = { status: "saved"; revision: number } | { status: "conf
 export type PublishResult =
   | { status: "published"; number: number }
   | { status: "invalid"; issues: PublishIssue[] }
+  | { status: "warnings"; issues: PublishIssue[] }
   | { status: "conflict" | "error"; message: string };
 export type RestoreResult = { status: "restored"; revision: number; content: SiteContent } | { status: "conflict" | "error"; message: string };
 
@@ -62,15 +63,16 @@ export async function saveSiteDraft(content: unknown, revision: number): Promise
   }
 }
 
-export async function publishSite(revision: number): Promise<PublishResult> {
+/** `withWarnings` is the person's "publish anyway": the warnings do not stop it (what stops it still does). */
+export async function publishSite(revision: number, withWarnings = false): Promise<PublishResult> {
   const { db, context } = await requireWorkspace();
   try {
-    const outcome = await sitesFor(db, context).publish(Number(revision));
+    const outcome = await sitesFor(db, context).publish(Number(revision), new Date(), { withWarnings: withWarnings === true });
     if (outcome.status === "published") {
       refresh();
       return outcome;
     }
-    if (outcome.status === "invalid") return outcome;
+    if (outcome.status === "invalid" || outcome.status === "warnings") return outcome;
     return outcome.status === "conflict"
       ? { status: "conflict", message: "O rascunho mudou depois de você abri-lo. Atualize a página e publique de novo." }
       : { status: "error", message: FORBIDDEN };

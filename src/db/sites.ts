@@ -64,7 +64,10 @@ export type CreateSiteOutcome = { status: "created" } | { status: "exists" } | {
 export type SaveDraftOutcome = { status: "saved"; revision: number } | { status: "conflict" } | { status: "not_found" };
 export type PublishOutcome =
   | { status: "published"; number: number }
+  /** Something stops the publication (no title, no block, a testimony without its authorization): nothing was published. */
   | { status: "invalid"; issues: PublishIssue[] }
+  /** Only warnings, and the person has not said to publish with them: nothing was published; asking again with `withWarnings` does. */
+  | { status: "warnings"; issues: PublishIssue[] }
   | { status: "conflict" }
   | { status: "not_found" };
 export type AddressOutcome = { status: "changed" } | { status: "slug_taken" } | { status: "public" } | { status: "not_found" };
@@ -233,11 +236,13 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
     },
 
     /**
-     * Makes a release of the saved draft public. The draft must still be the revision the person saw, every
-     * required field filled in and every service chosen still on offer; the services are written into the
+     * Makes a release of the saved draft public. The draft must still be the revision the person saw and have a title, a block and the
+     * authorization of each testimony (those stop the publication); what else is incomplete (a button with no contact, a question with no
+     * answer, an image with no description...) is a warning, and the page is published without waiting for it when the person asks for it
+     * (`withWarnings`): the check is made again here, so what was warned about is what is published. The services are written into the
      * release as they are now. The release and the pointer are written together or not at all.
      */
-    async publish(expectedRevision: number, now = new Date()): Promise<PublishOutcome> {
+    async publish(expectedRevision: number, now = new Date(), options: { withWarnings?: boolean } = {}): Promise<PublishOutcome> {
       const draft = await draftRow();
       if (!draft) return { status: "not_found" };
       if (draft.revision !== expectedRevision) return { status: "conflict" };
@@ -251,8 +256,12 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
         .prepare(`SELECT a.id FROM site_assets a WHERE a.site_id = ?3 AND a.id IN (SELECT value FROM json_each(?4)) AND ${reads}`)
         .bind(organizationId, userId, draft.siteId, usedJson)
         .all<{ id: string }>();
-      const issues = publishIssues(content, new Set(live.keys()), new Set(found.results.map((row) => row.id)));
-      if (issues.length > 0) return { status: "invalid", issues };
+      const present = found.results.map((row) => row.id);
+      const issues = publishIssues(content, new Set(live.keys()), new Set(present));
+      if (issues.some((issue) => issue.severity === "blocking")) return { status: "invalid", issues };
+      if (issues.length > 0 && !options.withWarnings) return { status: "warnings", issues };
+      // What the release holds of the library is the images that are there: one the person was warned is missing (and published anyway) is left out of the page.
+      const presentJson = JSON.stringify(present);
       const json = JSON.stringify(resolveServices(content, live));
       const hash = await sha256Hex(json);
       const releaseId = crypto.randomUUID();
@@ -267,7 +276,7 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
              WHERE s.organization_id = ?1 AND d.revision = ?7 AND ${writes}
                AND (SELECT COUNT(*) FROM site_assets a WHERE a.site_id = s.id AND a.id IN (SELECT value FROM json_each(?8))) = ?9`,
           )
-          .bind(organizationId, userId, releaseId, json, hash, stamp, expectedRevision, usedJson, used.length),
+          .bind(organizationId, userId, releaseId, json, hash, stamp, expectedRevision, presentJson, present.length),
         db
           .prepare(
             `INSERT INTO site_published (site_id, release_id, published_by, published_at)
@@ -285,7 +294,7 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
              SELECT r.id, a.id, r.site_id FROM site_releases r JOIN site_assets a ON a.site_id = r.site_id
              WHERE r.id = ?1 AND a.id IN (SELECT value FROM json_each(?2))`,
           )
-          .bind(releaseId, usedJson),
+          .bind(releaseId, presentJson),
       ]);
       if (results[0].meta.changes > 0) {
         const number = await db.prepare("SELECT number FROM site_releases WHERE id = ?").bind(releaseId).first<{ number: number }>();

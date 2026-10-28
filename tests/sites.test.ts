@@ -173,11 +173,14 @@ describe("saving the draft", () => {
 });
 
 describe("publishing", () => {
-  it("says what is missing and publishes nothing", async () => {
+  it("says what is missing, as a warning, and publishes nothing until the person asks to publish anyway", async () => {
     const revision = await readyDraft("owner-a", complete({ contact: { whatsapp: "", email: "", instagram: "" } }));
     const outcome = await owner().publish(revision, at(20));
-    expect(outcome.status).toBe("invalid");
-    if (outcome.status === "invalid") expect(outcome.issues[0].message).toContain("WhatsApp");
+    expect(outcome.status).toBe("warnings");
+    if (outcome.status === "warnings") {
+      expect(outcome.issues[0].message).toContain("WhatsApp");
+      expect(outcome.issues.every((issue) => issue.severity === "warning")).toBe(true);
+    }
     expect(await count("SELECT 1 FROM site_releases")).toBe(0);
     expect(await count("SELECT 1 FROM site_published")).toBe(0);
     expect(await publishedSiteBySlug(db, "marina-treinos")).toBeNull();
@@ -283,14 +286,14 @@ describe("the services shown on the page", () => {
     const [{ id }] = (await servicesFor(db, scope("owner-a")).list()).filter((s) => s.name === "Nome mudado depois");
     await servicesFor(db, scope("owner-a")).setActive(id, false, at(53));
     const outcome = await owner().publish((await owner().overview())!.draft.revision, at(54));
-    expect(outcome.status).toBe("invalid");
-    if (outcome.status === "invalid") expect(outcome.issues.some((i) => i.message.includes("saiu da oferta"))).toBe(true);
+    expect(outcome.status).toBe("warnings");
+    if (outcome.status === "warnings") expect(outcome.issues.some((i) => i.message.includes("saiu da oferta"))).toBe(true);
     const foreign = await servicesFor(db, scope("owner-b", "org-b")).create({ name: "Serviço da B", delivery: "ONLINE" }, at(55));
     if (foreign.status !== "saved") throw new Error("not saved");
     const revision = (await owner().overview())!.draft.revision;
     const saved = await owner().saveDraft(complete({ blocks: [{ id: "s1", type: "services", eyebrow: "", heading: "S", intro: "", serviceIds: [foreign.id] }] }), revision, at(56));
     if (saved.status !== "saved") throw new Error("not saved");
-    expect((await owner().publish(saved.revision, at(57))).status).toBe("invalid");
+    expect((await owner().publish(saved.revision, at(57))).status).toBe("warnings");
   });
 });
 
@@ -512,7 +515,10 @@ describe("a page with containers, a testimony and a look", () => {
     if (outcome.status === "invalid") {
       expect(outcome.issues.map((i) => i.blockId).sort()).toEqual(["hero", "q", "r1"]);
       expect(outcome.issues.some((i) => i.message.includes("autorizou"))).toBe(true);
+      // Only the testimony stops it; the buttons with no contact are warnings, and asking to publish anyway does not lift what stops it.
+      expect(outcome.issues.filter((i) => i.severity === "blocking").map((i) => i.blockId)).toEqual(["q"]);
     }
+    expect((await repo().publish(saved.revision, at(115), { withWarnings: true })).status).toBe("invalid");
     expect((await publishedSiteBySlug(db, "estudio-d"))!.number).toBe(4);
   });
 });
@@ -612,13 +618,35 @@ describe("a page with styles for the tablet and the phone", () => {
     await expect(bad({ styleDesktop: { gap: "4px" } })).rejects.toThrow();
     expect((await repo().overview())!.draft.revision).toBe(revision);
   });
+  it("publishes anyway when the person asks to, the page without the button that has no contact, and checks again when it does", async () => {
+    const owner = () => sitesFor(db, scope("owner-d", "org-d"));
+    const draft = (await owner().overview())!.draft.revision;
+    const saved = await owner().saveDraft({ ...complete(), title: "Sem contato", contact: { whatsapp: "", email: "", instagram: "" } }, draft, at(140));
+    if (saved.status !== "saved") throw new Error("not saved");
+    const asked = await owner().publish(saved.revision, at(141));
+    expect(asked.status).toBe("warnings");
+    if (asked.status === "warnings") expect(asked.issues.every((issue) => issue.severity === "warning")).toBe(true);
+    const before = (await publishedSiteBySlug(db, "estudio-d"))!.number;
+    const outcome = await owner().publish(saved.revision, at(142), { withWarnings: true });
+    expect(outcome.status).toBe("published");
+    const page = (await publishedSiteBySlug(db, "estudio-d"))!;
+    expect(page.number).toBe(before + 1);
+    expect(page.content.contact.whatsapp).toBe("");
+    // What stops it still stops it, whatever the person asks.
+    const empty = await owner().saveDraft({ ...complete(), title: "" }, saved.revision, at(143));
+    if (empty.status !== "saved") throw new Error("not saved");
+    const stopped = await owner().publish(empty.revision, at(144), { withWarnings: true });
+    expect(stopped.status).toBe("invalid");
+    if (stopped.status === "invalid") expect(stopped.issues.filter((issue) => issue.severity === "blocking").map((issue) => issue.message)).toEqual(["Dê um título ao site."]);
+    expect((await publishedSiteBySlug(db, "estudio-d"))!.number).toBe(before + 1);
+  });
   it("does not publish an image of the tablet's background that is not in the site's library", async () => {
     const revision = (await repo().overview())!.draft.revision;
     const content = sized();
     const saved = await repo().saveDraft({ ...content, blocks: [content.blocks[0], { ...content.blocks[1], styleTablet: { bgImage: "not-in-the-library" } }] } as SiteContent, revision, at(133));
     if (saved.status !== "saved") throw new Error("not saved");
     const outcome = await repo().publish(saved.revision, at(134));
-    expect(outcome.status).toBe("invalid");
-    if (outcome.status === "invalid") expect(outcome.issues.map((issue) => issue.blockId)).toEqual(["row"]);
+    expect(outcome.status).toBe("warnings");
+    if (outcome.status === "warnings") expect(outcome.issues.map((issue) => issue.blockId)).toEqual(["row"]);
   });
 });

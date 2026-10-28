@@ -340,20 +340,20 @@ describe("the same page, as the canvas of the editor", () => {
 });
 
 describe("images on the public page", () => {
-  const pub = publicImages("/treinador", "marina", { "a-1": { width: 800, height: 600 }, "a-2": { width: 100, height: 100 } });
+  const pub = publicImages("marina", { "a-1": { width: 800, height: 600 }, "a-2": { width: 100, height: 100 } });
   const image = (id: string, over: object = {}) => of("image", id, { assetId: "a-1", alt: "Marina no estúdio", caption: "No estúdio", size: "medium", ...over } as never);
   it("draws an image of the release from the address of the page, with its size, its description, and lazily", () => {
     const html = render(page({ blocks: [image("i")] }), undefined, pub);
-    expect(html).toContain('<img src="/treinador/s/marina/m/a-1" width="800" height="600" alt="Marina no estúdio" loading="lazy" decoding="async"/>');
+    expect(html).toContain('<img src="./marina/m/a-1" width="800" height="600" alt="Marina no estúdio" loading="lazy" decoding="async"/>');
     expect(html).toContain('<figure class="site-image site-leaf" data-size="medium">');
     expect(html).toContain("<figcaption>No estúdio</figcaption>");
   });
   it("loads from nowhere but the page's own address: every src, even with a hostile id or title", () => {
     const hostile = { "a\"onerror=\"x": { width: 1, height: 1 } };
-    const html = render(page({ blocks: [image("i"), image("j", { assetId: "a\"onerror=\"x", alt: '"><script>alert(1)</script>' })], logoAssetId: "a-2", title: "<b>x</b>" }), undefined, (id) => publicImages("", "marina", { ...hostile, "a-1": { width: 1, height: 1 }, "a-2": { width: 1, height: 1 } })(id));
+    const html = render(page({ blocks: [image("i"), image("j", { assetId: "a\"onerror=\"x", alt: '"><script>alert(1)</script>' })], logoAssetId: "a-2", title: "<b>x</b>" }), undefined, (id) => publicImages("marina", { ...hostile, "a-1": { width: 1, height: 1 }, "a-2": { width: 1, height: 1 } })(id));
     const sources = [...html.matchAll(/ src="([^"]*)"/g)].map((m) => m[1]);
     expect(sources.length).toBe(3);
-    for (const source of sources) expect(source).toMatch(/^\/s\/marina\/m\//);
+    for (const source of sources) expect(source).toMatch(/^\.\/marina\/m\//);
     expect(html).not.toMatch(/\sonerror\s*=/i);
     expect(html).not.toMatch(/<script/i);
     expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
@@ -366,7 +366,7 @@ describe("images on the public page", () => {
   });
   it("draws the logo before the name, with no description of its own (the name is right there), in the h1 too", () => {
     const withLogo = render(page({ logoAssetId: "a-2" }), undefined, pub);
-    expect(withLogo).toContain('<p class="site-brand"><img class="site-logo" src="/treinador/s/marina/m/a-2" width="100" height="100" alt="" decoding="async"/>Marina Treinos</p>');
+    expect(withLogo).toContain('<p class="site-brand"><img class="site-logo" src="./marina/m/a-2" width="100" height="100" alt="" decoding="async"/>Marina Treinos</p>');
     const noHero = render(page({ logoAssetId: "a-2", blocks: [of("text", "t", { text: "Só um texto" })] }), undefined, pub);
     expect(noHero).toContain('<h1 class="site-brand"><img class="site-logo"');
     expect(render(page({ logoAssetId: "a-9" }), undefined, pub)).not.toContain("site-logo");

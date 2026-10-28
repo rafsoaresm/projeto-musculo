@@ -237,7 +237,9 @@ describe("the declarations of a style", () => {
     ]);
     expect(css({ bgImage: "asset-1", bgSize: "contain", bgPosition: "bottom-right", bgRepeat: true })).toContain("background-position:right bottom");
     expect(css({ bgImage: "asset-2" })).toEqual([]);
-    for (const hostile of ['/x"); background:url(//evil.test/x', "https://evil.test/x.png", "//evil.test/x", "/a b", "/a)b", "/a\nb", "/a;b", "javascript:alert(1)", "", "/".padEnd(400, "a")]) {
+    // The published sheet uses addresses relative to itself (the mount path is not known to the server).
+    expect(cssDeclarations({ bgImage: "asset-1" }, { imageUrl: () => "./m/asset-1" })[0]).toBe('background-image:url("./m/asset-1")');
+    for (const hostile of ['/x"); background:url(//evil.test/x', "https://evil.test/x.png", "//evil.test/x", "/a b", "/a)b", "/a\nb", "/a;b", "javascript:alert(1)", "", "/".padEnd(400, "a"), ".//evil.test/x", "./a b", "./", "x/y", "./x\ny"]) {
       expect(cssDeclarations({ bgImage: "asset-1" }, { imageUrl: () => hostile }), hostile).toEqual([]);
     }
   });
