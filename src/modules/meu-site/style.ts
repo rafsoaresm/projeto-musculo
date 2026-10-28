@@ -240,7 +240,7 @@ export interface CssContext {
  * An address that can go inside `url("...")` without being able to leave it, or to leave the site: a path of plain
  * characters that starts with one slash (two would be another site's address with the protocol left out).
  */
-const SAFE_URL = /^\/(?!\/)[A-Za-z0-9/_.-]{1,300}$/;
+const SAFE_URL = /^(?:\/|\.\/)(?!\/)[A-Za-z0-9/_.-]{1,300}$/;
 
 /**
  * The CSS declarations of a style, in a fixed order, without braces. Only a style that passed the schema is written

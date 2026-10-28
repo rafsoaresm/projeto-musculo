@@ -33,9 +33,12 @@ test("a professional builds a page in the visual editor, previews it, publishes 
   await expect(state(page).getByText("Fora do ar")).toBeVisible();
   await noHorizontalOverflow(page);
 
-  // A new site cannot be published: the call to action points to a WhatsApp that is not filled in.
+  // A new site is not published at the first click: the call to action points to a WhatsApp that is not filled in. That is a warning, not a
+  // blockade: it is shown with the way to publish anyway (which the next scenario takes).
   await state(page).getByRole("button", { name: "Publicar", exact: true }).click();
-  await expect(state(page).getByRole("list", { name: "O que falta para publicar" })).toContainText("WhatsApp");
+  await expect(state(page).getByRole("list", { name: "Avisos antes de publicar" })).toContainText("WhatsApp");
+  await expect(state(page).getByRole("list", { name: "O que falta para publicar" })).toHaveCount(0);
+  await expect(state(page).getByRole("button", { name: "Publicar mesmo assim" })).toBeVisible();
   await expect(state(page).getByText("Fora do ar")).toBeVisible();
 
   // The editor: the page in the middle, nothing selected shows the settings of the whole page.
@@ -147,9 +150,11 @@ test("a professional builds a page in the visual editor, previews it, publishes 
   await expect(editor(page).getByText("Rascunho salvo.")).toBeVisible();
   await expect(editor(page).getByText("Rascunho salvo (revisão 2)")).toBeVisible();
   await editor(page).getByRole("button", { name: "Publicar", exact: true }).click();
+  // This one does stop the publication (it is a person's authorization, not a loose end): there is no way to publish anyway.
   const issues = editor(page).getByRole("list", { name: "O que falta para publicar" });
   await expect(issues).toContainText("confirme que a pessoa autorizou");
   await expect(issues.getByRole("listitem")).toHaveCount(1);
+  await expect(editor(page).getByRole("button", { name: "Publicar mesmo assim" })).toHaveCount(0);
   await issues.getByRole("button", { name: "Ir ao bloco" }).click();
   await panel(page, "Propriedades");
   await expect(inspector(page).getByRole("heading", { name: "Depoimento", level: 2 })).toBeVisible();

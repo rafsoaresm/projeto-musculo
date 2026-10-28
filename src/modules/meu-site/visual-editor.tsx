@@ -32,6 +32,7 @@ import { toggleHidden } from "./style-model";
 import type { Screen } from "./screens";
 import { catalogueItem } from "./presets";
 import { PublicAddress } from "./public-address";
+import { PublishIssues } from "./publish-issues";
 import { SiteRenderer } from "./renderer";
 import { buildSiteCss } from "./site-css";
 import { InlineSiteStyles } from "./site-styles";
@@ -55,6 +56,8 @@ export interface VisualEditorProps {
   live: boolean;
   onSave: () => void;
   onPublish: () => void;
+  /** Publishes with the warnings (what stops the publication still does). */
+  onPublishAnyway: () => void;
   /** The answers to the buttons pressed here (saved, published, refused). */
   note: ReactNode;
   issues: PublishIssue[];
@@ -326,34 +329,29 @@ export function VisualEditor(props: VisualEditorProps) {
       </header>
 
       {props.issues.length > 0 && (
-        <div className="notice warning ve-issues" role="alert">
-          <div>
-            <p>
-              <strong>Antes de publicar:</strong>
-            </p>
-            <ul aria-label="O que falta para publicar">
-              {props.issues.map((issue, index) => (
-                <li key={index}>
-                  {issue.message}{" "}
-                  {issue.blockId && locate(content, issue.blockId) && (
-                    <button
-                      type="button"
-                      className="button small secondary"
-                      onClick={() => {
-                        const blockId = issue.blockId!;
-                        setMode("edit");
-                        setSelectedId(blockId);
-                        setScrollTo({ id: blockId });
-                        setPanel("props");
-                      }}
-                    >
-                      Ir ao bloco
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
+        <div className="ve-issues">
+          <PublishIssues
+            issues={props.issues}
+            pending={props.pending}
+            onPublishAnyway={props.onPublishAnyway}
+            action={(issue) =>
+              issue.blockId && locate(content, issue.blockId) ? (
+                <button
+                  type="button"
+                  className="button small secondary"
+                  onClick={() => {
+                    const blockId = issue.blockId!;
+                    setMode("edit");
+                    setSelectedId(blockId);
+                    setScrollTo({ id: blockId });
+                    setPanel("props");
+                  }}
+                >
+                  Ir ao bloco
+                </button>
+              ) : null
+            }
+          />
         </div>
       )}
 

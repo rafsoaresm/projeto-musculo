@@ -111,7 +111,7 @@ test("images: sent in the editor, shown on the page, public only through the pub
   // This page has no style of its own, so it does not ask for a sheet.
   await expect(anonymous.page.locator('link[rel="stylesheet"][href*="/estilo.css"]')).toHaveCount(0);
   const published = anonymous.page.locator(".site-image img");
-  await expect(published).toHaveAttribute("src", new RegExp(`/s/${slug}/m/${used}$`));
+  await expect(published).toHaveAttribute("src", `./${slug}/m/${used}`);
   await expect(published).toHaveAttribute("alt", "Marina no estúdio");
   await expect(published).toHaveAttribute("width", "300");
   await expect(published).toHaveAttribute("height", "200");
@@ -121,7 +121,7 @@ test("images: sent in the editor, shown on the page, public only through the pub
   for (const source of sources) expect(source, source).toMatch(new RegExp(`/s/${slug}/m/[0-9a-f-]{36}$`));
   // The logo is the same image, from the same public address, and the picture is decorative (the name next to it says it).
   const publishedLogo = anonymous.page.locator(".site-logo");
-  await expect(publishedLogo).toHaveAttribute("src", new RegExp(`/s/${slug}/m/${used}$`));
+  await expect(publishedLogo).toHaveAttribute("src", `./${slug}/m/${used}`);
   await expect(publishedLogo).toHaveAttribute("alt", "");
 
   // The file: an image, with the headers that keep it an image, revalidated by its digest.

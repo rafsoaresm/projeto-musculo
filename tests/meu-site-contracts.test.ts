@@ -480,3 +480,60 @@ describe("images on the page", () => {
     expect(found[0].message).toContain("camada 1 (Imagem)");
   });
 });
+
+describe("what stops a publication and what only warns", () => {
+  const live = new Set(["svc-1"]);
+  const found = (content: SiteContent, assets: string[] | null = ["asset-1"]) => publishIssues(content, live, assets ? new Set(assets) : null);
+  const stops = (content: SiteContent, assets?: string[] | null) => found(content, assets).filter((i) => i.severity === "blocking").map((i) => i.message);
+  const warns = (content: SiteContent, assets?: string[] | null) => found(content, assets).filter((i) => i.severity === "warning").map((i) => i.message);
+
+  it("stops for an empty page: no title, no block", () => {
+    expect(stops(full({ title: "" }))).toEqual(["Dê um título ao site."]);
+    expect(stops(full({ blocks: [] }))).toEqual(["Acrescente pelo menos um bloco."]);
+    expect(stops(full({ title: "", blocks: [] }))).toEqual(["Dê um título ao site.", "Acrescente pelo menos um bloco."]);
+    expect(warns(full({ title: "", blocks: [] }))).toEqual([]);
+  });
+  it("stops for a testimony that the person did not authorize, wherever it is, and only for that", () => {
+    const quote = (id: string, over: object = {}) => block("quote", id, { quote: "Ótimo", author: "Ana", authorized: false, ...over } as never);
+    expect(stops(withBlocks([quote("q")]))).toEqual([expect.stringContaining("confirme que a pessoa autorizou")]);
+    expect(stops(withBlocks([box("c", [box("d", [quote("deep")])])]))).toEqual([expect.stringContaining("confirme que a pessoa autorizou")]);
+    expect(found(withBlocks([box("c", [quote("deep")])]))[0].blockId).toBe("deep");
+    expect(found(withBlocks([quote("q", { authorized: true })]))).toEqual([]);
+    // Its other loose ends are warnings: an empty testimony or one with no author is not a safeguard.
+    expect(stops(withBlocks([quote("q", { authorized: true, quote: "", author: "" })]))).toEqual([]);
+    expect(warns(withBlocks([quote("q", { authorized: true, quote: "", author: "" })]))).toHaveLength(2);
+  });
+  it("only warns for every other loose end: the page is left without the part that is not ready, and the person decides", () => {
+    const loose = withBlocks([
+      block("hero", "h", { heading: "", buttonLabel: "Falar", buttonChannel: "whatsapp" }),
+      block("text", "t"),
+      block("services", "s", { serviceIds: ["gone"] }),
+      block("about", "a"),
+      block("stats", "st", { items: [{ value: "1", label: "" }] }),
+      block("faq", "f", { items: [{ question: "Q?", answer: "" }] }),
+      block("cta", "c"),
+      box("b", [
+        block("heading", "he"),
+        block("paragraph", "pa"),
+        block("button", "bu"),
+        block("link", "li", { anchor: "nowhere" } as never),
+        block("image", "im", { assetId: "gone", alt: "" } as never),
+        block("image", "im2", { assetId: "", alt: "" } as never),
+        block("paragraph", "bg", { text: "x", style: { bgImage: "gone" } } as never),
+      ]),
+    ]);
+    const content = { ...loose, contact: { whatsapp: "", email: "", instagram: "" }, logoAssetId: "gone" };
+    const all = found(content);
+    expect(all.length).toBeGreaterThan(15);
+    expect(all.filter((i) => i.severity === "blocking")).toEqual([]);
+    expect(new Set(all.map((i) => i.severity))).toEqual(new Set(["warning"]));
+    // The ones that name no block (the logo) are warnings too.
+    expect(all.some((i) => i.block === null && i.message.includes("logotipo"))).toBe(true);
+  });
+  it("always says which it is: nothing is left without a severity, and a page with both lists them in the order found", () => {
+    const mixed = full({ title: "", blocks: [block("hero", "h", { heading: "" }), block("quote", "q", { quote: "x", author: "y" } as never)] });
+    const all = found(mixed);
+    expect(all.every((i) => i.severity === "blocking" || i.severity === "warning")).toBe(true);
+    expect(all.map((i) => i.severity)).toEqual(["blocking", "warning", "blocking"]);
+  });
+});

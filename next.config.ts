@@ -12,8 +12,10 @@ if (basePath && !/^\/[a-zA-Z0-9/_-]+$/.test(basePath)) {
 }
 if (basePath.endsWith("/")) throw new Error("BASE_URL não pode terminar em /.");
 
+// SIMULATE_PLATFORM_MOUNT=1 reproduces how Webflow Cloud builds: the basePath is applied, but this repository's own variable for it
+// stays empty. Code that needs the mount path from that variable works in every other local run and breaks only there.
 const config: NextConfig = {
-  env: { NEXT_PUBLIC_BASE_PATH: basePath },
+  env: { NEXT_PUBLIC_BASE_PATH: process.env.SIMULATE_PLATFORM_MOUNT === "1" ? "" : basePath },
   basePath,
   assetPrefix: process.env.ASSETS_PREFIX || basePath,
   // The documented local origin is 127.0.0.1; without this the dev server blocks its own HMR.

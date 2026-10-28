@@ -19,7 +19,7 @@ export async function GET(request: Request, { params }: Params) {
   const { env } = await getCloudflareContext({ async: true });
   const site = await publishedSiteBySlug(env.DB, slug);
   if (!site) return new Response("Página não encontrada.", { status: 404, headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Type": "text/plain; charset=utf-8" } });
-  const css = buildSiteCss(site.content, publicCssImages(process.env.NEXT_PUBLIC_BASE_PATH || "", site.slug, site.images));
+  const css = buildSiteCss(site.content, publicCssImages(site.images));
   const etag = `"${await sha256Hex(css)}"`;
   const headers = { "Cache-Control": "public, no-cache", ETag: etag, "X-Content-Type-Options": "nosniff" };
   if (request.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers });

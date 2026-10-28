@@ -640,6 +640,13 @@ export interface PublishIssue {
   /** The node the issue is about (the one inside a container, when it is that), so the editor can show it. */
   blockId: string | null;
   message: string;
+  /**
+   * "blocking" stops the publication: there is nothing to publish (no title, no block) or a safeguard that the person has to
+   * state (a testimony's authorization). "warning" is something to look at that does not stop it: the page is published without
+   * the part that is not ready (the public page leaves out a button with no contact, an incomplete question, an image that is
+   * not there) when the person chooses "publish anyway".
+   */
+  severity: "blocking" | "warning";
 }
 
 /**
@@ -648,9 +655,9 @@ export interface PublishIssue {
  */
 export function publishIssues(content: SiteContent, liveServiceIds: ReadonlySet<string>, assetIds: ReadonlySet<string> | null = null): PublishIssue[] {
   const issues: PublishIssue[] = [];
-  const add = (block: number | null, blockId: string | null, message: string) => issues.push({ block, blockId, message });
-  if (!content.title) add(null, null, "Dê um título ao site.");
-  if (content.blocks.length === 0) add(null, null, "Acrescente pelo menos um bloco.");
+  const add = (block: number | null, blockId: string | null, message: string, severity: PublishIssue["severity"] = "warning") => issues.push({ block, blockId, message, severity });
+  if (!content.title) add(null, null, "Dê um título ao site.", "blocking");
+  if (content.blocks.length === 0) add(null, null, "Acrescente pelo menos um bloco.", "blocking");
   const nodeIds = new Set(allNodes(content.blocks).map((entry) => entry.id));
 
   /** A button is a pair: a text and a contact. Both empty is "no button"; one of them alone is a mistake. */
@@ -710,7 +717,7 @@ export function publishIssues(content: SiteContent, liveServiceIds: ReadonlySet<
       case "quote":
         if (!b.quote) add(at, b.id, `${label}: escreva o depoimento.`);
         if (!b.author) add(at, b.id, `${label}: diga de quem é o depoimento.`);
-        if (!b.authorized) add(at, b.id, `${label}: confirme que a pessoa autorizou o uso do depoimento.`);
+        if (!b.authorized) add(at, b.id, `${label}: confirme que a pessoa autorizou o uso do depoimento.`, "blocking");
         break;
       case "stats": {
         const filled = b.items.filter((item) => item.value && item.label);
