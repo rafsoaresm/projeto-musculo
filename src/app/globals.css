@@ -2398,6 +2398,20 @@ label.check input {
   margin: 0 auto;
   padding: 0 20px;
 }
+/* How wide the content of the page is: a wide page, or the whole window (a section then keeps its text in the reading column). */
+[data-site-width="wide"] .site-main {
+  max-width: 1200px;
+}
+[data-site-width="full"] .site-main {
+  max-width: none;
+  padding: 0;
+}
+[data-site-width="full"] .site-main > .site-section {
+  padding-inline: max(20px, calc((100% - 880px) / 2));
+}
+[data-site-width="full"] .site-main > .site-leaf {
+  margin-inline: max(20px, calc((100% - 880px) / 2));
+}
 .site-section {
   display: grid;
   gap: 12px;
@@ -2407,9 +2421,23 @@ label.check input {
 .site-section:last-child {
   border-bottom: 0;
 }
-.site-basic {
-  padding: 14px 0;
-  border-bottom: 0;
+/* An element that stands on the page by itself (a heading, a text, a button, a link, an image). */
+.site-main > .site-leaf {
+  margin-block: 14px;
+}
+/* A container: it adds nothing of its own; what it looks like comes from the style the person gave it. */
+.site-box {
+  box-sizing: border-box;
+  min-width: 0;
+}
+.site-link {
+  color: var(--site-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+.site-link:hover {
+  text-decoration-thickness: 2px;
 }
 .site-eyebrow {
   color: var(--site-accent);
@@ -2589,29 +2617,6 @@ label.check input {
   border-radius: var(--radius-card);
   background: var(--site-soft);
 }
-.site-columns-section {
-  padding: 24px 0;
-}
-.site-columns {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 24px;
-}
-.site-columns-left {
-  grid-template-columns: 3fr 2fr;
-}
-.site-columns-right {
-  grid-template-columns: 2fr 3fr;
-}
-.site-columns[data-single] {
-  grid-template-columns: 1fr;
-}
-.site-column {
-  display: grid;
-  gap: 12px;
-  align-content: start;
-  min-width: 0;
-}
 .site-hint {
   padding: 10px 12px;
   border: 1px dashed var(--site-line);
@@ -2683,14 +2688,9 @@ label.check input {
   font-weight: 700;
   text-decoration: underline;
 }
-/* The columns stack, and the side-by-side blocks too, when the page itself (not the screen) is narrow:
+/* The side-by-side blocks stack when the page itself (not the screen) is narrow:
    the editor shows a phone-sized page inside a wide screen with the very same rules. */
 @container site (max-width: 640px) {
-  .site-columns,
-  .site-columns-left,
-  .site-columns-right {
-    grid-template-columns: 1fr;
-  }
   .site-about-grid {
     grid-template-columns: 1fr;
   }
@@ -2828,7 +2828,7 @@ label.check input {
 }
 .ve-body {
   display: grid;
-  grid-template-columns: 264px minmax(0, 1fr) 320px;
+  grid-template-columns: 264px minmax(0, 1fr) 340px;
   flex: 1;
   min-height: 0;
 }
@@ -2946,12 +2946,34 @@ label.check input {
   padding-left: 8px;
   border-left: 2px solid var(--color-line);
 }
-.ve-layer {
+.ve-layer-row {
+  position: relative;
   display: flex;
   align-items: center;
+  gap: 2px;
+  border-radius: 10px;
+}
+.ve-layer-toggle {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-muted);
+}
+button.ve-layer-toggle {
+  cursor: pointer;
+}
+.ve-layer {
+  display: flex;
+  flex: 1;
+  align-items: center;
   gap: 8px;
-  width: 100%;
-  min-height: 38px;
+  min-width: 0;
+  min-height: 36px;
   padding: 6px 10px;
   border: 1px solid var(--color-line);
   border-radius: 10px;
@@ -2959,6 +2981,40 @@ label.check input {
   color: var(--color-ink);
   font-size: 14px;
   text-align: left;
+}
+.ve-layer strong {
+  flex: none;
+  font-weight: 700;
+}
+.ve-layer-text {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ve-layer-row[data-drop="before"]::before,
+.ve-layer-row[data-drop="after"]::after {
+  content: "";
+  position: absolute;
+  left: 22px;
+  right: 0;
+  z-index: 2;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--color-primary);
+  pointer-events: none;
+}
+.ve-layer-row[data-drop="before"]::before {
+  top: -3px;
+}
+.ve-layer-row[data-drop="after"]::after {
+  bottom: -3px;
+}
+.ve-layer-row[data-drop="inside"] .ve-layer {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
 }
 .ve-layer[aria-current="true"] {
   border-color: var(--color-primary);
@@ -3066,6 +3122,7 @@ label.check input {
 }
 .ve-fields {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   padding: 12px 16px 28px;
 }
@@ -3223,64 +3280,284 @@ label.check input {
   padding: 6px 12px;
 }
 
-/* The page as a canvas: the same page, with a frame around each block and the tools on top of it. */
-.ve-frame {
-  position: relative;
-  outline: 2px solid transparent;
-  outline-offset: -2px;
+/* The style panel: groups that open and close, and controls that only take what the contract accepts. */
+.ve-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  font-size: 12px;
+}
+.ve-crumbs button {
+  min-height: 0;
+  padding: 2px 4px;
+  border: 0;
+  background: transparent;
+  color: var(--color-primary-strong);
+  text-decoration: underline;
+}
+.ve-crumbs button::after {
+  content: " ›";
+  color: var(--color-muted);
+  text-decoration: none;
+}
+.ve-crumbs [aria-current] {
+  padding: 2px 4px;
+  font-weight: 700;
+}
+.ve-fields .ve-tabs {
+  margin: 0;
+}
+.ve-style-panel {
+  padding: 0;
+}
+.ve-section {
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--color-surface);
+}
+.ve-section summary {
+  padding: 10px 12px;
+  color: var(--color-ink);
+  font-size: 14px;
+  font-weight: 700;
   cursor: pointer;
 }
-.ve-frame:hover {
-  outline-color: var(--color-primary-line);
+.ve-section[open] summary {
+  border-bottom: 1px solid var(--color-line);
 }
-.ve-frame[data-selected] {
-  outline-color: var(--color-primary);
+.ve-section-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px;
 }
-.ve-frame .ve-frame:hover {
-  outline-color: var(--color-primary-line);
+.ve-field-label {
+  color: var(--color-ink);
+  font-size: 13px;
+  font-weight: 700;
 }
-.site-main > .ve-frame:not(:last-child) > .site-section {
-  border-bottom: 1px solid var(--site-line);
+.ve-length {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  min-width: 0;
+}
+.ve-sides-group {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.ve-length-inputs input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.ve-length-inputs input[type="number"]::-webkit-inner-spin-button,
+.ve-length-inputs input[type="number"]::-webkit-outer-spin-button {
+  margin: 0;
+  -webkit-appearance: none;
+}
+.ve-length-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  min-height: 24px;
+}
+.ve-length label {
+  color: var(--color-ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+.ve-length-inputs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ve-fields .ve-length-inputs input {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  padding-inline: 8px;
+}
+.ve-fields .ve-length-inputs select {
+  flex: none;
+  width: 58px;
+  min-width: 0;
+  padding-inline: 4px;
+}
+.ve-length[data-invalid] input {
+  border-color: var(--color-error);
+  background: var(--color-error-soft);
+}
+.ve-reset {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-muted);
+}
+.ve-reset:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary-strong);
+}
+.ve-sides {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 8px;
+}
+.ve-choice-field,
+.ve-color-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.ve-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.ve-choices button {
+  min-height: 32px;
+  padding: 4px 10px;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+.ve-choices button[aria-pressed="true"] {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+  color: var(--color-primary-strong);
+}
+.ve-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  background: transparent;
+  color: inherit;
+}
+.ve-color {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--color-line-strong);
+  border-radius: 6px;
+}
+.ve-color[aria-pressed="true"] {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.ve-color[data-token="ink"] { background: var(--site-ink); }
+.ve-color[data-token="text"] { background: var(--site-text); }
+.ve-color[data-token="muted"] { background: var(--site-muted); }
+.ve-color[data-token="line"] { background: var(--site-line); }
+.ve-color[data-token="bg"] { background: var(--site-bg); }
+.ve-color[data-token="accent"] { background: var(--site-accent); }
+.ve-color[data-token="solid"] { background: var(--site-solid); }
+.ve-color[data-token="on"] { background: var(--site-on); }
+.ve-color[data-token="soft"] { background: var(--site-soft); }
+.ve-color[data-token="softLine"] { background: var(--site-soft-line); }
+.ve-color[data-token="white"] { background: #ffffff; }
+.ve-color[data-token="black"] { background: #000000; }
+.ve-color[data-token="transparent"] {
+  background:
+    linear-gradient(45deg, #c7ced6 25%, transparent 25%, transparent 75%, #c7ced6 75%),
+    linear-gradient(45deg, #c7ced6 25%, #ffffff 25%, #ffffff 75%, #c7ced6 75%);
+  background-position: 0 0, 5px 5px;
+  background-size: 10px 10px;
+}
+.ve-color-custom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ve-fields .ve-color-custom input[type="color"] {
+  flex: none;
+  width: 40px;
+  min-width: 40px;
+  padding: 2px;
+}
+.ve-fields .ve-color-custom input[type="text"] {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+.ve-select-field {
+  display: grid;
+}
+
+/* The page as a canvas: the page itself, exactly as it is published, with the editor's layer over it. The layer is
+   measured from the page's own elements (see editor-canvas.tsx), so nothing of it is inside the page's markup. */
+.ve-surface {
+  position: relative;
+}
+.ve-surface [data-block-id] {
+  cursor: pointer;
+}
+/* A container with nothing in it: room to drop into, and a hint of what it is. */
+.ve-surface [data-empty] {
+  min-height: 56px;
+  outline: 1px dashed var(--site-line);
+  outline-offset: -1px;
+}
+.ve-surface [data-empty]::before {
+  content: "Contêiner vazio: arraste algo para cá";
+  display: block;
+  padding: 14px 10px;
+  color: var(--site-muted);
+  font-size: 12px;
+  text-align: center;
+}
+.ve-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+.ve-hover,
+.ve-select {
+  position: absolute;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+.ve-hover {
+  outline: 1px solid var(--color-primary-line);
+  outline-offset: -1px;
+}
+.ve-select {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
 }
 .ve-chip {
   position: absolute;
-  top: 0;
   left: 0;
-  z-index: 3;
+  bottom: 100%;
   padding: 2px 10px;
-  border-radius: 0 0 8px 0;
+  border-radius: 6px 6px 0 0;
   background: var(--color-primary);
   color: var(--color-on-primary);
   font-size: 11px;
   font-weight: 700;
-  pointer-events: none;
+  white-space: nowrap;
 }
 .ve-tools {
   position: absolute;
-  top: 6px;
-  right: 6px;
-  z-index: 4;
+  right: 0;
+  bottom: 100%;
   display: flex;
   gap: 2px;
+  margin-bottom: 2px;
   padding: 3px;
   border: 1px solid var(--color-line);
   border-radius: 10px;
   background: var(--color-surface);
   box-shadow: 0 2px 8px rgba(31, 41, 51, 0.15);
-  opacity: 0;
-  pointer-events: none;
-}
-/* An element inside a column is small: its tools float above it instead of covering it. */
-.ve-frame[data-nested] > .ve-tools {
-  top: auto;
-  bottom: 100%;
-  right: 0;
-  margin-bottom: 2px;
-}
-.ve-frame:hover > .ve-tools,
-.ve-frame[data-selected] > .ve-tools,
-.ve-tools:focus-within {
-  opacity: 1;
   pointer-events: auto;
 }
 .ve-tools button {
@@ -3306,72 +3583,20 @@ label.check input {
   background: var(--color-error-soft);
   color: var(--color-error);
 }
-/* The line where a dragged block would land. */
-.ve-frame[data-drop="before"]::before,
-.ve-frame[data-drop="after"]::after,
-.ve-column-tools[data-drop="after"]::before {
-  content: "";
+/* Where a dragged block would land: a line between two blocks, or the outline of an empty container. */
+.ve-drop-line {
   position: absolute;
-  left: 0;
-  right: 0;
-  z-index: 5;
-  height: 4px;
+  z-index: 6;
   border-radius: 2px;
   background: var(--color-primary);
-  pointer-events: none;
 }
-.ve-frame[data-drop="before"]::before {
-  top: -2px;
-}
-.ve-frame[data-drop="after"]::after {
-  bottom: -2px;
-}
-.ve-column-tools {
-  position: relative;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding-top: 4px;
-}
-.ve-column-tools[data-drop="after"]::before {
-  top: 0;
-}
-.ve-add {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 30px;
-  padding: 4px 10px;
-  border: 1px dashed var(--color-line-strong);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--site-muted);
-  font-size: 12px;
-  font-weight: 700;
-}
-.ve-add:hover {
-  border-color: var(--color-primary);
-  color: var(--color-primary-strong);
-}
-.ve-empty {
-  display: grid;
-  place-items: center;
-  min-height: 84px;
-  margin: 12px 0;
-  padding: 16px;
-  border: 2px dashed var(--site-line);
-  border-radius: var(--radius-card);
-  color: var(--site-muted);
-  font-size: 14px;
-  text-align: center;
-}
-.ve-empty[data-active] {
-  border-color: var(--color-primary);
+.ve-drop-box {
+  position: absolute;
+  z-index: 6;
+  box-sizing: border-box;
+  border: 2px dashed var(--color-primary);
   background: var(--color-primary-soft);
-  color: var(--color-primary-strong);
-}
-.ve-stage-scroll[data-dragging] .ve-column-tools {
-  min-height: 36px;
+  opacity: 0.7;
 }
 /* A text of the page that can be typed over. */
 .site-editable {
@@ -3385,7 +3610,7 @@ label.check input {
   font-weight: 400;
   opacity: 0.8;
 }
-.ve-frame:hover .site-editable:not([data-editing]) {
+.ve-surface [data-block-id]:hover > .site-editable:not([data-editing]) {
   text-decoration: underline dotted var(--color-primary-line);
   text-underline-offset: 4px;
 }

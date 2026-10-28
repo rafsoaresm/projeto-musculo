@@ -1,41 +1,46 @@
 "use client";
-import { ArrowDown, ArrowLeftRight, ArrowUp, Copy, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowLeftToLine, ArrowUp, Copy, Group, IndentIncrease, Plus, Trash2, Ungroup } from "lucide-react";
 import {
   ANSWER_MAX,
   AUTHOR_MAX,
-  BLOCK_LABEL,
+  BOX_TAGS,
+  BOX_TAG_LABEL,
   BUTTON_MAX,
   CHANNELS,
   CHANNEL_LABEL,
   DESCRIPTION_MAX,
   EYEBROW_MAX,
   FAQ_MAX,
+  HEADING_LEVELS,
   HEADING_MAX,
   IMAGE_SIZES,
   IMAGE_SIZE_LABEL,
+  NAME_MAX,
   QUESTION_MAX,
   QUOTE_MAX,
-  RATIOS,
-  RATIO_LABEL,
   STATS_MAX,
   STAT_LABEL_MAX,
   STAT_VALUE_MAX,
   SUBHEADING_MAX,
   TEXT_MAX,
   TITLE_MAX,
-  type Block,
+  allNodes,
+  type BoxTag,
   type Channel,
-  type ColumnItem,
   type ImageSize,
-  type Ratio,
   type SiteContent,
+  type SiteNode,
 } from "./contracts";
-import { locate, updateBlock } from "./editor-model";
-import { ACCENTS, ACCENT_LABEL, MODES, MODE_LABEL, type Accent, type Mode } from "./site-theme";
+import { ancestorsOf, locate, updateBlock } from "./editor-model";
+import { nodeText, nodeTitle } from "./node-label";
+import { ACCENTS, ACCENT_LABEL, MODES, MODE_LABEL, WIDTHS, WIDTH_LABEL, type Accent, type Mode, type Width } from "./site-theme";
+import { patchSide, patchStyle } from "./style-model";
+import { StylePanel } from "./style-panel";
+import type { Style } from "./style";
 import { DELIVERY_LABEL } from "@/modules/leads/contracts";
 import type { ServiceChoice } from "@/db/sites";
 import type { AssetRow } from "@/db/site-assets";
-import type { BlockAction } from "./editor-canvas";
+import type { NodeAction } from "./editor-canvas";
 import { ImagePicker, type RemoveResult, type UploadResult } from "./image-picker";
 import { ALT_MAX, CAPTION_MAX } from "./images";
 
@@ -70,7 +75,7 @@ function ChannelSelect({ label = "O botão leva a", value, onChange }: { label?:
   return (
     <label>
       {label}
-      <select value={value ?? ""} onChange={(event) => onChange((event.target.value || undefined) as Channel | undefined)}>
+      <select aria-label={label} value={value ?? ""} onChange={(event) => onChange((event.target.value || undefined) as Channel | undefined)}>
         <option value="">Sem botão</option>
         {CHANNELS.map((channel) => (
           <option key={channel} value={channel}>
@@ -115,6 +120,18 @@ export function PageSettings({ content, onChange, images }: { content: SiteConte
           ))}
         </div>
       </fieldset>
+      <fieldset className="ve-choice">
+        <legend>Largura da página</legend>
+        <div className="ve-swatches">
+          {WIDTHS.map((width: Width) => (
+            <label key={width} className="ve-swatch-option">
+              <input type="radio" name="site-width" checked={content.theme.width === width} onChange={() => set({ theme: { ...content.theme, width } }, "theme")} />
+              <span>{WIDTH_LABEL[width]}</span>
+            </label>
+          ))}
+        </div>
+        <p className="small muted">Com a largura total, as seções podem ter fundo de ponta a ponta; o conteúdo de cada uma você organiza com contêineres.</p>
+      </fieldset>
       <ImagePicker
         legend="Logotipo"
         name="site-logo"
@@ -147,35 +164,128 @@ export function PageSettings({ content, onChange, images }: { content: SiteConte
   );
 }
 
-/** The fields of the block that is selected, and what can be done with it. */
+/** Where a button or a link goes: a contact, or another block of the page. */
+function Destination({ node, nodes, onPatch, noun }: { node: { channel?: Channel; anchor?: string }; nodes: SiteNode[]; onPatch: (changes: Record<string, unknown>) => void; noun: string }) {
+  const kind = node.anchor !== undefined ? "block" : node.channel !== undefined ? "contact" : "none";
+  return (
+    <>
+      <label>
+        {`O ${noun} leva a`}
+        <select
+          value={kind}
+          onChange={(event) => {
+            const next = event.target.value;
+            if (next === "none") onPatch({ channel: undefined, anchor: undefined });
+            else if (next === "contact") onPatch({ channel: node.channel ?? "whatsapp", anchor: undefined });
+            else onPatch({ channel: undefined, anchor: node.anchor ?? nodes[0]?.id });
+          }}
+        >
+          <option value="none">Nenhum lugar (ainda)</option>
+          <option value="contact">Um contato</option>
+          <option value="block" disabled={nodes.length === 0}>
+            Outro bloco desta página
+          </option>
+        </select>
+      </label>
+      {kind === "contact" && <ChannelSelect label="Contato de destino" value={node.channel} onChange={(channel) => onPatch({ channel: channel ?? "whatsapp" })} />}
+      {kind === "block" && (
+        <label>
+          Bloco de destino
+          <select value={node.anchor ?? ""} onChange={(event) => onPatch({ anchor: event.target.value || undefined })}>
+            {node.anchor !== undefined && !nodes.some((other) => other.id === node.anchor) && <option value={node.anchor}>Um bloco que não existe mais</option>}
+            {nodes.map((other) => (
+              <option key={other.id} value={other.id}>
+                {[nodeTitle(other), nodeText(other)].filter(Boolean).join(" · ")}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+    </>
+  );
+}
+
+/** The settings of the block that is selected: what it says, how it looks, and where it is in the tree. */
 export function BlockInspector({
   content,
   id,
   services,
   images,
+  tab,
+  onTab,
   onChange,
   act,
+  select,
 }: {
   content: SiteContent;
   id: string;
   services: ServiceChoice[];
   images: ImageSupport;
+  tab: "content" | "style";
+  onTab: (tab: "content" | "style") => void;
   onChange: Change;
-  act: (id: string, action: BlockAction) => void;
+  act: (id: string, action: NodeAction) => void;
+  select: (id: string) => void;
 }) {
   const found = locate(content, id);
   if (!found) return null;
-  const entry = found.block;
+  const entry = found.node;
   const patch = (changes: Record<string, unknown>) =>
-    onChange(updateBlock(content, id, (current) => ({ ...current, ...changes }) as Block | ColumnItem), `${id}:${Object.keys(changes).join(",")}`);
+    onChange(updateBlock(content, id, (current) => ({ ...current, ...changes }) as SiteNode), `${id}:${Object.keys(changes).join(",")}`);
+  const withStyle = (change: (style: Style | undefined) => Style | undefined, key: string) =>
+    onChange(
+      updateBlock(content, id, (current) => {
+        const next = change(current.style);
+        const { style: _old, ...rest } = current;
+        void _old;
+        return (next ? { ...rest, style: next } : rest) as SiteNode;
+      }),
+      `${id}:style:${key}`,
+    );
   const known = new Set(services.map((service) => service.id));
-  const label = BLOCK_LABEL[entry.type];
+  const label = nodeTitle(entry);
+  const above = ancestorsOf(content, id);
+  const parent = found.parentId ? locate(content, found.parentId)?.node : undefined;
+  const inFlex = parent?.type === "box" && parent.style?.display === "flex";
+  const siblingBefore = found.index > 0 ? (found.parentId === null ? content.blocks : parent?.type === "box" ? parent.children : [])[found.index - 1] : undefined;
+  const targets = allNodes(content.blocks).filter((other) => other.id !== id);
 
   return (
     <div className="ve-fields">
-      {entry.type !== "columns" && "eyebrow" in entry && (
-        <Text label="Etiqueta acima do título (opcional)" value={entry.eyebrow} max={EYEBROW_MAX} onChange={(eyebrow) => patch({ eyebrow })} />
+      {above.length > 0 && (
+        <nav className="ve-crumbs" aria-label="Onde este bloco está">
+          {above.map((ancestor) => (
+            <button key={ancestor.id} type="button" onClick={() => select(ancestor.id)}>
+              {nodeTitle(ancestor)}
+            </button>
+          ))}
+          <span aria-current="true">{label}</span>
+        </nav>
       )}
+      <div className="ve-tabs" role="group" aria-label="O que editar">
+        <button type="button" aria-pressed={tab === "content"} onClick={() => onTab("content")}>
+          Conteúdo
+        </button>
+        <button type="button" aria-pressed={tab === "style"} onClick={() => onTab("style")}>
+          Estilo
+        </button>
+      </div>
+
+      {tab === "style" ? (
+        <StylePanel
+          node={entry}
+          inFlex={inFlex}
+          theme={content.theme}
+          images={images}
+          onStyle={(changes) => withStyle((style) => patchStyle(style, changes), Object.keys(changes).join(","))}
+          onSide={(group, side, value) => withStyle((style) => patchSide(style, group, side, value), `${group}.${side}`)}
+          onClear={() => withStyle(() => undefined, "clear")}
+        />
+      ) : (
+        <>
+          <Text label="Nome da camada (só para você; não aparece na página)" value={entry.name ?? ""} max={NAME_MAX} onChange={(name) => patch({ name: name || undefined })} />
+
+          {"eyebrow" in entry && <Text label="Etiqueta acima do título (opcional)" value={entry.eyebrow} max={EYEBROW_MAX} onChange={(eyebrow) => patch({ eyebrow })} />}
 
       {entry.type === "hero" && (
         <>
@@ -301,33 +411,54 @@ export function BlockInspector({
         </>
       )}
 
-      {entry.type === "columns" && (
-        <>
-          <label>
-            Largura das colunas
-            <select value={entry.ratio} onChange={(event) => patch({ ratio: event.target.value as Ratio })}>
-              {RATIOS.map((ratio) => (
-                <option key={ratio} value={ratio}>
-                  {RATIO_LABEL[ratio]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <p className="small muted">
-            Cada coluna recebe títulos, parágrafos e botões: arraste da biblioteca ou use os botões “Acrescentar” embaixo de cada coluna. No celular as
-            colunas ficam uma sobre a outra.
-          </p>
-        </>
-      )}
 
-      {entry.type === "heading" && <Text label="Título" value={entry.text} max={HEADING_MAX} rows={2} onChange={(text) => patch({ text })} />}
-      {entry.type === "paragraph" && <Text label="Parágrafo" value={entry.text} max={TEXT_MAX} rows={6} onChange={(text) => patch({ text })} />}
-      {entry.type === "button" && (
-        <>
-          <Text label="Texto do botão" value={entry.label} max={BUTTON_MAX} onChange={(buttonLabel) => patch({ label: buttonLabel })} />
-          <ChannelSelect value={entry.channel} onChange={(channel) => patch({ channel })} />
-        </>
-      )}
+          {entry.type === "box" && (
+            <>
+              <label>
+                Tipo de caixa
+                <select value={entry.tag} onChange={(event) => patch({ tag: event.target.value as BoxTag })}>
+                  {BOX_TAGS.map((tag) => (
+                    <option key={tag} value={tag}>
+                      {BOX_TAG_LABEL[tag]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="small muted">
+                Um contêiner guarda outros blocos. Como eles se organizam (lado a lado, um sobre o outro, em grade) você escolhe na aba Estilo. {entry.children.length === 0 ? "Este está vazio: arraste algo para dentro dele." : `Tem ${entry.children.length} bloco(s) dentro.`}
+              </p>
+            </>
+          )}
+
+          {entry.type === "heading" && (
+            <>
+              <Text label="Título" value={entry.text} max={HEADING_MAX} rows={2} onChange={(text) => patch({ text })} />
+              <label>
+                Nível do título
+                <select value={entry.level} onChange={(event) => patch({ level: Number(event.target.value) })}>
+                  {HEADING_LEVELS.map((level) => (
+                    <option key={level} value={level}>
+                      {`Título ${level}${level === 2 ? " (seção)" : ""}`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="small muted">O título principal da página (nível 1) é o do primeiro destaque, ou o nome do site.</p>
+            </>
+          )}
+          {entry.type === "paragraph" && <Text label="Parágrafo" value={entry.text} max={TEXT_MAX} rows={6} onChange={(text) => patch({ text })} />}
+          {entry.type === "button" && (
+            <>
+              <Text label="Texto do botão" value={entry.label} max={BUTTON_MAX} onChange={(label) => patch({ label })} />
+              <Destination node={entry} nodes={targets} onPatch={patch} noun="botão" />
+            </>
+          )}
+          {entry.type === "link" && (
+            <>
+              <Text label="Texto do link" value={entry.label} max={BUTTON_MAX} onChange={(label) => patch({ label })} />
+              <Destination node={entry} nodes={targets} onPatch={patch} noun="link" />
+            </>
+          )}
 
       {entry.type === "image" && (
         <>
@@ -358,27 +489,38 @@ export function BlockInspector({
         </>
       )}
 
-      <h3 className="ve-subtitle">Organização</h3>
-      <div className="ve-org" role="group" aria-label={`Organização do bloco ${label}`}>
-        <button type="button" className="button small secondary" disabled={found.index === 0} onClick={() => act(id, "up")}>
-          <ArrowUp size={16} /> Acima
-        </button>
-        <button type="button" className="button small secondary" disabled={found.index === found.count - 1} onClick={() => act(id, "down")}>
-          <ArrowDown size={16} /> Abaixo
-        </button>
-        {found.container !== "root" && (
-          <button type="button" className="button small secondary" onClick={() => act(id, "other-column")}>
-            <ArrowLeftRight size={16} /> Outra coluna
-          </button>
-        )}
-        <button type="button" className="button small secondary" onClick={() => act(id, "duplicate")}>
-          <Copy size={16} /> Duplicar
-        </button>
-        <button type="button" className="button small danger-outline" onClick={() => act(id, "delete")}>
-          <Trash2 size={16} /> Excluir
-        </button>
-      </div>
-      <p className="small muted">Excluiu sem querer? Use Desfazer (Ctrl+Z).</p>
+          <h3 className="ve-subtitle">Organização</h3>
+          <div className="ve-org" role="group" aria-label={`Organização de ${label}`}>
+            <button type="button" className="button small secondary" disabled={found.index === 0} onClick={() => act(id, "up")}>
+              <ArrowUp size={16} /> Acima
+            </button>
+            <button type="button" className="button small secondary" disabled={found.index === found.count - 1} onClick={() => act(id, "down")}>
+              <ArrowDown size={16} /> Abaixo
+            </button>
+            <button type="button" className="button small secondary" disabled={found.parentId === null} onClick={() => act(id, "out")}>
+              <ArrowLeftToLine size={16} /> Sair do contêiner
+            </button>
+            <button type="button" className="button small secondary" disabled={siblingBefore?.type !== "box"} onClick={() => act(id, "into")}>
+              <IndentIncrease size={16} /> Entrar no contêiner de cima
+            </button>
+            <button type="button" className="button small secondary" onClick={() => act(id, "wrap")}>
+              <Group size={16} /> Agrupar
+            </button>
+            {entry.type === "box" && (
+              <button type="button" className="button small secondary" onClick={() => act(id, "unwrap")}>
+                <Ungroup size={16} /> Desagrupar
+              </button>
+            )}
+            <button type="button" className="button small secondary" onClick={() => act(id, "duplicate")}>
+              <Copy size={16} /> Duplicar
+            </button>
+            <button type="button" className="button small danger-outline" onClick={() => act(id, "delete")}>
+              <Trash2 size={16} /> Excluir
+            </button>
+          </div>
+          <p className="small muted">Excluiu sem querer? Use Desfazer (Ctrl+Z).</p>
+        </>
+      )}
     </div>
   );
 }

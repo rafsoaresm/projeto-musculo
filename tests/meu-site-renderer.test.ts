@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { createElement, type ReactNode } from "react";
+import { createElement } from "react";
 import { describe, expect, it } from "vitest";
 import { SiteRenderer, type EditHooks, type FieldSpec, type ImageResolver } from "@/modules/meu-site/renderer";
 import { libraryImages, publicImages } from "@/modules/meu-site/image-urls";
@@ -8,11 +8,11 @@ import { emptyBlock, starterContent, type Block, type SiteContent } from "@/modu
 const render = (content: SiteContent, edit?: EditHooks, images?: ImageResolver) => renderToStaticMarkup(createElement(SiteRenderer, { content, edit, images }));
 
 const page = (over: Partial<SiteContent> = {}): SiteContent => ({
-  schemaVersion: 2,
+  schemaVersion: 3,
   title: "Marina Treinos",
   description: "",
   contact: { whatsapp: "(11) 91234-5678", email: "marina@example.test", instagram: "@marina.treinos" },
-  theme: { accent: "blue", mode: "light" },
+  theme: { accent: "blue", mode: "light", width: "narrow" },
   blocks: [
     { id: "h", type: "hero", eyebrow: "", heading: "Treino sob medida", subheading: "Com acompanhamento", buttonLabel: "Falar comigo", buttonChannel: "whatsapp" },
     { id: "t", type: "text", eyebrow: "", heading: "Sobre", text: "Primeira linha\nSegunda linha" },
@@ -25,18 +25,21 @@ const page = (over: Partial<SiteContent> = {}): SiteContent => ({
 const of = <T extends Block["type"]>(type: T, id: string, over: Partial<Extract<Block, { type: T }>>) => ({ ...emptyBlock(type, id), ...over }) as Block;
 const rich = (): SiteContent =>
   page({
-    theme: { accent: "green", mode: "dark" },
+    theme: { accent: "green", mode: "dark", width: "wide" },
     blocks: [
       of("hero", "h", { eyebrow: "Personal trainer", heading: "Treino com método" }),
       of("about", "a", { heading: "Sobre mim", text: "Texto", stat: "10 anos", statLabel: "de profissão" }),
       of("quote", "q", { eyebrow: "", quote: "Gostei muito", author: "Ana, aluna", authorized: true }),
       of("stats", "st", { heading: "Método", items: [{ value: "01", label: "Avaliação" }, { value: "02", label: "" }, { value: "", label: "sem número" }] }),
-      of("columns", "cols", {
-        ratio: "left",
-        left: [{ id: "l1", type: "heading", text: "Esquerda" }, { id: "l2", type: "paragraph", text: "Texto da esquerda" }],
-        right: [{ id: "r1", type: "button", label: "Falar", channel: "whatsapp" }],
-      }),
-      of("heading", "hh", { text: "Título solto" }),
+      of("box", "row", {
+        tag: "section",
+        style: { display: "flex", direction: "row", gap: "24px" },
+        children: [
+          of("box", "left", { children: [{ id: "l1", type: "heading", level: 3, text: "Esquerda" }, { id: "l2", type: "paragraph", text: "Texto da esquerda" }] }),
+          of("box", "right", { style: { grow: 1 }, children: [{ id: "r1", type: "button", label: "Falar", channel: "whatsapp" }] }),
+        ],
+      } as never),
+      of("heading", "hh", { text: "Título solto", level: 2 } as never),
       of("paragraph", "pp", { text: "Parágrafo solto" }),
       of("button", "bb", { label: "Escrever", channel: "email" }),
     ],
@@ -77,11 +80,15 @@ describe("the public page", () => {
           of("stats", "st", { eyebrow: evil, heading: evil, items: [{ value: evil, label: evil }] }),
           of("faq", "f", { eyebrow: evil, heading: evil, items: [{ question: evil, answer: evil }] }),
           of("cta", "c", { eyebrow: evil, heading: evil, text: evil, buttonLabel: evil, buttonChannel: "email" }),
-          of("columns", "cols", {
-            left: [{ id: "l1", type: "heading", text: evil }, { id: "l2", type: "paragraph", text: evil }],
-            right: [{ id: "r1", type: "button", label: evil, channel: "whatsapp" }],
-          }),
-          of("heading", "hh", { text: evil }),
+          of("box", "cols", {
+            name: evil,
+            children: [
+              of("box", "inner", { children: [{ id: "l1", type: "heading", level: 4, text: evil }, { id: "l2", type: "paragraph", text: evil }] }),
+              { id: "r1", type: "button", label: evil, channel: "whatsapp" },
+              { id: "k1", type: "link", label: evil, channel: "email" },
+            ],
+          } as never),
+          of("heading", "hh", { text: evil, level: 2 } as never),
           of("paragraph", "pp", { text: evil }),
           of("button", "bb", { label: evil, channel: "email" }),
         ],
@@ -91,7 +98,11 @@ describe("the public page", () => {
     expect(html).not.toMatch(/<img/i);
     expect(html).not.toMatch(/\sonerror\s*=\s*"/i);
     expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
-    expect(html.match(/&lt;script&gt;/g)!.length).toBeGreaterThanOrEqual(20);
+    expect(html.match(/&lt;script&gt;/g)!.length).toBeGreaterThanOrEqual(22);
+    // The name of a layer is for the editor: it is never printed on the page.
+    const named = render(page({ blocks: [of("box", "n", { name: evil, children: [] } as never)] }));
+    expect(named).not.toContain("script");
+    expect(named).not.toContain("alert");
   });
   it("makes no link out of a contact that is not a phone number, an address or a handle", () => {
     const html = render(page({ contact: { whatsapp: "javascript:alert(1)", email: "https://evil.test", instagram: "https://evil.test/x" } }));
@@ -120,7 +131,8 @@ describe("the blocks of the visual editor, on the public page", () => {
     const html = render(rich());
     expect(html).toContain('data-site-accent="green"');
     expect(html).toContain('data-site-mode="dark"');
-    expect(render(page())).toContain('data-site-accent="blue" data-site-mode="light"');
+    expect(html).toContain('data-site-width="wide"');
+    expect(render(page())).toContain('data-site-accent="blue" data-site-mode="light" data-site-width="narrow"');
   });
   it("shows the eyebrow only when there is one, above the title", () => {
     const html = render(rich());
@@ -139,58 +151,90 @@ describe("the blocks of the visual editor, on the public page", () => {
     expect(html.match(/<li><strong>/g)).toHaveLength(1);
     expect(render(page({ blocks: [of("about", "a", { text: "Texto" })] }))).not.toContain("site-stat");
   });
-  it("lays the columns out with the ratio, the elements of each in order, and the buttons as links to the contacts", () => {
+  it("lays containers out in the order of the tree, with the tag chosen, the headings at their level and the buttons as links to the contacts", () => {
     const html = render(rich());
-    expect(html).toContain("site-columns site-columns-left");
+    expect(html).toContain('<section class="site-box s-row">');
     expect(html.indexOf("Esquerda")).toBeLessThan(html.indexOf("Texto da esquerda"));
     expect(html.indexOf("Texto da esquerda")).toBeLessThan(html.indexOf(">Falar<"));
-    expect(html).toContain('<h2 class="site-heading">Esquerda</h2>');
-    expect(html).toContain('<a class="button primary" href="https://wa.me/5511912345678"');
-    expect(html).not.toContain("data-single");
+    expect(html).toContain('<h3 class="site-heading site-leaf">Esquerda</h3>');
+    expect(html).toContain('<h2 class="site-heading site-leaf">Título solto</h2>');
+    expect(html).toContain('<a class="button primary site-leaf" href="https://wa.me/5511912345678"');
+    expect(html.match(/<h1/g)).toHaveLength(1);
   });
-  it("gives a single column the whole width, and prints nothing for columns that are empty", () => {
-    const one = render(page({ blocks: [of("columns", "c", { left: [{ id: "l", type: "paragraph", text: "Só à esquerda" }], right: [] })] }));
-    expect(one).toContain("data-single");
-    expect(one.match(/class="site-column"/g)).toHaveLength(1);
-    expect(render(page({ blocks: [of("columns", "c", {})] }))).not.toContain("site-columns");
+  it("gives a node the class of its own identifier only when it has a style, and the page has no style attribute", () => {
+    const html = render(rich());
+    expect(html).toContain("s-row");
+    expect(html).toContain("s-right");
+    expect(html).not.toContain("s-left");
+    expect(html).not.toContain("s-hh");
+    expect(html).not.toContain(" style=");
+    expect(render(page())).not.toMatch(/\ss-[a-z0-9-]+/);
+  });
+  it("prints an empty container (it may be a space or a background), and every tag a container may have", () => {
+    for (const tag of ["div", "section", "header", "footer", "nav", "article", "aside"] as const) {
+      expect(render(page({ blocks: [of("box", "b", { tag, children: [] } as never)] })), tag).toContain(`<${tag} class="site-box"></${tag}>`);
+    }
+  });
+  it("shows the first highlight wherever it is in the tree as the only h1, and the others as h2", () => {
+    const html = render(page({ blocks: [of("box", "c", { children: [of("hero", "h1x", { heading: "Primeiro" }), of("hero", "h2x", { heading: "Segundo" })] } as never)] }));
+    expect(html).toContain("<h1>Primeiro</h1>");
+    expect(html).toContain("<h2>Segundo</h2>");
+    expect(html.match(/<h1/g)).toHaveLength(1);
+    expect(html).toContain('<p class="site-brand">');
+  });
+  it("sends a button or a link to a block of the page by an anchor, and gives an id only to the blocks that are pointed to", () => {
+    const html = render(
+      page({
+        blocks: [
+          of("hero", "top", { heading: "Início" }),
+          of("box", "c", { children: [of("paragraph", "p", { text: "Destino" })] } as never),
+          of("button", "b", { label: "Ir ao início", anchor: "top" } as never),
+          of("link", "k", { label: "Ver o destino", anchor: "p" } as never),
+          of("link", "gone", { label: "Sem destino", anchor: "nope" } as never),
+        ],
+      }),
+    );
+    expect(html).toContain('<section class="site-section site-hero" id="s-top"');
+    expect(html).toContain('<p class="site-text site-leaf" id="s-p">');
+    expect(html).toContain('<a class="button primary site-leaf" href="#s-top">Ir ao início</a>');
+    expect(html).toContain('<a class="site-link site-leaf" href="#s-p">Ver o destino</a>');
+    expect(html).not.toContain("Sem destino");
+    expect(html).not.toContain('id="s-c"');
+    expect(html).not.toContain('id="s-nope"');
+    // An anchor never opens another page or window.
+    for (const tag of html.match(/<a [^>]*href="#[^>]*>/g) ?? []) expect(tag).not.toContain("target=");
   });
   it("shows an element that stands by itself, and nothing for one that has nothing to show", () => {
     const html = render(rich());
     expect(html).toContain("Título solto");
     expect(html).toContain("Parágrafo solto");
     expect(html).toContain('href="mailto:marina@example.test"');
-    const nothing = render(page({ blocks: [of("heading", "a", {}), of("paragraph", "b", {}), of("button", "c", {}), of("button", "d", { label: "Sem contato", channel: "whatsapp" })], contact: { whatsapp: "", email: "", instagram: "" } }));
-    expect(nothing).not.toContain("site-basic");
+    const nothing = render(
+      page({
+        blocks: [of("heading", "a", {}), of("paragraph", "b", {}), of("button", "c", {}), of("button", "d", { label: "Sem contato", channel: "whatsapp" }), of("link", "e", { label: "Sem destino" } as never)],
+        contact: { whatsapp: "", email: "", instagram: "" },
+      }),
+    );
+    expect(nothing).not.toContain("site-leaf");
     expect(nothing).not.toContain("Sem contato");
+    expect(nothing).not.toContain("Sem destino");
   });
   it("has no mark of the editor: no editable field, no frame, no block identifier", () => {
     const html = render(rich());
-    for (const mark of ["contenteditable", "site-editable", "data-block-id", "ve-frame", "ve-tools", "site-button-stand-in", "data-placeholder", "site-hint"]) expect(html, mark).not.toContain(mark);
+    for (const mark of ["contenteditable", "site-editable", "data-block-id", "data-type", "data-empty", "data-page-root", "ve-frame", "ve-tools", "site-button-stand-in", "data-placeholder", "site-hint"]) expect(html, mark).not.toContain(mark);
   });
 });
 
-/** Stand-ins for what the editor gives the renderer: they only mark what they receive. */
+/** A stand-in for what the editor gives the renderer: it only marks what it receives. */
 function hooks() {
   const fields: FieldSpec[] = [];
-  const frames: string[] = [];
-  const empties: string[] = [];
   const edit: EditHooks = {
     text: (field) => {
       fields.push(field);
       return createElement("input", { "data-field": `${field.blockId}:${field.path}`, defaultValue: field.value, placeholder: field.placeholder });
     },
-    frame: (entry, view: ReactNode, place) => {
-      frames.push(`${entry.id}@${place.container}#${place.index}/${place.count}`);
-      return createElement("div", { "data-frame": entry.id }, view);
-    },
-    empty: (container) => {
-      empties.push(container);
-      return createElement("div", { "data-empty": container });
-    },
-    columnProps: (columnsId, side) => ({ "data-column": `${columnsId}:${side}` }) as never,
-    columnTools: (columnsId, side, count) => createElement("div", { "data-tools": `${columnsId}:${side}:${count}` }),
   };
-  return { edit, fields, frames, empties };
+  return { edit, fields };
 }
 
 describe("the same page, as the canvas of the editor", () => {
@@ -207,15 +251,36 @@ describe("the same page, as the canvas of the editor", () => {
     }
     expect(fields.find((f) => f.path === "text" && f.blockId === "l2")?.multiline).toBe(true);
     expect(fields.find((f) => f.path === "heading" && f.blockId === "h")?.multiline).toBeUndefined();
+    expect(fields.find((f) => f.blockId === "k1")).toBeUndefined();
+    const withLink = render(page({ blocks: [of("link", "k1", { label: "Ver" } as never)] }), hooks().edit);
+    expect(withLink).toContain('data-field="k1:label"');
+    expect(withLink).toContain("site-link");
   });
-  it("frames each block of the page and of the columns with its place, and calls the empty place for what has no block", () => {
-    const { edit, frames, empties } = hooks();
-    render(page({ blocks: [of("hero", "h", {}), of("columns", "cols", { left: [{ id: "l1", type: "heading", text: "A" }], right: [] })] }), edit);
-    expect(frames).toEqual(["h@root#0/2", "cols@root#1/2", "l1@cols:left#0/1"]);
-    expect(empties).toEqual(["cols:right"]);
-    const none = hooks();
-    render(page({ blocks: [] }), none.edit);
-    expect(none.empties).toEqual(["root"]);
+  it("marks each node with its identifier and its type, and a container with nothing in it as empty, with no frame around anything", () => {
+    const { edit } = hooks();
+    const html = render(
+      page({ blocks: [of("hero", "h", {}), of("box", "row", { children: [of("box", "col", { children: [{ id: "l1", type: "heading", level: 2, text: "A" }] }), of("box", "empty", { children: [] })] } as never)] }),
+      edit,
+    );
+    expect(html).toContain('data-block-id="h" data-type="hero"');
+    expect(html).toContain('<div class="site-box" data-block-id="row" data-type="box">');
+    expect(html).toContain('<div class="site-box" data-block-id="empty" data-type="box" data-empty="">');
+    expect(html).not.toContain('data-block-id="col" data-type="box" data-empty');
+    expect(html).toContain('<h2 class="site-heading site-leaf" data-block-id="l1" data-type="heading">');
+    expect(html).toContain("data-page-root");
+    expect(html).not.toContain("ve-frame");
+    // The structure is the one of the public page: the container holds its children directly.
+    expect(html.indexOf('data-block-id="row"')).toBeLessThan(html.indexOf('data-block-id="col"'));
+    expect(html).toMatch(/data-block-id="row" data-type="box"><div class="site-box" data-block-id="col"/);
+  });
+  it("says so when the page has no block at all", () => {
+    expect(render(page({ blocks: [] }), hooks().edit)).toContain("A página está sem blocos");
+    expect(render(page({ blocks: [] }))).not.toContain("A página está sem blocos");
+  });
+  it("carries the class of the node's style in the editor too, so the canvas is drawn by the same sheet", () => {
+    const html = render(rich(), hooks().edit);
+    expect(html).toContain('class="site-box s-row"');
+    expect(html).toContain('class="site-box s-right"');
   });
   it("shows what the public page leaves out, so it can be typed into: empty fields, incomplete questions, buttons with no contact", () => {
     const { edit, fields } = hooks();
@@ -226,17 +291,16 @@ describe("the same page, as the canvas of the editor", () => {
     expect(html).toContain('data-field="x:text"');
     expect(html).toContain("site-button-stand-in");
   });
-  it("does not make a link of any button or contact: clicking in the canvas must select, not leave", () => {
+  it("does not make a link of any button, link or contact: clicking in the canvas must select, not leave", () => {
     const { edit } = hooks();
     const html = render(rich(), edit);
     expect(html).not.toMatch(/<a\s/);
     expect(html).toContain("site-footer-link");
+    const anchors = render(page({ blocks: [of("hero", "top", {}), of("link", "k", { label: "Ver", anchor: "top" } as never)] }), edit);
+    expect(anchors).not.toMatch(/<a\s/);
   });
-  it("hands the drag handlers of each column and what closes it, and the services chosen show or ask to be chosen", () => {
+  it("shows the services chosen, or asks for them to be chosen", () => {
     const { edit } = hooks();
-    const html = render(rich(), edit);
-    expect(html).toContain('data-column="cols:left"');
-    expect(html).toContain('data-tools="cols:right:1"');
     const asking = render(page({ blocks: [of("services", "s", {})] }), edit);
     expect(asking).toContain("site-hint");
     const chosen = render(page({ blocks: [of("services", "s", { items: [{ name: "Consultoria", delivery: "ONLINE" }] })] }), edit);
@@ -251,7 +315,7 @@ describe("images on the public page", () => {
   it("draws an image of the release from the address of the page, with its size, its description, and lazily", () => {
     const html = render(page({ blocks: [image("i")] }), undefined, pub);
     expect(html).toContain('<img src="/treinador/s/marina/m/a-1" width="800" height="600" alt="Marina no estúdio" loading="lazy" decoding="async"/>');
-    expect(html).toContain('<figure class="site-image" data-size="medium">');
+    expect(html).toContain('<figure class="site-image site-leaf" data-size="medium">');
     expect(html).toContain("<figcaption>No estúdio</figcaption>");
   });
   it("loads from nowhere but the page's own address: every src, even with a hostile id or title", () => {
@@ -268,7 +332,7 @@ describe("images on the public page", () => {
     const html = render(page({ blocks: [image("i", { assetId: "gone" }), image("j", { assetId: "" })] }), undefined, pub);
     expect(html).not.toContain("<img");
     expect(html).not.toContain("site-image");
-    expect(html).not.toContain("site-basic");
+    expect(html).not.toContain("site-leaf");
   });
   it("draws the logo before the name, with no description of its own (the name is right there), in the h1 too", () => {
     const withLogo = render(page({ logoAssetId: "a-2" }), undefined, pub);
@@ -278,10 +342,10 @@ describe("images on the public page", () => {
     expect(render(page({ logoAssetId: "a-9" }), undefined, pub)).not.toContain("site-logo");
     expect(render(page({ logoAssetId: "a-2" }))).not.toContain("<img");
   });
-  it("draws an image inside a column", () => {
-    const html = render(page({ blocks: [of("columns", "c", { left: [{ id: "in", type: "image", assetId: "a-1", alt: "Na coluna", caption: "", size: "full" }], right: [] })] }), undefined, pub);
-    expect(html).toContain('alt="Na coluna"');
-    expect(html).toContain("site-columns");
+  it("draws an image inside a container", () => {
+    const html = render(page({ blocks: [of("box", "c", { children: [{ id: "in", type: "image", assetId: "a-1", alt: "No contêiner", caption: "", size: "full" }] } as never)] }), undefined, pub);
+    expect(html).toContain('alt="No contêiner"');
+    expect(html).toContain("site-box");
   });
   it("shows no image at all when the page is drawn without a way to find them (no storage)", () => {
     const html = render(page({ blocks: [image("i")], logoAssetId: "a-1" }));

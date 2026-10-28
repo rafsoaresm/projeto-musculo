@@ -1,174 +1,200 @@
 import {
-  COLUMN_TYPES,
   MAX_BLOCKS,
-  MAX_COLUMN_ITEMS,
+  MAX_CHILDREN,
+  MAX_DEPTH,
   MAX_NODES,
-  allBlocks,
+  allNodes,
+  boxDepth,
   emptyBlock,
   newBlockId,
-  type Block,
   type BlockType,
-  type ColumnItem,
+  type BoxNode,
   type SiteContent,
+  type SiteNode,
 } from "./contracts";
 
 /**
  * What the visual editor does to the document, as functions that take a document and give back another one
- * (or say why not). No React here: the rules of where each block may go, how many fit and what a duplicate
- * is live in one place and are tested without a screen. The screen only asks.
+ * (or say why not). No React here: the rules of where each node may go, how many fit and what a duplicate is live in
+ * one place and are tested without a screen. The screen only asks.
+ *
+ * The document is a tree. A place in it is a `Slot`: the container (`null` for the page itself) and the position
+ * among what the container holds. Only a container holds other nodes; every limit of the contract is checked here
+ * before the change, so a document that comes out of these functions is one the server accepts.
  */
-export type Side = "left" | "right";
-/** The page itself ("root") or one column of a "2 columns" block ("<id of the block>:left"). */
-export type ContainerKey = "root" | `${string}:${Side}`;
 export interface Slot {
-  container: ContainerKey;
-  /** Position among the elements of the container, counted before anything is taken out of it. */
+  /** The id of the container, or null for the page itself. */
+  parent: string | null;
+  /** Position among the nodes of the container, counted before anything is taken out of it. */
   index: number;
 }
+export const PAGE: Slot["parent"] = null;
 
-export type Refusal = "not-found" | "not-accepted" | "limit-blocks" | "limit-column" | "limit-nodes";
+export type Refusal = "not-found" | "not-accepted" | "cycle" | "limit-blocks" | "limit-children" | "limit-nodes" | "limit-depth";
 export type Outcome = { ok: true; content: SiteContent; id: string } | { ok: false; reason: Refusal };
 
 export const REFUSAL_MESSAGE: Record<Refusal, string> = {
   "not-found": "Esse bloco não existe mais.",
-  "not-accepted": "Esse tipo de bloco só pode ficar na página. Dentro de uma coluna cabem título, parágrafo e botão.",
+  "not-accepted": "Só um contêiner recebe outros blocos dentro. Solte dentro de um contêiner ou entre dois blocos.",
+  cycle: "Um contêiner não pode ser colocado dentro dele mesmo.",
   "limit-blocks": `A página aceita até ${MAX_BLOCKS} blocos.`,
-  "limit-column": `Cada coluna aceita até ${MAX_COLUMN_ITEMS} elementos.`,
-  "limit-nodes": `O site aceita até ${MAX_NODES} blocos no total, contando os que estão dentro de colunas.`,
+  "limit-children": `Cada contêiner aceita até ${MAX_CHILDREN} blocos dentro.`,
+  "limit-nodes": `O site aceita até ${MAX_NODES} blocos no total, contando os que estão dentro de contêineres.`,
+  "limit-depth": `Os contêineres aceitam até ${MAX_DEPTH} níveis, um dentro do outro.`,
 };
 
-export const columnKey = (columnsId: string, side: Side): ContainerKey => `${columnsId}:${side}`;
-export function parseKey(key: ContainerKey): { columnsId: string; side: Side } | null {
-  if (key === "root") return null;
-  const cut = key.lastIndexOf(":");
-  const side = key.slice(cut + 1);
-  return side === "left" || side === "right" ? { columnsId: key.slice(0, cut), side } : null;
-}
-
-/** Whether a block of this type may stand in the container. A section or a "2 columns" never goes inside a column. */
-export function accepts(container: ContainerKey, type: BlockType): boolean {
-  return container === "root" || (COLUMN_TYPES as readonly string[]).includes(type);
-}
-
-type Entry = Block | ColumnItem;
-
-function listOf(content: SiteContent, key: ContainerKey): Entry[] | null {
-  if (key === "root") return content.blocks;
-  const parsed = parseKey(key);
-  if (!parsed) return null;
-  const owner = content.blocks.find((b) => b.id === parsed.columnsId);
-  return owner?.type === "columns" ? owner[parsed.side] : null;
-}
-
-function withList(content: SiteContent, key: ContainerKey, list: Entry[]): SiteContent {
-  if (key === "root") return { ...content, blocks: list as Block[] };
-  const parsed = parseKey(key)!;
-  return {
-    ...content,
-    blocks: content.blocks.map((b) => (b.id === parsed.columnsId && b.type === "columns" ? { ...b, [parsed.side]: list as ColumnItem[] } : b)),
-  };
-}
+/** Whether a node of this type holds other nodes. */
+export const holds = (type: BlockType): boolean => type === "box";
 
 export interface Located {
-  block: Entry;
-  container: ContainerKey;
+  node: SiteNode;
+  /** The id of the container that holds it, or null when it is on the page. */
+  parentId: string | null;
+  /** Position among the nodes of its container. */
   index: number;
-  /** How many elements the container has. */
+  /** How many nodes its container holds. */
   count: number;
+  /** How many containers are above it: 0 on the page. */
+  depth: number;
 }
 
-export function locate(content: SiteContent, id: string): Located | null {
-  for (const [index, b] of content.blocks.entries()) {
-    if (b.id === id) return { block: b, container: "root", index, count: content.blocks.length };
-    if (b.type === "columns") {
-      for (const side of ["left", "right"] as const) {
-        const at = b[side].findIndex((item) => item.id === id);
-        if (at !== -1) return { block: b[side][at], container: columnKey(b.id, side), index: at, count: b[side].length };
-      }
+function find(blocks: readonly SiteNode[], id: string, parentId: string | null, depth: number): Located | null {
+  for (const [index, entry] of blocks.entries()) {
+    if (entry.id === id) return { node: entry, parentId, index, count: blocks.length, depth };
+    if (entry.type === "box") {
+      const inner = find(entry.children, id, entry.id, depth + 1);
+      if (inner) return inner;
     }
   }
   return null;
 }
+export const locate = (content: SiteContent, id: string): Located | null => find(content.blocks, id, null, 0);
 
-const nodeCount = (content: SiteContent) => allBlocks(content.blocks).length;
-
-/** Whether one more block fits in the container, by the limit of the container. (The total is checked apart.) */
-function containerFull(key: ContainerKey, length: number): Refusal | null {
-  if (key === "root") return length >= MAX_BLOCKS ? "limit-blocks" : null;
-  return length >= MAX_COLUMN_ITEMS ? "limit-column" : null;
+/** What a container holds (the page when `parentId` is null), or null when there is no such container. */
+export function childrenOf(content: SiteContent, parentId: string | null): readonly SiteNode[] | null {
+  if (parentId === null) return content.blocks;
+  const found = locate(content, parentId);
+  return found && found.node.type === "box" ? found.node.children : null;
 }
 
+/** The containers above a node, from the outermost to the one that holds it. */
+export function ancestorsOf(content: SiteContent, id: string): BoxNode[] {
+  const chain: BoxNode[] = [];
+  let current = locate(content, id);
+  while (current && current.parentId !== null) {
+    const parent = locate(content, current.parentId);
+    if (!parent || parent.node.type !== "box") break;
+    chain.unshift(parent.node);
+    current = parent;
+  }
+  return chain;
+}
+
+/** Whether `id` is `ancestorId` or inside it. */
+export const isInside = (content: SiteContent, id: string, ancestorId: string): boolean =>
+  id === ancestorId || ancestorsOf(content, id).some((entry) => entry.id === ancestorId);
+
+/**
+ * A copy of the tree where `change` has been applied to the node `id`, rebuilding only the line of containers that leads to
+ * it: everything else is the very same object, so what did not change is not drawn again.
+ */
+function rebuild(nodes: readonly SiteNode[], id: string, change: (entry: SiteNode) => SiteNode): readonly SiteNode[] {
+  let changed = false;
+  const out = nodes.map((entry) => {
+    if (entry.id === id) {
+      changed = true;
+      return change(entry);
+    }
+    if (entry.type !== "box") return entry;
+    const inner = rebuild(entry.children, id, change);
+    if (inner === entry.children) return entry;
+    changed = true;
+    return { ...entry, children: inner as SiteNode[] };
+  });
+  return changed ? out : nodes;
+}
+
+function withChildren(content: SiteContent, parentId: string | null, list: SiteNode[]): SiteContent {
+  if (parentId === null) return { ...content, blocks: list };
+  return { ...content, blocks: rebuild(content.blocks, parentId, (entry) => (entry.type === "box" ? { ...entry, children: list } : entry)) as SiteNode[] };
+}
+
+const capacityOf = (parentId: string | null) => (parentId === null ? MAX_BLOCKS : MAX_CHILDREN);
+const fullFor = (parentId: string | null): Refusal => (parentId === null ? "limit-blocks" : "limit-children");
 const clamp = (index: number, length: number) => Math.max(0, Math.min(index, length));
+const countOf = (entry: SiteNode) => allNodes([entry]).length;
 
-/** A new block of the type in the slot. */
-export function insertBlock(content: SiteContent, type: BlockType, slot: Slot): Outcome {
-  if (!accepts(slot.container, type)) return { ok: false, reason: "not-accepted" };
-  const list = listOf(content, slot.container);
-  if (!list) return { ok: false, reason: "not-found" };
-  const full = containerFull(slot.container, list.length);
-  if (full) return { ok: false, reason: full };
-  if (nodeCount(content) + 1 > MAX_NODES) return { ok: false, reason: "limit-nodes" };
-  const created = emptyBlock(type);
-  const next = [...list];
-  next.splice(clamp(slot.index, list.length), 0, created);
-  return { ok: true, content: withList(content, slot.container, next), id: created.id };
+/** The refusal for putting `entry` (with what it holds) in the slot of `content`, ignoring the limit of the container's own count. */
+function placement(content: SiteContent, entry: SiteNode, parentId: string | null): Refusal | null {
+  if (parentId === null) return boxDepth([entry]) > MAX_DEPTH ? "limit-depth" : null;
+  const parent = locate(content, parentId);
+  if (!parent || parent.node.type !== "box") return parent ? "not-accepted" : "not-found";
+  // The containers above the node (the parent and the ones above it) and the deepest line of containers inside it.
+  return parent.depth + 1 + boxDepth([entry]) > MAX_DEPTH ? "limit-depth" : null;
 }
 
-/** Takes a block where it is and puts it in the slot, keeping everything it holds. Where it stood is not counted twice. */
+/** A ready node (with what it holds) in the slot. */
+export function insertNode(content: SiteContent, entry: SiteNode, slot: Slot): Outcome {
+  const list = childrenOf(content, slot.parent);
+  if (!list) return { ok: false, reason: slot.parent !== null && locate(content, slot.parent) ? "not-accepted" : "not-found" };
+  if (list.length >= capacityOf(slot.parent)) return { ok: false, reason: fullFor(slot.parent) };
+  if (allNodes(content.blocks).length + countOf(entry) > MAX_NODES) return { ok: false, reason: "limit-nodes" };
+  const refusal = placement(content, entry, slot.parent);
+  if (refusal) return { ok: false, reason: refusal };
+  const next = [...list];
+  next.splice(clamp(slot.index, list.length), 0, entry);
+  return { ok: true, content: withChildren(content, slot.parent, next), id: entry.id };
+}
+
+/** A new empty node of the type in the slot. */
+export const insertBlock = (content: SiteContent, type: BlockType, slot: Slot): Outcome => insertNode(content, emptyBlock(type), slot);
+
+/** Takes a node where it is and puts it in the slot, keeping everything it holds. Where it stood is not counted twice. */
 export function moveBlock(content: SiteContent, id: string, slot: Slot): Outcome {
   const from = locate(content, id);
   if (!from) return { ok: false, reason: "not-found" };
-  if (!accepts(slot.container, from.block.type)) return { ok: false, reason: "not-accepted" };
-  const target = listOf(content, slot.container);
-  if (!target) return { ok: false, reason: "not-found" };
+  const target = childrenOf(content, slot.parent);
+  if (!target) return { ok: false, reason: slot.parent !== null && locate(content, slot.parent) ? "not-accepted" : "not-found" };
+  if (slot.parent !== null && isInside(content, slot.parent, id)) return { ok: false, reason: "cycle" };
   const index = clamp(slot.index, target.length);
 
-  if (from.container === slot.container) {
+  if (from.parentId === slot.parent) {
     const destination = from.index < index ? index - 1 : index;
     if (destination === from.index) return { ok: true, content, id };
     const next = [...target];
     next.splice(from.index, 1);
-    next.splice(destination, 0, from.block);
-    return { ok: true, content: withList(content, slot.container, next), id };
+    next.splice(destination, 0, from.node);
+    return { ok: true, content: withChildren(content, slot.parent, next), id };
   }
 
-  const full = containerFull(slot.container, target.length);
-  if (full) return { ok: false, reason: full };
-  const origin = listOf(content, from.container)!;
-  const without = withList(content, from.container, origin.filter((_, position) => position !== from.index));
-  const into = [...listOf(without, slot.container)!];
-  into.splice(index, 0, from.block);
-  return { ok: true, content: withList(without, slot.container, into), id };
+  if (target.length >= capacityOf(slot.parent)) return { ok: false, reason: fullFor(slot.parent) };
+  const without = withChildren(content, from.parentId, childrenOf(content, from.parentId)!.filter((_, position) => position !== from.index));
+  const refusal = placement(without, from.node, slot.parent);
+  if (refusal) return { ok: false, reason: refusal };
+  const into = [...childrenOf(without, slot.parent)!];
+  into.splice(index, 0, from.node);
+  return { ok: true, content: withChildren(without, slot.parent, into), id };
 }
 
-/** The same block with new identifiers (and so for the elements inside a "2 columns"). */
-function cloneWithNewIds(entry: Entry): Entry {
-  if (entry.type === "columns") {
-    return { ...structuredClone(entry), id: newBlockId(), left: entry.left.map((item) => cloneWithNewIds(item) as ColumnItem), right: entry.right.map((item) => cloneWithNewIds(item) as ColumnItem) };
-  }
-  return { ...structuredClone(entry), id: newBlockId() };
+/** The same node with new identifiers, and so for everything inside it. */
+function cloneWithNewIds(entry: SiteNode): SiteNode {
+  const copy = { ...structuredClone(entry), id: newBlockId() } as SiteNode;
+  return copy.type === "box" ? { ...copy, children: (entry as BoxNode).children.map(cloneWithNewIds) } : copy;
 }
 
-/** A copy right after the block, with everything it holds. */
+/** A copy right after the node, with everything it holds. */
 export function duplicateBlock(content: SiteContent, id: string): Outcome {
   const from = locate(content, id);
   if (!from) return { ok: false, reason: "not-found" };
-  const list = listOf(content, from.container)!;
-  const full = containerFull(from.container, list.length);
-  if (full) return { ok: false, reason: full };
-  const copy = cloneWithNewIds(from.block);
-  const size = copy.type === "columns" ? 1 + copy.left.length + copy.right.length : 1;
-  if (nodeCount(content) + size > MAX_NODES) return { ok: false, reason: "limit-nodes" };
-  const next = [...list];
-  next.splice(from.index + 1, 0, copy);
-  return { ok: true, content: withList(content, from.container, next), id: copy.id };
+  const copy = cloneWithNewIds(from.node);
+  return insertNode(content, copy, { parent: from.parentId, index: from.index + 1 });
 }
 
-/** Takes a block out, with what it holds. The same document when the block is not there. */
+/** Takes a node out, with what it holds. The same document when the node is not there. */
 export function removeBlock(content: SiteContent, id: string): SiteContent {
   const from = locate(content, id);
   if (!from) return content;
-  return withList(content, from.container, listOf(content, from.container)!.filter((_, position) => position !== from.index));
+  return withChildren(content, from.parentId, childrenOf(content, from.parentId)!.filter((_, position) => position !== from.index));
 }
 
 /** One place up or down inside the container. The same document at the edge. */
@@ -177,33 +203,63 @@ export function shiftBlock(content: SiteContent, id: string, by: -1 | 1): SiteCo
   if (!from) return content;
   const to = from.index + by;
   if (to < 0 || to >= from.count) return content;
-  const next = [...listOf(content, from.container)!];
+  const next = [...childrenOf(content, from.parentId)!];
   [next[from.index], next[to]] = [next[to], next[from.index]];
-  return withList(content, from.container, next);
+  return withChildren(content, from.parentId, next);
 }
 
-/** From one column to the other, at the end. The only way, without dragging, to cross from one column to the other. */
-export function sendToOtherColumn(content: SiteContent, id: string): Outcome {
+/** Out of its container: right after it, in the container that holds that one. The way, without dragging, to climb a level. */
+export function moveOut(content: SiteContent, id: string): Outcome {
   const from = locate(content, id);
-  const parsed = from ? parseKey(from.container) : null;
-  if (!from || !parsed) return { ok: false, reason: "not-found" };
-  const other = columnKey(parsed.columnsId, parsed.side === "left" ? "right" : "left");
-  return moveBlock(content, id, { container: other, index: Number.MAX_SAFE_INTEGER });
+  if (!from || from.parentId === null) return { ok: false, reason: "not-found" };
+  const parent = locate(content, from.parentId)!;
+  return moveBlock(content, id, { parent: parent.parentId, index: parent.index + 1 });
 }
 
-/** Changes one block with a function that gives the new one. The same document when the block is not there. */
-export function updateBlock(content: SiteContent, id: string, change: (block: Entry) => Entry): SiteContent {
+/** Into the container that comes right before it among its siblings, at the end. The way, without dragging, to go down a level. */
+export function moveIntoPrevious(content: SiteContent, id: string): Outcome {
   const from = locate(content, id);
-  if (!from) return content;
-  const list = listOf(content, from.container)!;
-  return withList(content, from.container, list.map((entry, position) => (position === from.index ? change(entry) : entry)));
+  if (!from || from.index === 0) return { ok: false, reason: "not-found" };
+  const before = childrenOf(content, from.parentId)![from.index - 1];
+  if (before.type !== "box") return { ok: false, reason: "not-accepted" };
+  return moveBlock(content, id, { parent: before.id, index: Number.MAX_SAFE_INTEGER });
 }
 
-/** The container where a block of the type goes when it is added without being dragged: the end of the page. */
-export const endOfPage = (content: SiteContent): Slot => ({ container: "root", index: content.blocks.length });
+/** Puts a new container around the node, where it stands. */
+export function wrapBlock(content: SiteContent, id: string): Outcome {
+  const from = locate(content, id);
+  if (!from) return { ok: false, reason: "not-found" };
+  const wrapper = { ...(emptyBlock("box") as BoxNode), children: [from.node] };
+  if (allNodes(content.blocks).length + 1 > MAX_NODES) return { ok: false, reason: "limit-nodes" };
+  const refusal = placement(removeBlock(content, id), wrapper, from.parentId);
+  if (refusal) return { ok: false, reason: refusal };
+  const next = [...childrenOf(content, from.parentId)!];
+  next[from.index] = wrapper;
+  return { ok: true, content: withChildren(content, from.parentId, next), id: wrapper.id };
+}
+
+/** Takes a container away and leaves what it held, in its place. */
+export function unwrapBlock(content: SiteContent, id: string): Outcome {
+  const from = locate(content, id);
+  if (!from || from.node.type !== "box") return { ok: false, reason: "not-found" };
+  const inner = from.node.children;
+  if (from.count - 1 + inner.length > capacityOf(from.parentId)) return { ok: false, reason: fullFor(from.parentId) };
+  const next = [...childrenOf(content, from.parentId)!];
+  next.splice(from.index, 1, ...inner);
+  return { ok: true, content: withChildren(content, from.parentId, next), id: inner[0]?.id ?? id };
+}
+
+/** Changes one node with a function that gives the new one. The same document when the node is not there. */
+export function updateBlock(content: SiteContent, id: string, change: (entry: SiteNode) => SiteNode): SiteContent {
+  const blocks = rebuild(content.blocks, id, change);
+  return blocks === content.blocks ? content : { ...content, blocks: blocks as SiteNode[] };
+}
+
+/** Where a node goes when it is added without being dragged: the end of the page. */
+export const endOfPage = (content: SiteContent): Slot => ({ parent: PAGE, index: content.blocks.length });
 
 /**
- * A copy of a block (or any object) with the text at `path` replaced: "heading", "items.2.question".
+ * A copy of a node (or any object) with the text at `path` replaced: "heading", "items.2.question".
  * A path that is not there changes nothing: a field of a row that was just removed cannot come back.
  */
 export function setIn<T>(target: T, path: string, value: string): T {

@@ -20,11 +20,11 @@ const count = async (sql: string, ...binds: unknown[]) => (await one<{ c: number
 
 /** A page that can be published once the contact is there. */
 const complete = (overrides: Partial<SiteContent> = {}): SiteContent => ({
-  schemaVersion: 2,
+  schemaVersion: 3,
   title: "Marina Treinos",
   description: "Treino com acompanhamento",
   contact: { whatsapp: "(11) 91234-5678", email: "", instagram: "" },
-  theme: { accent: "blue", mode: "light" },
+  theme: { accent: "blue", mode: "light", width: "narrow" },
   blocks: [
     { id: "h1", type: "hero", eyebrow: "", heading: "Treino sob medida", subheading: "", buttonLabel: "Falar comigo", buttonChannel: "whatsapp" },
     { id: "t1", type: "text", eyebrow: "", heading: "Sobre", text: "Texto <b>com marcação</b>" },
@@ -160,7 +160,7 @@ describe("saving the draft", () => {
   it("refuses a document that is not one: another field, too many blocks, repeated identifiers", async () => {
     const revision = (await owner().overview())!.draft.revision;
     await expect(owner().saveDraft({ ...complete(), html: "<b>x</b>" }, revision, at(12))).rejects.toThrow();
-    await expect(owner().saveDraft(complete({ blocks: Array.from({ length: 21 }, (_, i) => ({ ...(emptyBlock("text") as object), id: `b${i}` })) as never }), revision, at(12))).rejects.toThrow();
+    await expect(owner().saveDraft(complete({ blocks: Array.from({ length: 41 }, (_, i) => ({ ...(emptyBlock("text") as object), id: `b${i}` })) as never }), revision, at(12))).rejects.toThrow();
     await expect(owner().saveDraft(complete({ blocks: [{ ...(emptyBlock("text") as object), id: "x" }, { ...(emptyBlock("text") as object), id: "x" }] as never }), revision, at(12))).rejects.toThrow();
     expect((await owner().overview())!.draft.revision).toBe(revision);
   });
@@ -392,28 +392,28 @@ describe("the pages made before the editor was visual (version 1 of the document
   const repo = () => sitesFor(db, scope("owner-d", "org-d"));
   let siteId = "";
 
-  it("opens a draft stored in version 1 as version 2, and saves it as version 2", async () => {
+  it("opens a draft stored in version 1 as version 3, and saves it as version 3", async () => {
     expect(await repo().create({ slug: "estudio-d", title: "Estudio D" }, at(100))).toEqual({ status: "created" });
     siteId = (await one<{ id: string }>("SELECT id FROM sites WHERE organization_id = 'org-d'"))!.id;
     await db.prepare("UPDATE site_drafts SET content = ?, revision = revision + 1 WHERE site_id = ?").bind(JSON.stringify(v1), siteId).run();
     const overview = (await repo().overview())!;
-    expect(overview.draft.content.schemaVersion).toBe(2);
-    expect(overview.draft.content.theme).toEqual({ accent: "blue", mode: "light" });
+    expect(overview.draft.content.schemaVersion).toBe(3);
+    expect(overview.draft.content.theme).toEqual({ accent: "blue", mode: "light", width: "narrow" });
     expect(overview.draft.content.blocks.map((b) => b.id)).toEqual(["h1", "t1"]);
-    expect((await repo().preview())!.content.schemaVersion).toBe(2);
-    // A tab opened before the change sends version 1 back: it is stored as version 2.
+    expect((await repo().preview())!.content.schemaVersion).toBe(3);
+    // A tab opened before the change sends version 1 back: it is stored as version 3.
     expect(await repo().saveDraft(v1, overview.draft.revision, at(101))).toEqual({ status: "saved", revision: overview.draft.revision + 1 });
     const stored = JSON.parse((await one<{ content: string }>("SELECT content FROM site_drafts WHERE site_id = ?", siteId))!.content);
-    expect(stored.schemaVersion).toBe(2);
+    expect(stored.schemaVersion).toBe(3);
     expect(stored.blocks[0]).toMatchObject({ id: "h1", eyebrow: "", heading: "Título antigo" });
   });
-  it("publishes a draft that came from version 1 as a release in version 2", async () => {
+  it("publishes a draft that came from version 1 as a release in version 3", async () => {
     const revision = (await repo().overview())!.draft.revision;
     expect(await repo().publish(revision, at(102))).toEqual({ status: "published", number: 1 });
     const stored = JSON.parse((await one<{ content: string }>("SELECT content FROM site_releases WHERE site_id = ? AND number = 1", siteId))!.content);
-    expect(stored.schemaVersion).toBe(2);
+    expect(stored.schemaVersion).toBe(3);
   });
-  it("keeps serving a release stored in version 1, read as version 2, without touching what is stored", async () => {
+  it("keeps serving a release stored in version 1, read as version 3, without touching what is stored", async () => {
     const json = JSON.stringify({ ...v1, title: "Release antigo" });
     const sha = await sha256Hex(json);
     await db.batch([
@@ -422,20 +422,20 @@ describe("the pages made before the editor was visual (version 1 of the document
     ]);
     const served = (await publishedSiteBySlug(db, "estudio-d"))!;
     expect(served.number).toBe(2);
-    expect(served.content.schemaVersion).toBe(2);
+    expect(served.content.schemaVersion).toBe(3);
     expect(served.content.title).toBe("Release antigo");
-    expect(served.content.theme).toEqual({ accent: "blue", mode: "light" });
+    expect(served.content.theme).toEqual({ accent: "blue", mode: "light", width: "narrow" });
     const stored = (await one<{ content: string; content_sha256: string }>("SELECT content, content_sha256 FROM site_releases WHERE id = 'rel-v1'"))!;
     expect(stored.content).toBe(json);
     expect(await sha256Hex(stored.content)).toBe(stored.content_sha256);
   });
-  it("brings a release stored in version 1 back as a draft in version 2", async () => {
+  it("brings a release stored in version 1 back as a draft in version 3", async () => {
     const revision = (await repo().overview())!.draft.revision;
     expect(await repo().restore("rel-v1", revision, at(103))).toEqual({ status: "restored", revision: revision + 1 });
     const draft = (await repo().overview())!.draft;
-    expect(draft.content.schemaVersion).toBe(2);
+    expect(draft.content.schemaVersion).toBe(3);
     expect(draft.content.title).toBe("Release antigo");
-    expect(JSON.parse((await one<{ content: string }>("SELECT content FROM site_drafts WHERE site_id = ?", siteId))!.content).schemaVersion).toBe(2);
+    expect(JSON.parse((await one<{ content: string }>("SELECT content FROM site_drafts WHERE site_id = ?", siteId))!.content).schemaVersion).toBe(3);
   });
   it("serves nothing for a release that is not a document at all, instead of failing", async () => {
     await db.batch([
@@ -446,40 +446,62 @@ describe("the pages made before the editor was visual (version 1 of the document
   });
 });
 
-describe("a page with columns, a testimony and a look", () => {
+describe("a page with containers, a testimony and a look", () => {
   const repo = () => sitesFor(db, scope("owner-d", "org-d"));
   const rich = (): SiteContent => ({
     ...complete(),
     title: "Estudio D",
-    theme: { accent: "green", mode: "dark" },
+    theme: { accent: "green", mode: "dark", width: "wide" },
     blocks: [
       { id: "hero", type: "hero", eyebrow: "Personal", heading: "Treino com método", subheading: "", buttonLabel: "Falar", buttonChannel: "whatsapp" },
-      { id: "cols", type: "columns", ratio: "left", left: [{ id: "l1", type: "heading", text: "Esquerda" }, { id: "l2", type: "paragraph", text: "Texto <i>solto</i>" }], right: [{ id: "r1", type: "button", label: "Falar", channel: "whatsapp" }] },
+      {
+        id: "row",
+        type: "box",
+        tag: "section",
+        name: "Duas colunas",
+        style: { display: "flex", direction: "row", gap: "24px", padding: { top: "24px" }, background: "soft" },
+        children: [
+          { id: "left", type: "box", tag: "div", style: { grow: 3, basis: "240px" }, children: [{ id: "l1", type: "heading", level: 3, text: "Esquerda" }, { id: "l2", type: "paragraph", text: "Texto <i>solto</i>" }] },
+          { id: "r1", type: "button", label: "Falar", channel: "whatsapp" },
+        ],
+      },
       { id: "q", type: "quote", eyebrow: "", quote: "Gostei muito", author: "Ana", authorized: true },
       { id: "st", type: "stats", eyebrow: "", heading: "Método", items: [{ value: "1", label: "Avaliação" }, { value: "2", label: "Plano" }] },
       { id: "ab", type: "about", eyebrow: "", heading: "Sobre mim", text: "Texto", stat: "", statLabel: "" },
     ],
   });
-  it("saves, publishes and serves it whole, with the elements inside the columns and the look", async () => {
+  it("saves, publishes and serves it whole, with the nodes inside the containers, their styles and the look", async () => {
     const revision = (await repo().overview())!.draft.revision;
     const saved = await repo().saveDraft(rich(), revision, at(110));
     if (saved.status !== "saved") throw new Error(JSON.stringify(saved));
     expect(await repo().publish(saved.revision, at(111))).toEqual({ status: "published", number: 4 });
     const served = (await publishedSiteBySlug(db, "estudio-d"))!;
-    expect(served.content.theme).toEqual({ accent: "green", mode: "dark" });
-    expect(served.content.blocks.map((b) => b.type)).toEqual(["hero", "columns", "quote", "stats", "about"]);
-    expect(served.content.blocks[1]).toMatchObject({ ratio: "left", left: [{ id: "l1" }, { id: "l2" }], right: [{ id: "r1", channel: "whatsapp" }] });
+    expect(served.content.theme).toEqual({ accent: "green", mode: "dark", width: "wide" });
+    expect(served.content.blocks.map((b) => b.type)).toEqual(["hero", "box", "quote", "stats", "about"]);
+    expect(served.content.blocks[1]).toMatchObject({
+      name: "Duas colunas",
+      style: { display: "flex", gap: "24px", background: "soft" },
+      children: [{ id: "left", children: [{ id: "l1", level: 3 }, { id: "l2" }] }, { id: "r1", channel: "whatsapp" }],
+    });
   });
-  it("refuses to save a section or another \"2 columns\" inside a column, and a repeated identifier between a column and the page", async () => {
+  it("refuses to save what the contract does not accept: free style, a style value out of range, a repeated identifier, a tag that is not on the list, too deep a nesting, an old shape that is not valid", async () => {
     const revision = (await repo().overview())!.draft.revision;
-    const bad = (blocks: unknown[]) => repo().saveDraft({ ...rich(), blocks }, revision, at(112));
+    const bad = (blocks: unknown[]) => repo().saveDraft({ ...rich(), blocks } as never, revision, at(112));
+    const box = (over: object) => ({ id: "c", type: "box", tag: "div", children: [], ...over });
+    await expect(bad([box({ style: { color: "red" } })])).rejects.toThrow();
+    await expect(bad([box({ style: { width: "9999px" } })])).rejects.toThrow();
+    await expect(bad([box({ style: { "background-image": "url(//evil.test/x)" } })])).rejects.toThrow();
+    await expect(bad([box({ tag: "script" })])).rejects.toThrow();
+    await expect(bad([box({ onclick: "x" })])).rejects.toThrow();
+    await expect(bad([emptyBlock("text", "same"), box({ children: [emptyBlock("heading", "same")] })])).rejects.toThrow();
+    let deep: unknown = { id: "leaf", type: "paragraph", text: "x" };
+    for (let level = 0; level < 9; level++) deep = box({ id: `b${level}`, children: [deep] });
+    await expect(bad([deep])).rejects.toThrow();
     await expect(bad([{ id: "c", type: "columns", ratio: "equal", left: [emptyBlock("hero", "in")], right: [] }])).rejects.toThrow();
-    await expect(bad([{ id: "c", type: "columns", ratio: "equal", left: [emptyBlock("columns", "in")], right: [] }])).rejects.toThrow();
-    await expect(bad([emptyBlock("text", "same"), { id: "c", type: "columns", ratio: "equal", left: [emptyBlock("heading", "same")], right: [] }])).rejects.toThrow();
     await expect(bad([{ id: "c", type: "columns", ratio: "wide", left: [], right: [] }])).rejects.toThrow();
     expect((await repo().overview())!.draft.revision).toBe(revision);
   });
-  it("does not publish a testimony without the person's authorization, and a button in a column without its contact", async () => {
+  it("does not publish a testimony without the person's authorization, and a button inside a container without its contact", async () => {
     const content = rich();
     const revision = (await repo().overview())!.draft.revision;
     const blocks = content.blocks.map((b) => (b.type === "quote" ? { ...b, authorized: false } : b));
@@ -492,5 +514,57 @@ describe("a page with columns, a testimony and a look", () => {
       expect(outcome.issues.some((i) => i.message.includes("autorizou"))).toBe(true);
     }
     expect((await publishedSiteBySlug(db, "estudio-d"))!.number).toBe(4);
+  });
+});
+
+describe("the pages made with \"2 columns\" (version 2 of the document)", () => {
+  const repo = () => sitesFor(db, scope("owner-d", "org-d"));
+  const v2 = {
+    schemaVersion: 2,
+    title: "Com colunas",
+    description: "",
+    contact: { whatsapp: "(11) 91234-5678", email: "", instagram: "" },
+    theme: { accent: "green", mode: "dark" },
+    blocks: [
+      { id: "h", type: "hero", eyebrow: "", heading: "Treino", subheading: "", buttonLabel: "Falar", buttonChannel: "whatsapp" },
+      {
+        id: "cols",
+        type: "columns",
+        ratio: "left",
+        left: [{ id: "l1", type: "heading", text: "Esquerda" }],
+        right: [{ id: "r1", type: "button", label: "Falar", channel: "whatsapp" }],
+      },
+    ],
+  };
+  let siteId = "";
+  it("keeps serving a release stored in version 2, read as version 3 (the columns as a row of two column containers), without touching what is stored", async () => {
+    siteId = (await one<{ id: string }>("SELECT id FROM sites WHERE organization_id = 'org-d'"))!.id;
+    const json = JSON.stringify(v2);
+    const number = ((await one<{ n: number }>("SELECT MAX(number) AS n FROM site_releases WHERE site_id = ?", siteId))!.n ?? 0) + 1;
+    await db.batch([
+      db.prepare("INSERT INTO site_releases(id,site_id,number,draft_revision,content,content_sha256,created_by) VALUES ('rel-v2', ?, ?, 1, ?, ?, 'owner-d')").bind(siteId, number, json, await sha256Hex(json)),
+      db.prepare("UPDATE site_published SET release_id = 'rel-v2' WHERE site_id = ?").bind(siteId),
+    ]);
+    const served = (await publishedSiteBySlug(db, "estudio-d"))!;
+    expect(served.content.schemaVersion).toBe(3);
+    expect(served.content.theme).toEqual({ accent: "green", mode: "dark", width: "narrow" });
+    expect(served.content.blocks.map((b) => b.type)).toEqual(["hero", "box"]);
+    const row = served.content.blocks[1];
+    expect(row).toMatchObject({ id: "cols", name: "2 colunas", style: { display: "flex", direction: "row" } });
+    expect(row.type === "box" && row.children.map((c) => c.id)).toEqual(["cols-l", "cols-r"]);
+    const stored = (await one<{ content: string; content_sha256: string }>("SELECT content, content_sha256 FROM site_releases WHERE id = 'rel-v2'"))!;
+    expect(stored.content).toBe(json);
+    expect(await sha256Hex(stored.content)).toBe(stored.content_sha256);
+  });
+  it("brings it back as a draft in version 3, and saves a draft sent in version 2 as version 3", async () => {
+    const revision = (await repo().overview())!.draft.revision;
+    expect(await repo().restore("rel-v2", revision, at(120))).toEqual({ status: "restored", revision: revision + 1 });
+    const stored = JSON.parse((await one<{ content: string }>("SELECT content FROM site_drafts WHERE site_id = ?", siteId))!.content);
+    expect(stored.schemaVersion).toBe(3);
+    expect(stored.blocks[1]).toMatchObject({ id: "cols", type: "box" });
+    // A tab opened before the change sends version 2 back: it is stored as version 3 as well.
+    const again = (await repo().overview())!.draft.revision;
+    expect(await repo().saveDraft(v2 as never, again, at(121))).toEqual({ status: "saved", revision: again + 1 });
+    expect(JSON.parse((await one<{ content: string }>("SELECT content FROM site_drafts WHERE site_id = ?", siteId))!.content).schemaVersion).toBe(3);
   });
 });

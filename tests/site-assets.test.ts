@@ -34,11 +34,11 @@ const png = (extra: number[][] = [], width = 4, height = 3) =>
 const secret = () => chunk("tEXt", [...text("Comment"), 0, ...text("GPSLatitude -23.55 Marina iPhone")]);
 
 const withImage = (assetId: string, over: Partial<SiteContent> = {}): SiteContent => ({
-  schemaVersion: 2,
+  schemaVersion: 3,
   title: "Marina Treinos",
   description: "",
   contact: { whatsapp: "(11) 91234-5678", email: "", instagram: "" },
-  theme: { accent: "blue", mode: "light" },
+  theme: { accent: "blue", mode: "light", width: "narrow" },
   blocks: [
     { id: "h1", type: "hero", eyebrow: "", heading: "Treino sob medida", subheading: "", buttonLabel: "Falar", buttonChannel: "whatsapp" },
     { ...emptyBlock("image", "img1"), assetId, alt: "Marina no estúdio" } as SiteContent["blocks"][number],
@@ -234,9 +234,9 @@ describe("publishing with images", () => {
     expect(await messages(noAlt)).toEqual([expect.stringContaining("texto alternativo")]);
     expect(await count("SELECT 1 FROM site_release_assets ra JOIN site_assets a ON a.id = ra.asset_id WHERE a.site_id <> ra.site_id")).toBe(0);
   });
-  it("counts an image in a column and the logo as used, and refuses a logo that is not in the library", async () => {
+  it("counts an image in a container, a background and the logo as used, and refuses a logo that is not in the library", async () => {
     const inColumn = withImage("x");
-    inColumn.blocks = [inColumn.blocks[0], { ...emptyBlock("columns", "cols"), left: [{ ...emptyBlock("image", "in-col"), assetId: firstId, alt: "Na coluna" }], right: [] } as SiteContent["blocks"][number]];
+    inColumn.blocks = [inColumn.blocks[0], { ...emptyBlock("box", "cols"), children: [{ ...emptyBlock("image", "in-col"), assetId: firstId, alt: "No contêiner" }], style: { bgImage: firstId } } as SiteContent["blocks"][number]];
     inColumn.logoAssetId = firstId;
     expect(referencedAssetIds(inColumn)).toEqual([firstId]);
     const bad = { ...inColumn, logoAssetId: "gone" };
