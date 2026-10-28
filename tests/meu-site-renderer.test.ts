@@ -204,6 +204,36 @@ describe("the blocks of the visual editor, on the public page", () => {
     // An anchor never opens another page or window.
     for (const tag of html.match(/<a [^>]*href="#[^>]*>/g) ?? []) expect(tag).not.toContain("target=");
   });
+  it("puts a scope in front of the ids and the links to them, so a page drawn twice in one window repeats none", () => {
+    const blocks = [of("hero", "top", { heading: "Início" }), of("link", "k", { label: "Ir ao início", anchor: "top" } as never)];
+    const plain = render(page({ blocks }));
+    expect(plain).toContain('id="s-top"');
+    expect(plain).toContain('href="#s-top"');
+    const scoped = renderToStaticMarkup(createElement(SiteRenderer, { content: page({ blocks }), scope: "tablet-" }));
+    expect(scoped).toContain('id="tablet-s-top"');
+    expect(scoped).toContain('href="#tablet-s-top"');
+    expect(scoped).not.toContain('id="s-top"');
+  });
+  it("gives no id to the nodes in the editor's canvas, whose frames draw the same page more than once", () => {
+    const html = render(page({ blocks: [of("hero", "top", { heading: "Início" }), of("link", "k", { label: "Ir", anchor: "top" } as never)] }), hooks().edit);
+    expect(html).not.toMatch(/\sid="/);
+    expect(html).toContain('data-block-id="top"');
+  });
+  it("carries the class of a node that has a style only for the tablet or the phone, and none for one with no style at any size", () => {
+    const html = render(
+      page({
+        blocks: [
+          of("paragraph", "tab", { text: "a", styleTablet: { fontSize: "18px" } } as never),
+          of("paragraph", "pho", { text: "b", styleMobile: { hidden: true } } as never),
+          of("paragraph", "none", { text: "c", style: {}, styleTablet: {} } as never),
+        ],
+      }),
+    );
+    expect(html).toContain('class="site-text site-leaf s-tab"');
+    expect(html).toContain('class="site-text site-leaf s-pho"');
+    expect(html).toContain('class="site-text site-leaf"');
+    expect(html).not.toContain("s-none");
+  });
   it("shows an element that stands by itself, and nothing for one that has nothing to show", () => {
     const html = render(rich());
     expect(html).toContain("Título solto");

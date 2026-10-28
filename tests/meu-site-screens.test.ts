@@ -7,6 +7,7 @@ import { clearStyles, patchStyle, resetScreen, setHidden, toggleHidden, withScre
 
 const images: CssContext = { imageUrl: (assetId) => (assetId === "asset-1" ? "/app/s/marina/m/asset-1" : null) };
 const frames: CssContext = { ...images, container: true };
+type node0 = { id: string; style?: Style; styleTablet?: Style; styleMobile?: Style };
 
 const content = (blocks: Block[]): SiteContent => ({
   schemaVersion: 3,
@@ -289,6 +290,19 @@ describe("changing the style of one size", () => {
     // The other things in a size's style are kept.
     expect(setHidden({ id: "n", styleMobile: { gap: "2px" } } as typeof node, "mobile", true).styleMobile).toEqual({ gap: "2px", hidden: true });
     expect(setHidden({ id: "n", styleMobile: { gap: "2px", hidden: true } } as typeof node, "mobile", false).styleMobile).toEqual({ gap: "2px" });
+  });
+  it("shows at the phone what the tablet hides, by saying so for the phone alone", () => {
+    // The phone follows the tablet: hidden there, so toggling the phone says "shown" for the phone, and the computer is not the one it is compared to.
+    const node = { id: "n", styleTablet: { hidden: true } } as node0;
+    expect(isHiddenAt(node, "desktop")).toBe(false);
+    expect(isHiddenAt(node, "mobile")).toBe(true);
+    const shownAtPhone = toggleHidden(node, "mobile");
+    expect(shownAtPhone.styleMobile).toEqual({ hidden: false });
+    expect(isHiddenAt(shownAtPhone, "mobile")).toBe(false);
+    expect(isHiddenAt(shownAtPhone, "tablet")).toBe(true);
+    // And the other way: shown at the tablet explicitly, hidden at the phone is kept for the phone.
+    const hiddenAtPhone = toggleHidden({ id: "n", styleTablet: { hidden: false }, style: { hidden: true } } as node0, "mobile");
+    expect(hiddenAtPhone.styleMobile).toEqual({ hidden: true });
   });
   it("patches one size without touching the others", () => {
     const patched = withScreenStyle(node, "tablet", patchStyle(node.styleTablet, { gap: "6px", color: "#112233" }));

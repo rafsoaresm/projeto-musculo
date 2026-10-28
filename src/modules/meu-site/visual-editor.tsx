@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Eye, Pencil, Redo2, Undo2, X } from "lucide-react";
 import { referencedAssetIds, resolveServices, type PublishIssue, type SiteContent } from "./contracts";
-import { COMPACT_QUERY, CanvasSurface, EditorContext, canvasHooks, type CanvasControls, type Drag, type EditorApi, type NodeAction } from "./editor-canvas";
+import { COMPACT_QUERY, CanvasSurface, EditorContext, canvasHooks, useCompact, type CanvasControls, type Drag, type EditorApi, type NodeAction } from "./editor-canvas";
 import { BlockInspector, PageSettings, type ImageSupport } from "./editor-inspector";
 import { editorImageUrl, libraryCssImages, libraryImages } from "./image-urls";
 import type { RemoveResult, UploadResult } from "./image-picker";
@@ -96,10 +96,14 @@ export function VisualEditor(props: VisualEditorProps) {
     return { desktop: !phone, tablet: false, mobile: phone };
   });
   const canvasControls = useRef<CanvasControls>(null);
-  /** Edits a size of the screen: its frame is shown if it was not. */
+  const compact = useCompact();
+  /**
+   * Edits a size of the screen: its frame is shown if it was not. Where one panel is shown at a time the frame takes the place of the one
+   * that was there (more can be asked for with the buttons over the canvas).
+   */
   const chooseScreen = (next: Screen) => {
     setScreen(next);
-    setVisible((previous) => (previous[next] ? previous : { ...previous, [next]: true }));
+    setVisible((previous) => (previous[next] ? previous : compact ? { desktop: false, tablet: false, mobile: false, [next]: true } : { ...previous, [next]: true }));
   };
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   const [leftTab, setLeftTab] = useState<"blocks" | "layers">("blocks");

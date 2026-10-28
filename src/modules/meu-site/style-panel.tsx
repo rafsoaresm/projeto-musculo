@@ -288,6 +288,7 @@ export function StylePanel({
           <span>Ocultar no {SCREEN_LABEL[screen].toLowerCase()}</span>
         </label>
         <p className="small muted">{hidden ? "O bloco não aparece neste tamanho e não ocupa espaço." : "O bloco aparece neste tamanho."}</p>
+        <p className="small muted">Ocultar só esconde na tela: o texto continua no código da página pública. Para tirar de vez, exclua o bloco.</p>
       </Section>
       {sections}
       <button type="button" className="button small secondary" disabled={!hasChanges} onClick={onClear}>

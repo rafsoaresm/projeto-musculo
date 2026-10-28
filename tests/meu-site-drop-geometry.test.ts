@@ -134,6 +134,15 @@ describe("blocks that take no room at the size being edited", () => {
     // A pointer in a gap is never taken to the corner where a hidden block has no rectangle.
     expect(where(page([gone("h"), leaf("c", rect(0, 100, 400, 200))]), 5, 5)).toBe("page@1");
   });
+  it("are skipped by what they say, not by how big they are: a hidden block that still has a rectangle is not a neighbour, a place to land, or something to land on", () => {
+    const flagged = (id: string, r: Rect): LayoutNode => ({ ...leaf(id, r), hidden: true });
+    // It would make the other one look like part of a row...
+    expect(flowOf([leaf("a", rect(0, 0, 100, 50)), flagged("h", rect(110, 0, 200, 50))])).toBe("y");
+    // ...and the pointer over it is not over a block: the landing is next to the one that is drawn, never on the hidden one.
+    const withRect = page([flagged("h", rect(0, 0, 400, 100)), leaf("c", rect(0, 100, 400, 200))]);
+    expect(where(withRect, 200, 30)).toBe("page@1");
+    expect(landingAt(withRect, 200, 30).line).toEqual(rect(0, 98, 400, 102));
+  });
   it("do not decide whether the others are in a row", () => {
     expect(flowOf([leaf("a", rect(0, 0, 100, 50)), gone("h"), leaf("b", rect(110, 0, 200, 50))])).toBe("x");
     expect(flowOf([gone("h"), leaf("a", rect(0, 0, 100, 50)), gone("i")])).toBe("y");

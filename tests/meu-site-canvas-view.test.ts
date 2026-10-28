@@ -43,6 +43,7 @@ describe("the zoom of the canvas", () => {
   });
   it("says the scale as a whole percent", () => {
     expect(percent(0.554)).toBe(55);
+    expect(percent(0.556)).toBe(56);
     expect(percent(1)).toBe(100);
     expect(percent(0.1)).toBe(10);
   });

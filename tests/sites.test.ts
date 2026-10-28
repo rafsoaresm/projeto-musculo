@@ -568,3 +568,57 @@ describe("the pages made with \"2 columns\" (version 2 of the document)", () => 
     expect(JSON.parse((await one<{ content: string }>("SELECT content FROM site_drafts WHERE site_id = ?", siteId))!.content).schemaVersion).toBe(3);
   });
 });
+
+describe("a page with styles for the tablet and the phone", () => {
+  const repo = () => sitesFor(db, scope("owner-d", "org-d"));
+  const sized = (): SiteContent => ({
+    ...complete(),
+    title: "Com tamanhos",
+    blocks: [
+      complete().blocks[0],
+      {
+        id: "row",
+        type: "box",
+        tag: "div",
+        style: { display: "flex", gap: "32px" },
+        styleTablet: { gap: "16px" },
+        styleMobile: { gap: "8px", hidden: true },
+        children: [{ id: "p", type: "paragraph", text: "Só no computador", styleTablet: { hidden: true }, styleMobile: { hidden: false } }],
+      },
+    ],
+  });
+  it("saves, publishes and serves it with the style of each size, as it was written", async () => {
+    const revision = (await repo().overview())!.draft.revision;
+    const saved = await repo().saveDraft(sized(), revision, at(130));
+    if (saved.status !== "saved") throw new Error(JSON.stringify(saved));
+    const outcome = await repo().publish(saved.revision, at(131));
+    expect(outcome.status).toBe("published");
+    const served = (await publishedSiteBySlug(db, "estudio-d"))!;
+    const row = served.content.blocks[1];
+    expect(row).toMatchObject({ style: { gap: "32px" }, styleTablet: { gap: "16px" }, styleMobile: { gap: "8px", hidden: true } });
+    expect(row.type === "box" && row.children[0]).toMatchObject({ styleTablet: { hidden: true }, styleMobile: { hidden: false } });
+    // What is stored is the document as it was sent: nothing was laid over anything.
+    const stored = JSON.parse((await one<{ content: string }>("SELECT content FROM site_releases WHERE id = (SELECT release_id FROM site_published WHERE site_id = (SELECT id FROM sites WHERE organization_id = 'org-d'))"))!.content);
+    expect(stored.blocks[1].styleTablet).toEqual({ gap: "16px" });
+    expect(stored.blocks[1].style).toEqual({ display: "flex", gap: "32px" });
+  });
+  it("refuses a style of a size that the contract does not accept, as it does the computer's", async () => {
+    const revision = (await repo().overview())!.draft.revision;
+    const bad = (extra: object) => repo().saveDraft({ ...sized(), blocks: [{ id: "row", type: "box", tag: "div", children: [], ...extra }] } as never, revision, at(132));
+    await expect(bad({ styleTablet: { gap: "9999px" } })).rejects.toThrow();
+    await expect(bad({ styleMobile: { color: "red" } })).rejects.toThrow();
+    await expect(bad({ styleTablet: { "background-image": "url(//evil.test/x)" } })).rejects.toThrow();
+    await expect(bad({ styleMobile: { hidden: "yes" } })).rejects.toThrow();
+    await expect(bad({ styleDesktop: { gap: "4px" } })).rejects.toThrow();
+    expect((await repo().overview())!.draft.revision).toBe(revision);
+  });
+  it("does not publish an image of the tablet's background that is not in the site's library", async () => {
+    const revision = (await repo().overview())!.draft.revision;
+    const content = sized();
+    const saved = await repo().saveDraft({ ...content, blocks: [content.blocks[0], { ...content.blocks[1], styleTablet: { bgImage: "not-in-the-library" } }] } as SiteContent, revision, at(133));
+    if (saved.status !== "saved") throw new Error("not saved");
+    const outcome = await repo().publish(saved.revision, at(134));
+    expect(outcome.status).toBe("invalid");
+    if (outcome.status === "invalid") expect(outcome.issues.map((issue) => issue.blockId)).toEqual(["row"]);
+  });
+});

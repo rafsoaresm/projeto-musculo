@@ -288,6 +288,7 @@ export function CanvasSurface({
 }) {
   const api = useEditor();
   const compact = useCompact();
+  const shell = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLDivElement>(null);
   const inner = useRef<HTMLDivElement>(null);
   const world = useRef<HTMLDivElement>(null);
@@ -433,11 +434,13 @@ export function CanvasSurface({
 
   // The wheel moves the world; with Ctrl/Cmd (also what a pinch on a trackpad sends) it zooms around the pointer.
   useEffect(() => {
-    const area = canvas.current;
-    if (!area || compact) return;
+    // Heard on the whole canvas, the buttons over it included: the wheel over the zoom box moves the page too.
+    const area = shell.current;
+    const surface = canvas.current;
+    if (!area || !surface || compact) return;
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
-      const origin = area.getBoundingClientRect();
+      const origin = surface.getBoundingClientRect();
       if (event.ctrlKey || event.metaKey) moved(zoomAt(view.current, wheelScale(view.current.scale, event.deltaY), event.clientX - origin.left, event.clientY - origin.top));
       else if (event.shiftKey && event.deltaX === 0) moved(moveBy(view.current, -event.deltaY, 0));
       else moved(moveBy(view.current, -event.deltaX, -event.deltaY));
@@ -492,7 +495,9 @@ export function CanvasSurface({
     const target = event.target as Element;
     const onBackground = !target.closest("[data-frame], button, [role='toolbar']");
     if (!(event.button === 1 || (event.button === 0 && (spaceHeld.current || onBackground)))) return;
+    // Taking the pointer for the hand keeps the browser from moving the focus; the focus leaves what had it (a button, a field), so the keys of the canvas are heard.
     event.preventDefault();
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
     event.currentTarget.setPointerCapture(event.pointerId);
     hand.current = { x: event.clientX, y: event.clientY, moved: false };
   };
@@ -522,7 +527,7 @@ export function CanvasSurface({
   };
 
   return (
-    <div className="ve-canvas-shell">
+    <div ref={shell} className="ve-canvas-shell">
       <div
         ref={canvas}
         className="ve-canvas"
