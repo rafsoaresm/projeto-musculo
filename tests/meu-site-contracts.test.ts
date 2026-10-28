@@ -11,6 +11,7 @@ import {
   instagramUrl,
   parseContent,
   publishIssues,
+  referencedAssetIds,
   resolveServices,
   safeParseContent,
   siteContent,
@@ -107,8 +108,8 @@ describe("the document of the page", () => {
     expect(siteContent.safeParse(full({ blocks: [{ id: "x", type: "script", src: "https://evil.test" } as never] })).success).toBe(false);
     expect(siteContent.safeParse(full({ blocks: [{ ...(emptyBlock("text") as object), onClick: "x" } as never] })).success).toBe(false);
   });
-  it("refuses, inside a column, a section and another \"2 columns\": only title, paragraph and button fit", () => {
-    expect([...COLUMN_TYPES]).toEqual(["heading", "paragraph", "button"]);
+  it("refuses, inside a column, a section and another \"2 columns\": only title, paragraph, button and image fit", () => {
+    expect([...COLUMN_TYPES]).toEqual(["heading", "paragraph", "button", "image"]);
     for (const type of ["hero", "text", "services", "about", "quote", "stats", "faq", "cta", "columns"] as const) {
       const inside = block("columns", "c", { left: [emptyBlock(type, "in")] as never });
       expect(siteContent.safeParse(withBlocks([inside])).success, type).toBe(false);
@@ -281,5 +282,48 @@ describe("what stops a publication", () => {
     const issues = publishIssues(starterContent("Marina"), live);
     expect(issues.length).toBeGreaterThan(0);
     expect(issues.every((i) => /WhatsApp/.test(i.message))).toBe(true);
+  });
+});
+
+describe("images on the page", () => {
+  const live = new Set<string>();
+  const imageBlock = (id: string, over: object = {}) => ({ ...emptyBlock("image", id), assetId: "asset-1", alt: "Marina no estúdio", ...over }) as Block;
+  it("holds the id of an image of the library, a description, a caption and a size from a closed list", () => {
+    expect(emptyBlock("image", "i")).toEqual({ id: "i", type: "image", assetId: "", alt: "", caption: "", size: "full" });
+    expect(siteContent.safeParse(withBlocks([imageBlock("a")])).success).toBe(true);
+    for (const size of ["wide", "100%", "", 12]) expect(siteContent.safeParse(withBlocks([imageBlock("a", { size })])).success, String(size)).toBe(false);
+    expect(siteContent.safeParse(withBlocks([imageBlock("a", { src: "https://evil.test/x.png" })])).success).toBe(false);
+    expect(siteContent.safeParse(withBlocks([imageBlock("a", { assetId: "x".repeat(65) })])).success).toBe(false);
+    expect(siteContent.safeParse(withBlocks([imageBlock("a", { alt: "x".repeat(201) })])).success).toBe(false);
+    expect(siteContent.safeParse(withBlocks([imageBlock("a", { caption: "x".repeat(201) })])).success).toBe(false);
+  });
+  it("fits in a column, and the logo is an id too", () => {
+    const columns = block("columns", "c", { left: [imageBlock("in")] as never });
+    expect(siteContent.safeParse(withBlocks([columns])).success).toBe(true);
+    expect(siteContent.safeParse(full({ logoAssetId: "asset-9" })).success).toBe(true);
+    expect(siteContent.safeParse(full({ logoAssetId: "x".repeat(65) })).success).toBe(false);
+    expect(siteContent.safeParse(full({ logoAssetId: 5 as never })).success).toBe(false);
+  });
+  it("lists the images the document uses, once each: on the page, in a column and the logo", () => {
+    const columns = block("columns", "c", { left: [imageBlock("in", { assetId: "asset-2" })] as never, right: [imageBlock("in2", { assetId: "asset-1" })] as never });
+    const content = full({ blocks: [imageBlock("a"), columns, imageBlock("empty", { assetId: "" })], logoAssetId: "asset-3" });
+    expect(referencedAssetIds(content).sort()).toEqual(["asset-1", "asset-2", "asset-3"]);
+    expect(referencedAssetIds(full())).toEqual([]);
+  });
+  it("is not publishable without the image, without its description, or with an image that is not in the library", () => {
+    const issues = (content: SiteContent, known: string[] | null = ["asset-1"]) => publishIssues(content, live, known ? new Set(known) : null).map((i) => i.message);
+    expect(issues(withBlocks([imageBlock("a")]))).toEqual([]);
+    expect(issues(withBlocks([imageBlock("a", { assetId: "" })]))).toEqual([expect.stringContaining("escolha a imagem")]);
+    expect(issues(withBlocks([imageBlock("a", { alt: "" })]))).toEqual([expect.stringContaining("texto alternativo")]);
+    expect(issues(withBlocks([imageBlock("a", { assetId: "gone" })]))).toEqual([expect.stringContaining("não está mais na biblioteca")]);
+    expect(issues(withBlocks([imageBlock("a", { assetId: "gone" })]), null)).toEqual([]);
+    expect(issues(full({ blocks: [imageBlock("a")], logoAssetId: "gone" }))).toEqual([expect.stringContaining("logotipo")]);
+    expect(issues(full({ blocks: [imageBlock("a")], logoAssetId: "asset-1" }))).toEqual([]);
+  });
+  it("is checked inside a column too, with the element's id", () => {
+    const columns = block("columns", "c", { left: [imageBlock("in", { alt: "" })] as never });
+    const found = publishIssues(withBlocks([columns]), live, new Set(["asset-1"]));
+    expect(found.map((i) => i.blockId)).toEqual(["in"]);
+    expect(found[0].message).toContain("coluna da esquerda");
   });
 });

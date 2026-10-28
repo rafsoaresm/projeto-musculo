@@ -8,6 +8,12 @@ export async function sha256Hex(value: string): Promise<string> {
     .join("");
 }
 
+/** The SHA-256 of bytes, as lowercase hex. */
+export async function sha256HexOfBytes(value: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", value as BufferSource);
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 /** Compares fixed-length digests so timing does not reveal a matching prefix. */
 export async function secretsMatch(a: string, b: string): Promise<boolean> {
   const [x, y] = await Promise.all([sha256Hex(a), sha256Hex(b)]);

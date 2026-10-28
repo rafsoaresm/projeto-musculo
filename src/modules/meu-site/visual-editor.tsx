@@ -1,9 +1,13 @@
 "use client";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Eye, Pencil, Redo2, Undo2, X } from "lucide-react";
-import { BLOCK_LABEL, resolveServices, type BlockType, type ColumnType, type PublishIssue, type SiteContent } from "./contracts";
+import { BLOCK_LABEL, referencedAssetIds, resolveServices, type BlockType, type ColumnType, type PublishIssue, type SiteContent } from "./contracts";
 import { EditorContext, canvasHooks, type BlockAction, type Drag, type EditorApi } from "./editor-canvas";
-import { BlockInspector, PageSettings } from "./editor-inspector";
+import { BlockInspector, PageSettings, type ImageSupport } from "./editor-inspector";
+import { editorImageUrl, libraryImages } from "./image-urls";
+import type { RemoveResult, UploadResult } from "./image-picker";
+import type { AssetRow } from "@/db/site-assets";
+import { useMountPath } from "@/components/use-mount-path";
 import { Layers, Library } from "./editor-library";
 import {
   REFUSAL_MESSAGE,
@@ -36,6 +40,8 @@ export interface VisualEditorProps {
   canUndo: boolean;
   canRedo: boolean;
   services: ServiceChoice[];
+  /** The images of the site's library: what is there, whether the storage exists here, and how to send and remove. */
+  images: { available: boolean; library: AssetRow[]; upload: (file: File) => Promise<UploadResult>; remove: (assetId: string) => Promise<RemoveResult> };
   slug: string;
   dirty: boolean;
   revision: number;
@@ -59,6 +65,7 @@ const END = Number.MAX_SAFE_INTEGER;
  */
 export function VisualEditor(props: VisualEditorProps) {
   const { content, onEdit, services } = props;
+  const mountPath = useMountPath();
   const dialog = useRef<HTMLDialogElement>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
@@ -84,6 +91,17 @@ export function VisualEditor(props: VisualEditorProps) {
 
   const selected = selectedId && locate(content, selectedId) ? selectedId : null;
   const resolved = useMemo(() => resolveServices(content, new Map(services.map((service) => [service.id, service]))), [content, services]);
+  // The editor is never drawn on the server (it opens on a click), so the browser's address is there.
+  const base = mountPath();
+  const imageResolver = useMemo(() => libraryImages(base, props.images.library), [base, props.images.library]);
+  const imageSupport: ImageSupport = {
+    available: props.images.available,
+    library: props.images.library,
+    src: (assetId) => editorImageUrl(base, assetId),
+    usedIds: new Set(referencedAssetIds(content)),
+    upload: props.images.upload,
+    remove: props.images.remove,
+  };
 
   const apply = (result: Outcome) => {
     if (result.ok) {
@@ -310,7 +328,7 @@ export function VisualEditor(props: VisualEditorProps) {
                 <PublicAddress slug={props.slug} className="ve-address" />
               </div>
               <EditorContext.Provider value={api}>
-                <SiteRenderer content={resolved} edit={mode === "edit" ? hooks : undefined} />
+                <SiteRenderer content={resolved} edit={mode === "edit" ? hooks : undefined} images={imageResolver} />
               </EditorContext.Provider>
             </div>
           </div>
@@ -321,9 +339,9 @@ export function VisualEditor(props: VisualEditorProps) {
             <h2>{selectedLabel ?? "Página"}</h2>
           </div>
           {selected ? (
-            <BlockInspector key={selected} content={content} id={selected} services={services} onChange={onEdit} act={api.act} />
+            <BlockInspector key={selected} content={content} id={selected} services={services} images={imageSupport} onChange={onEdit} act={api.act} />
           ) : (
-            <PageSettings content={content} onChange={onEdit} />
+            <PageSettings content={content} onChange={onEdit} images={imageSupport} />
           )}
         </aside>
       </div>

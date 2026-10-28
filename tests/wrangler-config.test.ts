@@ -37,7 +37,11 @@ describe("wrangler.json", () => {
 describe("the photos are open in the configuration the platform deploys", () => {
   it("provisions the bucket and opens the photos, in the file the platform reads", () => {
     const production = read("wrangler.json");
-    expect(production.r2_buckets).toEqual([{ binding: "PHOTOS", bucket_name: "photos" }]);
+    expect(production.r2_buckets).toEqual([
+      { binding: "PHOTOS", bucket_name: "photos" },
+      // The images of the public page: a second bucket, so a photo of a student and a picture on a public page never share one.
+      { binding: "SITE_MEDIA", bucket_name: "site-media" },
+    ]);
     // The student's own authorization is still checked photo by photo, in the database.
     expect(production.vars?.PHOTOS_ENABLED).toBe("true");
   });

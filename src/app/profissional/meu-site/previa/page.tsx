@@ -3,9 +3,12 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { requireWorkspace } from "@/modules/auth/server";
+import { getSiteMediaBucket } from "@/db/binding";
+import { siteAssetsFor } from "@/db/site-assets";
 import { sitesFor } from "@/db/sites";
 import { Notice, PageHeading } from "@/components/ui";
 import { canSeeSite } from "@/modules/meu-site/access";
+import { libraryImages } from "@/modules/meu-site/image-urls";
 import { SiteRenderer } from "@/modules/meu-site/renderer";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +20,7 @@ export default async function SitePreview() {
   if (!canSeeSite(workspace.role)) redirect("/profissional/meu-site");
   const preview = await sitesFor(db, context).preview();
   if (!preview) redirect("/profissional/meu-site");
+  const library = await siteAssetsFor(db, await getSiteMediaBucket(), context).list();
   return (
     <>
       <PageHeading
@@ -34,7 +38,7 @@ export default async function SitePreview() {
         <p>Prévia: os botões de contato funcionam, mas o site só vai ao ar quando você publicar. O que ainda não foi salvo no editor não aparece aqui.</p>
       </Notice>
       <div className="site-preview" aria-label="Prévia da página">
-        <SiteRenderer content={preview.content} />
+        <SiteRenderer content={preview.content} images={libraryImages(process.env.NEXT_PUBLIC_BASE_PATH || "", library)} />
       </div>
     </>
   );

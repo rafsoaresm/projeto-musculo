@@ -45,6 +45,7 @@ const GROUPS: { title: string; tiles: Tile[] }[] = [
       { type: "heading", hint: "Texto em destaque", icon: Heading },
       { type: "paragraph", hint: "Texto simples", icon: Pilcrow },
       { type: "button", hint: "Leva a um contato", icon: RectangleHorizontal },
+      { type: "image", hint: "Da biblioteca do site", icon: ImageIcon },
     ],
   },
 ];
@@ -86,13 +87,6 @@ export function Library({ onAdd, startDrag, endDrag }: { onAdd: (type: BlockType
                 <span>{hint}</span>
               </div>
             ))}
-            {group.title === "Elementos básicos" && (
-              <div className="ve-tile" data-soon="" title="Imagens ainda não: o armazenamento atual é privado">
-                <ImageIcon size={22} aria-hidden="true" />
-                <strong>Imagem</strong>
-                <span>Em breve</span>
-              </div>
-            )}
           </div>
         </section>
       ))}

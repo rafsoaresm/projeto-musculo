@@ -11,6 +11,8 @@ import {
   EYEBROW_MAX,
   FAQ_MAX,
   HEADING_MAX,
+  IMAGE_SIZES,
+  IMAGE_SIZE_LABEL,
   QUESTION_MAX,
   QUOTE_MAX,
   RATIOS,
@@ -24,6 +26,7 @@ import {
   type Block,
   type Channel,
   type ColumnItem,
+  type ImageSize,
   type Ratio,
   type SiteContent,
 } from "./contracts";
@@ -31,9 +34,24 @@ import { locate, updateBlock } from "./editor-model";
 import { ACCENTS, ACCENT_LABEL, MODES, MODE_LABEL, type Accent, type Mode } from "./site-theme";
 import { DELIVERY_LABEL } from "@/modules/leads/contracts";
 import type { ServiceChoice } from "@/db/sites";
+import type { AssetRow } from "@/db/site-assets";
 import type { BlockAction } from "./editor-canvas";
+import { ImagePicker, type RemoveResult, type UploadResult } from "./image-picker";
+import { ALT_MAX, CAPTION_MAX } from "./images";
 
 type Change = (next: SiteContent, key?: string) => void;
+
+/** What the editor needs to choose, send and remove the images of the site's library. */
+export interface ImageSupport {
+  available: boolean;
+  library: AssetRow[];
+  /** The address of an image of the library for the editor, with the session. */
+  src: (assetId: string) => string;
+  /** The images the page being edited uses: those are not removed from the library from here. */
+  usedIds: ReadonlySet<string>;
+  upload: (file: File) => Promise<UploadResult>;
+  remove: (assetId: string) => Promise<RemoveResult>;
+}
 
 function Text({ label, value, max, onChange, rows }: { label: string; value: string; max: number; onChange: (value: string) => void; rows?: number }) {
   return (
@@ -65,7 +83,7 @@ function ChannelSelect({ label = "O botão leva a", value, onChange }: { label?:
 }
 
 /** The settings of the page itself: title, search description, contacts and look. What nothing selected shows. */
-export function PageSettings({ content, onChange }: { content: SiteContent; onChange: Change }) {
+export function PageSettings({ content, onChange, images }: { content: SiteContent; onChange: Change; images: ImageSupport }) {
   const set = (patch: Partial<SiteContent>, key: string) => onChange({ ...content, ...patch }, `page:${key}`);
   const setContact = (field: keyof SiteContent["contact"], value: string) =>
     onChange({ ...content, contact: { ...content.contact, [field]: value } }, `page:contact.${field}`);
@@ -97,6 +115,20 @@ export function PageSettings({ content, onChange }: { content: SiteContent; onCh
           ))}
         </div>
       </fieldset>
+      <ImagePicker
+        legend="Logotipo"
+        name="site-logo"
+        library={images.library}
+        value={content.logoAssetId ?? ""}
+        onChange={(assetId) => onChange({ ...content, logoAssetId: assetId || undefined }, "page:logo")}
+        allowNone
+        noneLabel="Sem logotipo"
+        usedIds={images.usedIds}
+        available={images.available}
+        src={images.src}
+        onUpload={images.upload}
+        onRemove={images.remove}
+      />
       <h3 className="ve-subtitle">Contatos</h3>
       <p className="small muted">Os botões e o rodapé levam a estes contatos. Só aparecem os que estiverem preenchidos.</p>
       <label>
@@ -120,12 +152,14 @@ export function BlockInspector({
   content,
   id,
   services,
+  images,
   onChange,
   act,
 }: {
   content: SiteContent;
   id: string;
   services: ServiceChoice[];
+  images: ImageSupport;
   onChange: Change;
   act: (id: string, action: BlockAction) => void;
 }) {
@@ -292,6 +326,35 @@ export function BlockInspector({
         <>
           <Text label="Texto do botão" value={entry.label} max={BUTTON_MAX} onChange={(buttonLabel) => patch({ label: buttonLabel })} />
           <ChannelSelect value={entry.channel} onChange={(channel) => patch({ channel })} />
+        </>
+      )}
+
+      {entry.type === "image" && (
+        <>
+          <ImagePicker
+            legend="Imagem"
+            name={`image-${entry.id}`}
+            library={images.library}
+            value={entry.assetId}
+            onChange={(assetId) => patch({ assetId })}
+            usedIds={images.usedIds}
+            available={images.available}
+            src={images.src}
+            onUpload={images.upload}
+            onRemove={images.remove}
+          />
+          <Text label="Descrição da imagem (para quem não consegue vê-la)" value={entry.alt} max={ALT_MAX} rows={2} onChange={(alt) => patch({ alt })} />
+          <Text label="Legenda (opcional)" value={entry.caption} max={CAPTION_MAX} onChange={(caption) => patch({ caption })} />
+          <label>
+            Tamanho
+            <select value={entry.size} onChange={(event) => patch({ size: event.target.value as ImageSize })}>
+              {IMAGE_SIZES.map((size) => (
+                <option key={size} value={size}>
+                  {IMAGE_SIZE_LABEL[size]}
+                </option>
+              ))}
+            </select>
+          </label>
         </>
       )}
 

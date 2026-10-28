@@ -46,9 +46,9 @@ const valid = (content: SiteContent) => expect(siteContent.safeParse(content).su
 
 describe("where a block may go", () => {
   it("accepts anything on the page, and only title, paragraph and button in a column", () => {
-    for (const type of ["hero", "text", "services", "about", "quote", "stats", "faq", "cta", "columns", "heading", "paragraph", "button"] as const)
+    for (const type of ["hero", "text", "services", "about", "quote", "stats", "faq", "cta", "columns", "heading", "paragraph", "button", "image"] as const)
       expect(accepts("root", type), type).toBe(true);
-    for (const type of ["heading", "paragraph", "button"] as const) expect(accepts(columnKey("x", "left"), type), type).toBe(true);
+    for (const type of ["heading", "paragraph", "button", "image"] as const) expect(accepts(columnKey("x", "left"), type), type).toBe(true);
     for (const type of ["hero", "text", "services", "about", "quote", "stats", "faq", "cta", "columns"] as const)
       expect(accepts(columnKey("x", "right"), type), type).toBe(false);
   });

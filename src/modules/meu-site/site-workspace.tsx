@@ -4,10 +4,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LayoutTemplate } from "lucide-react";
 import { Pill, formatDateTime } from "@/components/ui";
+import { useMountPath } from "@/components/use-mount-path";
 import { useUnsavedGuard } from "@/components/use-unsaved-guard";
+import type { AssetRow } from "@/db/site-assets";
 import type { ReleaseRow, ServiceChoice } from "@/db/sites";
 import { PUBLIC_WARNING, type PublishIssue, type SiteContent } from "./contracts";
 import { historyReducer, startHistory } from "./editor-history";
+import { PREPARE_MESSAGE, prepareImage } from "./image-upload";
+import type { RemoveResult, UploadResult } from "./image-picker";
 import { PublicAddress } from "./public-address";
 import { VisualEditor } from "./visual-editor";
 import { changeSiteAddress, publishSite, restoreSiteRelease, saveSiteDraft, unpublishSite } from "./actions";
@@ -18,6 +22,7 @@ interface Props {
   live: { number: number; publishedAt: string; draftRevision: number } | null;
   releases: ReleaseRow[];
   services: ServiceChoice[];
+  images: { available: boolean; library: AssetRow[] };
   canEdit: boolean;
 }
 
@@ -43,8 +48,10 @@ type Note = ReturnType<typeof useNote>;
  * draft saved, and what is public changes only on "Publicar". The editor is a window over this state: the
  * answers to what is pressed inside it are shown inside it, and the ones of this screen stay here.
  */
-export function SiteWorkspace({ slug, initial, live, releases, services, canEdit }: Props) {
+export function SiteWorkspace({ slug, initial, live, releases, services, images, canEdit }: Props) {
   const router = useRouter();
+  const mountPath = useMountPath();
+  const [library, setLibrary] = useState<AssetRow[]>(images.library);
   const [history, dispatch] = useReducer(historyReducer, initial.content, startHistory);
   const content = history.present;
   const [saved, setSaved] = useState(() => JSON.stringify(initial.content));
@@ -73,6 +80,34 @@ export function SiteWorkspace({ slug, initial, live, releases, services, canEdit
     dispatch({ type: "edit", content: next, at: Date.now(), key });
     afterChange();
   };
+
+  /** Sending an image is immediate (the library is the site's, not the draft's): re-drawn here, checked again there. */
+  async function uploadImage(file: File): Promise<UploadResult> {
+    try {
+      const blob = await prepareImage(file);
+      const response = await fetch(`${mountPath()}/profissional/meu-site/imagens`, {
+        method: "POST",
+        headers: { "x-site-request": "1", "Content-Type": blob.type },
+        body: blob,
+      });
+      const body = (await response.json().catch(() => null)) as { asset?: AssetRow; error?: string } | null;
+      if (!response.ok || !body?.asset) return { ok: false, message: body?.error ?? "Não foi possível enviar a imagem." };
+      const asset = body.asset;
+      setLibrary((current) => [asset, ...current]);
+      return { ok: true, asset };
+    } catch (error) {
+      return { ok: false, message: PREPARE_MESSAGE[(error as Error).message] ?? "Não foi possível ler este arquivo como imagem. Tente um JPEG ou um PNG." };
+    }
+  }
+  async function removeImage(assetId: string): Promise<RemoveResult> {
+    const response = await fetch(`${mountPath()}/profissional/meu-site/imagens/${assetId}`, { method: "DELETE", headers: { "x-site-request": "1" } });
+    const body = (await response.json().catch(() => null)) as { error?: string } | null;
+    if (response.ok) {
+      setLibrary((current) => current.filter((asset) => asset.id !== assetId));
+      return { ok: true, message: "Imagem removida." };
+    }
+    return { ok: false, message: body?.error ?? "Não foi possível remover a imagem." };
+  }
 
   /** `note` is where the answer is shown: the editor's own, or the one of this screen. */
   function save(note: Note) {
@@ -295,6 +330,7 @@ export function SiteWorkspace({ slug, initial, live, releases, services, canEdit
           canUndo={history.past.length > 0}
           canRedo={history.future.length > 0}
           services={services}
+          images={{ available: images.available, library, upload: uploadImage, remove: removeImage }}
           slug={slug}
           dirty={dirty}
           revision={revision}

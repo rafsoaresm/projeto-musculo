@@ -1,4 +1,5 @@
 import "server-only";
+import type { R2Bucket } from "@cloudflare/workers-types";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { photosOpen, photosSwitch } from "@/modules/avaliacoes/photos";
 
@@ -26,6 +27,16 @@ export async function photoStorageAvailable(): Promise<boolean> {
     return photoStorageOpen(env);
   } catch {
     return false;
+  }
+}
+
+/** The bucket of the images of the public page, or null where it is not provisioned. Never throws. */
+export async function getSiteMediaBucket(): Promise<R2Bucket | null> {
+  try {
+    const { env } = await getCloudflareContext({ async: true });
+    return env.SITE_MEDIA ?? null;
+  } catch {
+    return null;
   }
 }
 

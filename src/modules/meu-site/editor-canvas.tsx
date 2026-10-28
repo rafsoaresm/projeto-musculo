@@ -249,7 +249,7 @@ function EmptyPlace({ container }: { container: ContainerKey }) {
   );
 }
 
-const ADD_LABEL: Record<ColumnType, string> = { heading: "Título", paragraph: "Parágrafo", button: "Botão" };
+const ADD_LABEL: Record<ColumnType, string> = { heading: "Título", paragraph: "Parágrafo", button: "Botão", image: "Imagem" };
 
 function ColumnTools({ columnsId, side, count }: { columnsId: string; side: Side; count: number }) {
   const api = useEditor();
