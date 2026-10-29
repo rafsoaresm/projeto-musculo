@@ -17,6 +17,7 @@ import {
 import { anchorDomId, nodeClass } from "./site-css";
 import { themeAttributes } from "./site-theme";
 import { hasAnyStyle } from "./screens";
+import type { SiteNav } from "./site-nav";
 import { DELIVERY_LABEL } from "@/modules/leads/contracts";
 
 /**
@@ -65,6 +66,8 @@ interface Ctx {
   firstHero: string | null;
   /** In front of the DOM id of an anchor, so a page drawn more than once in one window (the frames of the editor) does not repeat an id. */
   scope: string;
+  /** The pages of the site: where a button or a link that goes to a page leads. Absent where there is no site around the page (a page drawn alone). */
+  nav?: SiteNav;
   /**
    * Set while the nodes of a component are drawn as one instance has them. In the editor they are not blocks of the page (only the instance
    * is): they carry no identifier for the canvas, and a text is a field only when the instance can change it (`overridable`, the nodes of
@@ -130,15 +133,29 @@ function Action({ ctx, id, labelPath, label, channel }: { ctx: Ctx; id: string; 
   );
 }
 
-/** Where a button or a link goes: a contact (its own address), or another node of this page (an anchor). Null when it goes nowhere. */
-function destinationOf(item: { channel?: Channel; anchor?: string }, ctx: Ctx): { href: string; external: boolean } | null {
+/** Where a button or a link goes: a contact (its own address), another node of this page (an anchor), or another page of the site. Null when it goes nowhere. */
+function destinationOf(item: { channel?: Channel; anchor?: string; page?: string }, ctx: Ctx): { href: string; external: boolean; visit?: string } | null {
   if (item.channel) {
     const href = channelUrl(ctx.content.contact, item.channel);
     return href ? { href, external: href.startsWith("https://") } : null;
   }
   if (item.anchor && ctx.anchors.has(item.anchor)) return { href: `#${ctx.scope}${anchorDomId(item.anchor)}`, external: false };
+  if (item.page) {
+    const href = ctx.nav?.href(item.page);
+    return href ? { href, external: false, visit: item.page } : null;
+  }
   return null;
 }
+/** The click on a link to a page, where the page is shown in place (the editor's preview): it does not follow the address. */
+const visiting = (ctx: Ctx, where: { visit?: string }) =>
+  where.visit !== undefined && ctx.nav?.onVisit
+    ? {
+        onClick: (event: { preventDefault: () => void }) => {
+          event.preventDefault();
+          ctx.nav?.onVisit?.(where.visit!);
+        },
+      }
+    : null;
 
 /** Whether an element has anything to show on the public page: a text, a button or a link with a label and a place to go, an image of the library. */
 function visible(item: ElementNode, ctx: Ctx): boolean {
@@ -197,7 +214,7 @@ function ElementView({ item, ctx }: { item: ElementNode; ctx: Ctx }) {
   }
   const where = destinationOf(item, ctx)!;
   return (
-    <a {...attrsOf(item, ctx, classes)} href={where.href} {...(where.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
+    <a {...attrsOf(item, ctx, classes)} href={where.href} {...(where.external ? { target: "_blank", rel: "noopener noreferrer" } : {})} {...visiting(ctx, where)}>
       {item.label}
     </a>
   );
@@ -445,17 +462,56 @@ function SiteLogo({ logo }: { logo: ResolvedImage }) {
   return <img className="site-logo" src={logo.src} width={logo.width} height={logo.height} alt="" decoding="async" />;
 }
 
+/** The menu of the pages in the header: links on the page, stand-ins in the editor's canvas (a click there selects, it does not go anywhere). */
+function SiteMenu({ nav, edit }: { nav: SiteNav; edit: boolean }) {
+  if (nav.items.length < 2) return null;
+  return (
+    <nav className="site-menu" aria-label="Páginas do site">
+      <ul>
+        {nav.items.map((item) => (
+          <li key={item.id}>
+            {edit ? (
+              <span className="site-menu-link" aria-current={item.current ? "page" : undefined}>
+                {item.label}
+              </span>
+            ) : (
+              <a
+                className="site-menu-link"
+                href={item.href}
+                aria-current={item.current ? "page" : undefined}
+                {...(nav.onVisit
+                  ? {
+                      onClick: (event: { preventDefault: () => void }) => {
+                        event.preventDefault();
+                        nav.onVisit?.(item.id);
+                      },
+                    }
+                  : null)}
+              >
+                {item.label}
+              </a>
+            )}
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+}
+
 export function SiteRenderer({
   content,
   edit,
   images,
   scope = "",
   bare = false,
+  nav,
 }: {
   content: SiteContent;
   edit?: EditHooks;
   images?: ImageResolver;
   scope?: string;
+  /** The pages of the site: the menu in the header, and where the links to a page lead. */
+  nav?: SiteNav;
   /** Only the blocks, without the header with the name of the site and the footer with the contacts (the editor draws a component alone). */
   bare?: boolean;
 }) {
@@ -465,7 +521,7 @@ export function SiteRenderer({
     nodes.flatMap((entry): string[] => ((entry.type === "button" || entry.type === "link") && entry.anchor && existing.has(entry.anchor) ? [entry.anchor] : [])),
   );
   const firstHero = nodes.find((entry) => entry.type === "hero")?.id ?? null;
-  const ctx: Ctx = { content, edit, images, anchors, firstHero, scope };
+  const ctx: Ctx = { content, edit, images, anchors, firstHero, scope, nav };
   const logo = content.logoAssetId ? images?.(content.logoAssetId) ?? null : null;
   const contacts = [
     { label: "WhatsApp", href: whatsappUrl(content.contact.whatsapp), external: true },
@@ -487,6 +543,7 @@ export function SiteRenderer({
               {content.title}
             </p>
           )}
+          {nav && <SiteMenu nav={nav} edit={edit !== undefined} />}
         </header>
       )}
       <main className="site-main" data-page-root={edit ? "" : undefined}>

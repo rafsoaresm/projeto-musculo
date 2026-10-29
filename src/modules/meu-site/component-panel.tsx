@@ -18,7 +18,7 @@ import {
   type SiteContent,
   type SiteNode,
 } from "./contracts";
-import { openNodes, renameComponent, resetOverrideField, resetOverrides, setOverride } from "./component-model";
+import { openNodes, renameComponent, resetOverrideField, resetOverrides, setOverride, usesOf } from "./component-model";
 import { ImagePicker } from "./image-picker";
 import { ALT_MAX, CAPTION_MAX } from "./images";
 import type { ImageSupport } from "./editor-inspector";
@@ -63,7 +63,7 @@ export function ComponentPanel({ content, instance, images, onChange, actions }:
       </>
     );
   }
-  const uses = allNodes(content.blocks).filter((entry) => entry.type === "component" && entry.componentId === definition.id).length;
+  const uses = usesOf(content, definition.id);
   const open = openNodes(definition);
   const drawn = new Map(allNodes([applyOverrides(definition.root, instance.overrides)]).map((entry) => [entry.id, entry as unknown as Record<string, unknown>]));
   const original = new Map(allNodes([definition.root]).map((entry) => [entry.id, entry as unknown as Record<string, unknown>]));

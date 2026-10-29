@@ -112,7 +112,7 @@ export function PageSettings({ content, onChange, images }: { content: SiteConte
     onChange({ ...content, contact: { ...content.contact, [field]: value } }, `page:contact.${field}`);
   return (
     <div className="ve-fields">
-      <p className="small muted">Nada selecionado: estes são os dados da página inteira. Clique em um bloco para editar o bloco.</p>
+      <p className="small muted">Nada selecionado: estes são os dados do site inteiro. Clique em um bloco para editar o bloco; as outras páginas estão na aba Páginas.</p>
       <Text label="Título do site" value={content.title} max={TITLE_MAX} onChange={(title) => set({ title }, "title")} />
       <Text label="Descrição para buscadores (opcional)" value={content.description} max={DESCRIPTION_MAX} rows={2} onChange={(description) => set({ description }, "description")} />
       <label className="check-row">
@@ -216,9 +216,22 @@ export function PageSettings({ content, onChange, images }: { content: SiteConte
   );
 }
 
-/** Where a button or a link goes: a contact, or another block of the page. */
-function Destination({ node, nodes, onPatch, noun }: { node: { channel?: Channel; anchor?: string }; nodes: SiteNode[]; onPatch: (changes: Record<string, unknown>) => void; noun: string }) {
-  const kind = node.anchor !== undefined ? "block" : node.channel !== undefined ? "contact" : "none";
+/** Where a button or a link goes: a contact, another block of the page, or another page of the site. */
+function Destination({
+  node,
+  nodes,
+  pages,
+  onPatch,
+  noun,
+}: {
+  node: { channel?: Channel; anchor?: string; page?: string };
+  nodes: SiteNode[];
+  /** The pages of the site a button can go to (the one being edited is not among them). */
+  pages: ReadonlyArray<{ id: string; label: string }>;
+  onPatch: (changes: Record<string, unknown>) => void;
+  noun: string;
+}) {
+  const kind = node.page !== undefined ? "page" : node.anchor !== undefined ? "block" : node.channel !== undefined ? "contact" : "none";
   return (
     <>
       <label>
@@ -227,9 +240,10 @@ function Destination({ node, nodes, onPatch, noun }: { node: { channel?: Channel
           value={kind}
           onChange={(event) => {
             const next = event.target.value;
-            if (next === "none") onPatch({ channel: undefined, anchor: undefined });
-            else if (next === "contact") onPatch({ channel: node.channel ?? "whatsapp", anchor: undefined });
-            else onPatch({ channel: undefined, anchor: node.anchor ?? nodes[0]?.id });
+            if (next === "none") onPatch({ channel: undefined, anchor: undefined, page: undefined });
+            else if (next === "contact") onPatch({ channel: node.channel ?? "whatsapp", anchor: undefined, page: undefined });
+            else if (next === "page") onPatch({ channel: undefined, anchor: undefined, page: node.page ?? pages[0]?.id });
+            else onPatch({ channel: undefined, anchor: node.anchor ?? nodes[0]?.id, page: undefined });
           }}
         >
           <option value="none">Nenhum lugar (ainda)</option>
@@ -237,8 +251,24 @@ function Destination({ node, nodes, onPatch, noun }: { node: { channel?: Channel
           <option value="block" disabled={nodes.length === 0}>
             Outro bloco desta página
           </option>
+          <option value="page" disabled={pages.length === 0 && node.page === undefined}>
+            Outra página do site
+          </option>
         </select>
       </label>
+      {kind === "page" && (
+        <label>
+          Página de destino
+          <select value={node.page ?? ""} onChange={(event) => onPatch({ page: event.target.value || undefined })}>
+            {node.page !== undefined && !pages.some((other) => other.id === node.page) && <option value={node.page}>Uma página que não existe mais</option>}
+            {pages.map((other) => (
+              <option key={other.id} value={other.id}>
+                {other.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       {kind === "contact" && <ChannelSelect label="Contato de destino" value={node.channel} onChange={(channel) => onPatch({ channel: channel ?? "whatsapp" })} />}
       {kind === "block" && (
         <label>
@@ -273,9 +303,12 @@ export function BlockInspector({
   ids,
   onComponent,
   inComponent,
+  pages,
 }: {
   content: SiteContent;
   id: string;
+  /** The other pages of the site, for a button or a link that goes to one. */
+  pages: ReadonlyArray<{ id: string; label: string }>;
   /** Going into a component, taking an instance back to plain blocks, and making a component of what is selected. */
   onComponent: ComponentActions & { create: () => void };
   /** A component is being edited: another one cannot be made from what is in it. */
@@ -524,13 +557,13 @@ export function BlockInspector({
           {entry.type === "button" && (
             <>
               <Text label="Texto do botão" value={entry.label} max={BUTTON_MAX} onChange={(label) => patch({ label })} />
-              <Destination node={entry} nodes={targets} onPatch={patch} noun="botão" />
+              <Destination node={entry} nodes={targets} pages={pages} onPatch={patch} noun="botão" />
             </>
           )}
           {entry.type === "link" && (
             <>
               <Text label="Texto do link" value={entry.label} max={BUTTON_MAX} onChange={(label) => patch({ label })} />
-              <Destination node={entry} nodes={targets} onPatch={patch} noun="link" />
+              <Destination node={entry} nodes={targets} pages={pages} onPatch={patch} noun="link" />
             </>
           )}
 

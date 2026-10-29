@@ -411,3 +411,44 @@ describe("images used by components", () => {
     expect(Object.keys((await publishedSiteBySlug(db, "marina-a"))!.images)).toEqual([firstId]);
   });
 });
+
+describe("images used by the other pages of the site", () => {
+  const pageWith = (home: SiteContent["blocks"], onPage: SiteContent["blocks"]): SiteContent => ({
+    ...withImage("", { blocks: home }),
+    pages: [{ id: "p1", slug: "sobre", title: "Sobre", description: "", blocks: onPage }],
+  });
+  const hero = () => withImage("").blocks[0];
+  const imageBlock = (id: string, assetId: string) => ({ ...emptyBlock("image", id), assetId, alt: "Marina" }) as SiteContent["blocks"][number];
+
+  it("counts an image of another page as used by the site, keeps it in the library while the draft uses it, and serves it from the published version", async () => {
+    const stored = await assets().add(png([chunk("tEXt", [...text("only-on-the-page")])]), at(70));
+    if (stored.status !== "stored") throw new Error(JSON.stringify(stored));
+    const onPage = stored.asset.id;
+    const content = pageWith([hero()], [imageBlock("p-img", onPage)]);
+    expect(referencedAssetIds(content)).toEqual([onPage]);
+    const overview = (await sites().overview())!;
+    const saved = await sites().saveDraft(content, overview.draft.revision, at(71));
+    if (saved.status !== "saved") throw new Error(JSON.stringify(saved));
+    // Nothing on the home page uses it, and still it is not for removal: the draft's page does.
+    expect(await assets().remove(onPage, at(72))).toEqual({ status: "in_draft" });
+    const outcome = await sites().publish(saved.revision, at(73));
+    expect(outcome.status).toBe("published");
+    const published = (await publishedSiteBySlug(db, "marina-a"))!;
+    expect(Object.keys(published.images)).toEqual([onPage]);
+    expect(published.content.pages![0].blocks[0]).toMatchObject({ id: "p-img", assetId: onPage });
+    const served = await publishedAssetBySlug(db, bucket, "marina-a", onPage);
+    expect(served).not.toBeNull();
+    await served!.body.cancel();
+  });
+  it("warns, about the page, of an image that is not in the library, and leaves it out of the site when published anyway", async () => {
+    const content = pageWith([hero()], [imageBlock("p-img", "gone")]);
+    const overview = (await sites().overview())!;
+    const saved = await sites().saveDraft(content, overview.draft.revision, at(74));
+    if (saved.status !== "saved") throw new Error(JSON.stringify(saved));
+    const asked = await sites().publish(saved.revision, at(75));
+    expect(asked.status).toBe("warnings");
+    if (asked.status === "warnings") expect(asked.issues.map((issue) => [issue.page, issue.blockId])).toEqual([["p1", "p-img"]]);
+    expect((await sites().publish(saved.revision, at(76), { withWarnings: true })).status).toBe("published");
+    expect(Object.keys((await publishedSiteBySlug(db, "marina-a"))!.images)).toEqual([]);
+  });
+});

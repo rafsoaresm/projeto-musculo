@@ -2486,8 +2486,38 @@ label.check input {
   color: var(--site-ink);
 }
 .site-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 24px;
   padding: 18px 20px;
   border-bottom: 1px solid var(--site-line);
+}
+/* The menu of the pages of the site: it wraps under the name when the window is narrow. */
+.site-menu ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.site-menu-link {
+  display: inline-block;
+  padding: 4px 0;
+  color: var(--site-text);
+  font-weight: 600;
+  font-size: 15px;
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+}
+a.site-menu-link:hover {
+  color: var(--site-accent);
+}
+.site-menu-link[aria-current="page"] {
+  color: var(--site-ink);
+  border-bottom-color: var(--site-accent);
 }
 .site-brand {
   display: flex;
@@ -3081,6 +3111,17 @@ label.check input {
   display: flex;
   justify-content: flex-end;
   gap: 4px;
+}
+/* The pages list: the page that is open has, under it, the buttons that move, copy and delete it. */
+.ve-page-actions {
+  display: flex;
+  gap: 4px;
+  margin: 4px 0 6px 24px;
+}
+/* An address does not break at a hyphen, and in a narrow panel it would push the panel wider than the window it is in. */
+.ve-library .site-address {
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 /* Shown over the page while a component is edited, so it is clear that what is changed is the component's, for every block that uses it. */
 .ve-component-banner {

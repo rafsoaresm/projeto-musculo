@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Eye, Pencil, Redo2, Undo2, X } from "lucide-react";
-import { componentById, componentsOf, referencedAssetIds, resolveServices, type OverrideFields, type PublishIssue, type SiteContent, type SiteNode } from "./contracts";
+import { HOME, componentById, componentsOf, pageById, pageContent, pagesOf, referencedAssetIds, resolveServices, swapPage, type OverrideFields, type PublishIssue, type SiteContent, type SiteNode } from "./contracts";
 import { COMPACT_QUERY, CanvasSurface, EditorContext, canvasHooks, useCompact, type CanvasControls, type Drag, type EditorApi, type ManyAction, type NodeAction } from "./editor-canvas";
 import { BlockInspector, PageSettings, type ImageSupport } from "./editor-inspector";
 import { editorImageUrl, libraryCssImages, libraryImages } from "./image-urls";
@@ -9,6 +9,9 @@ import type { RemoveResult, UploadResult } from "./image-picker";
 import type { AssetRow } from "@/db/site-assets";
 import { useMountPath } from "@/components/use-mount-path";
 import { COMPONENT_KEY, Layers, Library } from "./editor-library";
+import { PAGE_REFUSAL_MESSAGE, addPage, deletePage, duplicatePage, linksTo, movePage, pageChoices } from "./page-model";
+import { PagesPanel, SubpageSettings, type PageActions } from "./pages-panel";
+import { HOME_LABEL, siteNav } from "./site-nav";
 import { componentView, createComponent, deleteComponent, detachInstance, insertCopy, newInstance, setComponentRoot, setOverride } from "./component-model";
 import { ContextMenu, type MenuEntry } from "./context-menu";
 import { applyStyle, blocksPayload, parseBlocks, parseStyle, pasteBlocks, stylePayload, type PasteContext } from "./clipboard";
@@ -106,7 +109,17 @@ export function VisualEditor(props: VisualEditorProps) {
     setEditingId(null);
     setOpenedFrom(null);
   }
-  const content = useMemo(() => (editing && editingId !== null ? componentView(realContent, editingId) ?? realContent : realContent), [realContent, editing, editingId]);
+  /** The page being edited: the home page, or the identifier of one of the others. */
+  const [pageId, setPageId] = useState<string>(HOME);
+  const page = pageId === HOME ? undefined : pageById(realContent, pageId);
+  // A page that is gone (its creation was undone, say) is not being edited any more.
+  if (pageId !== HOME && !page) setPageId(HOME);
+  const currentId = page ? pageId : HOME;
+  const content = useMemo(
+    // The nodes of the component, or the blocks of the page as if they were the page (see `swapPage`): every tool of the editor works on `content`.
+    () => (editing && editingId !== null ? componentView(realContent, editingId) ?? realContent : swapPage(realContent, currentId)),
+    [realContent, editing, editingId, currentId],
+  );
   const mountPath = useMountPath();
   const dialog = useRef<HTMLDialogElement>(null);
   /** What is selected, in the order it was chosen: the last is the primary, which the panel shows and the handles sit on. */
@@ -137,7 +150,7 @@ export function VisualEditor(props: VisualEditorProps) {
     setVisible((previous) => (previous[next] ? previous : compact ? { desktop: false, tablet: false, mobile: false, [next]: true } : { ...previous, [next]: true }));
   };
   const [mode, setMode] = useState<"edit" | "preview">("edit");
-  const [leftTab, setLeftTab] = useState<"blocks" | "layers">("blocks");
+  const [leftTab, setLeftTab] = useState<"blocks" | "layers" | "pages">("blocks");
   const [inspectorTab, setInspectorTab] = useState<"content" | "style">("content");
   const [panel, setPanel] = useState<"blocks" | "page" | "props">("page");
   const [drag, setDrag] = useState<Drag | null>(null);
@@ -151,7 +164,8 @@ export function VisualEditor(props: VisualEditorProps) {
    */
   const onEdit = (next: SiteContent, key?: string) => {
     if (editingId === null || !editing) {
-      props.onEdit(next, key);
+      // On a page other than the home page the document is shown with the page's blocks as the page's: put them back where they are kept.
+      props.onEdit(swapPage(next, currentId), key);
       return;
     }
     const outcome = setComponentRoot(realContent, editingId, next.blocks);
@@ -162,6 +176,8 @@ export function VisualEditor(props: VisualEditorProps) {
       setMessage(REFUSAL_MESSAGE[outcome.reason]);
     }
   };
+  /** What an edit of the whole site does: it is made on the document itself, whatever page is shown. */
+  const onEditSite = props.onEdit;
   /** A block to bring into view (one just added, or chosen from a list). A new object each time, so the same block can be asked again. */
   const [scrollTo, setScrollTo] = useState<{ id: string } | null>(null);
 
@@ -186,6 +202,8 @@ export function VisualEditor(props: VisualEditorProps) {
   const resolved = useMemo(() => resolveServices(content, liveServices), [content, liveServices]);
   /** The whole page with its components, for the preview and for the style sheet (which has the rules of every node, the components' included). */
   const resolvedPage = useMemo(() => resolveServices(realContent, liveServices), [realContent, liveServices]);
+  /** The menu of the pages (the home page and the ones in the menu): stand-ins on the canvas, links that show the page in the preview. */
+  const menuEdit = useMemo(() => siteNav(realContent, currentId, () => "#"), [realContent, currentId]);
   // The editor is never drawn on the server (it opens on a click), so the browser's address is there.
   const base = mountPath();
   const imageResolver = useMemo(() => libraryImages(base, props.images.library), [base, props.images.library]);
@@ -247,7 +265,11 @@ export function VisualEditor(props: VisualEditorProps) {
   // ---- several blocks, the clipboard, the menu ----
 
   /** What a paste may keep of where it came from: the images and services of this site. */
-  const pasteContext = (): PasteContext => ({ assetIds: new Set(props.images.library.map((asset) => asset.id)), serviceIds: new Set(services.map((service) => service.id)) });
+  const pasteContext = (): PasteContext => ({
+    assetIds: new Set(props.images.library.map((asset) => asset.id)),
+    serviceIds: new Set(services.map((service) => service.id)),
+    pageIds: new Set(pagesOf(realContent).map((entry) => entry.id)),
+  });
   const actMany = (action: ManyAction) => {
     if (ids.length === 0) return;
     if (action === "delete") {
@@ -360,10 +382,63 @@ export function VisualEditor(props: VisualEditorProps) {
       setMessage(REFUSAL_MESSAGE[outcome.reason]);
       return;
     }
-    onEdit(outcome.content);
+    onEditSite(outcome.content);
     setSelection([]);
     setMessage("");
     setNotice("Componente excluído. Os blocos que o usavam viraram blocos comuns.");
+  };
+
+  // ---- pages ----
+
+  /** Shows another page in the editor (or in the preview). What was selected belongs to the page that was shown, and a component being edited is left. */
+  const showPage = (target: string) => {
+    setEditingId(null);
+    setOpenedFrom(null);
+    setPageId(target);
+    setSelection([]);
+    setMenu(null);
+    setMessage("");
+    setNotice("");
+  };
+  const pageActions: PageActions = {
+    go: showPage,
+    add: () => {
+      const outcome = addPage(realContent);
+      if (!outcome.ok) {
+        setMessage(PAGE_REFUSAL_MESSAGE[outcome.reason]);
+        return;
+      }
+      onEditSite(outcome.content);
+      showPage(outcome.id);
+      setMode("edit");
+      setPanel("props");
+      setNotice("Página criada. Dê um título a ela: é o nome dela no menu, e também faz o endereço.");
+    },
+    duplicate: (target) => {
+      const outcome = duplicatePage(realContent, target);
+      if (!outcome.ok) {
+        setMessage(PAGE_REFUSAL_MESSAGE[outcome.reason]);
+        return;
+      }
+      onEditSite(outcome.content);
+      showPage(outcome.id);
+      setNotice("Página duplicada, com os blocos dela. Ajuste o título e o endereço.");
+    },
+    remove: (target) => {
+      const found = pageById(realContent, target);
+      const outcome = deletePage(realContent, target);
+      if (!found || !outcome.ok) {
+        setMessage(PAGE_REFUSAL_MESSAGE["not-found"]);
+        return;
+      }
+      const left = linksTo(realContent, target);
+      // The page that was open is gone: the editor goes back to the home page by itself (see `page` above).
+      onEditSite(outcome.content);
+      setNotice(
+        `Página “${found.title || found.slug}” excluída.${left > 0 ? ` ${left} ${left === 1 ? "botão ou link que levava" : "botões ou links que levavam"} a ela ficou sem destino.` : ""} Dá para desfazer.`,
+      );
+    },
+    move: (target, by) => onEditSite(movePage(realContent, target, by)),
   };
 
   const openMenu = (id: string, x: number, y: number) => {
@@ -649,25 +724,30 @@ export function VisualEditor(props: VisualEditorProps) {
             issues={props.issues}
             pending={props.pending}
             onPublishAnyway={props.onPublishAnyway}
-            action={(issue) =>
-              issue.blockId && locate(realContent, issue.blockId) ? (
+            action={(issue) => {
+              const where = issue.page ?? HOME;
+              if (where !== HOME && !pageById(realContent, where)) return null;
+              const blockId = issue.blockId;
+              if (blockId && !locate(swapPage(realContent, where), blockId)) return null;
+              if (!blockId && where === HOME) return null;
+              return (
                 <button
                   type="button"
                   className="button small secondary"
                   onClick={() => {
-                    const blockId = issue.blockId!;
-                    setEditingId(null);
-                    setOpenedFrom(null);
+                    showPage(where);
                     setMode("edit");
-                    setSelection([blockId]);
-                    setScrollTo({ id: blockId });
+                    if (blockId) {
+                      setSelection([blockId]);
+                      setScrollTo({ id: blockId });
+                    }
                     setPanel("props");
                   }}
                 >
-                  Ir ao bloco
+                  {blockId ? "Ir ao bloco" : "Ir à página"}
                 </button>
-              ) : null
-            }
+              );
+            }}
           />
         </div>
       )}
@@ -689,8 +769,13 @@ export function VisualEditor(props: VisualEditorProps) {
             <button type="button" aria-pressed={leftTab === "layers"} onClick={() => setLeftTab("layers")}>
               Camadas
             </button>
+            <button type="button" aria-pressed={leftTab === "pages"} onClick={() => setLeftTab("pages")}>
+              Páginas
+            </button>
           </div>
-          {leftTab === "blocks" ? (
+          {leftTab === "pages" ? (
+            <PagesPanel content={realContent} currentId={currentId} actions={pageActions} slug={props.slug} />
+          ) : leftTab === "blocks" ? (
             <Library
               onAdd={add}
               startDrag={startDrag}
@@ -734,10 +819,10 @@ export function VisualEditor(props: VisualEditorProps) {
         <main className="ve-stage" aria-label="Página">
           <div className="ve-stagebar">
             <div>
-              <strong>Seu site</strong>
+              <strong>{page ? `Página: ${page.title || "sem título"}` : "Seu site"}</strong>
               <small>{mode === "edit" ? "Arraste, solte e clique em um bloco para editar" : "Prévia: é assim que a página aparece"}</small>
             </div>
-            <PublicAddress slug={props.slug} className="ve-address" />
+            <PublicAddress slug={props.slug} path={page ? `/${page.slug}` : ""} className="ve-address" />
           </div>
           {editing && (
             <div className="ve-component-banner" role="status">
@@ -760,9 +845,9 @@ export function VisualEditor(props: VisualEditorProps) {
               interactive={mode === "edit"}
               page={(size) =>
                 mode === "edit" ? (
-                  <SiteRenderer content={resolved} edit={hooks} images={imageResolver} bare={Boolean(editing)} />
+                  <SiteRenderer content={resolved} edit={hooks} images={imageResolver} bare={Boolean(editing)} nav={menuEdit} />
                 ) : (
-                  <SiteRenderer content={resolvedPage} images={imageResolver} scope={`${size}-`} />
+                  <SiteRenderer content={pageContent(resolvedPage, currentId)} images={imageResolver} scope={`${size}-`} nav={siteNav(realContent, currentId, () => "#", showPage)} />
                 )
               }
             />
@@ -771,7 +856,7 @@ export function VisualEditor(props: VisualEditorProps) {
 
         <aside className="ve-right" aria-label="Propriedades">
           <div className="ve-panel-head">
-            <h2>{selectedLabel ?? (editing ? "Componente" : "Página")}</h2>
+            <h2>{selectedLabel ?? (editing ? "Componente" : page ? page.title || "Página" : "Página")}</h2>
           </div>
           {selected ? (
             <BlockInspector
@@ -793,11 +878,14 @@ export function VisualEditor(props: VisualEditorProps) {
               }}
               onComponent={{ edit: editComponent, detach, create: makeComponent }}
               inComponent={Boolean(editing)}
+              pages={pageChoices(realContent, HOME_LABEL).filter((choice) => choice.id !== currentId)}
             />
           ) : editing ? (
             <p className="small muted">
               Você está editando o componente “{editing.name}”. Escolha um bloco dele na página ou nas camadas para mudá-lo. Quando terminar, use “Concluir edição”.
             </p>
+          ) : page ? (
+            <SubpageSettings content={realContent} pageId={page.id} onChange={onEditSite} siteSlug={props.slug} />
           ) : (
             <PageSettings content={content} onChange={onEdit} images={imageSupport} />
           )}

@@ -1,4 +1,5 @@
 import {
+  HOME,
   MAX_BLOCKS,
   MAX_COMPONENTS,
   MAX_DEPTH,
@@ -93,6 +94,8 @@ export function parseBlocks(text: string): BlocksPayload | null {
 export interface PasteContext {
   assetIds: ReadonlySet<string>;
   serviceIds: ReadonlySet<string>;
+  /** The pages of this site, for the buttons and links that go to a page (the home page is always there). Absent: only the home page. */
+  pageIds?: ReadonlySet<string>;
 }
 
 function withoutForeignImages<T extends Styled>(entry: T, assetIds: ReadonlySet<string>): T {
@@ -165,6 +168,11 @@ function clean(entry: SiteNode, context: PasteContext, renamed: ReadonlyMap<stri
     const { anchor: dropped, ...rest } = out;
     void dropped;
     out = (target ? { ...rest, anchor: target } : rest) as SiteNode;
+  } else if ((out.type === "button" || out.type === "link") && out.page && out.page !== HOME && !context.pageIds?.has(out.page)) {
+    // A link to a page of another site goes nowhere here.
+    const { page: dropped, ...rest } = out;
+    void dropped;
+    out = rest as SiteNode;
   }
   return out;
 }
