@@ -66,6 +66,17 @@ test("several blocks at once: Ctrl and Shift in the layers, Shift on the page, a
   await expect(chip(page)).toHaveText("Parágrafo");
   await expect(stage(page).locator(".ve-select-extra")).toHaveCount(0);
 
+  // ---- the empty page: a click with Shift changes nothing (the selection is being built), a plain click lets go of it ----
+  const pageBox = (await frame(page).boundingBox())!;
+  await page.keyboard.down("Shift");
+  await page.mouse.click(pageBox.x + pageBox.width / 2, pageBox.y + pageBox.height - 6);
+  await page.keyboard.up("Shift");
+  await expect(chip(page)).toHaveText("Parágrafo");
+  await page.mouse.click(pageBox.x + pageBox.width / 2, pageBox.y + pageBox.height - 6);
+  await expect(stage(page).locator(".ve-select").first()).toBeHidden();
+  await topParagraphs(page).nth(1).click();
+  await expect(chip(page)).toHaveText("Parágrafo");
+
   // ---- Escape lets go of the selection; then a rectangle drawn with Shift picks what it touches ----
   await page.keyboard.press("Escape");
   await expect(stage(page).locator(".ve-select").first()).toBeHidden();
