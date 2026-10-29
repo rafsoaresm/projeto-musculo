@@ -68,6 +68,10 @@ describe("reading what comes from the clipboard", () => {
   });
   it("refuses what is bigger than the limits of a document: too long a text, too many nodes in all, too deep a nesting, a nesting that would sink the reader", () => {
     expect(parseBlocks("x".repeat(MAX_CLIPBOARD_CHARS + 1))).toBeNull();
+    // A copy that is valid in everything but its size: the size alone is what refuses it (and the limit itself is allowed).
+    const body = text([para("a")]);
+    expect(parseBlocks(body + " ".repeat(MAX_CLIPBOARD_CHARS - body.length))).not.toBeNull();
+    expect(parseBlocks(body + " ".repeat(MAX_CLIPBOARD_CHARS + 1 - body.length))).toBeNull();
     const group = (count: number, tag: string) => box(tag, Array.from({ length: count }, (_, at) => para(`${tag}${at}`)));
     const crowded = Array.from({ length: 6 }, (_, at) => group(40, `g${at}`));
     expect(allNodes(crowded).length).toBeGreaterThan(MAX_NODES);

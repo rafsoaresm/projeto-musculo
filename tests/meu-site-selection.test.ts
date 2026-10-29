@@ -120,6 +120,30 @@ describe("wrapping several nodes in a container", () => {
     for (let level = MAX_DEPTH; level >= 1; level--) deep = box(`box${level}`, [deep]);
     expect(wrapBlocks(page([deep, el("paragraph", "other", "y")]), ["box1", "other"])).toEqual({ ok: false, reason: "limit-depth" });
   });
+  it("is refused when the new container would be one node too many for the page, and done with one node of room", () => {
+    // Two nodes to wrap, and the rest of the page in groups, so that the page holds exactly the most it may.
+    const crowded = (total: number) => {
+      const blocks: SiteNode[] = [el("paragraph", "a", "a"), el("paragraph", "b", "b")];
+      let left = total - 2;
+      for (let at = 0; left > 0; at++) {
+        const size = Math.min(left, MAX_CHILDREN + 1);
+        blocks.push(size === 1 ? el("paragraph", `solo${at}`, "x") : box(`g${at}`, Array.from({ length: size - 1 }, (_, child) => el("paragraph", `g${at}p${child}`, "x"))));
+        left -= size;
+      }
+      return page(blocks);
+    };
+    const full = crowded(MAX_NODES);
+    expect(allNodes(full.blocks).length).toBe(MAX_NODES);
+    valid(full);
+    expect(wrapBlocks(full, ["a", "b"])).toEqual({ ok: false, reason: "limit-nodes" });
+    const roomy = crowded(MAX_NODES - 1);
+    const wrapped = wrapBlocks(roomy, ["a", "b"]);
+    expect(wrapped.ok).toBe(true);
+    if (wrapped.ok) {
+      expect(allNodes(wrapped.content.blocks).length).toBe(MAX_NODES);
+      valid(wrapped.content);
+    }
+  });
 });
 
 describe("walking the tree with the arrow keys", () => {
