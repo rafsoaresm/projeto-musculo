@@ -24,10 +24,10 @@ const CONFLICT = "Outra pessoa salvou o site depois de você abri-lo. Copie o qu
 const FORBIDDEN = "Só o proprietário ou a gestão editam e publicam o site.";
 const refresh = () => revalidatePath("/profissional", "layout");
 
-export async function createSite(slug: string, title: string): Promise<SimpleResult> {
+export async function createSite(slug: string, title: string, model: string = "single"): Promise<SimpleResult> {
   const { db, context } = await requireWorkspace();
   try {
-    const outcome = await sitesFor(db, context).create({ slug, title });
+    const outcome = await sitesFor(db, context).create({ slug, title, model });
     if (outcome.status === "created") {
       refresh();
       return { ok: true, message: "Site criado." };
@@ -41,7 +41,7 @@ export async function createSite(slug: string, title: string): Promise<SimpleRes
   } catch (error) {
     return {
       ok: false,
-      message: error instanceof ZodError ? "O endereço precisa ter de 3 a 40 letras minúsculas, números ou hífens (não pode ser um nome reservado), e o título de 2 a 80 caracteres." : FAILED,
+      message: error instanceof ZodError ? "O endereço precisa ter de 3 a 40 letras minúsculas, números ou hífens (não pode ser um nome reservado), o título de 2 a 80 caracteres, e o modelo um dos que a tela oferece." : FAILED,
     };
   }
 }

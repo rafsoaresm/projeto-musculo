@@ -223,7 +223,8 @@ textarea:focus {
   font-weight: 400;
   line-height: 1.45;
 }
-.check-row input[type="checkbox"] {
+.check-row input[type="checkbox"],
+.check-row input[type="radio"] {
   width: 22px;
   min-width: 22px;
   min-height: 22px;
@@ -3179,6 +3180,42 @@ a.site-menu-link:hover {
   display: flex;
   justify-content: flex-end;
   gap: 4px;
+}
+/* The models of a page: a list of what a new page can start from. */
+.ve-models {
+  margin: 4px 0 8px;
+}
+.ve-models summary {
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 14px;
+}
+.ve-models ul {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.ve-model {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  text-align: left;
+  cursor: pointer;
+}
+.ve-model span {
+  color: var(--color-muted);
+  font-size: 12px;
+}
+.ve-model:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 /* The pages list: the page that is open has, under it, the buttons that move, copy and delete it. */
 .ve-page-actions {
