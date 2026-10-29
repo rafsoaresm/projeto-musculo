@@ -100,6 +100,14 @@ describe("the templates", () => {
       expect(node.children.length, key).toBeGreaterThan(0);
     }
   });
+  it("do not add a side margin of their own to the sections: the page already keeps one, and a template further in would not line up with the blocks around it", () => {
+    for (const key of ["template-highlights", "template-image-text", "template-plans", "template-testimonials"]) {
+      const padding = make(key).style?.padding;
+      expect(padding?.left, key).toBe("0px");
+      expect(padding?.right, key).toBe("0px");
+      expect(padding?.top, key).toBe("48px");
+    }
+  });
   it("are built of the nodes the document already has, with the tags of their purpose", () => {
     expect(make("template-navigation")).toMatchObject({ tag: "header" });
     expect(kinds(make("template-navigation"))).toEqual(["box", "paragraph", "box", "link", "link", "link"]);

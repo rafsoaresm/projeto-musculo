@@ -39,7 +39,8 @@ const element = (type: PlainBlockType) => () => emptyBlock(type);
 // structure (the names of the places a link goes to) and the text of the contact buttons, which go to the contact the person filled in.
 
 const SIDES = (top: string, right: string, bottom = top, left = right) => ({ top, right, bottom, left });
-const SECTION_PADDING = SIDES("48px", "20px");
+// The page already keeps its own side margin (20px): a template that added its own would sit further in than the blocks around it.
+const SECTION_PADDING = SIDES("48px", "0px");
 const heading = (level: 2 | 3 | 4 = 3): SiteNode => ({ ...emptyBlock("heading"), level }) as SiteNode;
 const paragraph = (style?: Style): SiteNode => ({ ...emptyBlock("paragraph"), ...(style ? { style } : null) }) as SiteNode;
 const contactButton = (label: string): SiteNode => ({ ...emptyBlock("button"), label, channel: "whatsapp" }) as SiteNode;

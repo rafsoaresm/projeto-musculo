@@ -567,12 +567,23 @@ function SiteLogo({ logo }: { logo: ResolvedImage }) {
   return <img className="site-logo" src={logo.src} width={logo.width} height={logo.height} alt="" decoding="async" />;
 }
 
-/** The menu of the pages in the header: links on the page, stand-ins in the editor's canvas (a click there selects, it does not go anywhere). */
-function SiteMenu({ nav, edit }: { nav: SiteNav; edit: boolean }) {
+/**
+ * The menu of the pages in the header: links on the page, stand-ins in the editor's canvas (a click there selects, it does not go anywhere).
+ * On a wide page it is a row of links; on a narrow one (the stylesheet decides by the width of the page itself, so the editor's phone frame
+ * does the same) it folds into a "Menu" button that opens the list under the header. The button is a hidden checkbox and its label, so it
+ * works with no script and with the keyboard (Space), and the links are in the page once.
+ */
+function SiteMenu({ nav, edit, scope }: { nav: SiteNav; edit: boolean; scope: string }) {
   if (nav.items.length < 2) return null;
+  const toggle = `${scope}site-menu-toggle`;
   return (
     <nav className="site-menu" aria-label="Páginas do site">
-      <ul>
+      <input type="checkbox" id={toggle} className="site-menu-state" aria-controls={`${toggle}-list`} />
+      <label htmlFor={toggle} className="site-menu-toggle">
+        <span className="site-menu-icon" aria-hidden="true" />
+        Menu
+      </label>
+      <ul id={`${toggle}-list`}>
         {nav.items.map((item) => (
           <li key={item.id}>
             {edit ? (
@@ -586,8 +597,11 @@ function SiteMenu({ nav, edit }: { nav: SiteNav; edit: boolean }) {
                 aria-current={item.current ? "page" : undefined}
                 {...(nav.onVisit
                   ? {
-                      onClick: (event: { preventDefault: () => void }) => {
+                      onClick: (event: { preventDefault: () => void; currentTarget: Element }) => {
                         event.preventDefault();
+                        // The preview shows the page in place: the folded menu closes, as a link that goes to another page would have closed it.
+                        const state = event.currentTarget.closest("nav")?.querySelector<HTMLInputElement>(".site-menu-state");
+                        if (state) state.checked = false;
                         nav.onVisit?.(item.id);
                       },
                     }
@@ -654,7 +668,7 @@ export function SiteRenderer({
               {content.title}
             </p>
           )}
-          {nav && <SiteMenu nav={nav} edit={edit !== undefined} />}
+          {nav && <SiteMenu nav={nav} edit={edit !== undefined} scope={scope} />}
         </header>
       )}
       <main className="site-main" data-page-root={edit ? "" : undefined}>
