@@ -8,6 +8,7 @@ import {
   CircleHelp,
   Columns2,
   Columns3,
+  CreditCard,
   Grid3x3,
   Eye,
   EyeOff,
@@ -18,6 +19,9 @@ import {
   LayoutTemplate,
   Link as LinkIcon,
   Megaphone,
+  MessagesSquare,
+  PanelBottom,
+  PanelTop,
   Pilcrow,
   Quote,
   RectangleHorizontal,
@@ -55,8 +59,14 @@ const ICON: Record<string, LucideIcon> = {
   stats: ChartNoAxesColumn,
   faq: CircleHelp,
   cta: Megaphone,
+  "template-navigation": PanelTop,
+  "template-highlights": Columns3,
+  "template-image-text": ImageIcon,
+  "template-plans": CreditCard,
+  "template-testimonials": MessagesSquare,
+  "template-footer": PanelBottom,
 };
-const GROUPS: Group[] = ["structure", "element", "section"];
+const GROUPS: Group[] = ["structure", "element", "section", "template"];
 
 /**
  * The blocks that can be added: dragged onto the page (or into the layers), or (without dragging) added with a click or

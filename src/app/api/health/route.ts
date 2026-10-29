@@ -24,7 +24,7 @@ export async function GET() {
     {
       status: persistence === "available" ? "ok" : "degraded",
       service: "trainer-prescription",
-      version: "0.39.0",
+      version: "0.40.0",
       capabilities: {
         periodization: "available",
         areas: ["gestor", "profissional", "aluno"],
