@@ -1,4 +1,20 @@
-import { MAX_BLOCKS, MAX_DEPTH, MAX_NODES, allNodes, boxDepth, newBlockId, parseNode, type SiteContent, type SiteNode } from "./contracts";
+import {
+  MAX_BLOCKS,
+  MAX_COMPONENTS,
+  MAX_DEPTH,
+  MAX_NODES,
+  allNodes,
+  boxDepth,
+  componentById,
+  newBlockId,
+  parseComponentDef,
+  parseNode,
+  type ComponentDef,
+  type ComponentNode,
+  type SiteContent,
+  type SiteNode,
+} from "./contracts";
+import { expandInstance } from "./component-model";
 import { insertNode, locate, topmost, type ManyOutcome, type Slot } from "./editor-model";
 import { SCREEN_KEY, SCREENS, type Styled } from "./screens";
 import { styleSchema, type Style } from "./style";
@@ -8,7 +24,8 @@ import { styleSchema, type Style } from "./style";
  * anything else is recognized and ignored. What comes back is **not trusted**: it may have been copied from another site, or written by hand. It is
  * read as strictly as a document is (`parseNode`), has new identifiers, and loses what only made sense where it came from: the images of
  * another site's library, services that are not on offer here, a testimony's "authorized" (the person has to confirm again), links to blocks
- * that are not on this page.
+ * that are not on this page. An instance of a component that is on this site stays an instance (it follows the component); one of a component this
+ * site does not have comes back as plain blocks, from the definition the copy carries.
  */
 export const BLOCKS_FORMAT = "meu-site/blocos";
 export const STYLE_FORMAT = "meu-site/estilo";
@@ -18,6 +35,8 @@ export interface BlocksPayload {
   format: typeof BLOCKS_FORMAT;
   version: 1;
   nodes: SiteNode[];
+  /** The components that the instances among the nodes point to, so a paste in another site can draw them. */
+  components?: ComponentDef[];
 }
 export interface StylePayload extends Styled {
   format: typeof STYLE_FORMAT;
@@ -27,7 +46,10 @@ export interface StylePayload extends Styled {
 /** The topmost of the nodes, in the order of the document, ready to be written; null when none of them is there. */
 export function blocksPayload(content: SiteContent, ids: readonly string[]): BlocksPayload | null {
   const nodes = topmost(content, ids).map((id) => locate(content, id)!.node);
-  return nodes.length === 0 ? null : { format: BLOCKS_FORMAT, version: 1, nodes };
+  if (nodes.length === 0) return null;
+  const used = new Set(allNodes(nodes).flatMap((entry) => (entry.type === "component" ? [entry.componentId] : [])));
+  const components = [...used].flatMap((componentId) => componentById(content, componentId) ?? []);
+  return { format: BLOCKS_FORMAT, version: 1, nodes, ...(components.length > 0 ? { components } : null) };
 }
 
 function readJson(text: string, format: string): Record<string, unknown> | null {
@@ -54,7 +76,17 @@ export function parseBlocks(text: string): BlocksPayload | null {
     nodes.push(node);
   }
   if (allNodes(nodes).length > MAX_NODES || boxDepth(nodes) > MAX_DEPTH) return null;
-  return { format: BLOCKS_FORMAT, version: 1, nodes };
+  let components: ComponentDef[] | undefined;
+  if (record.components !== undefined) {
+    if (!Array.isArray(record.components) || record.components.length > MAX_COMPONENTS) return null;
+    components = [];
+    for (const raw of record.components) {
+      const definition = parseComponentDef(raw);
+      if (!definition) return null;
+      components.push(definition);
+    }
+  }
+  return { format: BLOCKS_FORMAT, version: 1, nodes, ...(components && components.length > 0 ? { components } : null) };
 }
 
 /** What a paste may keep of where it came from: the images of this site's library, and the services on offer here. */
@@ -89,10 +121,39 @@ function freshIds(nodes: readonly SiteNode[]): { nodes: SiteNode[]; renamed: Map
   return { nodes: nodes.map(fresh), renamed };
 }
 
+/** What a paste is made into: the document it goes to, and the components the copy carries. */
+interface PasteInto {
+  content: SiteContent;
+  carried: readonly ComponentDef[];
+}
+/** An instance in the copy points to a component that neither this site has nor the copy carries. */
+class ForeignComponent extends Error {}
+
+/** The overrides of an instance without the images that are not of this site's library. */
+function overridesHere(entry: ComponentNode, assetIds: ReadonlySet<string>): ComponentNode["overrides"] {
+  const out: ComponentNode["overrides"] = {};
+  for (const [nodeId, fields] of Object.entries(entry.overrides)) {
+    const { assetId, ...rest } = fields;
+    const kept = assetId !== undefined && assetIds.has(assetId) ? { ...rest, assetId } : rest;
+    if (Object.keys(kept).length > 0) out[nodeId] = kept;
+  }
+  return out;
+}
+
 /** A node as it may be pasted here: what is not of this site is dropped, and links that go to a block of the copy follow the copy. */
-function clean(entry: SiteNode, context: PasteContext, renamed: ReadonlyMap<string, string>, existing: ReadonlySet<string>): SiteNode {
+function clean(entry: SiteNode, context: PasteContext, renamed: ReadonlyMap<string, string>, existing: ReadonlySet<string>, into: PasteInto): SiteNode {
+  if (entry.type === "component") {
+    // A component of this site is kept (the instance follows it); one of another site comes as plain blocks, drawn from the definition the copy carries.
+    if (componentById(into.content, entry.componentId)) {
+      return withoutForeignImages({ ...entry, overrides: overridesHere(entry, context.assetIds) }, context.assetIds);
+    }
+    const carried = into.carried.find((definition) => definition.id === entry.componentId);
+    if (!carried) throw new ForeignComponent();
+    const { nodes: [copy], renamed: more } = freshIds([expandInstance(entry, carried)]);
+    return clean(copy, context, new Map([...renamed, ...more]), existing, into);
+  }
   let out: SiteNode = withoutForeignImages(entry, context.assetIds);
-  if (out.type === "box") out = { ...out, children: out.children.map((child) => clean(child, context, renamed, existing)) };
+  if (out.type === "box") out = { ...out, children: out.children.map((child) => clean(child, context, renamed, existing, into)) };
   else if (out.type === "image") out = { ...out, assetId: context.assetIds.has(out.assetId) ? out.assetId : "" };
   else if (out.type === "services") {
     const { items: dropped, ...rest } = out;
@@ -115,11 +176,19 @@ function clean(entry: SiteNode, context: PasteContext, renamed: ReadonlyMap<stri
 export function pasteBlocks(content: SiteContent, payload: BlocksPayload, slot: Slot, context: PasteContext): ManyOutcome {
   const existing = new Set(allNodes(content.blocks).map((entry) => entry.id));
   const { nodes, renamed } = freshIds(payload.nodes);
+  const into: PasteInto = { content, carried: payload.components ?? [] };
   let current = content;
   const made: string[] = [];
   let index = slot.index;
   for (const node of nodes) {
-    const outcome = insertNode(current, clean(node, context, renamed, existing), { parent: slot.parent, index });
+    let ready: SiteNode;
+    try {
+      ready = clean(node, context, renamed, existing, into);
+    } catch (error) {
+      if (error instanceof ForeignComponent) return { ok: false, reason: "foreign-component" };
+      throw error;
+    }
+    const outcome = insertNode(current, ready, { parent: slot.parent, index });
     if (!outcome.ok) return outcome;
     current = outcome.content;
     made.push(outcome.id);

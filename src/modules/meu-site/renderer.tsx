@@ -1,12 +1,15 @@
 import { type ReactNode } from "react";
 import {
   allNodes,
+  applyOverrides,
   channelUrl,
+  componentById,
   emailUrl,
   instagramUrl,
   whatsappUrl,
   type BoxNode,
   type Channel,
+  type ComponentNode,
   type ElementNode,
   type SiteContent,
   type SiteNode,
@@ -62,6 +65,12 @@ interface Ctx {
   firstHero: string | null;
   /** In front of the DOM id of an anchor, so a page drawn more than once in one window (the frames of the editor) does not repeat an id. */
   scope: string;
+  /**
+   * Set while the nodes of a component are drawn as one instance has them. In the editor they are not blocks of the page (only the instance
+   * is): they carry no identifier for the canvas, and a text is a field only when the instance can change it (`overridable`, the nodes of
+   * the definition that have a text or a label); the instance's own field is the one that is typed over.
+   */
+  instance?: { id: string; overridable: ReadonlySet<string> };
 }
 
 /** The attributes every node's element carries: its classes (the page's own and the node's), its anchor id, and in the editor the id the canvas finds it by. */
@@ -71,15 +80,25 @@ function attrsOf(node: SiteNode, ctx: Ctx, classes: string) {
     className: `${classes}${own}`,
     // The canvas finds a node by its data attribute; its links are stand-ins that go nowhere, so it needs no anchor id (the frames repeat the page).
     id: !ctx.edit && ctx.anchors.has(node.id) ? `${ctx.scope}${anchorDomId(node.id)}` : undefined,
-    "data-block-id": ctx.edit ? node.id : undefined,
-    "data-type": ctx.edit ? node.type : undefined,
-    "data-empty": ctx.edit && node.type === "box" && node.children.length === 0 ? "" : undefined,
+    "data-block-id": ctx.edit && !ctx.instance ? node.id : undefined,
+    "data-type": ctx.edit && !ctx.instance ? node.type : undefined,
+    "data-empty": ctx.edit && !ctx.instance && node.type === "box" && node.children.length === 0 ? "" : undefined,
   };
 }
 
 /** A text of the document: printed as it is, or, in the editor, a field. Empty texts print nothing on the public page. */
 function T({ ctx, id, path, value, placeholder, max, multiline }: { ctx: Ctx; id: string; path: string; value: string; placeholder: string; max: number; multiline?: boolean }) {
-  return ctx.edit ? <>{ctx.edit.text({ blockId: id, path, value, placeholder, max, multiline })}</> : <>{value}</>;
+  if (!ctx.edit) return <>{value}</>;
+  const inside = ctx.instance;
+  if (!inside) return <>{ctx.edit.text({ blockId: id, path, value, placeholder, max, multiline })}</>;
+  // In a component, a text the instance can change is a field of the instance (its `overrides`); the others are the component's, edited there.
+  if (inside.overridable.has(id) && (path === "text" || path === "label"))
+    return <>{ctx.edit.text({ blockId: inside.id, path: `overrides.${id}.${path}`, value, placeholder, max, multiline })}</>;
+  return (
+    <span className="site-editable site-inert" data-placeholder={placeholder}>
+      {value}
+    </span>
+  );
 }
 const shown = (ctx: Ctx, value: string) => ctx.edit !== undefined || value !== "";
 
@@ -192,6 +211,27 @@ function BoxView({ node, ctx }: { node: BoxNode; ctx: Ctx }) {
         <NodeView key={child.id} node={child} ctx={ctx} />
       ))}
     </Tag>
+  );
+}
+
+/**
+ * An instance of a component: a box of its own (it has the style of the instance: where it sits, its size, whether it shows) around the
+ * nodes of the component, drawn with the instance's texts, labels, contacts and images. A component that is not there draws nothing on
+ * the public page, and a stand-in in the editor.
+ */
+function ComponentView({ node, ctx }: { node: ComponentNode; ctx: Ctx }) {
+  const definition = componentById(ctx.content, node.componentId);
+  if (!definition) {
+    return ctx.edit ? (
+      <div {...attrsOf(node, ctx, "site-component site-component-missing")}>O componente deste bloco não existe mais. Desvincule o bloco ou exclua-o.</div>
+    ) : null;
+  }
+  const overridable = new Set(allNodes([definition.root]).filter((entry) => entry.type === "heading" || entry.type === "paragraph" || entry.type === "button" || entry.type === "link").map((entry) => entry.id));
+  const inside: Ctx = { ...ctx, instance: ctx.edit ? { id: node.id, overridable } : undefined };
+  return (
+    <div {...attrsOf(node, ctx, "site-component")}>
+      <NodeView node={applyOverrides(definition.root, node.overrides)} ctx={inside} />
+    </div>
   );
 }
 
@@ -388,6 +428,8 @@ function NodeView({ node, ctx }: { node: SiteNode; ctx: Ctx }) {
       );
     case "box":
       return <BoxView node={node} ctx={ctx} />;
+    case "component":
+      return <ComponentView node={node} ctx={ctx} />;
     case "heading":
     case "paragraph":
     case "button":
@@ -403,7 +445,20 @@ function SiteLogo({ logo }: { logo: ResolvedImage }) {
   return <img className="site-logo" src={logo.src} width={logo.width} height={logo.height} alt="" decoding="async" />;
 }
 
-export function SiteRenderer({ content, edit, images, scope = "" }: { content: SiteContent; edit?: EditHooks; images?: ImageResolver; scope?: string }) {
+export function SiteRenderer({
+  content,
+  edit,
+  images,
+  scope = "",
+  bare = false,
+}: {
+  content: SiteContent;
+  edit?: EditHooks;
+  images?: ImageResolver;
+  scope?: string;
+  /** Only the blocks, without the header with the name of the site and the footer with the contacts (the editor draws a component alone). */
+  bare?: boolean;
+}) {
   const nodes = allNodes(content.blocks);
   const existing = new Set(nodes.map((entry) => entry.id));
   const anchors = new Set(
@@ -419,19 +474,21 @@ export function SiteRenderer({ content, edit, images, scope = "" }: { content: S
   ].filter((entry): entry is { label: string; href: string; external: boolean } => Boolean(entry.href));
   return (
     <div className="site" {...themeAttributes(content.theme)}>
-      <header className="site-header">
-        {firstHero === null ? (
-          <h1 className="site-brand">
-            {logo && <SiteLogo logo={logo} />}
-            {content.title}
-          </h1>
-        ) : (
-          <p className="site-brand">
-            {logo && <SiteLogo logo={logo} />}
-            {content.title}
-          </p>
-        )}
-      </header>
+      {!bare && (
+        <header className="site-header">
+          {firstHero === null ? (
+            <h1 className="site-brand">
+              {logo && <SiteLogo logo={logo} />}
+              {content.title}
+            </h1>
+          ) : (
+            <p className="site-brand">
+              {logo && <SiteLogo logo={logo} />}
+              {content.title}
+            </p>
+          )}
+        </header>
+      )}
       <main className="site-main" data-page-root={edit ? "" : undefined}>
         {content.blocks.map((entry) => (
           <NodeView key={entry.id} node={entry} ctx={ctx} />
@@ -440,7 +497,7 @@ export function SiteRenderer({ content, edit, images, scope = "" }: { content: S
           <p className="site-hint">A página está sem blocos. Arraste um bloco da biblioteca para cá, ou clique em um deles para acrescentar.</p>
         )}
       </main>
-      {contacts.length > 0 && (
+      {!bare && contacts.length > 0 && (
         <footer className="site-footer">
           <p>Contato:</p>
           <ul>

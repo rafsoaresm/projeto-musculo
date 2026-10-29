@@ -1,4 +1,4 @@
-import { allNodes, type SiteContent } from "./contracts";
+import { documentNodes, type SiteContent } from "./contracts";
 import { MOBILE_MAX, SCREENS, TABLET_MAX, hasAnyStyle, isHiddenAt, resolveStyle } from "./screens";
 import { cssDeclarations, type CssContext } from "./style";
 
@@ -60,7 +60,8 @@ export function buildSiteCss(content: SiteContent, context: CssContext): string 
   const tablet: string[] = [];
   const phone: string[] = [];
   const hidden = new Map<string, string[]>();
-  for (const entry of allNodes(content.blocks)) {
+  // The nodes of a component are written once, whatever the number of its instances: they are all drawn with the same classes.
+  for (const entry of documentNodes(content)) {
     if (!SAFE_ID.test(entry.id) || !hasAnyStyle(entry)) continue;
     const own = nodeClass(entry.id);
     const selector = `.site .${own}.${own}.${own}`;

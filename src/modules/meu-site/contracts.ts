@@ -13,6 +13,10 @@ import { styleSchema, type Style } from "./style";
  * e-mail, Instagram) by the functions below, or point at another node of the same page. A draft may be incomplete
  * (empty fields); what must be complete is checked when publishing (`publishIssues`).
  *
+ * A component is a node (and what it holds) kept once in `components` and drawn wherever a `component` node points to
+ * it: the node is the instance, which can only change the texts, buttons and images that the definition leaves open
+ * (`overrides`) and its own style. A component never holds another one, so there is no cycle to follow.
+ *
  * `schemaVersion` lets a later change of the blocks read the documents that already exist. Versions 1 (five kinds of
  * block, no theme) and 2 (sections, "2 columns" with elements inside, a theme) are still read: releases are immutable,
  * so a page published in an older version keeps being served, upgraded in memory by `parseContent`, and a draft in an
@@ -29,6 +33,11 @@ export const MAX_DEPTH = 8;
 /** Every node of the document, the ones inside containers included. */
 export const MAX_NODES = 200;
 export const MAX_CONTENT_BYTES = 150_000;
+/** Components kept in a site, and nodes in the definition of one. */
+export const MAX_COMPONENTS = 20;
+export const MAX_COMPONENT_NODES = 40;
+/** The nodes of the page once every component is drawn where it is used: what the server has to print. */
+export const MAX_EXPANDED_NODES = 600;
 export const TITLE_MAX = 80;
 export const NAME_MAX = 40;
 export const DESCRIPTION_MAX = 200;
@@ -71,7 +80,11 @@ export const HEADING_LEVELS = [2, 3, 4, 5, 6] as const;
 export const SECTION_TYPES = ["hero", "text", "services", "about", "quote", "stats", "faq", "cta"] as const;
 /** What holds nothing else and stands by itself. */
 export const ELEMENT_TYPES = ["heading", "paragraph", "button", "link", "image"] as const;
-export const BLOCK_TYPES = [...SECTION_TYPES, "box", ...ELEMENT_TYPES] as const;
+/** The kinds of node that can be made empty, from the library. */
+export const BLOCK_KINDS = [...SECTION_TYPES, "box", ...ELEMENT_TYPES] as const;
+export type PlainBlockType = (typeof BLOCK_KINDS)[number];
+/** Every kind of node, the instance of a component included (that one is made from a component, never empty). */
+export const BLOCK_TYPES = [...BLOCK_KINDS, "component"] as const;
 export type BlockType = (typeof BLOCK_TYPES)[number];
 export const BLOCK_LABEL: Record<BlockType, string> = {
   hero: "Destaque",
@@ -88,6 +101,7 @@ export const BLOCK_LABEL: Record<BlockType, string> = {
   button: "Botão",
   link: "Link",
   image: "Imagem",
+  component: "Componente",
 };
 
 export const PUBLIC_WARNING =
@@ -208,6 +222,31 @@ const link = z
   .strict()
   .refine((node) => !(node.channel && node.anchor), { message: "a link goes to a contact or to a block, not both" });
 const image = z.object({ ...base, ...imageShape }).strict();
+/**
+ * What an instance may change in the nodes of its component: the texts of titles and paragraphs, the label and the contact of buttons and
+ * links, the image (with its description and caption). Nothing else: the layout and the style are the component's.
+ */
+export const OVERRIDE_FIELDS = {
+  heading: ["text"],
+  paragraph: ["text"],
+  button: ["label", "channel"],
+  link: ["label", "channel"],
+  image: ["assetId", "alt", "caption"],
+} as const;
+const overrideFields = z
+  .object({ text: plain(TEXT_MAX), label: plain(BUTTON_MAX), channel: z.enum(CHANNELS), assetId: z.string().max(64), alt: plain(ALT_MAX), caption: plain(CAPTION_MAX) })
+  .partial()
+  .strict();
+export type OverrideFields = z.infer<typeof overrideFields>;
+/** An instance of a component: where it stands on the page, and what it changes of the component's nodes, by their identifiers. */
+const component = z
+  .object({
+    ...base,
+    type: z.literal("component"),
+    componentId: id,
+    overrides: z.record(id, overrideFields).refine((overrides) => Object.keys(overrides).length <= MAX_COMPONENT_NODES, { message: "too many overrides" }),
+  })
+  .strict();
 
 export type HeroNode = z.infer<typeof hero>;
 export type TextNode = z.infer<typeof text>;
@@ -222,6 +261,7 @@ export type ParagraphNode = z.infer<typeof paragraph>;
 export type ButtonNode = z.infer<typeof button>;
 export type LinkNode = z.infer<typeof link>;
 export type ImageNode = z.infer<typeof image>;
+export type ComponentNode = z.infer<typeof component>;
 /** A container: it holds other nodes and is laid out by its style (a row, a column, a grid, a section). */
 export interface BoxNode {
   id: string;
@@ -233,7 +273,22 @@ export interface BoxNode {
   tag: BoxTag;
   children: SiteNode[];
 }
-export type SiteNode = HeroNode | TextNode | ServicesNode | AboutNode | QuoteNode | StatsNode | FaqNode | CtaNode | BoxNode | HeadingNode | ParagraphNode | ButtonNode | LinkNode | ImageNode;
+export type SiteNode =
+  | HeroNode
+  | TextNode
+  | ServicesNode
+  | AboutNode
+  | QuoteNode
+  | StatsNode
+  | FaqNode
+  | CtaNode
+  | BoxNode
+  | HeadingNode
+  | ParagraphNode
+  | ButtonNode
+  | LinkNode
+  | ImageNode
+  | ComponentNode;
 /** The names the rest of the code already used. */
 export type Block = SiteNode;
 export type BlockOf<T extends BlockType> = Extract<SiteNode, { type: T }>;
@@ -242,8 +297,16 @@ export type ElementNode = HeadingNode | ParagraphNode | ButtonNode | LinkNode | 
 const box: z.ZodType<BoxNode> = z
   .object({ ...base, type: z.literal("box"), tag: z.enum(BOX_TAGS), children: z.array(z.lazy(() => node)).max(MAX_CHILDREN) })
   .strict();
-const node: z.ZodType<SiteNode> = z.lazy(() => z.union([box, heading, paragraph, button, link, image, hero, text, services, about, quote, stats, faq, cta]));
+const node: z.ZodType<SiteNode> = z.lazy(() => z.union([box, heading, paragraph, button, link, image, component, hero, text, services, about, quote, stats, faq, cta]));
 export const siteNode = node;
+
+/** A node kept once and drawn wherever an instance points to it. */
+export interface ComponentDef {
+  id: string;
+  name: string;
+  root: SiteNode;
+}
+const componentDef: z.ZodType<ComponentDef> = z.object({ id, name: plain(NAME_MAX).pipe(z.string().min(1)), root: z.lazy(() => node) }).strict();
 
 export const contact = z
   .object({ whatsapp: plain(30), email: plain(254), instagram: plain(31) })
@@ -279,6 +342,59 @@ export function boxDepth(blocks: readonly SiteNode[]): number {
   return deepest;
 }
 
+// ---- components ----
+
+/** What of a document the functions below look at. */
+interface Held {
+  blocks: readonly SiteNode[];
+  components?: readonly ComponentDef[];
+}
+/** The components of a document (none when it has not got the list). */
+export const componentsOf = (content: Pick<Held, "components">): readonly ComponentDef[] => content.components ?? [];
+export const componentById = (content: Pick<Held, "components">, componentId: string): ComponentDef | undefined => componentsOf(content).find((entry) => entry.id === componentId);
+/** Every node the document keeps: the ones on the page and the ones in the definitions of its components. */
+export const documentNodes = (content: Held): SiteNode[] => [...allNodes(content.blocks), ...componentsOf(content).flatMap((entry) => allNodes([entry.root]))];
+
+/** What an instance of a component adds up to once it is drawn: the instance itself and every node of the component. */
+export function expandedCount(content: Held): number {
+  const sizes = new Map(componentsOf(content).map((entry) => [entry.id, allNodes([entry.root]).length]));
+  return allNodes(content.blocks).reduce((sum, entry) => sum + 1 + (entry.type === "component" ? sizes.get(entry.componentId) ?? 0 : 0), 0);
+}
+
+/**
+ * The root of a component as one instance draws it: the nodes of the definition with the instance's own texts, labels, contacts and images laid over.
+ * What the definition does not leave open, and a field that does not belong to the node, is ignored; an override of a button's contact takes away
+ * its link to a block (a button goes to one or the other).
+ */
+export function applyOverrides(root: SiteNode, overrides: ComponentNode["overrides"]): SiteNode {
+  if (Object.keys(overrides).length === 0) return root;
+  return mapNodes([root], (entry) => {
+    const own = overrides[entry.id];
+    const open = (OVERRIDE_FIELDS as Record<string, readonly (keyof OverrideFields)[]>)[entry.type];
+    if (!own || !open) return entry;
+    const merged: Record<string, unknown> = { ...entry };
+    for (const field of open) if (own[field] !== undefined) merged[field] = own[field];
+    if ((entry.type === "button" || entry.type === "link") && own.channel !== undefined) delete merged.anchor;
+    return merged as unknown as SiteNode;
+  })[0];
+}
+
+/** Whether the components of the document are well made: distinct, none inside another, small enough, and every instance still a valid node once drawn. */
+function componentsAreWhole(content: Held): boolean {
+  const list = componentsOf(content);
+  if (new Set(list.map((entry) => entry.id)).size !== list.length) return false;
+  for (const entry of list) {
+    const inside = allNodes([entry.root]);
+    if (inside.length > MAX_COMPONENT_NODES || inside.some((item) => item.type === "component")) return false;
+  }
+  for (const instance of allNodes(content.blocks)) {
+    if (instance.type !== "component") continue;
+    const definition = list.find((entry) => entry.id === instance.componentId);
+    if (definition && !node.safeParse(applyOverrides(definition.root, instance.overrides)).success) return false;
+  }
+  return true;
+}
+
 /**
  * How deep a raw document nests its `children`, counted without recursion, so a hostile document cannot overflow the
  * stack of the checks below before they refuse it. Anything that is not an object or array adds nothing.
@@ -308,11 +424,15 @@ export const siteContent = z
     /** The logo, an image of the site's library; absent or "" for none. */
     logoAssetId: z.string().max(64).optional(),
     blocks: z.array(node).max(MAX_BLOCKS),
+    /** The components of the site, each kept once; absent when there is none. */
+    components: z.array(componentDef).max(MAX_COMPONENTS).optional(),
   })
   .strict()
-  .refine((content) => new Set(allNodes(content.blocks).map((b) => b.id)).size === allNodes(content.blocks).length, { message: "block ids repeat" })
+  .refine((content) => new Set(documentNodes(content).map((b) => b.id)).size === documentNodes(content).length, { message: "block ids repeat" })
   .refine((content) => allNodes(content.blocks).length <= MAX_NODES, { message: "too many blocks" })
-  .refine((content) => boxDepth(content.blocks) <= MAX_DEPTH, { message: "containers nested too deep" })
+  .refine((content) => boxDepth(content.blocks) <= MAX_DEPTH && componentsOf(content).every((entry) => boxDepth([entry.root]) <= MAX_DEPTH), { message: "containers nested too deep" })
+  .refine(componentsAreWhole, { message: "components are not valid" })
+  .refine((content) => expandedCount(content) <= MAX_EXPANDED_NODES, { message: "too many blocks once the components are drawn" })
   .refine((content) => JSON.stringify(content).length <= MAX_CONTENT_BYTES, { message: "too large" });
 export type SiteContent = z.infer<typeof siteContent>;
 
@@ -446,6 +566,14 @@ export function parseNode(raw: unknown): SiteNode | null {
   const parsed = siteNode.safeParse(raw);
   return parsed.success ? parsed.data : null;
 }
+/** The definition of a component in a copy from the clipboard, or null when it is not one (nested too deep, an instance inside, too large). */
+export function parseComponentDef(raw: unknown): ComponentDef | null {
+  if (rawDepth(raw, RAW_DEPTH_LIMIT) > RAW_DEPTH_LIMIT) return null;
+  const parsed = componentDef.safeParse(raw);
+  if (!parsed.success) return null;
+  const inside = allNodes([parsed.data.root]);
+  return inside.length <= MAX_COMPONENT_NODES && !inside.some((entry) => entry.type === "component") ? parsed.data : null;
+}
 export function safeParseContent(raw: unknown): { success: true; data: SiteContent } | { success: false } {
   try {
     return { success: true, data: parseContent(raw) };
@@ -457,7 +585,7 @@ export function safeParseContent(raw: unknown): { success: true; data: SiteConte
 export const newBlockId = () => crypto.randomUUID().replace(/-/g, "").slice(0, 10);
 
 /** An empty node of a type, with the fields it has. Nothing is invented: the texts are for the person to write. */
-export function emptyBlock(type: BlockType, blockId = newBlockId()): SiteNode {
+export function emptyBlock(type: PlainBlockType, blockId = newBlockId()): SiteNode {
   switch (type) {
     case "hero":
       return { id: blockId, type, eyebrow: "", heading: "", subheading: "", buttonLabel: "", buttonChannel: undefined };
@@ -500,11 +628,12 @@ export function emptyBlock(type: BlockType, blockId = newBlockId()): SiteNode {
   }
 }
 
-/** The images of the library that the document uses: in image blocks, in the style of any node (a background), and the logo. */
+/** The images of the library that the document uses: in image blocks (those of the components and those an instance chooses), in the style of any node (a background), and the logo. */
 export function referencedAssetIds(content: SiteContent): string[] {
   const ids: string[] = [];
-  for (const entry of allNodes(content.blocks)) {
+  for (const entry of documentNodes(content)) {
     if (entry.type === "image" && entry.assetId) ids.push(entry.assetId);
+    if (entry.type === "component") for (const own of Object.values(entry.overrides)) if (own.assetId) ids.push(own.assetId);
     ids.push(...nodeAssetIds(entry));
   }
   if (content.logoAssetId) ids.push(content.logoAssetId);
@@ -541,35 +670,34 @@ export interface LiveService {
 
 /** The services chosen in each block, written as they are on offer now. A draft does not carry them. */
 export function resolveServices(content: SiteContent, live: ReadonlyMap<string, LiveService>): SiteContent {
-  return {
-    ...content,
-    blocks: mapNodes(content.blocks, (b) =>
-      b.type === "services"
-        ? {
-            ...b,
-            items: b.serviceIds.flatMap((serviceId) => {
-              const service = live.get(serviceId);
-              return service
-                ? [{ name: service.name, ...(service.description ? { description: service.description } : {}), delivery: service.delivery }]
-                : [];
-            }),
-          }
-        : b,
-    ),
-  };
+  const resolve = (b: SiteNode): SiteNode =>
+    b.type === "services"
+      ? {
+          ...b,
+          items: b.serviceIds.flatMap((serviceId) => {
+            const service = live.get(serviceId);
+            return service ? [{ name: service.name, ...(service.description ? { description: service.description } : {}), delivery: service.delivery }] : [];
+          }),
+        }
+      : b;
+  return withEachNode(content, resolve);
+}
+
+/** The document with `change` applied to every node, on the page and in the components. */
+function withEachNode(content: SiteContent, change: (entry: SiteNode) => SiteNode): SiteContent {
+  const blocks = mapNodes(content.blocks, change);
+  if (!content.components) return { ...content, blocks };
+  return { ...content, blocks, components: content.components.map((entry) => ({ ...entry, root: mapNodes([entry.root], change)[0] })) };
 }
 
 /** What the draft keeps: a release brought back as a draft loses the resolved services, which are made again. */
 export function withoutResolvedServices(content: SiteContent): SiteContent {
-  return {
-    ...content,
-    blocks: mapNodes(content.blocks, (b) => {
-      if (b.type !== "services") return b;
-      const { items: _items, ...rest } = b;
-      void _items;
-      return rest;
-    }),
-  };
+  return withEachNode(content, (b) => {
+    if (b.type !== "services") return b;
+    const { items: _items, ...rest } = b;
+    void _items;
+    return rest;
+  });
 }
 
 // ---- contact links: the only links the page has ----
@@ -695,11 +823,19 @@ export function publishIssues(content: SiteContent, liveServiceIds: ReadonlySet<
     }
   };
 
-  const visit = (root: SiteNode, at: number, trail: number[], b: SiteNode) => {
-    const label =
-      trail.length === 0
-        ? `Bloco ${at} (${BLOCK_LABEL[b.type]})`
-        : `Bloco ${at} (${BLOCK_LABEL[root.type]}), camada ${trail.map((position) => position + 1).join(".")} (${BLOCK_LABEL[b.type]})`;
+  /**
+   * `inside` is set while the nodes of a component are visited, as one instance draws them: the issues are written about the instance (the
+   * block the editor can show), with the name of the component, and the position in the page is the instance's.
+   */
+  const visit = (root: SiteNode, at: number, trail: number[], b: SiteNode, inside?: { instance: ComponentNode; name: string }) => {
+    const where = inside ? `Bloco ${at} (Componente “${inside.name}”)` : `Bloco ${at} (${BLOCK_LABEL[root.type]})`;
+    const label = trail.length === 0 ? (inside ? where : `Bloco ${at} (${BLOCK_LABEL[b.type]})`) : `${where}, camada ${trail.map((position) => position + 1).join(".")} (${BLOCK_LABEL[b.type]})`;
+    const start = issues.length;
+    check(root, at, trail, b, label, inside);
+    // What is found inside a component is about the instance: it is the block that stands on the page.
+    if (inside) for (let position = start; position < issues.length; position++) issues[position] = { ...issues[position], blockId: inside.instance.id };
+  };
+  const check = (root: SiteNode, at: number, trail: number[], b: SiteNode, label: string, inside?: { instance: ComponentNode; name: string }) => {
     if (assetIds)
       for (const assetId of nodeAssetIds(b))
         if (!assetIds.has(assetId)) add(at, b.id, `${label}: a imagem de fundo escolhida não está mais na biblioteca. Escolha outra ou tire o fundo.`);
@@ -743,8 +879,14 @@ export function publishIssues(content: SiteContent, liveServiceIds: ReadonlySet<
         button(at, b.id, label, b.buttonLabel, b.buttonChannel);
         break;
       case "box":
-        b.children.forEach((child, position) => visit(root, at, [...trail, position], child));
+        b.children.forEach((child, position) => visit(root, at, [...trail, position], child, inside));
         break;
+      case "component": {
+        const definition = componentById(content, b.componentId);
+        if (!definition) add(at, b.id, `${label}: o componente deste bloco não existe mais. Desvincule o bloco ou exclua-o.`);
+        else visit(definition.root, at, [], applyOverrides(definition.root, b.overrides), { instance: b, name: definition.name });
+        break;
+      }
       case "heading":
       case "paragraph":
       case "button":

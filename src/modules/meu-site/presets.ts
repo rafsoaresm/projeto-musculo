@@ -1,4 +1,4 @@
-import { emptyBlock, newBlockId, type BlockType, type BoxNode, type BoxTag, type SiteNode } from "./contracts";
+import { emptyBlock, newBlockId, type BoxNode, type BoxTag, type PlainBlockType, type SiteNode } from "./contracts";
 import type { Style } from "./style";
 
 /**
@@ -30,7 +30,7 @@ const ROW: Style = { display: "flex", direction: "row", wrap: "wrap", gap: "16px
 const COLUMN: Style = { display: "flex", direction: "column", gap: "12px", grow: 1, shrink: 1, basis: "240px", minWidth: "0px" };
 const GRID: Style = { display: "grid", columns: 3, gap: "16px" };
 
-const element = (type: BlockType) => () => emptyBlock(type);
+const element = (type: PlainBlockType) => () => emptyBlock(type);
 
 // ---- ready-made sections made of containers and elements ("modelos") ----
 //
