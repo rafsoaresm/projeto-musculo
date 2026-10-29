@@ -668,7 +668,8 @@ export function CanvasSurface({
         }}
         onContextMenu={(event) => {
           if (!interactive) return;
-          const id = nodeAt(event)?.getAttribute("data-block-id");
+          // Over a handle or the outline of the selected block it is that block's menu.
+          const id = nodeAt(event)?.getAttribute("data-block-id") ?? ((event.target as Element).closest?.("[data-handle], .ve-select") ? api.selectedId : null);
           if (!id) return;
           event.preventDefault();
           api.menu(id, event.clientX, event.clientY);

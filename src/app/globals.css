@@ -3918,6 +3918,10 @@ button.ve-layer-toggle {
 .ve-h-gap[data-axis="y"] {
   cursor: row-resize;
 }
+/* A block too small to hold the inner handles keeps only the ones on its edges, with no more room to take hold of than what is seen (so they do not cover the block). */
+.ve-handles[data-small] .ve-handle::after {
+  inset: 0;
+}
 /* A block too small to hold the inner handles keeps only the ones on its edges. */
 .ve-handles[data-small] .ve-h-pad,
 .ve-handles[data-small] .ve-h-radius {

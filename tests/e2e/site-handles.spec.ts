@@ -1,5 +1,5 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
-import { addAtEnd, editor, inspector, panel, selectLayer, stage, startEditor, styleTab } from "./site-helpers";
+import { addAtEnd, addSelected, editor, inspector, panel, selectLayer, stage, startEditor, styleTab } from "./site-helpers";
 
 type Size = "desktop" | "tablet" | "mobile";
 const frame = (page: Page, size: Size) => stage(page).locator(`[data-frame="${size}"]`);
@@ -10,6 +10,7 @@ const guide = (page: Page, axis: "x" | "y") => stage(page).locator(`.ve-guide[da
 const readout = (page: Page) => stage(page).locator(".ve-readout");
 const showFrame = (page: Page, name: "computador" | "tablet" | "celular") => editor(page).getByRole("button", { name: `Mostrar o quadro do ${name}` });
 const zoomValue = async (page: Page) => Number.parseInt((await editor(page).getByRole("button", { name: /^Zoom: voltar a 100%/ }).innerText()).replace("%", ""), 10) / 100;
+const frameOf = (page: Page) => frame(page, "desktop");
 const field = (page: Page, label: string) => inspector(page).getByLabel(label, { exact: true });
 const css = (target: Locator, property: string) => target.evaluate((element, name) => getComputedStyle(element).getPropertyValue(name), property);
 const px = async (target: Locator, property: string) => Number.parseFloat(await css(target, property));
@@ -77,6 +78,19 @@ test("handles over the selected block: size with guides, padding with Shift and 
   await drag(page, handle(page, "resize-s"), 0, 160);
   await expect(handle(page, "padding-top")).toBeVisible();
   await expect(handle(page, "radius")).toBeVisible();
+
+  // A drag with a long pause in the middle is still one step: one undo takes back the whole of it.
+  const calm = await px(row(page), "padding-top");
+  const grab = (await handle(page, "padding-top").boundingBox())!;
+  await page.mouse.move(grab.x + grab.width / 2, grab.y + grab.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(grab.x + grab.width / 2, grab.y + grab.height / 2 + 10, { steps: 3 });
+  await page.waitForTimeout(1500);
+  await page.mouse.move(grab.x + grab.width / 2, grab.y + grab.height / 2 + 30, { steps: 3 });
+  await page.mouse.up();
+  expect(await px(row(page), "padding-top")).toBeGreaterThan(calm + 5);
+  await editor(page).getByRole("button", { name: "Desfazer" }).click();
+  expect(await px(row(page), "padding-top")).toBe(calm);
 
   // ---- the padding: one side, the side across with Alt, all four with Shift ----
   await drag(page, handle(page, "padding-top"), 0, 24);
@@ -171,4 +185,35 @@ test("the handles are for a pointer on a wide window: none on a block that is no
   await expect(stage(page).locator("[data-handle]")).toHaveCount(0);
   await editor(page).getByRole("button", { name: "Voltar a editar" }).click();
   await expect(stage(page).locator("[data-handle]").first()).toBeAttached();
+});
+
+test("the gap of a column is taken by a bar between its children, dragged up and down", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "The handles are for a pointer on a wide window.");
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await startEditor(page, "Marina Alças 3");
+  // A stack (a column with a gap of 12) holding two paragraphs that have some text, so that they take room.
+  await addAtEnd(page, "Pilha");
+  await selectLayer(page, /^Pilha/);
+  await addSelected(page, "Parágrafo");
+  await selectLayer(page, /^Pilha/);
+  await addSelected(page, "Parágrafo");
+  for (const at of [0, 1]) {
+    await selectLayer(page, /^Parágrafo/, at);
+    await panel(page, "Propriedades");
+    await inspector(page).getByLabel("Parágrafo", { exact: true }).fill(`Linha número ${at + 1}, com texto para ocupar lugar`);
+  }
+  await selectLayer(page, /^Pilha/);
+  const stack = frameOf(page).locator('.site-main > [data-type="box"]').first();
+  const scale = await zoomValue(page);
+  expect(await px(stack, "row-gap")).toBe(12);
+  await expect(gapHandle(page)).toBeVisible();
+  await expect(gapHandle(page)).toHaveAttribute("data-axis", "y");
+  await drag(page, gapHandle(page), 0, 15);
+  expect(Math.abs((await px(stack, "row-gap")) - (12 + 15 / scale))).toBeLessThanOrEqual(2);
+  await drag(page, gapHandle(page), 0, -400);
+  expect(await px(stack, "row-gap")).toBe(0);
+  await panel(page, "Propriedades");
+  await styleTab(page).click();
+  await expect(inspector(page).getByLabel("Espaço entre os blocos", { exact: true })).toHaveValue("0");
 });
