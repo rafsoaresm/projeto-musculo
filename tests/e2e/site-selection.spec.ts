@@ -286,7 +286,22 @@ test("the clipboard, the menu of a block, the shortcuts, the name of a layer and
   await page.keyboard.press("Escape");
   await expect(editor(page).getByRole("heading", { name: "Página", level: 2 })).toBeVisible();
   const count = await paragraphs(page).count();
-  await page.evaluate(() => navigator.clipboard.writeText("texto qualquer, que não é uma cópia de blocos")).catch(() => undefined);
-  await page.keyboard.press("Control+v");
+  // A paste event that carries some other text (made here, so it does not depend on the browser letting the page write to the clipboard): nothing is pasted,
+  // and the browser's own handling of the paste is not taken away (the event is not cancelled).
+  const left = await page.evaluate(() => {
+    const data = new DataTransfer();
+    data.setData("text/plain", "texto qualquer, que não é uma cópia de blocos");
+    return document.body.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+  });
+  expect(left).toBe(true);
   await expect(paragraphs(page)).toHaveCount(count);
+  // And the same event carrying a copy of blocks is taken: it is pasted, and the event is cancelled.
+  const taken = await page.evaluate(() => {
+    const data = new DataTransfer();
+    data.setData("text/plain", JSON.stringify({ format: "meu-site/blocos", version: 1, nodes: [{ id: "x1", type: "paragraph", text: "Colado pelo evento" }] }));
+    return document.body.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+  });
+  expect(taken).toBe(false);
+  await expect(paragraphs(page)).toHaveCount(count + 1);
+  await expect(frame(page).getByText("Colado pelo evento")).toBeVisible();
 });
