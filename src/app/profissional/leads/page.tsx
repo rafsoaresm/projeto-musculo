@@ -3,6 +3,7 @@ import Link from "next/link";
 import { UserRoundPlus } from "lucide-react";
 import { requireWorkspace } from "@/modules/auth/server";
 import { leadsFor } from "@/db/leads";
+import { siteInquiriesFor } from "@/db/site-inquiries";
 import { Notice, PageHeading, Pill, formatDate } from "@/components/ui";
 import { canWorkLeads } from "@/modules/leads/access";
 import { LEAD_SOURCE_LABEL, LEAD_STAGES, LEAD_STAGE_LABEL, type LeadStage } from "@/modules/leads/contracts";
@@ -26,7 +27,7 @@ export default async function Leads({ searchParams }: { searchParams: Promise<{ 
   const { etapa } = await searchParams;
   const stage = (LEAD_STAGES as readonly string[]).includes(etapa ?? "") ? (etapa as LeadStage) : null;
   const repo = leadsFor(db, context);
-  const [leads, counts] = await Promise.all([repo.list(stage), repo.counts()]);
+  const [leads, counts, waiting] = await Promise.all([repo.list(stage), repo.counts(), siteInquiriesFor(db, context).count()]);
   const total = Object.values(counts).reduce((sum, value) => sum + value, 0);
   return (
     <>
@@ -35,10 +36,17 @@ export default async function Leads({ searchParams }: { searchParams: Promise<{ 
         title="Leads"
         description="Quem se interessou pelo seu trabalho e ainda não é aluno. Aqui só o que é preciso para responder: nada de saúde."
         aside={
-          <Link className="button primary" href="/profissional/leads/novo">
-            <UserRoundPlus size={20} />
-            Novo lead
-          </Link>
+          <>
+            {waiting > 0 && (
+              <Link className="button secondary" href="/profissional/leads/mensagens">
+                Mensagens do site ({waiting})
+              </Link>
+            )}
+            <Link className="button primary" href="/profissional/leads/novo">
+              <UserRoundPlus size={20} />
+              Novo lead
+            </Link>
+          </>
         }
       />
       <nav aria-label="Etapas do funil">

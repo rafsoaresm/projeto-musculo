@@ -112,6 +112,21 @@ export async function restoreSiteRelease(releaseId: string, revision: number): P
   }
 }
 
+/** The site's own switch for the messages of the contact form. Opening it does nothing alone while the environment keeps the public forms closed. */
+export async function setSiteInquiries(open: boolean): Promise<SimpleResult> {
+  const { db, context } = await requireWorkspace();
+  try {
+    const outcome = await sitesFor(db, context).setInquiriesOpen(open === true);
+    if (outcome.status === "saved") {
+      refresh();
+      return { ok: true, message: outcome.open ? "O site passou a receber as mensagens do formulário." : "O site parou de receber as mensagens do formulário." };
+    }
+    return { ok: false, message: FORBIDDEN };
+  } catch {
+    return { ok: false, message: FAILED };
+  }
+}
+
 export async function changeSiteAddress(slug: string): Promise<SimpleResult> {
   const { db, context } = await requireWorkspace();
   try {

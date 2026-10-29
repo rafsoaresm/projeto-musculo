@@ -89,7 +89,7 @@ export const BOX_TAG_LABEL: Record<BoxTag, string> = {
 /** `h1` is the page's own (the first highlight, or the name of the site), so a heading of the document is h2 to h6. */
 export const HEADING_LEVELS = [2, 3, 4, 5, 6] as const;
 
-export const SECTION_TYPES = ["hero", "text", "services", "about", "quote", "stats", "faq", "cta"] as const;
+export const SECTION_TYPES = ["hero", "text", "services", "about", "quote", "stats", "faq", "cta", "contactForm"] as const;
 /** What holds nothing else and stands by itself. */
 export const ELEMENT_TYPES = ["heading", "paragraph", "button", "link", "image"] as const;
 /** The kinds of node that can be made empty, from the library. */
@@ -107,6 +107,7 @@ export const BLOCK_LABEL: Record<BlockType, string> = {
   stats: "Indicadores",
   faq: "Perguntas frequentes",
   cta: "Chamada para contato",
+  contactForm: "Formulário de contato",
   box: "Contêiner",
   heading: "Título",
   paragraph: "Parágrafo",
@@ -196,6 +197,19 @@ const ctaShape = {
   buttonLabel: plain(BUTTON_MAX),
   buttonChannel: z.enum(CHANNELS).optional(),
 };
+/**
+ * The contact form: a name, a way to reach the person, an optional message and the box that says the privacy notice was read. The fields and their
+ * texts are the tool's, not the page's (what a visitor is asked is not a promise a professional makes); the page owns the title, a line above the
+ * fields and the text of the button. It appears on the public page only when the environment has opened the public forms and the site has been opened
+ * for messages: otherwise it is not there at all.
+ */
+const contactFormShape = {
+  type: z.literal("contactForm"),
+  eyebrow,
+  heading: plain(HEADING_MAX),
+  text: plain(SUBHEADING_MAX),
+  buttonLabel: plain(BUTTON_MAX),
+};
 const headingShape = { type: z.literal("heading"), text: plain(HEADING_MAX) };
 const paragraphShape = { type: z.literal("paragraph"), text: plain(TEXT_MAX) };
 const buttonShape = { type: z.literal("button"), label: plain(BUTTON_MAX), channel: z.enum(CHANNELS).optional() };
@@ -219,6 +233,7 @@ const quote = z.object({ ...base, ...quoteShape }).strict();
 const stats = z.object({ ...base, ...statsShape }).strict();
 const faq = z.object({ ...base, ...faqShape }).strict();
 const cta = z.object({ ...base, ...ctaShape }).strict();
+const contactForm = z.object({ ...base, ...contactFormShape }).strict();
 const heading = z
   .object({ ...base, ...headingShape, level: z.number().int().min(2).max(6) })
   .strict();
@@ -270,6 +285,7 @@ export type QuoteNode = z.infer<typeof quote>;
 export type StatsNode = z.infer<typeof stats>;
 export type FaqNode = z.infer<typeof faq>;
 export type CtaNode = z.infer<typeof cta>;
+export type ContactFormNode = z.infer<typeof contactForm>;
 export type HeadingNode = z.infer<typeof heading>;
 export type ParagraphNode = z.infer<typeof paragraph>;
 export type ButtonNode = z.infer<typeof button>;
@@ -296,6 +312,7 @@ export type SiteNode =
   | StatsNode
   | FaqNode
   | CtaNode
+  | ContactFormNode
   | BoxNode
   | HeadingNode
   | ParagraphNode
@@ -311,7 +328,7 @@ export type ElementNode = HeadingNode | ParagraphNode | ButtonNode | LinkNode | 
 const box: z.ZodType<BoxNode> = z
   .object({ ...base, type: z.literal("box"), tag: z.enum(BOX_TAGS), children: z.array(z.lazy(() => node)).max(MAX_CHILDREN) })
   .strict();
-const node: z.ZodType<SiteNode> = z.lazy(() => z.union([box, heading, paragraph, button, link, image, component, hero, text, services, about, quote, stats, faq, cta]));
+const node: z.ZodType<SiteNode> = z.lazy(() => z.union([box, heading, paragraph, button, link, image, component, hero, text, services, about, quote, stats, faq, cta, contactForm]));
 export const siteNode = node;
 
 /** A node kept once and drawn wherever an instance points to it. */
@@ -716,6 +733,8 @@ export function emptyBlock(type: PlainBlockType, blockId = newBlockId()): SiteNo
       return { id: blockId, type, eyebrow: "", heading: "Perguntas frequentes", items: [{ question: "", answer: "" }] };
     case "cta":
       return { id: blockId, type, eyebrow: "", heading: "", text: "", buttonLabel: "", buttonChannel: undefined };
+    case "contactForm":
+      return { id: blockId, type, eyebrow: "", heading: "", text: "", buttonLabel: "Enviar mensagem" };
     case "box":
       return { id: blockId, type, tag: "div", children: [] };
     case "heading":
@@ -893,7 +912,13 @@ export interface PublishIssue {
  * The problems that stop a publication. `liveServiceIds` are the services on offer right now; `assetIds` the images
  * of the site's library (null when the caller has not looked: then only what the document itself says is checked).
  */
-export function publishIssues(content: SiteContent, liveServiceIds: ReadonlySet<string>, assetIds: ReadonlySet<string> | null = null): PublishIssue[] {
+export function publishIssues(
+  content: SiteContent,
+  liveServiceIds: ReadonlySet<string>,
+  assetIds: ReadonlySet<string> | null = null,
+  /** What the site itself says about the form: `inquiriesOpen` is its own switch for messages (undefined when the caller has not looked). */
+  site: { inquiriesOpen?: boolean } = {},
+): PublishIssue[] {
   const issues: PublishIssue[] = [];
   /** The page being looked at: what is found is about it, and the message says which one when it is not the home page. */
   let where: { page: string | null; prefix: string } = { page: null, prefix: "" };
@@ -991,6 +1016,11 @@ export function publishIssues(content: SiteContent, liveServiceIds: ReadonlySet<
         if (!b.heading) add(at, b.id, `${label}: escreva o título da chamada.`);
         if (!b.buttonLabel && !b.buttonChannel) add(at, b.id, `${label}: a chamada precisa de um botão.`);
         button(at, b.id, label, b.buttonLabel, b.buttonChannel);
+        break;
+      case "contactForm":
+        if (!b.buttonLabel) add(at, b.id, `${label}: escreva o texto do botão de enviar.`);
+        if (site.inquiriesOpen === false)
+          add(at, b.id, `${label}: o recebimento de mensagens do site está desligado, então o formulário não aparece para quem visita. Ligue em “Mensagens do site”, na tela do Meu Site.`);
         break;
       case "box":
         b.children.forEach((child, position) => visit(root, at, [...trail, position], child, inside));

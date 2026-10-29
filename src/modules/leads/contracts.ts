@@ -19,7 +19,7 @@ export const LEAD_STAGE_LABEL: Record<LeadStage, string> = {
   LOST: "Perdido",
 };
 
-/** SITE is reserved for the public form (a later slice); nobody picks it by hand. */
+/** SITE is for a lead that came from the contact form of the public page: nobody picks it by hand (a lead that has it keeps it when edited). */
 export const LEAD_SOURCES = ["INSTAGRAM", "WHATSAPP", "INDICACAO", "PRESENCIAL", "SITE", "OUTRO"] as const;
 export type LeadSource = (typeof LEAD_SOURCES)[number];
 export const LEAD_SOURCES_BY_HAND = LEAD_SOURCES.filter((source) => source !== "SITE");
@@ -121,7 +121,7 @@ export const leadInput = z
 export type LeadInput = z.infer<typeof leadInput>;
 
 export const leadEdit = z
-  .object(leadFields)
+  .object({ ...leadFields, source: z.enum(LEAD_SOURCES) })
   .strict()
   .refine((lead) => Boolean(lead.email) || Boolean(lead.phone), { message: "contact", path: ["email"] });
 export type LeadEdit = z.infer<typeof leadEdit>;

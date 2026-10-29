@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { requireWorkspace } from "@/modules/auth/server";
 import { getSiteMediaBucket } from "@/db/binding";
 import { siteAssetsFor } from "@/db/site-assets";
@@ -6,6 +7,8 @@ import { sitesFor } from "@/db/sites";
 import { Notice, PageHeading } from "@/components/ui";
 import { canEditSite, canSeeSite } from "@/modules/meu-site/access";
 import { slugFromName } from "@/modules/meu-site/contracts";
+import { formsGate } from "@/modules/meu-site/inquiries";
+import { canWorkLeads } from "@/modules/leads/access";
 import { CreateSite } from "@/modules/meu-site/create-site";
 import { SiteWorkspace } from "@/modules/meu-site/site-workspace";
 
@@ -27,6 +30,8 @@ export default async function MySite() {
   const canEdit = canEditSite(workspace.role);
   const bucket = await getSiteMediaBucket();
   const library = overview ? await siteAssetsFor(db, bucket, context).list() : [];
+  const { env } = await getCloudflareContext({ async: true });
+  const platformOpen = formsGate(env, process.env).open;
   return (
     <>
       <PageHeading
@@ -42,6 +47,7 @@ export default async function MySite() {
           releases={overview.releases}
           services={overview.services}
           images={{ available: bucket !== null, library }}
+          inquiries={{ ...overview.inquiries, platformOpen, canWork: canWorkLeads(workspace.role) }}
           canEdit={canEdit}
         />
       ) : canEdit ? (

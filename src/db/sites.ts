@@ -31,6 +31,8 @@ export const SITE_CREATED = "SITE_CREATED";
 export const SITE_PUBLISHED = "SITE_PUBLISHED";
 export const SITE_UNPUBLISHED = "SITE_UNPUBLISHED";
 export const SITE_ADDRESS_CHANGED = "SITE_ADDRESS_CHANGED";
+export const SITE_INQUIRIES_OPENED = "SITE_INQUIRIES_OPENED";
+export const SITE_INQUIRIES_CLOSED = "SITE_INQUIRIES_CLOSED";
 
 export interface ServiceChoice {
   id: string;
@@ -52,6 +54,8 @@ export interface SiteOverview {
   live: { number: number; publishedAt: string; draftRevision: number } | null;
   releases: ReleaseRow[];
   services: ServiceChoice[];
+  /** The site's own switch for the messages of the contact form (born closed), and how many messages wait for the professional. */
+  inquiries: { open: boolean; waiting: number };
 }
 export interface PublicSite {
   slug: string;
@@ -60,6 +64,8 @@ export interface PublicSite {
   content: SiteContent;
   /** The images the release uses, by id, with the size, so the page can reserve the space. */
   images: Record<string, { width: number; height: number }>;
+  /** The site's own switch for the contact form, read when the page is shown (a release does not keep it: closing it is immediate). */
+  inquiriesOpen: boolean;
 }
 
 export type CreateSiteOutcome = { status: "created" } | { status: "exists" } | { status: "slug_taken" } | { status: "forbidden" };
@@ -72,6 +78,7 @@ export type PublishOutcome =
   | { status: "warnings"; issues: PublishIssue[] }
   | { status: "conflict" }
   | { status: "not_found" };
+export type InquiriesSwitchOutcome = { status: "saved"; open: boolean } | { status: "not_found" };
 export type AddressOutcome = { status: "changed" } | { status: "slug_taken" } | { status: "public" } | { status: "not_found" };
 export type RestoreOutcome = { status: "restored"; revision: number } | { status: "conflict" } | { status: "not_found" };
 
@@ -124,7 +131,7 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
     async overview(): Promise<SiteOverview | null> {
       const draft = await draftRow();
       if (!draft) return null;
-      const [liveRow, releases, services] = await Promise.all([
+      const [liveRow, releases, services, inquiries] = await Promise.all([
         db
           .prepare(
             `SELECT r.number, p.published_at AS publishedAt, r.draft_revision AS draftRevision
@@ -143,9 +150,17 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
           .bind(organizationId, userId, draft.siteId)
           .all<Omit<ReleaseRow, "live"> & { live: number }>(),
         liveServices(),
+        db
+          .prepare(
+            `SELECT s.inquiries_open AS open, (SELECT COUNT(*) FROM site_inquiries q WHERE q.site_id = s.id) AS waiting
+             FROM sites s WHERE s.id = ?3 AND s.organization_id = ?1 AND ${reads}`,
+          )
+          .bind(organizationId, userId, draft.siteId)
+          .first<{ open: number; waiting: number }>(),
       ]);
       return {
         site: { id: draft.siteId, slug: draft.slug },
+        inquiries: { open: inquiries?.open === 1, waiting: inquiries?.waiting ?? 0 },
         draft: { content: parseContent(JSON.parse(draft.content)), revision: draft.revision, updatedAt: draft.updatedAt },
         live: liveRow ?? null,
         releases: releases.results.map((r) => ({ ...r, live: r.live === 1 })),
@@ -241,6 +256,30 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
       return draft ? { status: "conflict" } : { status: "not_found" };
     },
 
+    /**
+     * Opens or closes the site's own switch for the messages of the contact form (owner and manager). Closing takes effect at the next request:
+     * the page is read with the switch, not from the release. Opening does nothing alone while the environment keeps the public forms closed.
+     */
+    async setInquiriesOpen(open: boolean, now = new Date()): Promise<InquiriesSwitchOutcome> {
+      const draft = await draftRow();
+      if (!draft) return { status: "not_found" };
+      const wanted = open ? 1 : 0;
+      const stamp = now.toISOString();
+      const results = await db.batch([
+        db
+          .prepare(`UPDATE sites SET inquiries_open = ?3, updated_at = ?4 WHERE id = ?5 AND organization_id = ?1 AND inquiries_open <> ?3 AND ${writes}`)
+          .bind(organizationId, userId, wanted, stamp, draft.siteId),
+        audit(open ? SITE_INQUIRIES_OPENED : SITE_INQUIRIES_CLOSED, draft.siteId, stamp),
+      ]);
+      if (results[0].meta.changes > 0) return { status: "saved", open };
+      // Nothing changed: either it already was so (fine), or this login may not write the site.
+      const allowed = await db
+        .prepare(`SELECT 1 AS ok FROM sites s WHERE s.id = ?3 AND s.organization_id = ?1 AND ${writes}`)
+        .bind(organizationId, userId, draft.siteId)
+        .first();
+      return allowed ? { status: "saved", open } : { status: "not_found" };
+    },
+
     /** Changes the address while the page is not public: links already shared would break otherwise. */
     async changeSlug(rawSlug: unknown, now = new Date()): Promise<AddressOutcome> {
       const slug = slugSchema.parse(rawSlug);
@@ -288,7 +327,11 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
         .bind(organizationId, userId, draft.siteId, usedJson)
         .all<{ id: string }>();
       const present = found.results.map((row) => row.id);
-      const issues = publishIssues(content, new Set(live.keys()), new Set(present));
+      const switched = await db
+        .prepare(`SELECT s.inquiries_open AS open FROM sites s WHERE s.id = ?3 AND s.organization_id = ?1 AND ${reads}`)
+        .bind(organizationId, userId, draft.siteId)
+        .first<{ open: number }>();
+      const issues = publishIssues(content, new Set(live.keys()), new Set(present), { inquiriesOpen: switched?.open === 1 });
       if (issues.some((issue) => issue.severity === "blocking")) return { status: "invalid", issues };
       if (issues.length > 0 && !options.withWarnings) return { status: "warnings", issues };
       // What the release holds of the library is the images that are there: one the person was warned is missing (and published anyway) is left out of the page.
@@ -386,14 +429,14 @@ export async function publishedSiteBySlug(db: D1Database, rawSlug: string): Prom
   if (!slug.success) return null;
   const row = await db
     .prepare(
-      `SELECT s.slug, r.id AS releaseId, r.number, r.content, p.published_at AS publishedAt
+      `SELECT s.slug, s.inquiries_open AS inquiriesOpen, r.id AS releaseId, r.number, r.content, p.published_at AS publishedAt
        FROM sites s
        JOIN site_published p ON p.site_id = s.id
        JOIN site_releases r ON r.site_id = p.site_id AND r.id = p.release_id
        WHERE s.slug = ?`,
     )
     .bind(slug.data)
-    .first<{ slug: string; releaseId: string; number: number; content: string; publishedAt: string }>();
+    .first<{ slug: string; inquiriesOpen: number; releaseId: string; number: number; content: string; publishedAt: string }>();
   if (!row) return null;
   let raw: unknown;
   try {
@@ -417,5 +460,6 @@ export async function publishedSiteBySlug(db: D1Database, rawSlug: string): Prom
     publishedAt: row.publishedAt,
     content: parsed.data,
     images: Object.fromEntries(assets.results.map((asset) => [asset.id, { width: asset.width, height: asset.height }])),
+    inquiriesOpen: row.inquiriesOpen === 1,
   };
 }

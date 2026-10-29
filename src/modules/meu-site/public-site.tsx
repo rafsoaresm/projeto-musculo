@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import type { PublicSite } from "@/db/sites";
 import { HOME, pageById, pageContent } from "./contracts";
-import { publicCssImages, publicHomeUrl, publicImages, publicPageUrl, publicStyleUrl, type PublicLevel } from "./image-urls";
-import { SiteRenderer } from "./renderer";
+import { formsGate, type FormsGate } from "./inquiries";
+import { publicCssImages, publicFormUrl, publicHomeUrl, publicImages, publicPageUrl, publicStyleUrl, type PublicLevel } from "./image-urls";
+import { SiteRenderer, type PublicForm } from "./renderer";
 import { siteNav } from "./site-nav";
 import { buildSiteCss } from "./site-css";
 
@@ -24,7 +25,19 @@ export function publicMetadata(site: PublicSite | null, pageId: string): Metadat
   };
 }
 
-export function PublicSitePage({ site, pageId }: { site: PublicSite; pageId: string }) {
+/**
+ * The form of the page, if it is open: the environment opened the public forms (`gate`) AND the site opened its own switch for messages. Null
+ * otherwise, and then the block is not on the page at all.
+ */
+export function publicFormOf(site: PublicSite, pageId: string, gate: FormsGate): PublicForm | null {
+  if (!gate.open || !site.inquiriesOpen) return null;
+  const page = pageId === HOME ? undefined : pageById(site.content, pageId);
+  return { action: publicFormUrl(site.slug, levelOf(pageId)), page: page?.slug ?? "", noticeUrl: gate.noticeUrl };
+}
+
+export { formsGate };
+
+export function PublicSitePage({ site, pageId, gate }: { site: PublicSite; pageId: string; gate: FormsGate }) {
   const level = levelOf(pageId);
   // Every address below is relative to this page's (see image-urls.ts): the mount path of the platform comes along by itself.
   // The styles of the blocks come as a sheet from the site's own address (no `style` attribute, no <style> in the page), one for all the pages.
@@ -34,7 +47,7 @@ export function PublicSitePage({ site, pageId }: { site: PublicSite; pageId: str
   return (
     <>
       {hasStyles && <link rel="stylesheet" href={publicStyleUrl(site.slug, site.number, level)} precedence="default" />}
-      <SiteRenderer content={pageContent(site.content, pageId)} images={publicImages(site.slug, site.images, level)} nav={nav} />
+      <SiteRenderer content={pageContent(site.content, pageId)} images={publicImages(site.slug, site.images, level)} nav={nav} forms={publicFormOf(site, pageId, gate)} />
     </>
   );
 }

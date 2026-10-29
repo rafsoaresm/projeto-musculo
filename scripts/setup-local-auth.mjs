@@ -13,7 +13,14 @@ const generated = {
 };
 // EMAIL_TRANSPORT=capture keeps the text of e-mail in the local database for the browser tests; the
 // application only honours it on localhost or 127.0.0.1.
-const fixed = { DEMO_MODE: "true", EMAIL_TRANSPORT: "capture" };
+// PUBLIC_FORMS_ENABLED and PRIVACY_NOTICE_URL open the contact form of the public pages, for the local browser tests only: the committed config and
+// the production environment do not have them, so there the form stays closed until the platform opens it on purpose (see PENDENCIAS, J8 and J12).
+const fixed = {
+  DEMO_MODE: "true",
+  EMAIL_TRANSPORT: "capture",
+  PUBLIC_FORMS_ENABLED: "true",
+  PRIVACY_NOTICE_URL: "http://127.0.0.1:8787/aviso-de-privacidade-de-teste",
+};
 
 async function read(file) {
   try {

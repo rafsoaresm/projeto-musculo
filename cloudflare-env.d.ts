@@ -27,6 +27,13 @@ declare global {
      */
     PHOTOS_ENABLED?: string;
     /**
+     * "true" opens the contact form of the public pages (Meu Site) to whoever visits. Absent means closed everywhere, whatever a site
+     * chose: it opens on purpose, once the public privacy notice (PRIVACY_NOTICE_URL) and the legal opinion on leads exist.
+     */
+    PUBLIC_FORMS_ENABLED?: string;
+    /** The address of the public privacy notice the form points to ("https://..."). Without it the form stays closed even when opened. */
+    PRIVACY_NOTICE_URL?: string;
+    /**
      * Recovery of a forgotten password by e-mail (Amazon SES). All four of these and EMAIL_FROM must
      * be set; anything less and the recovery does not exist. The secret is a secret variable.
      */

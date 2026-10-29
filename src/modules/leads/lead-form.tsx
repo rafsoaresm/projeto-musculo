@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createLead, updateLead } from "./actions";
 import type { LeadMatch } from "@/db/leads";
-import { HEALTH_WARNING, LEAD_SOURCES_BY_HAND, LEAD_SOURCE_LABEL, LEAD_STAGE_LABEL, NOTE_MAX } from "./contracts";
+import { HEALTH_WARNING, LEAD_SOURCES, LEAD_SOURCES_BY_HAND, LEAD_SOURCE_LABEL, LEAD_STAGE_LABEL, NOTE_MAX } from "./contracts";
 
 export interface ServiceOption {
   id: string;
@@ -118,7 +118,7 @@ export function LeadForm({
       <label>
         De onde veio
         <select value={values.source} onChange={set("source")}>
-          {LEAD_SOURCES_BY_HAND.map((source) => (
+          {(initial?.source === "SITE" ? LEAD_SOURCES : LEAD_SOURCES_BY_HAND).map((source) => (
             <option key={source} value={source}>
               {LEAD_SOURCE_LABEL[source]}
             </option>

@@ -122,6 +122,7 @@ export const CATALOGUE: readonly CatalogueItem[] = [
   { key: "stats", group: "section", label: "Indicadores", hint: "Números do método", create: element("stats") },
   { key: "faq", group: "section", label: "Perguntas frequentes", hint: "Respostas curtas", create: element("faq") },
   { key: "cta", group: "section", label: "Chamada para contato", hint: "Chamada com botão", create: element("cta") },
+  { key: "contactForm", group: "section", label: "Formulário de contato", hint: "Nome, contato e mensagem", create: element("contactForm") },
   { key: "template-navigation", group: "template", label: "Barra de navegação", hint: "Nome e links", create: navigationBar },
   { key: "template-highlights", group: "template", label: "3 destaques", hint: "Três colunas com título e texto", create: threeHighlights },
   { key: "template-image-text", group: "template", label: "Imagem e texto", hint: "Uma imagem ao lado do texto", create: imageAndText },

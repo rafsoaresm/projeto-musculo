@@ -13,6 +13,7 @@ export function nodeText(entry: SiteNode): string {
     case "stats":
     case "faq":
     case "cta":
+    case "contactForm":
       text = entry.heading;
       break;
     case "text":

@@ -516,6 +516,19 @@ export function BlockInspector({
         </>
       )}
 
+      {entry.type === "contactForm" && (
+        <>
+          <Text label="Título do formulário" value={entry.heading} max={HEADING_MAX} onChange={(heading) => patch({ heading })} />
+          <Text label="Texto acima dos campos (opcional)" value={entry.text} max={SUBHEADING_MAX} rows={2} onChange={(text) => patch({ text })} />
+          <Text label="Texto do botão de enviar" value={entry.buttonLabel} max={BUTTON_MAX} onChange={(buttonLabel) => patch({ buttonLabel })} />
+          <p className="small muted">
+            Os campos (nome, e-mail ou telefone, mensagem e a caixa do aviso de privacidade) são os da ferramenta e não mudam. O formulário só aparece na página publicada
+            depois que a plataforma abrir os formulários públicos e você ligar o recebimento de mensagens em “Mensagens do site”. Quem escreve não vira aluno nem lead
+            sozinho: a mensagem espera em Leads até você decidir. Não peça dados de saúde por aqui.
+          </p>
+        </>
+      )}
+
 
           {entry.type === "component" && <ComponentPanel content={content} instance={entry} images={images} onChange={onChange} actions={onComponent} />}
 

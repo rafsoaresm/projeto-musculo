@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { publishedSiteBySlug } from "@/db/sites";
 import { pagesOf } from "@/modules/meu-site/contracts";
-import { PublicSitePage, publicMetadata } from "@/modules/meu-site/public-site";
+import { PublicSitePage, formsGate, publicMetadata } from "@/modules/meu-site/public-site";
 
 // Another page of a published site, at `/s/<slug>/<page>`: the same release as the home page, found by the address the person gave it. The
 // stylesheet (`estilo.css`) and the images (`m/`) have routes of their own below the site, which win over this one. An address that is not a
@@ -28,5 +28,6 @@ export async function generateMetadata(props: Params): Promise<Metadata> {
 export default async function PublicSubpage(props: Params) {
   const { site, found } = await load(props);
   if (!site || !found) notFound();
-  return <PublicSitePage site={site} pageId={found.id} />;
+  const { env } = await getCloudflareContext({ async: true });
+  return <PublicSitePage site={site} pageId={found.id} gate={formsGate(env, process.env)} />;
 }
