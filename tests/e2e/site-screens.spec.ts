@@ -1,6 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
-import { createProfessional, localIP, newActor } from "./helpers";
-import { addAtEnd, editor, inspector, library, openEditor, panel, selectLayer, stage, state, styleTab } from "./site-helpers";
+import { newActor } from "./helpers";
+import { addAtEnd, editor, inspector, library, panel, selectLayer, stage, startEditor as startSite, styleTab } from "./site-helpers";
+
+const startEditor = (page: Page) => startSite(page, "Marina Telas");
 
 type Size = "desktop" | "tablet" | "mobile";
 const frame = (page: Page, size: Size) => stage(page).locator(`[data-frame="${size}"]`);
@@ -13,18 +15,6 @@ const percent = async (page: Page) => Number.parseInt((await zoom(page).innerTex
 const gapField = (page: Page) => inspector(page).getByLabel("Espaço entre os blocos", { exact: true });
 /** The gap field when its value comes from a larger size of the screen (shown in grey). */
 const inheritedGap = (page: Page) => inspector(page).locator('.ve-length[data-inherited] input[aria-label="Espaço entre os blocos"]');
-
-/** A new site with its editor open. */
-async function startEditor(page: Page) {
-  await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
-  const unique = crypto.randomUUID().slice(0, 8);
-  await createProfessional(page, `Estúdio ${unique}`, "Marina Telas");
-  await page.goto("./profissional/meu-site");
-  await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Criar meu site" }).click();
-  await expect(state(page).getByText("Fora do ar")).toBeVisible();
-  await openEditor(page);
-  return `estudio-${unique}`;
-}
 
 test("sizes of the screen: three frames side by side, each change written to one size and laid over the larger ones, hiding by size, and a published page that answers to the window", async ({
   page,

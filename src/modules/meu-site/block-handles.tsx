@@ -241,7 +241,7 @@ export function BlockHandles({ host }: { host: HandleHost }) {
         return {
           change: (entry, screen) => setSides(entry, screen, "padding", sides, px(value)),
           guides: [],
-          text: `Espaço interno ${sides.length === 4 ? "(os quatro lados)" : sides.length === 2 ? "(os dois lados)" : EDGE_NAME[edge]} ${value} px`,
+          text: `Margem interna ${sides.length === 4 ? "(os quatro lados)" : sides.length === 2 ? "(os dois lados)" : EDGE_NAME[edge]} ${value} px`,
         };
       };
     };
@@ -320,13 +320,16 @@ export function BlockHandles({ host }: { host: HandleHost }) {
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
   }, [active, host]);
-  // A drag that is over because the block went away (it was removed, or another was chosen) leaves nothing behind.
+  // A drag that is over because the block went away (it was removed, or another was chosen) leaves nothing behind. (Not when the block only
+  // changed: every step of a drag changes it, and the drag goes on.)
+  const { setGuides } = host;
+  const blockId = host.node.id;
   useEffect(
     () => () => {
       run.current = null;
-      host.setGuides([]);
+      setGuides([]);
     },
-    [host],
+    [blockId, setGuides],
   );
 
   return (
@@ -350,7 +353,7 @@ export function BlockHandles({ host }: { host: HandleHost }) {
           active={active}
           className="ve-handle ve-h-pad"
           data-edge={edge}
-          title={`Espaço interno ${EDGE_NAME[edge]}: arraste. Shift: os quatro lados. Alt: os dois lados`}
+          title={`Margem interna ${EDGE_NAME[edge]}: arraste. Shift: os quatro lados. Alt: os dois lados`}
           onBegin={(event) => begin(event, `padding-${edge}`, padding(edge))}
           onMove={move}
           onFinish={finish}
