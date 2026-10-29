@@ -146,6 +146,8 @@ test("versions: each one can be seen as it was published, compared with another 
   await page.goto("./profissional/meu-site");
   await versions(page).getByRole("button", { name: "Usar a versão 1 como rascunho" }).click();
   await page.getByRole("button", { name: "Confirmar: usar a versão 1 como rascunho" }).click();
+  // The note of the first time is still on the screen: what says this one is done is the confirmation going away (the draft was replaced with it).
+  await expect(page.getByRole("button", { name: "Confirmar: usar a versão 1 como rascunho" })).toHaveCount(0);
   await expect(page.getByText("A versão voltou para o rascunho.")).toBeVisible();
   await openEditor(page);
   expect(await pageNames(page)).toEqual(["Início"]);
@@ -155,6 +157,8 @@ test("versions: each one can be seen as it was published, compared with another 
   await closeEditor(page);
   await versions(page).getByRole("button", { name: "Usar a versão 2 como rascunho" }).click();
   await page.getByRole("button", { name: "Confirmar: usar a versão 2 como rascunho" }).click();
+  // The note of the first time is still on the screen: what says this one is done is the confirmation going away (the draft was replaced with it).
+  await expect(page.getByRole("button", { name: "Confirmar: usar a versão 2 como rascunho" })).toHaveCount(0);
   await expect(page.getByText("A versão voltou para o rascunho.")).toBeVisible();
   await openEditor(page);
   expect(await pageNames(page)).toEqual(["Início", "Sobre mim"]);

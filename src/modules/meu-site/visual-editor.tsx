@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Eye, Pencil, Redo2, Undo2, X } from "lucide-react";
 import { HOME, componentById, componentsOf, pageById, pageContent, pagesOf, referencedAssetIds, resolveServices, swapPage, type OverrideFields, type PublishIssue, type SiteContent, type SiteNode } from "./contracts";
+import { AUTOSAVE_DELAY_MS } from "./autosave";
 import { COMPACT_QUERY, CanvasSurface, EditorContext, canvasHooks, useCompact, type CanvasControls, type Drag, type EditorApi, type ManyAction, type NodeAction } from "./editor-canvas";
 import { BlockInspector, PageSettings, type ImageSupport } from "./editor-inspector";
 import { editorImageUrl, libraryCssImages, libraryImages } from "./image-urls";
@@ -67,6 +68,9 @@ export interface VisualEditorProps {
   revision: number;
   pending: boolean;
   live: boolean;
+  /** Whether the draft saves itself after a pause, and how the person turns that on or off. */
+  autosave: boolean;
+  onAutosave: (on: boolean) => void;
   onSave: () => void;
   onPublish: () => void;
   /** Publishes with the warnings (what stops the publication still does). */
@@ -700,6 +704,10 @@ export function VisualEditor(props: VisualEditorProps) {
           {message && <p role="alert" className="form-error">{message}</p>}
           {notice && !message && <p role="status" className="ve-notice">{notice}</p>}
           {props.note}
+          <label className="ve-autosave" title={`Salva o rascunho ${AUTOSAVE_DELAY_MS / 1000} segundos depois da última alteração`}>
+            <input type="checkbox" checked={props.autosave} onChange={(event) => props.onAutosave(event.target.checked)} />
+            Salvar sozinho
+          </label>
         </div>
         <div className="ve-toolbar">
           <button type="button" className="ve-icon-button" onClick={props.undo} disabled={!props.canUndo} aria-label="Desfazer" title="Desfazer (Ctrl+Z)">
@@ -719,7 +727,7 @@ export function VisualEditor(props: VisualEditorProps) {
             type="button"
             className="button small primary"
             disabled={props.pending || props.dirty}
-            title={props.dirty ? "Salve o rascunho antes de publicar" : undefined}
+            title={props.dirty ? (props.autosave ? "O rascunho está para ser salvo: aguarde um instante" : "Salve o rascunho antes de publicar") : undefined}
             onClick={props.onPublish}
           >
             {props.live ? "Publicar nova versão" : "Publicar"}
