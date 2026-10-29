@@ -122,7 +122,7 @@ const JUSTIFY_CSS: Record<(typeof JUSTIFIES)[number], string> = {
   evenly: "space-evenly",
 };
 // System fonts only: the page loads nothing from anyone else.
-const FONT_CSS: Record<(typeof FONT_FAMILIES)[number], string> = {
+export const FONT_CSS: Record<(typeof FONT_FAMILIES)[number], string> = {
   sans: "system-ui,-apple-system,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif",
   serif: "Georgia,Cambria,Times New Roman,Times,serif",
   mono: "ui-monospace,SFMono-Regular,Menlo,Consolas,Liberation Mono,monospace",

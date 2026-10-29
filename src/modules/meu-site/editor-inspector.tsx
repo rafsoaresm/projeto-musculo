@@ -33,7 +33,8 @@ import {
 } from "./contracts";
 import { ancestorsOf, locate, updateBlock, updateBlocks } from "./editor-model";
 import { nodeText, nodeTitle } from "./node-label";
-import { ACCENTS, ACCENT_LABEL, MODES, MODE_LABEL, WIDTHS, WIDTH_LABEL, type Accent, type Mode, type Width } from "./site-theme";
+import { ACCENTS, ACCENT_LABEL, FONTS, FONT_LABEL, MODES, MODE_LABEL, WIDTHS, WIDTH_LABEL, type Accent, type Font, type Mode, type Theme, type Width } from "./site-theme";
+import { brandPalette } from "./brand-color";
 import { ownStyle, type Screen } from "./screens";
 import { clearStyles, patchSide, patchStyle, resetScreen, setHidden, withScreenStyle } from "./style-model";
 import { StylePanel } from "./style-panel";
@@ -89,6 +90,21 @@ function ChannelSelect({ label = "O botão leva a", value, onChange }: { label?:
   );
 }
 
+/** Where the color of "Minha cor" starts when it is chosen (the person changes it at once). */
+const BRAND_START = "#0077b6";
+/** The theme with an accent of the list in place of the brand color. */
+const withoutBrand = (theme: Theme, accent: Accent): Theme => {
+  const { brand: _dropped, ...rest } = theme;
+  void _dropped;
+  return { ...rest, accent };
+};
+/** The theme with a font (or none, for the page's own). */
+const withFont = (theme: Theme, font: Font | undefined): Theme => {
+  const { font: _dropped, ...rest } = theme;
+  void _dropped;
+  return font ? { ...rest, font } : rest;
+};
+
 /** The settings of the page itself: title, search description, contacts and look. What nothing selected shows. */
 export function PageSettings({ content, onChange, images }: { content: SiteContent; onChange: Change; images: ImageSupport }) {
   const set = (patch: Partial<SiteContent>, key: string) => onChange({ ...content, ...patch }, `page:${key}`);
@@ -99,17 +115,39 @@ export function PageSettings({ content, onChange, images }: { content: SiteConte
       <p className="small muted">Nada selecionado: estes são os dados da página inteira. Clique em um bloco para editar o bloco.</p>
       <Text label="Título do site" value={content.title} max={TITLE_MAX} onChange={(title) => set({ title }, "title")} />
       <Text label="Descrição para buscadores (opcional)" value={content.description} max={DESCRIPTION_MAX} rows={2} onChange={(description) => set({ description }, "description")} />
+      <label className="check-row">
+        <input type="checkbox" checked={content.indexable !== false} onChange={(event) => set({ indexable: event.target.checked ? undefined : false }, "indexable")} />
+        <span>Aparecer nos buscadores (Google e outros)</span>
+      </label>
+      <p className="small muted">Desmarcado, a página pede aos buscadores que não a listem. Ela continua aberta a quem tem o endereço: não é uma senha.</p>
       <fieldset className="ve-choice">
         <legend>Cor de destaque</legend>
         <div className="ve-swatches">
           {ACCENTS.map((accent: Accent) => (
             <label key={accent} className="ve-swatch-option">
-              <input type="radio" name="site-accent" checked={content.theme.accent === accent} onChange={() => set({ theme: { ...content.theme, accent } }, "theme")} />
+              <input type="radio" name="site-accent" checked={!content.theme.brand && content.theme.accent === accent} onChange={() => set({ theme: withoutBrand(content.theme, accent) }, "theme")} />
               <span className="ve-swatch" data-site-accent={accent} data-site-mode="light" aria-hidden="true" />
               <span>{ACCENT_LABEL[accent]}</span>
             </label>
           ))}
+          <label className="ve-swatch-option">
+            <input type="radio" name="site-accent" checked={Boolean(content.theme.brand)} onChange={() => set({ theme: { ...content.theme, brand: content.theme.brand ?? BRAND_START } }, "theme")} />
+            <span className="ve-swatch" style={{ background: content.theme.brand ?? BRAND_START }} aria-hidden="true" />
+            <span>Minha cor</span>
+          </label>
         </div>
+        {content.theme.brand && (
+          <>
+            <label>
+              Cor da sua marca
+              <input type="color" value={content.theme.brand} onChange={(event) => set({ theme: { ...content.theme, brand: event.target.value.toLowerCase() } }, "brand")} />
+            </label>
+            <p className="small muted">
+              A cor é ajustada só o quanto for preciso para o texto ficar legível: o botão fica <strong>{brandPalette(content.theme.brand, "light").solid}</strong> no modo claro e{" "}
+              <strong>{brandPalette(content.theme.brand, "dark").solid}</strong> no escuro.
+            </p>
+          </>
+        )}
       </fieldset>
       <fieldset className="ve-choice">
         <legend>Aparência da página</legend>
@@ -121,6 +159,18 @@ export function PageSettings({ content, onChange, images }: { content: SiteConte
             </label>
           ))}
         </div>
+      </fieldset>
+      <fieldset className="ve-choice">
+        <legend>Fonte da página</legend>
+        <div className="ve-swatches">
+          {(["default", ...FONTS] as const).map((font) => (
+            <label key={font} className="ve-swatch-option">
+              <input type="radio" name="site-font" checked={(content.theme.font ?? "default") === font} onChange={() => set({ theme: withFont(content.theme, font === "default" ? undefined : font) }, "theme")} />
+              <span data-site-font={font === "default" ? undefined : font}>{FONT_LABEL[font]}</span>
+            </label>
+          ))}
+        </div>
+        <p className="small muted">São as fontes do próprio aparelho de quem visita: nada é baixado. Um bloco ainda pode ter a sua fonte, na aba Estilo.</p>
       </fieldset>
       <fieldset className="ve-choice">
         <legend>Largura da página</legend>
