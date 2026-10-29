@@ -1,5 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
+import { AUTOSAVE_KEY } from "./src/modules/meu-site/autosave";
 
+const origin = process.env.E2E_ORIGIN || "http://127.0.0.1:8787";
 const mount = (process.env.BASE_URL || "").replace(/\/$/, "");
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -10,7 +12,10 @@ export default defineConfig({
   workers: 2,
   reporter: "list",
   use: {
-    baseURL: `${process.env.E2E_ORIGIN || "http://127.0.0.1:8787"}${mount}/`,
+    baseURL: `${origin}${mount}/`,
+    // The editor saves the draft by itself unless the person turns that off. The scenarios of the site press "Salvar rascunho" at their own pace,
+    // so their browser starts with it off; `site-autosave.spec.ts` uses a fresh browser (the default, on) and turns it on and off as a person does.
+    storageState: { cookies: [], origins: [{ origin, localStorage: [{ name: AUTOSAVE_KEY, value: "off" }] }] },
     launchOptions: {
       executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || undefined,
     },

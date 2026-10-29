@@ -1,5 +1,5 @@
 "use client";
-import { useReducer, useState, useTransition } from "react";
+import { useEffect, useReducer, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LayoutTemplate } from "lucide-react";
@@ -15,7 +15,9 @@ import { PREPARE_MESSAGE, prepareImage } from "./image-upload";
 import type { RemoveResult, UploadResult } from "./image-picker";
 import { PublicAddress } from "./public-address";
 import { VisualEditor } from "./visual-editor";
-import { changeSiteAddress, publishSite, restoreSiteRelease, saveSiteDraft, unpublishSite } from "./actions";
+import { changeSiteAddress, publishSite, restoreSiteRelease, saveSiteDraft, unpublishSite, type SaveResult } from "./actions";
+import { AUTOSAVE_DELAY_MS, AUTOSAVE_SAVED, AUTOSAVE_STOPPED, SAVE_UNREACHABLE, afterFailure, shouldAutosave } from "./autosave";
+import { useAutosavePreference } from "./use-autosave";
 
 interface Props {
   slug: string;
@@ -68,7 +70,12 @@ export function SiteWorkspace({ slug, initial, live, releases, services, images,
   const [confirmingRestore, setConfirmingRestore] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const dirty = JSON.stringify(content) !== saved;
+  const [autosave, setAutosave] = useAutosavePreference();
+  /** A conflict was found (someone else saved first), and what the server refused: the draft stops saving itself (autosave.ts). */
+  const [stopped, setStopped] = useState(false);
+  const [refused, setRefused] = useState<string | null>(null);
+  const serialized = JSON.stringify(content);
+  const dirty = serialized !== saved;
   useUnsavedGuard(dirty);
   const unpublished = live !== null && revision > live.draftRevision;
 
@@ -110,20 +117,43 @@ export function SiteWorkspace({ slug, initial, live, releases, services, images,
     return { ok: false, message: body?.error ?? "Não foi possível remover a imagem." };
   }
 
-  /** `note` is where the answer is shown: the editor's own, or the one of this screen. */
-  function save(note: Note) {
+  /** `note` is where the answer is shown: the editor's own, or the one of this screen. `auto` is the draft saving itself. */
+  function save(note: Note, auto = false) {
+    const sent = serialized;
     startTransition(async () => {
-      const result = await saveSiteDraft(content, revision);
+      let result: SaveResult;
+      try {
+        result = await saveSiteDraft(content, revision);
+      } catch {
+        // No answer (the connection): what is on the screen stays, and the person is told.
+        result = { status: "error", message: SAVE_UNREACHABLE };
+      }
       if (result.status === "saved") {
         setRevision(result.revision);
-        setSaved(JSON.stringify(content));
-        note.say("Rascunho salvo.");
+        setSaved(sent);
+        setRefused(null);
+        note.say(auto ? AUTOSAVE_SAVED : "Rascunho salvo.");
         router.refresh();
       } else {
-        note.say(result.message, true);
+        const stand = afterFailure(result.status, sent);
+        if (stand.stopped) setStopped(true);
+        setRefused(stand.refused);
+        note.say(stand.stopped && autosave ? `${result.message} ${AUTOSAVE_STOPPED}` : result.message, true);
       }
     });
   }
+
+  // The draft saves itself after a pause in the changes (the rule is autosave.ts); the timer starts again with every change.
+  const armed = shouldAutosave({ enabled: autosave, canEdit, dirty, pending, stopped, refused, content: serialized });
+  const saveNow = useRef<() => void>(() => {});
+  useEffect(() => {
+    saveNow.current = () => save(editorOpen ? editorNote : saveNote, true);
+  });
+  useEffect(() => {
+    if (!armed) return;
+    const timer = setTimeout(() => saveNow.current(), AUTOSAVE_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [armed, serialized]);
   /** `withWarnings` is the person's "publish anyway": the warnings found before do not stop it. */
   function publish(note: Note, withWarnings = false) {
     startTransition(async () => {
@@ -343,6 +373,8 @@ export function SiteWorkspace({ slug, initial, live, releases, services, images,
           revision={revision}
           pending={pending}
           live={live !== null}
+          autosave={autosave}
+          onAutosave={setAutosave}
           onSave={() => save(editorNote)}
           onPublish={() => publish(editorNote)}
           onPublishAnyway={() => publish(editorNote, true)}
