@@ -153,6 +153,8 @@ describe("the templates", () => {
     const row = make("template-image-text");
     expect(row.style).toMatchObject({ display: "flex", direction: "row", wrap: "wrap" });
     for (const child of row.children as SiteNode[]) expect(child.style).toMatchObject({ grow: 1, basis: "280px", minWidth: "0px" });
+    // The button does not stretch across the whole column: it keeps the width of its text.
+    expect((row.children[1] as BoxNode).style).toMatchObject({ align: "start" });
   });
   it("fit in one page together, with new identifiers each time", () => {
     const all = TEMPLATES.map(make);

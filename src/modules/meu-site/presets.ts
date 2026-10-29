@@ -92,7 +92,7 @@ const plans = (): SiteNode =>
 const imageAndText = (): SiteNode =>
   box("Imagem e texto", "section", { display: "flex", direction: "row", wrap: "wrap", gap: "32px", align: "center", padding: SECTION_PADDING }, [
     image("medium", { grow: 1, shrink: 1, basis: "280px", minWidth: "0px" }),
-    column([heading(2), paragraph(), contactButton("Falar comigo")], { gap: "12px", grow: 1, shrink: 1, basis: "280px", minWidth: "0px" }),
+    column([heading(2), paragraph(), contactButton("Falar comigo")], { gap: "12px", align: "start", grow: 1, shrink: 1, basis: "280px", minWidth: "0px" }),
   ]);
 
 export const CATALOGUE: readonly CatalogueItem[] = [
