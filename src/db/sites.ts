@@ -1,4 +1,5 @@
 import type { D1Database } from "@cloudflare/workers-types";
+import { z } from "zod";
 import {
   parseContent,
   publishIssues,
@@ -6,12 +7,13 @@ import {
   resolveServices,
   safeParseContent,
   slugSchema,
-  starterContent,
   titleSchema,
   withoutResolvedServices,
   type PublishIssue,
   type SiteContent,
 } from "@/modules/meu-site/contracts";
+import { starterOf } from "@/modules/meu-site/page-model";
+import { SITE_MODELS } from "@/modules/meu-site/page-models";
 import type { Delivery } from "@/modules/leads/contracts";
 import { sha256Hex } from "./crypto";
 import { activeUser, assertContext, type AuthenticatedContext } from "./students";
@@ -187,9 +189,11 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
       return { slug: draft.slug, content: resolveServices(content, new Map(services.map((s) => [s.id, s]))) };
     },
 
-    async create(raw: { slug: unknown; title: unknown }, now = new Date()): Promise<CreateSiteOutcome> {
+    async create(raw: { slug: unknown; title: unknown; model?: unknown }, now = new Date()): Promise<CreateSiteOutcome> {
       const slug = slugSchema.parse(raw.slug);
       const title = titleSchema.parse(raw.title);
+      // What the site starts with: one page, or a site with its pages (page-model.ts). An unknown model is refused, not guessed.
+      const model = z.enum(SITE_MODELS).default("single").parse(raw.model ?? undefined);
       const siteId = crypto.randomUUID();
       const stamp = now.toISOString();
       const existing = await db
@@ -211,7 +215,7 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
               `INSERT INTO site_drafts (site_id, content, revision, updated_by, updated_at)
                SELECT ?1, ?2, 1, ?3, ?4 WHERE (SELECT changes()) > 0`,
             )
-            .bind(siteId, JSON.stringify(starterContent(title)), userId, stamp),
+            .bind(siteId, JSON.stringify(starterOf(model, title)), userId, stamp),
           audit(SITE_CREATED, siteId, stamp),
         ]);
         return results[0].meta.changes > 0 ? { status: "created" } : { status: "forbidden" };

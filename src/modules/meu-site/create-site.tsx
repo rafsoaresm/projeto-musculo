@@ -3,12 +3,14 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createSite } from "./actions";
 import { SLUG_MAX, TITLE_MAX } from "./contracts";
+import { SITE_MODELS, SITE_MODEL_LABEL, type SiteModel } from "./page-models";
 
-/** The first step: an address and a title. Everything else is edited afterwards, in the draft. */
+/** The first step: an address, a title and what the site starts with. Everything else is edited afterwards, in the draft. */
 export function CreateSite({ suggestedSlug, suggestedTitle }: { suggestedSlug: string; suggestedTitle: string }) {
   const router = useRouter();
   const [slug, setSlug] = useState(suggestedSlug);
   const [title, setTitle] = useState(suggestedTitle);
+  const [model, setModel] = useState<SiteModel>("single");
   const [message, setMessage] = useState("");
   const [pending, startTransition] = useTransition();
   return (
@@ -18,7 +20,7 @@ export function CreateSite({ suggestedSlug, suggestedTitle }: { suggestedSlug: s
       onSubmit={(event) => {
         event.preventDefault();
         startTransition(async () => {
-          const result = await createSite(slug, title);
+          const result = await createSite(slug, title, model);
           setMessage(result.ok ? "" : result.message);
           if (result.ok) router.refresh();
         });
@@ -32,6 +34,17 @@ export function CreateSite({ suggestedSlug, suggestedTitle }: { suggestedSlug: s
         Endereço (letras minúsculas, números e hífens)
         <input value={slug} onChange={(event) => setSlug(event.target.value)} maxLength={SLUG_MAX} autoComplete="off" required />
       </label>
+      <fieldset className="ve-choice">
+        <legend>Começar com</legend>
+        {SITE_MODELS.map((entry) => (
+          <label key={entry} className="check-row">
+            <input type="radio" name="site-model" checked={model === entry} onChange={() => setModel(entry)} />
+            <span>
+              <strong>{SITE_MODEL_LABEL[entry].label}.</strong> {SITE_MODEL_LABEL[entry].hint}
+            </span>
+          </label>
+        ))}
+      </fieldset>
       <p className="small muted">
         O site fica em <code>/s/{slug || "seu-endereco"}</code> e só aparece para as pessoas depois que você publicar. Dá para mudar o endereço
         enquanto ele estiver fora do ar.

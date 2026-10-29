@@ -52,19 +52,19 @@ beforeAll(async () => {
   );
   db = await mf.getD1Database("DB");
   await migrate(db, ALL_MIGRATIONS);
-  const people = ["owner-a", "manager-a", "commercial-a", "tech-a", "finance-a", "owner-b", "outsider", "blocked-a", "revoked-a", "commercial-c", "owner-d"];
+  const people = ["owner-a", "manager-a", "commercial-a", "tech-a", "finance-a", "owner-b", "outsider", "blocked-a", "revoked-a", "commercial-c", "owner-d", "owner-e"];
   await db.batch([
     ...people.map((id) =>
       db.prepare("INSERT INTO auth_user(id,name,email,created_at,updated_at) VALUES (?1,?1,?2,0,0)").bind(id, `${id}@example.test`),
     ),
     db.prepare(`INSERT INTO users(id) VALUES ${people.filter((p) => p !== "blocked-a").map((p) => `('${p}')`).join(",")}`),
     db.prepare("INSERT INTO users(id, disabled_at) VALUES ('blocked-a', '2026-10-01T00:00:00.000Z')"),
-    db.prepare("INSERT INTO organizations(id,name) VALUES ('org-a','Studio A'),('org-b','Studio B'),('org-c','Studio C'),('org-d','Studio D')"),
+    db.prepare("INSERT INTO organizations(id,name) VALUES ('org-a','Studio A'),('org-b','Studio B'),('org-c','Studio C'),('org-d','Studio D'),('org-e','Studio E')"),
     db.prepare(
       `INSERT INTO memberships(organization_id,user_id,role,revoked_at) VALUES
        ('org-a','owner-a','OWNER',NULL),('org-a','manager-a','MANAGER',NULL),('org-a','commercial-a','COMMERCIAL',NULL),
        ('org-a','tech-a','TECHNICAL',NULL),('org-a','finance-a','FINANCE',NULL),('org-b','owner-b','OWNER',NULL),
-       ('org-a','blocked-a','MANAGER',NULL),('org-a','revoked-a','MANAGER','2026-10-02T00:00:00.000Z'),('org-c','commercial-c','COMMERCIAL',NULL),('org-d','owner-d','OWNER',NULL)`,
+       ('org-a','blocked-a','MANAGER',NULL),('org-a','revoked-a','MANAGER','2026-10-02T00:00:00.000Z'),('org-c','commercial-c','COMMERCIAL',NULL),('org-d','owner-d','OWNER',NULL),('org-e','owner-e','OWNER',NULL)`,
     ),
   ]);
 });
@@ -763,5 +763,39 @@ describe("reading a published version, to look at it and to compare it", () => {
     const next = (await one<{ n: number }>("SELECT COALESCE(MAX(number), 0) + 1 AS n FROM site_releases WHERE site_id = ?", siteId))!.n;
     await db.prepare("INSERT INTO site_releases(id,site_id,number,draft_revision,content,content_sha256,created_by) VALUES ('rel-not-a-doc', ?, ?, 1, '{\"schemaVersion\":9}', ?, 'owner-a')").bind(siteId, next, "c".repeat(64)).run();
     expect(await owner().release(next)).toBeNull();
+  });
+});
+
+describe("a site that starts from a model", () => {
+  const repo = () => sitesFor(db, scope("owner-e", "org-e"));
+  it("refuses a model that is not on the list, and creates nothing", async () => {
+    for (const model of ["inventado", "", 3, false]) await expect(repo().create({ slug: "estudio-e", title: "Estudio E", model })).rejects.toThrow();
+    expect(await repo().overview()).toBeNull();
+  });
+  it("makes the site with its pages when the complete model is asked for, and the draft is a document the server accepts", async () => {
+    expect(await repo().create({ slug: "estudio-e", title: "Estudio E", model: "complete" }, at(200))).toEqual({ status: "created" });
+    const draft = (await repo().overview())!.draft;
+    expect(draft.content.title).toBe("Estudio E");
+    expect(draft.content.blocks.map((entry) => entry.type)).toEqual(["hero", "box", "cta"]);
+    expect(draft.content.pages!.map((entry) => [entry.slug, entry.title])).toEqual([
+      ["sobre-mim", "Sobre mim"],
+      ["servicos", "Serviços"],
+      ["perguntas-frequentes", "Perguntas frequentes"],
+      ["contato", "Contato"],
+    ]);
+    expect(draft.revision).toBe(1);
+    // Saved again as it is: nothing in it is refused.
+    expect(await repo().saveDraft(draft.content, draft.revision, at(201))).toEqual({ status: "saved", revision: 2 });
+  });
+  it("is published with the warnings about what is still empty, page by page, and never stopped by a page that is only empty", async () => {
+    const revision = (await repo().overview())!.draft.revision;
+    const asked = await repo().publish(revision, at(202));
+    expect(asked.status).toBe("warnings");
+    if (asked.status !== "warnings") return;
+    expect(asked.issues.every((issue) => issue.severity === "warning")).toBe(true);
+    expect([...new Set(asked.issues.map((issue) => issue.page))].length).toBeGreaterThan(1);
+    expect((await repo().publish(revision, at(203), { withWarnings: true })).status).toBe("published");
+    const served = (await publishedSiteBySlug(db, "estudio-e"))!;
+    expect(served.content.pages).toHaveLength(4);
   });
 });

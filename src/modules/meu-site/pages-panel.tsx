@@ -3,6 +3,7 @@ import { useState } from "react";
 import { ArrowDown, ArrowUp, Copy, Plus, Trash2 } from "lucide-react";
 import { DESCRIPTION_MAX, HOME, MAX_PAGES, PAGE_TITLE_MAX, pageById, pageSlug, pagesOf, type SiteContent } from "./contracts";
 import { PAGE_REFUSAL_MESSAGE, setDescription, setInMenu, setSlug, setTitle, type PageRefusal } from "./page-model";
+import { PAGE_MODELS } from "./page-models";
 import { PublicAddress } from "./public-address";
 import { HOME_LABEL } from "./site-nav";
 
@@ -10,6 +11,8 @@ import { HOME_LABEL } from "./site-nav";
 export interface PageActions {
   go: (pageId: string) => void;
   add: () => void;
+  /** A new page that starts from a model (page-models.ts). */
+  addFrom: (modelKey: string) => void;
   duplicate: (pageId: string) => void;
   remove: (pageId: string) => void;
   move: (pageId: string, by: -1 | 1) => void;
@@ -78,6 +81,20 @@ export function PagesPanel({ content, currentId, actions, slug }: { content: Sit
           <Plus size={16} aria-hidden="true" /> Nova página
         </button>
       </p>
+      <details className="ve-models">
+        <summary>Páginas prontas</summary>
+        <p className="small muted">Cada modelo traz os blocos que a página costuma ter, sem texto inventado: você escreve o seu.</p>
+        <ul>
+          {PAGE_MODELS.map((entry) => (
+            <li key={entry.key}>
+              <button type="button" className="ve-model" disabled={pages.length >= MAX_PAGES} aria-label={`Nova página a partir do modelo ${entry.label}`} onClick={() => actions.addFrom(entry.key)}>
+                <strong>{entry.label}</strong>
+                <span>{entry.hint}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </details>
       {pages.length >= MAX_PAGES && <p className="small muted">O site aceita até {MAX_PAGES} páginas além da inicial.</p>}
       <p className="small muted ve-tip">
         Endereço do site: <PublicAddress slug={slug} />

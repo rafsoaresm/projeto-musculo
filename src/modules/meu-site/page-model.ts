@@ -1,3 +1,4 @@
+import { pageModel, section, type PageModel, type SiteModel } from "./page-models";
 import {
   DESCRIPTION_MAX,
   HOME,
@@ -12,6 +13,7 @@ import {
   pageSlug,
   pagesOf,
   siteNodeCount,
+  starterContent,
   withEachNode,
   type PageDef,
   type SiteContent,
@@ -81,6 +83,34 @@ export function addPage(content: SiteContent): PageOutcome {
   if (pagesOf(content).length >= MAX_PAGES) return { ok: false, reason: "limit-pages" };
   const page: PageDef = { id: newBlockId(), slug: freeSlug(content, "pagina"), title: "", description: "", blocks: [] };
   return { ok: true, content: withPages(content, [...pagesOf(content), page]), id: page.id };
+}
+
+/**
+ * A new page that starts from a model (page-models.ts): the title of the model, the address it makes, and the blocks the model has. Refused when the
+ * site has no room for another page or for its blocks.
+ */
+export function addPageFrom(content: SiteContent, modelKey: string): PageOutcome {
+  const model = pageModel(modelKey);
+  if (!model) return { ok: false, reason: "not-found" };
+  if (pagesOf(content).length >= MAX_PAGES) return { ok: false, reason: "limit-pages" };
+  const page = pageFromModel(content, model, newBlockId());
+  if (siteNodeCount(content) + allNodes(page.blocks).length > MAX_SITE_NODES) return { ok: false, reason: "limit-site-nodes" };
+  return { ok: true, content: withPages(content, [...pagesOf(content), page]), id: page.id };
+}
+
+/** A page made from a model, with an address no other page of the site has. */
+export function pageFromModel(content: Pick<SiteContent, "pages">, model: PageModel, newId: string): PageDef {
+  return { id: newId, slug: freeSlug(content as SiteContent, slugFromTitle(model.title)), title: model.title, description: "", blocks: model.build() };
+}
+
+/** The starter of a site model: the single page, or the home page with four more (the menu is made from their titles, in this order). */
+export function starterOf(model: SiteModel, title: string): SiteContent {
+  const single = starterContent(title);
+  if (model === "single") return single;
+  const [hero, ...rest] = single.blocks;
+  let pages: PageDef[] = [];
+  for (const key of ["about", "services", "faq", "contact"]) pages = [...pages, pageFromModel({ pages }, pageModel(key)!, newBlockId())];
+  return { ...single, blocks: [hero, section("template-highlights"), ...rest], pages };
 }
 
 /** The same blocks with new identifiers, and the links to a block of the page following the copy. Components stay the site's (an instance is still one). */

@@ -9,7 +9,7 @@ import type { RemoveResult, UploadResult } from "./image-picker";
 import type { AssetRow } from "@/db/site-assets";
 import { useMountPath } from "@/components/use-mount-path";
 import { COMPONENT_KEY, Layers, Library } from "./editor-library";
-import { PAGE_REFUSAL_MESSAGE, addPage, deletePage, duplicatePage, linksTo, movePage, pageChoices } from "./page-model";
+import { PAGE_REFUSAL_MESSAGE, addPage, addPageFrom, deletePage, duplicatePage, linksTo, movePage, pageChoices } from "./page-model";
 import { PagesPanel, SubpageSettings, type PageActions } from "./pages-panel";
 import { HOME_LABEL, siteNav } from "./site-nav";
 import { componentView, createComponent, deleteComponent, detachInstance, insertCopy, newInstance, setComponentRoot, setOverride } from "./component-model";
@@ -413,6 +413,18 @@ export function VisualEditor(props: VisualEditorProps) {
       setMode("edit");
       setPanel("props");
       setNotice("Página criada. Dê um título a ela: é o nome dela no menu, e também faz o endereço.");
+    },
+    addFrom: (modelKey) => {
+      const outcome = addPageFrom(realContent, modelKey);
+      if (!outcome.ok) {
+        setMessage(PAGE_REFUSAL_MESSAGE[outcome.reason]);
+        return;
+      }
+      onEditSite(outcome.content);
+      showPage(outcome.id);
+      setMode("edit");
+      setPanel("page");
+      setNotice(`Página “${pageById(outcome.content, outcome.id)?.title ?? ""}” criada a partir do modelo. Escreva os textos de cada bloco.`);
     },
     duplicate: (target) => {
       const outcome = duplicatePage(realContent, target);
