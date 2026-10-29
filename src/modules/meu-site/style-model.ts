@@ -33,6 +33,18 @@ export function patchSide(style: Style | undefined, group: "padding" | "margin",
   return patchStyle(style, { [group]: { ...style?.[group], [side]: value } });
 }
 
+/** The node with properties set (or cleared with undefined) in the style of one size: what a handle on the page writes. */
+export const setStyleProps = <T extends Styled>(node: T, screen: Screen, patch: Partial<Record<keyof Style, unknown>>): T =>
+  withScreenStyle(node, screen, patchStyle(ownStyle(node, screen), patch));
+
+/** The node with the same length on several sides of padding or margin, in the style of one size. */
+export function setSides<T extends Styled>(node: T, screen: Screen, group: "padding" | "margin", sides: readonly (typeof SIDES)[number][], value: string | undefined): T {
+  const own = ownStyle(node, screen);
+  const next: Record<string, string | undefined> = { ...own?.[group] };
+  for (const side of sides) next[side] = value;
+  return withScreenStyle(node, screen, patchStyle(own, { [group]: next }));
+}
+
 /** Whether a style would be accepted by the server. */
 export const isValidStyle = (style: unknown): boolean => styleSchema.safeParse(style).success;
 

@@ -30,8 +30,10 @@ export interface Slot {
 }
 export const PAGE: Slot["parent"] = null;
 
-export type Refusal = "not-found" | "not-accepted" | "cycle" | "limit-blocks" | "limit-children" | "limit-nodes" | "limit-depth";
+export type Refusal = "not-found" | "not-accepted" | "cycle" | "limit-blocks" | "limit-children" | "limit-nodes" | "limit-depth" | "not-siblings";
 export type Outcome = { ok: true; content: SiteContent; id: string } | { ok: false; reason: Refusal };
+/** What a change to several nodes gives: the document, and the identifiers of the nodes it made or kept. */
+export type ManyOutcome = { ok: true; content: SiteContent; ids: string[] } | { ok: false; reason: Refusal };
 
 export const REFUSAL_MESSAGE: Record<Refusal, string> = {
   "not-found": "Esse bloco não existe mais.",
@@ -41,6 +43,7 @@ export const REFUSAL_MESSAGE: Record<Refusal, string> = {
   "limit-children": `Cada contêiner aceita até ${MAX_CHILDREN} blocos dentro.`,
   "limit-nodes": `O site aceita até ${MAX_NODES} blocos no total, contando os que estão dentro de contêineres.`,
   "limit-depth": `Os contêineres aceitam até ${MAX_DEPTH} níveis, um dentro do outro.`,
+  "not-siblings": "Só dá para agrupar blocos que estão no mesmo lugar (na página ou no mesmo contêiner).",
 };
 
 /** Whether a node of this type holds other nodes. */
@@ -177,7 +180,7 @@ export function moveBlock(content: SiteContent, id: string, slot: Slot): Outcome
 }
 
 /** The same node with new identifiers, and so for everything inside it. */
-function cloneWithNewIds(entry: SiteNode): SiteNode {
+export function cloneWithNewIds(entry: SiteNode): SiteNode {
   const copy = { ...structuredClone(entry), id: newBlockId() } as SiteNode;
   return copy.type === "box" ? { ...copy, children: (entry as BoxNode).children.map(cloneWithNewIds) } : copy;
 }
@@ -279,4 +282,87 @@ export function setIn<T>(target: T, path: string, value: string): T {
     return { ...record, [key]: depth === keys.length - 1 ? value : walk(record[key], depth + 1) };
   };
   return walk(target, 0) as T;
+}
+
+// ---- several nodes at once ----
+
+/** The identifiers in the order of the document (a node before what it holds), each once, only the ones that are there. */
+export function inDocumentOrder(content: SiteContent, ids: readonly string[]): string[] {
+  const wanted = new Set(ids);
+  return allNodes(content.blocks).filter((entry) => wanted.has(entry.id)).map((entry) => entry.id);
+}
+
+/** Without the ones that are inside another of the list: what a removal, a copy or a duplicate of the lot takes is the topmost of each. */
+export function topmost(content: SiteContent, ids: readonly string[]): string[] {
+  const ordered = inDocumentOrder(content, ids);
+  const chosen = new Set(ordered);
+  return ordered.filter((id) => !ancestorsOf(content, id).some((above) => chosen.has(above.id)));
+}
+
+/** Takes the nodes out (the topmost of them, with what they hold). The same document when none is there. */
+export const removeBlocks = (content: SiteContent, ids: readonly string[]): SiteContent => topmost(content, ids).reduce((current, id) => removeBlock(current, id), content);
+
+/** A copy of each right after it. Nothing is changed when one of them cannot be copied (the page or a container is full). */
+export function duplicateBlocks(content: SiteContent, ids: readonly string[]): ManyOutcome {
+  const tops = topmost(content, ids);
+  if (tops.length === 0) return { ok: false, reason: "not-found" };
+  let current = content;
+  const made: string[] = [];
+  for (const id of tops) {
+    const outcome = duplicateBlock(current, id);
+    if (!outcome.ok) return outcome;
+    current = outcome.content;
+    made.push(outcome.id);
+  }
+  return { ok: true, content: current, ids: made };
+}
+
+/**
+ * A new container around the nodes, where the first of them stands, holding them in the order of the document. Only for nodes that are in the same
+ * place (the page, or the same container); one node is wrapped where it is.
+ */
+export function wrapBlocks(content: SiteContent, ids: readonly string[]): Outcome {
+  const tops = topmost(content, ids);
+  if (tops.length === 0) return { ok: false, reason: "not-found" };
+  if (tops.length === 1) return wrapBlock(content, tops[0]);
+  const found = tops.map((id) => locate(content, id)!);
+  const parentId = found[0].parentId;
+  if (found.some((entry) => entry.parentId !== parentId)) return { ok: false, reason: "not-siblings" };
+  const wrapper = { ...(emptyBlock("box") as BoxNode), children: found.map((entry) => entry.node) };
+  if (allNodes(content.blocks).length + 1 > MAX_NODES) return { ok: false, reason: "limit-nodes" };
+  const without = removeBlocks(content, tops);
+  const refusal = placement(without, wrapper, parentId);
+  if (refusal) return { ok: false, reason: refusal };
+  const next = [...childrenOf(without, parentId)!];
+  next.splice(found[0].index, 0, wrapper);
+  return { ok: true, content: withChildren(without, parentId, next), id: wrapper.id };
+}
+
+/** Changes each of the nodes with a function that gives the new one. */
+export const updateBlocks = (content: SiteContent, ids: readonly string[], change: (entry: SiteNode) => SiteNode): SiteContent => ids.reduce((current, id) => updateBlock(current, id, change), content);
+
+export type Direction = "up" | "down" | "left" | "right";
+/**
+ * The node the arrow keys go to from a node: up and down are the previous and the next in reading order (what a container holds comes
+ * right after it), left is the container that holds it, right is its first child. Null when there is nowhere to go.
+ */
+export function navigate(content: SiteContent, id: string, direction: Direction): string | null {
+  const order = allNodes(content.blocks);
+  const at = order.findIndex((entry) => entry.id === id);
+  if (at < 0) return null;
+  if (direction === "up") return order[at - 1]?.id ?? null;
+  if (direction === "down") return order[at + 1]?.id ?? null;
+  if (direction === "left") return locate(content, id)?.parentId ?? null;
+  const entry = order[at];
+  return entry.type === "box" ? entry.children[0]?.id ?? null : null;
+}
+
+/** The nodes from `from` to `to` when they are in the same place (a shift-click on a list); otherwise only `to`. */
+export function rangeBetween(content: SiteContent, from: string, to: string): string[] {
+  const a = locate(content, from);
+  const b = locate(content, to);
+  if (!a || !b || a.parentId !== b.parentId) return b ? [to] : [];
+  const list = childrenOf(content, a.parentId)!;
+  const [low, high] = a.index <= b.index ? [a.index, b.index] : [b.index, a.index];
+  return list.slice(low, high + 1).map((entry) => entry.id);
 }

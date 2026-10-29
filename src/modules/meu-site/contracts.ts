@@ -440,6 +440,12 @@ export function parseContent(raw: unknown): SiteContent {
   if (version === 2) return upgradeV2(contentV2.parse(raw));
   return siteContent.parse(raw);
 }
+/** One node of a document (for what is pasted from the clipboard), or null when it is not one. Nested too deep is refused before the recursion of the schema. */
+export function parseNode(raw: unknown): SiteNode | null {
+  if (rawDepth(raw, RAW_DEPTH_LIMIT) > RAW_DEPTH_LIMIT) return null;
+  const parsed = siteNode.safeParse(raw);
+  return parsed.success ? parsed.data : null;
+}
 export function safeParseContent(raw: unknown): { success: true; data: SiteContent } | { success: false } {
   try {
     return { success: true, data: parseContent(raw) };

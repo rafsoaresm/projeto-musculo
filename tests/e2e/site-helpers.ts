@@ -1,4 +1,5 @@
 import { expect, type Page } from "@playwright/test";
+import { createProfessional, localIP } from "./helpers";
 
 export const state = (page: Page) => page.getByRole("region", { name: "Estado do site" });
 export const editor = (page: Page) => page.getByRole("dialog", { name: "Editor visual do site" });
@@ -46,3 +47,15 @@ export async function addAtEnd(page: Page, name: string) {
 export const styleTab = (page: Page) => inspector(page).getByRole("button", { name: "Estilo", exact: true });
 export const contentTab = (page: Page) => inspector(page).getByRole("button", { name: "Conteúdo", exact: true });
 
+
+/** A new professional with a new site, and its editor open. Returns the address of the site. */
+export async function startEditor(page: Page, name = "Marina Editor") {
+  await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
+  const unique = crypto.randomUUID().slice(0, 8);
+  await createProfessional(page, `Estúdio ${unique}`, name);
+  await page.goto("./profissional/meu-site");
+  await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Criar meu site" }).click();
+  await expect(state(page).getByText("Fora do ar")).toBeVisible();
+  await openEditor(page);
+  return `estudio-${unique}`;
+}

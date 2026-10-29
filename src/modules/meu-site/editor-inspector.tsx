@@ -31,7 +31,7 @@ import {
   type SiteContent,
   type SiteNode,
 } from "./contracts";
-import { ancestorsOf, locate, updateBlock } from "./editor-model";
+import { ancestorsOf, locate, updateBlock, updateBlocks } from "./editor-model";
 import { nodeText, nodeTitle } from "./node-label";
 import { ACCENTS, ACCENT_LABEL, MODES, MODE_LABEL, WIDTHS, WIDTH_LABEL, type Accent, type Mode, type Width } from "./site-theme";
 import { ownStyle, type Screen } from "./screens";
@@ -219,9 +219,12 @@ export function BlockInspector({
   onChange,
   act,
   select,
+  ids,
 }: {
   content: SiteContent;
   id: string;
+  /** Everything that is selected (the block shown is the last): a change of style is made to all of them. */
+  ids: readonly string[];
   services: ServiceChoice[];
   images: ImageSupport;
   tab: "content" | "style";
@@ -238,10 +241,13 @@ export function BlockInspector({
   const entry = found.node;
   const patch = (changes: Record<string, unknown>) =>
     onChange(updateBlock(content, id, (current) => ({ ...current, ...changes }) as SiteNode), `${id}:${Object.keys(changes).join(",")}`);
+  // With several blocks selected, the style panel is for all of them: each gets the same change on its own style.
+  const group = ids.length > 1 && ids.includes(id) ? ids : [id];
+  const several = group.length > 1;
   // A change of style is always to one size of the screen: the computer's style, or what the tablet or the phone does differently.
   const withStyle = (change: (style: Style | undefined) => Style | undefined, key: string) =>
-    onChange(updateBlock(content, id, (current) => withScreenStyle(current, screen, change(ownStyle(current, screen)))), `${id}:style:${screen}:${key}`);
-  const onNode = (change: (current: SiteNode) => SiteNode, key: string) => onChange(updateBlock(content, id, change), `${id}:style:${screen}:${key}`);
+    onChange(updateBlocks(content, group, (current) => withScreenStyle(current, screen, change(ownStyle(current, screen)))), `${id}:style:${screen}:${key}`);
+  const onNode = (change: (current: SiteNode) => SiteNode, key: string) => onChange(updateBlocks(content, group, change), `${id}:style:${screen}:${key}`);
   const known = new Set(services.map((service) => service.id));
   const label = nodeTitle(entry);
   const above = ancestorsOf(content, id);
@@ -262,16 +268,22 @@ export function BlockInspector({
           <span aria-current="true">{label}</span>
         </nav>
       )}
-      <div className="ve-tabs" role="group" aria-label="O que editar">
-        <button type="button" aria-pressed={tab === "content"} onClick={() => onTab("content")}>
-          Conteúdo
-        </button>
-        <button type="button" aria-pressed={tab === "style"} onClick={() => onTab("style")}>
-          Estilo
-        </button>
-      </div>
+      {several ? (
+        <p className="small muted ve-multi-note" role="status">
+          {group.length} blocos selecionados: o que você mudar no estilo vale para todos. O painel mostra o que o último escolhido tem.
+        </p>
+      ) : (
+        <div className="ve-tabs" role="group" aria-label="O que editar">
+          <button type="button" aria-pressed={tab === "content"} onClick={() => onTab("content")}>
+            Conteúdo
+          </button>
+          <button type="button" aria-pressed={tab === "style"} onClick={() => onTab("style")}>
+            Estilo
+          </button>
+        </div>
+      )}
 
-      {tab === "style" ? (
+      {several || tab === "style" ? (
         <StylePanel
           node={entry}
           screen={screen}

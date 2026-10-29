@@ -6,6 +6,7 @@ import {
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -18,10 +19,12 @@ import {
   type Ref,
 } from "react";
 import { ArrowDown, ArrowUp, Copy, GripVertical, Group, Maximize, Minus, Plus, Trash2 } from "lucide-react";
+import { BlockHandles, type Guide, type HandleHost } from "./block-handles";
 import { actualSize as actualView, fitView, moveBy, percent, reveal as revealBox, steppedScale, wheelScale, zoomAt, type Size, type View } from "./canvas-view";
 import { BLOCK_LABEL, type SiteContent, type SiteNode } from "./contracts";
-import { landingAt, type Landing, type LayoutNode } from "./drop-geometry";
+import { landingAt, type Landing, type LayoutNode, type Rect } from "./drop-geometry";
 import { locate, type Slot } from "./editor-model";
+import { marqueeSelect, rectBetween } from "./selection";
 import type { EditHooks, FieldSpec } from "./renderer";
 import { SCREENS, SCREEN_LABEL, SCREEN_WIDTH, type Screen } from "./screens";
 import { SCREEN_ICON } from "./screen-ui";
@@ -39,11 +42,24 @@ import { SCREEN_ICON } from "./screen-ui";
 export type Drag = { kind: "new"; key: string } | { kind: "move"; id: string };
 export type NodeAction = "up" | "down" | "duplicate" | "delete" | "out" | "into" | "wrap" | "unwrap";
 
+export type ManyAction = "duplicate" | "delete" | "wrap";
 export interface EditorApi {
   content: SiteContent;
+  /** The primary of the selection: the block the panel shows and the handles sit on. */
   selectedId: string | null;
-  /** Selects a block (or nothing). A click in a frame also says which size of the screen it was in, and that size becomes the one being edited. */
-  select: (id: string | null, screen?: Screen) => void;
+  /** Everything selected, in the order it was chosen (the primary is the last). */
+  selectedIds: readonly string[];
+  /**
+   * Selects a block (or nothing). A click in a frame also says which size of the screen it was in, and that size becomes the one being edited.
+   * `toggle` (a click with Ctrl, Cmd or Shift) adds the block to the selection, or takes it away.
+   */
+  select: (id: string | null, screen?: Screen, how?: "replace" | "toggle") => void;
+  /** A set of blocks chosen at once (a rectangle drawn on the page). */
+  selectMany: (ids: string[], screen?: Screen) => void;
+  /** What several selected blocks can be done together. */
+  actMany: (action: ManyAction) => void;
+  /** Opens the menu of a block, at a point of the window. */
+  menu: (id: string, x: number, y: number) => void;
   commitText: (blockId: string, path: string, value: string) => void;
   drag: Drag | null;
   startDrag: (drag: Drag) => void;
@@ -55,6 +71,9 @@ export interface EditorApi {
   canDrop: (slot: Slot) => boolean;
   drop: (slot: Slot) => void;
   act: (id: string, action: NodeAction) => void;
+  /** Changes a block (the change is told which size of the screen is being edited). All the changes with the same `key` are one step of the history. */
+  edit: (id: string, change: (entry: SiteNode, screen: Screen) => SiteNode, key: string) => void;
+  undo: () => void;
 }
 export const EditorContext = createContext<EditorApi | null>(null);
 function useEditor(): EditorApi {
@@ -181,13 +200,33 @@ function readLayout(element: Element, origin: DOMRect, isPage: boolean): LayoutN
 const labelOf = (entry: SiteNode) => entry.name || BLOCK_LABEL[entry.type];
 
 /** The outline of a block, its name, and what can be done with it. Placed over the block by `place`, which measures the page. */
-function SelectionBox({ node, boxRef }: { node: SiteNode; boxRef: React.RefObject<HTMLDivElement | null> }) {
+function SelectionBox({ node, boxRef, handles, count }: { node: SiteNode; boxRef: React.RefObject<HTMLDivElement | null>; handles: HandleHost | null; count: number }) {
   const api = useEditor();
   const found = locate(api.content, node.id);
+  if (count > 1) {
+    const many = `${count} blocos selecionados`;
+    return (
+      <div ref={boxRef} className="ve-select" hidden>
+        <span className="ve-chip">{count} blocos</span>
+        <div className="ve-tools" role="toolbar" aria-label={`Ferramentas de ${many}`}>
+          <button type="button" title="Agrupar em um contêiner (Ctrl+G)" aria-label={`Agrupar ${many} em um contêiner`} onClick={(event) => { event.stopPropagation(); api.actMany("wrap"); }}>
+            <Group size={16} />
+          </button>
+          <button type="button" title="Duplicar (Ctrl+D)" aria-label={`Duplicar ${many}`} onClick={(event) => { event.stopPropagation(); api.actMany("duplicate"); }}>
+            <Copy size={16} />
+          </button>
+          <button type="button" className="ve-danger" title="Excluir (Delete)" aria-label={`Excluir ${many}`} onClick={(event) => { event.stopPropagation(); api.actMany("delete"); }}>
+            <Trash2 size={16} />
+          </button>
+        </div>
+      </div>
+    );
+  }
   const label = labelOf(node);
   return (
     <div ref={boxRef} className="ve-select" hidden>
       <span className="ve-chip">{label}</span>
+      {handles && <BlockHandles host={handles} />}
       <div className="ve-tools" role="toolbar" aria-label={`Ferramentas de ${label}`}>
         <button
           type="button"
@@ -301,8 +340,47 @@ export function CanvasSurface({
   const hand = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const spaceHeld = useRef(false);
   const justMoved = useRef(false);
+  /** The lines the handles snap to while one is dragged, in the coordinates of the layer over the canvas. */
+  const [guides, setGuides] = useState<Guide[]>([]);
+  /** The rectangle being drawn with Shift held (a marquee), in the coordinates of the layer over the canvas. */
+  const [marquee, setMarquee] = useState<Rect | null>(null);
+  const drawing = useRef<{ id: number; x: number; y: number; active: boolean } | null>(null);
+  /** The outlines of the blocks of the selection that are not the primary. */
+  const extraBoxes = useRef(new Map<string, HTMLDivElement>());
+  /** What wants to be told when the outline is put over the block again (the handles that depend on the layout). */
+  const placers = useRef(new Set<() => void>());
+  const registerPlacer = useCallback((fn: () => void) => {
+    placers.current.add(fn);
+    return () => {
+      placers.current.delete(fn);
+    };
+  }, []);
   const selected = interactive && api.selectedId ? locate(api.content, api.selectedId)?.node ?? null : null;
+  const many = interactive ? api.selectedIds.length : 0;
+  const extraIds = interactive ? api.selectedIds.filter((id) => id !== api.selectedId) : [];
   const frames = SCREENS.filter((size) => visible[size]);
+  const { edit: editNode, undo: undoEdit } = api;
+  const selectedNode = selected?.id ?? null;
+  const selectedLabel = selected ? labelOf(selected) : "";
+  const handleHost = useMemo<HandleHost | null>(
+    () =>
+      selected && !compact && many < 2
+        ? {
+            node: selected,
+            label: selectedLabel,
+            element: () => inner.current?.querySelector<HTMLElement>(`[data-frame="${screen}"] ${nodeSelector(selected.id)}`) ?? null,
+            origin: () => inner.current?.getBoundingClientRect() ?? null,
+            scale: () => view.current.scale,
+            edit: editNode,
+            undo: undoEdit,
+            setGuides,
+            register: registerPlacer,
+          }
+        : null,
+    // The block's own object changes with every edit of it, which is what keeps `node` current.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selected, selectedNode, selectedLabel, compact, many, screen, editNode, undoEdit, registerPlacer],
+  );
 
   const size = useCallback((): { canvas: Size; world: Size } => {
     const area = canvas.current;
@@ -330,6 +408,8 @@ export function CanvasSurface({
     const host = inner.current;
     const element = host && interactive && api.selectedId ? host.querySelector(`[data-frame="${screen}"] ${nodeSelector(api.selectedId)}`) : null;
     cover(selection.current, element);
+    extraBoxes.current.forEach((box, id) => cover(box, host && interactive ? host.querySelector(`[data-frame="${screen}"] ${nodeSelector(id)}`) : null));
+    placers.current.forEach((fn) => fn());
   }, [api.selectedId, screen, interactive, cover]);
   const latestPlace = useRef(place);
   // After every render (a style, a text or an image may have moved things).
@@ -491,9 +571,15 @@ export function CanvasSurface({
   };
 
   const startHand = (event: PointerEvent<HTMLDivElement>) => {
-    if (compact) return;
     const target = event.target as Element;
-    const onBackground = !target.closest("[data-frame], button, [role='toolbar']");
+    // Shift and the pointer down on the page or its background starts a rectangle that picks blocks (a plain click with Shift, which adds one block, still is a click).
+    if (interactive && !compact && event.button === 0 && event.shiftKey && !target.closest("button, [role='toolbar'], [data-handle], [contenteditable]")) {
+      const origin = inner.current?.getBoundingClientRect();
+      if (origin) drawing.current = { id: event.pointerId, x: event.clientX - origin.left, y: event.clientY - origin.top, active: false };
+      return;
+    }
+    if (compact) return;
+    const onBackground = !target.closest("[data-frame], button, [role='toolbar'], [data-handle]");
     if (!(event.button === 1 || (event.button === 0 && (spaceHeld.current || onBackground)))) return;
     // Taking the pointer for the hand keeps the browser from moving the focus; the focus leaves what had it (a button, a field), so the keys of the canvas are heard.
     event.preventDefault();
@@ -502,6 +588,21 @@ export function CanvasSurface({
     hand.current = { x: event.clientX, y: event.clientY, moved: false };
   };
   const moveHand = (event: PointerEvent<HTMLDivElement>) => {
+    const pen = drawing.current;
+    if (pen && pen.id === event.pointerId) {
+      const origin = inner.current?.getBoundingClientRect();
+      if (!origin) return;
+      const x = event.clientX - origin.left;
+      const y = event.clientY - origin.top;
+      if (!pen.active) {
+        if (Math.hypot(x - pen.x, y - pen.y) < 4) return;
+        pen.active = true;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+      }
+      setMarquee(rectBetween({ x: pen.x, y: pen.y }, { x, y }));
+      return;
+    }
     const grip = hand.current;
     if (!grip) return;
     const dx = event.clientX - grip.x;
@@ -514,6 +615,24 @@ export function CanvasSurface({
     moved(moveBy(view.current, dx, dy));
   };
   const endHand = (event: PointerEvent<HTMLDivElement>) => {
+    const pen = drawing.current;
+    if (pen && pen.id === event.pointerId) {
+      drawing.current = null;
+      setMarquee(null);
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+      if (pen.active) {
+        const origin = inner.current?.getBoundingClientRect();
+        const root = inner.current?.querySelector(`[data-frame="${screen}"] [data-page-root]`);
+        if (origin && root && event.type === "pointerup") {
+          const area = rectBetween({ x: pen.x, y: pen.y }, { x: event.clientX - origin.left, y: event.clientY - origin.top });
+          api.selectMany(marqueeSelect(readLayout(root, origin, true), area), screen);
+        }
+        // The click that ends a rectangle is not a click on the page.
+        justMoved.current = true;
+        setTimeout(() => (justMoved.current = false), 0);
+      }
+      return;
+    }
     const grip = hand.current;
     if (!grip) return;
     hand.current = null;
@@ -542,7 +661,18 @@ export function CanvasSurface({
           if (!interactive || justMoved.current) return;
           const frame = frameOf(event.target);
           const element = nodeAt(event);
-          api.select(element?.getAttribute("data-block-id") ?? null, element ? screenOf(frame) : undefined);
+          const adding = event.shiftKey || event.ctrlKey || event.metaKey;
+          // Ctrl, Cmd or Shift on a block adds it to the selection (or takes it away); on the empty page it changes nothing.
+          if (adding && !element) return;
+          api.select(element?.getAttribute("data-block-id") ?? null, element ? screenOf(frame) : undefined, adding ? "toggle" : "replace");
+        }}
+        onContextMenu={(event) => {
+          if (!interactive) return;
+          // Over a handle or the outline of the selected block it is that block's menu.
+          const id = nodeAt(event)?.getAttribute("data-block-id") ?? ((event.target as Element).closest?.("[data-handle], .ve-select") ? api.selectedId : null);
+          if (!id) return;
+          event.preventDefault();
+          api.menu(id, event.clientX, event.clientY);
         }}
         onMouseMove={(event) => {
           if (!interactive || api.drag || hand.current) return;
@@ -605,7 +735,22 @@ export function CanvasSurface({
           {interactive && (
             <div className="ve-overlay" aria-hidden={false}>
               <div ref={hover} className="ve-hover" hidden />
-              {selected && <SelectionBox node={selected} boxRef={selection} />}
+              {extraIds.map((id) => (
+                <div
+                  key={id}
+                  ref={(element) => {
+                    if (element) extraBoxes.current.set(id, element);
+                    else extraBoxes.current.delete(id);
+                  }}
+                  className="ve-select ve-select-extra"
+                  hidden
+                />
+              ))}
+              {selected && <SelectionBox node={selected} boxRef={selection} handles={handleHost} count={many} />}
+              {marquee && <div className="ve-marquee" style={{ left: marquee.left, top: marquee.top, width: marquee.right - marquee.left, height: marquee.bottom - marquee.top }} />}
+              {guides.map((guide, index) => (
+                <div key={index} className="ve-guide" data-axis={guide.axis} style={guide.axis === "x" ? { left: guide.at } : { top: guide.at }} />
+              ))}
               {api.drag && api.target?.line && (
                 <div
                   className="ve-drop-line"
