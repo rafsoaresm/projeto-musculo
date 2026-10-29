@@ -7,6 +7,11 @@ import type { SiteContent } from "./contracts";
  */
 export const HISTORY_LIMIT = 75;
 export const COALESCE_MS = 1200;
+/**
+ * A key that starts with this is one gesture (a handle dragged on the page): everything with that key is a single step, however long the pointer
+ * rests in the middle of it. Other keys (typing) are a step only while the changes keep coming.
+ */
+export const GESTURE_PREFIX = "gesture:";
 
 export interface History {
   past: SiteContent[];
@@ -28,7 +33,7 @@ export function historyReducer(state: History, action: HistoryAction): History {
   switch (action.type) {
     case "edit": {
       if (action.content === state.present) return state;
-      const joins = action.key !== undefined && action.key === state.lastKey && action.at - state.lastAt < COALESCE_MS;
+      const joins = action.key !== undefined && action.key === state.lastKey && (action.key.startsWith(GESTURE_PREFIX) || action.at - state.lastAt < COALESCE_MS);
       if (joins) return { ...state, present: action.content, future: [], lastAt: action.at };
       const past = [...state.past, state.present];
       if (past.length > HISTORY_LIMIT) past.shift();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { COALESCE_MS, HISTORY_LIMIT, historyReducer, startHistory } from "@/modules/meu-site/editor-history";
+import { COALESCE_MS, GESTURE_PREFIX, HISTORY_LIMIT, historyReducer, startHistory } from "@/modules/meu-site/editor-history";
 import { starterContent, type SiteContent } from "@/modules/meu-site/contracts";
 
 const doc = (title: string): SiteContent => ({ ...starterContent("Base"), title });
@@ -41,6 +41,22 @@ describe("undo and redo", () => {
     h = historyReducer(h, { type: "edit", content: doc("z"), at: 700 + COALESCE_MS + 2 });
     h = historyReducer(h, { type: "edit", content: doc("zz"), at: 700 + COALESCE_MS + 3 });
     expect(h.past).toHaveLength(5);
+  });
+  it("keeps one gesture (a handle dragged on the page) as one step however long the pointer rests, and the next gesture as another", () => {
+    let h = startHistory(doc("a"));
+    h = historyReducer(h, { type: "edit", content: doc("a1"), at: 0, key: `${GESTURE_PREFIX}n:1` });
+    h = historyReducer(h, { type: "edit", content: doc("a2"), at: 50, key: `${GESTURE_PREFIX}n:1` });
+    // The pointer rests for longer than typing may, and moves again: still the same step.
+    h = historyReducer(h, { type: "edit", content: doc("a3"), at: 50 + COALESCE_MS * 5, key: `${GESTURE_PREFIX}n:1` });
+    expect(h.past).toHaveLength(1);
+    expect(h.past[0].title).toBe("a");
+    expect(h.present.title).toBe("a3");
+    h = historyReducer(h, { type: "edit", content: doc("b1"), at: 50 + COALESCE_MS * 5 + 10, key: `${GESTURE_PREFIX}n:2` });
+    expect(h.past).toHaveLength(2);
+    h = historyReducer(h, { type: "undo" });
+    expect(h.present.title).toBe("a3");
+    h = historyReducer(h, { type: "undo" });
+    expect(h.present.title).toBe("a");
   });
   it("starts a new step after undoing, even for the same field", () => {
     let h = startHistory(doc("a"));

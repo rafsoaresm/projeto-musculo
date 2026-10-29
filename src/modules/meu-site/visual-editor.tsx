@@ -217,6 +217,8 @@ export function VisualEditor(props: VisualEditorProps) {
     canDrop,
     drop: dropAt,
     act,
+    edit: (id, change, key) => onEdit(updateBlock(content, id, (entry) => change(entry, screen)), key),
+    undo: props.undo,
   };
   const hooks = canvasHooks();
   const add = (key: string) => {

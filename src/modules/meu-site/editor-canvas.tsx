@@ -6,6 +6,7 @@ import {
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -18,6 +19,7 @@ import {
   type Ref,
 } from "react";
 import { ArrowDown, ArrowUp, Copy, GripVertical, Group, Maximize, Minus, Plus, Trash2 } from "lucide-react";
+import { BlockHandles, type Guide, type HandleHost } from "./block-handles";
 import { actualSize as actualView, fitView, moveBy, percent, reveal as revealBox, steppedScale, wheelScale, zoomAt, type Size, type View } from "./canvas-view";
 import { BLOCK_LABEL, type SiteContent, type SiteNode } from "./contracts";
 import { landingAt, type Landing, type LayoutNode } from "./drop-geometry";
@@ -55,6 +57,9 @@ export interface EditorApi {
   canDrop: (slot: Slot) => boolean;
   drop: (slot: Slot) => void;
   act: (id: string, action: NodeAction) => void;
+  /** Changes a block (the change is told which size of the screen is being edited). All the changes with the same `key` are one step of the history. */
+  edit: (id: string, change: (entry: SiteNode, screen: Screen) => SiteNode, key: string) => void;
+  undo: () => void;
 }
 export const EditorContext = createContext<EditorApi | null>(null);
 function useEditor(): EditorApi {
@@ -181,13 +186,14 @@ function readLayout(element: Element, origin: DOMRect, isPage: boolean): LayoutN
 const labelOf = (entry: SiteNode) => entry.name || BLOCK_LABEL[entry.type];
 
 /** The outline of a block, its name, and what can be done with it. Placed over the block by `place`, which measures the page. */
-function SelectionBox({ node, boxRef }: { node: SiteNode; boxRef: React.RefObject<HTMLDivElement | null> }) {
+function SelectionBox({ node, boxRef, handles }: { node: SiteNode; boxRef: React.RefObject<HTMLDivElement | null>; handles: HandleHost | null }) {
   const api = useEditor();
   const found = locate(api.content, node.id);
   const label = labelOf(node);
   return (
     <div ref={boxRef} className="ve-select" hidden>
       <span className="ve-chip">{label}</span>
+      {handles && <BlockHandles host={handles} />}
       <div className="ve-tools" role="toolbar" aria-label={`Ferramentas de ${label}`}>
         <button
           type="button"
@@ -301,8 +307,40 @@ export function CanvasSurface({
   const hand = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const spaceHeld = useRef(false);
   const justMoved = useRef(false);
+  /** The lines the handles snap to while one is dragged, in the coordinates of the layer over the canvas. */
+  const [guides, setGuides] = useState<Guide[]>([]);
+  /** What wants to be told when the outline is put over the block again (the handles that depend on the layout). */
+  const placers = useRef(new Set<() => void>());
+  const registerPlacer = useCallback((fn: () => void) => {
+    placers.current.add(fn);
+    return () => {
+      placers.current.delete(fn);
+    };
+  }, []);
   const selected = interactive && api.selectedId ? locate(api.content, api.selectedId)?.node ?? null : null;
   const frames = SCREENS.filter((size) => visible[size]);
+  const { edit: editNode, undo: undoEdit } = api;
+  const selectedNode = selected?.id ?? null;
+  const selectedLabel = selected ? labelOf(selected) : "";
+  const handleHost = useMemo<HandleHost | null>(
+    () =>
+      selected && !compact
+        ? {
+            node: selected,
+            label: selectedLabel,
+            element: () => inner.current?.querySelector<HTMLElement>(`[data-frame="${screen}"] ${nodeSelector(selected.id)}`) ?? null,
+            origin: () => inner.current?.getBoundingClientRect() ?? null,
+            scale: () => view.current.scale,
+            edit: editNode,
+            undo: undoEdit,
+            setGuides,
+            register: registerPlacer,
+          }
+        : null,
+    // The block's own object changes with every edit of it, which is what keeps `node` current.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selected, selectedNode, selectedLabel, compact, screen, editNode, undoEdit, registerPlacer],
+  );
 
   const size = useCallback((): { canvas: Size; world: Size } => {
     const area = canvas.current;
@@ -330,6 +368,7 @@ export function CanvasSurface({
     const host = inner.current;
     const element = host && interactive && api.selectedId ? host.querySelector(`[data-frame="${screen}"] ${nodeSelector(api.selectedId)}`) : null;
     cover(selection.current, element);
+    placers.current.forEach((fn) => fn());
   }, [api.selectedId, screen, interactive, cover]);
   const latestPlace = useRef(place);
   // After every render (a style, a text or an image may have moved things).
@@ -493,7 +532,7 @@ export function CanvasSurface({
   const startHand = (event: PointerEvent<HTMLDivElement>) => {
     if (compact) return;
     const target = event.target as Element;
-    const onBackground = !target.closest("[data-frame], button, [role='toolbar']");
+    const onBackground = !target.closest("[data-frame], button, [role='toolbar'], [data-handle]");
     if (!(event.button === 1 || (event.button === 0 && (spaceHeld.current || onBackground)))) return;
     // Taking the pointer for the hand keeps the browser from moving the focus; the focus leaves what had it (a button, a field), so the keys of the canvas are heard.
     event.preventDefault();
@@ -605,7 +644,10 @@ export function CanvasSurface({
           {interactive && (
             <div className="ve-overlay" aria-hidden={false}>
               <div ref={hover} className="ve-hover" hidden />
-              {selected && <SelectionBox node={selected} boxRef={selection} />}
+              {selected && <SelectionBox node={selected} boxRef={selection} handles={handleHost} />}
+              {guides.map((guide, index) => (
+                <div key={index} className="ve-guide" data-axis={guide.axis} style={guide.axis === "x" ? { left: guide.at } : { top: guide.at }} />
+              ))}
               {api.drag && api.target?.line && (
                 <div
                   className="ve-drop-line"

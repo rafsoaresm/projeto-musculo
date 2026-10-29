@@ -3799,6 +3799,162 @@ button.ve-layer-toggle {
   background: var(--color-error-soft);
   color: var(--color-error);
 }
+/* The handles over the selected block (block-handles.tsx): its size on the edges and the corner, its padding in bars just inside the edges, the gap
+   between its children in the strips between them, its rounding in the dot near the top left corner. Only a pointer takes hold of them. */
+.ve-handles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.ve-handle {
+  position: absolute;
+  z-index: 1;
+  box-sizing: border-box;
+  border: 2px solid var(--color-primary);
+  background: var(--color-surface);
+  pointer-events: auto;
+  touch-action: none;
+}
+/* A larger place to take hold of than the little thing that is seen. */
+.ve-handle::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+}
+.ve-handle[data-active] {
+  background: var(--color-primary);
+}
+.ve-handles[data-gesture] .ve-handle:not([data-active]) {
+  opacity: 0.3;
+}
+.ve-h-e,
+.ve-h-s,
+.ve-h-se {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  transform: translate(-50%, -50%);
+}
+.ve-h-e {
+  left: 100%;
+  top: 50%;
+  cursor: ew-resize;
+}
+.ve-h-s {
+  left: 50%;
+  top: 100%;
+  cursor: ns-resize;
+}
+.ve-h-se {
+  left: 100%;
+  top: 100%;
+  cursor: nwse-resize;
+}
+.ve-h-pad {
+  border-color: var(--color-success);
+  border-radius: 3px;
+  background: var(--color-success-soft);
+}
+.ve-h-pad[data-active] {
+  background: var(--color-success);
+}
+.ve-h-pad[data-edge="top"],
+.ve-h-pad[data-edge="bottom"] {
+  left: 50%;
+  width: 30px;
+  height: 8px;
+  transform: translateX(-50%);
+  cursor: ns-resize;
+}
+.ve-h-pad[data-edge="top"] {
+  top: 12px;
+}
+.ve-h-pad[data-edge="bottom"] {
+  bottom: 12px;
+}
+.ve-h-pad[data-edge="left"],
+.ve-h-pad[data-edge="right"] {
+  top: 50%;
+  width: 8px;
+  height: 30px;
+  transform: translateY(-50%);
+  cursor: ew-resize;
+}
+.ve-h-pad[data-edge="left"] {
+  left: 12px;
+}
+.ve-h-pad[data-edge="right"] {
+  right: 12px;
+}
+.ve-h-radius {
+  left: 12px;
+  top: 12px;
+  width: 10px;
+  height: 10px;
+  border-color: var(--color-warning);
+  border-radius: 50%;
+  background: var(--color-warning-soft);
+  cursor: crosshair;
+}
+.ve-h-radius[data-active] {
+  background: var(--color-warning);
+}
+.ve-h-gap {
+  z-index: 0;
+  border: 0;
+  border-radius: 2px;
+  background: rgba(0, 119, 182, 0.2);
+}
+.ve-h-gap::after {
+  inset: 0;
+}
+.ve-h-gap:hover,
+.ve-h-gap[data-active] {
+  background: rgba(0, 119, 182, 0.45);
+}
+.ve-h-gap[data-axis="x"] {
+  cursor: col-resize;
+}
+.ve-h-gap[data-axis="y"] {
+  cursor: row-resize;
+}
+/* A block too small to hold the inner handles keeps only the ones on its edges. */
+.ve-handles[data-small] .ve-h-pad,
+.ve-handles[data-small] .ve-h-radius {
+  display: none;
+}
+.ve-readout {
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  z-index: 3;
+  transform: translate(-50%, 12px);
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--color-ink);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: none;
+}
+/* The line an edge snaps to while a handle is dragged. */
+.ve-guide {
+  position: absolute;
+  z-index: 6;
+  background: var(--color-error);
+  pointer-events: none;
+}
+.ve-guide[data-axis="x"] {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+.ve-guide[data-axis="y"] {
+  left: 0;
+  right: 0;
+  height: 1px;
+}
 /* Where a dragged block would land: a line between two blocks, or the outline of an empty container. */
 .ve-drop-line {
   position: absolute;
