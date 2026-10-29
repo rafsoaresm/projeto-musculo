@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { DELIVERIES, type Delivery } from "@/modules/leads/contracts";
 import { ALT_MAX, CAPTION_MAX } from "./images";
-import { ACCENTS, DEFAULT_THEME, MODES, WIDTHS } from "./site-theme";
+import { HEX_COLOR } from "./brand-color";
+import { ACCENTS, DEFAULT_THEME, FONTS, MODES, WIDTHS } from "./site-theme";
 import { nodeAssetIds } from "./screens";
 import { styleSchema, type Style } from "./style";
 
@@ -313,7 +314,21 @@ export const contact = z
   .strict();
 export type Contact = z.infer<typeof contact>;
 
-export const theme = z.object({ accent: z.enum(ACCENTS), mode: z.enum(MODES), width: z.enum(WIDTHS) }).strict();
+export const theme = z
+  .object({
+    accent: z.enum(ACCENTS),
+    mode: z.enum(MODES),
+    width: z.enum(WIDTHS),
+    /** The font of the whole page; absent for the one it always had. */
+    font: z.enum(FONTS).optional(),
+    /** The color of the brand, `#rrggbb`: the page's palette is made from it (brand-color.ts) and it takes the place of `accent`. */
+    brand: z
+      .string()
+      .transform((value) => value.trim().toLowerCase())
+      .pipe(z.string().regex(HEX_COLOR))
+      .optional(),
+  })
+  .strict();
 
 /** Every node of the document, the ones inside containers included, in reading order. */
 export function allNodes(blocks: readonly SiteNode[]): SiteNode[] {
@@ -423,6 +438,8 @@ export const siteContent = z
     theme,
     /** The logo, an image of the site's library; absent or "" for none. */
     logoAssetId: z.string().max(64).optional(),
+    /** Whether search engines may list the page; absent is yes. The page stays open to whoever has the address either way. */
+    indexable: z.boolean().optional(),
     blocks: z.array(node).max(MAX_BLOCKS),
     /** The components of the site, each kept once; absent when there is none. */
     components: z.array(componentDef).max(MAX_COMPONENTS).optional(),

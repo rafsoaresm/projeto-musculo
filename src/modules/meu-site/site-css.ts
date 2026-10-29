@@ -1,5 +1,6 @@
 import { documentNodes, type SiteContent } from "./contracts";
 import { MOBILE_MAX, SCREENS, TABLET_MAX, hasAnyStyle, isHiddenAt, resolveStyle } from "./screens";
+import { brandRules } from "./brand-color";
 import { cssDeclarations, type CssContext } from "./style";
 
 /**
@@ -77,7 +78,8 @@ export function buildSiteCss(content: SiteContent, context: CssContext): string 
       hidden.set(key, [...(hidden.get(key) ?? []), selector]);
     }
   }
-  const rules = [...base];
+  // The palette of the person's brand color, when there is one: it depends on the color, so it is here and not in the page's own stylesheet.
+  const rules = [...(content.theme.brand ? brandRules(content.theme.brand) : []), ...base];
   if (tablet.length > 0) rules.push(`${query(`(max-width:${TABLET_MAX}px)`, context)}{${tablet.join("")}}`);
   if (phone.length > 0) rules.push(`${query(`(max-width:${MOBILE_MAX}px)`, context)}{${phone.join("")}}`);
   for (const [where, selectors] of hidden) {

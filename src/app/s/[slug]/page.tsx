@@ -22,7 +22,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   return {
     title: { absolute: site.content.title },
     description: site.content.description || undefined,
-    robots: { index: true, follow: true },
+    // The person can ask search engines not to list the page (it stays open to whoever has the address).
+    robots: site.content.indexable === false ? { index: false, follow: false } : { index: true, follow: true },
   };
 }
 

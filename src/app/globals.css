@@ -2367,6 +2367,113 @@ label.check input {
   --site-soft-line: #3c4a57;
 }
 
+/*
+ * The automatic mode: the light colors, and the dark ones for a visitor whose device asks for them. The rules repeat the light and the
+ * dark ones above (tests/meu-site-theme.test.ts holds the three modes together), because a media query cannot reuse a rule.
+ */
+[data-site-mode="auto"] {
+  --site-bg: #ffffff; --site-ink: #1f2933; --site-text: #4a5560; --site-muted: #5a6470; --site-line: #d7dde3;
+}
+[data-site-accent="blue"][data-site-mode="auto"] {
+  --site-solid: #0077b6;
+  --site-on: #ffffff;
+  --site-accent: #005f92;
+  --site-soft: #e8f3fa;
+  --site-soft-line: #b5d6ea;
+}
+[data-site-accent="green"][data-site-mode="auto"] {
+  --site-solid: #1b6e3c;
+  --site-on: #ffffff;
+  --site-accent: #1b6e3c;
+  --site-soft: #e6f4ea;
+  --site-soft-line: #b7dcc3;
+}
+[data-site-accent="orange"][data-site-mode="auto"] {
+  --site-solid: #b45309;
+  --site-on: #ffffff;
+  --site-accent: #9a4507;
+  --site-soft: #fff1e0;
+  --site-soft-line: #f2c796;
+}
+[data-site-accent="purple"][data-site-mode="auto"] {
+  --site-solid: #6d28d9;
+  --site-on: #ffffff;
+  --site-accent: #5b21b6;
+  --site-soft: #f1eafe;
+  --site-soft-line: #d4c2f7;
+}
+[data-site-accent="red"][data-site-mode="auto"] {
+  --site-solid: #b91c1c;
+  --site-on: #ffffff;
+  --site-accent: #991b1b;
+  --site-soft: #fdecec;
+  --site-soft-line: #f3b7b7;
+}
+[data-site-accent="graphite"][data-site-mode="auto"] {
+  --site-solid: #374151;
+  --site-on: #ffffff;
+  --site-accent: #1f2933;
+  --site-soft: #eef0f3;
+  --site-soft-line: #cdd3da;
+}
+@media (prefers-color-scheme: dark) {
+  [data-site-mode="auto"] {
+    --site-bg: #0f1720; --site-ink: #f1f5f9; --site-text: #cbd5df; --site-muted: #a3b0bd; --site-line: #2c3945;
+  }
+  [data-site-accent="blue"][data-site-mode="auto"] {
+    --site-solid: #5bbcef;
+    --site-on: #0b1e2b;
+    --site-accent: #7cc9f3;
+    --site-soft: #13303f;
+    --site-soft-line: #25566f;
+  }
+  [data-site-accent="green"][data-site-mode="auto"] {
+    --site-solid: #5fcf8a;
+    --site-on: #0a2415;
+    --site-accent: #7bdba0;
+    --site-soft: #143325;
+    --site-soft-line: #27583f;
+  }
+  [data-site-accent="orange"][data-site-mode="auto"] {
+    --site-solid: #f5a45c;
+    --site-on: #2b1604;
+    --site-accent: #f8b97f;
+    --site-soft: #3a2410;
+    --site-soft-line: #6b4220;
+  }
+  [data-site-accent="purple"][data-site-mode="auto"] {
+    --site-solid: #b794f6;
+    --site-on: #1d0f3a;
+    --site-accent: #c8adf8;
+    --site-soft: #2a1d47;
+    --site-soft-line: #4b3880;
+  }
+  [data-site-accent="red"][data-site-mode="auto"] {
+    --site-solid: #f58a8a;
+    --site-on: #2b0b0b;
+    --site-accent: #f7a1a1;
+    --site-soft: #3d1c1c;
+    --site-soft-line: #74393a;
+  }
+  [data-site-accent="graphite"][data-site-mode="auto"] {
+    --site-solid: #cbd5df;
+    --site-on: #10161c;
+    --site-accent: #dbe3ea;
+    --site-soft: #222d38;
+    --site-soft-line: #3c4a57;
+  }
+}
+/* The font of the whole page, out of a closed list of the system's own fonts (tests/meu-site-theme.test.ts holds these to the ones of the style model). */
+[data-site-font="sans"] {
+  font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif;
+}
+[data-site-font="serif"] {
+  font-family: Georgia,Cambria,Times New Roman,Times,serif;
+}
+[data-site-font="mono"] {
+  font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,Liberation Mono,monospace;
+}
+
 .site {
   container: site / inline-size;
   min-height: 100vh;

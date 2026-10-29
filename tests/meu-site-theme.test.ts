@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { BASES } from "@/modules/meu-site/brand-color";
+import { FONT_CSS, FONT_FAMILIES } from "@/modules/meu-site/style";
 import { ACCENTS, DEFAULT_THEME, MODES, themeAttributes } from "@/modules/meu-site/site-theme";
 
 /**
@@ -55,11 +57,75 @@ describe("the colors of the public page", () => {
       });
     }
   }
-  it("gives the page only the three names of the look (accent, mode and width), which select the rules", () => {
+  it("gives the page only the names of the look (accent, mode, width and, when chosen, font), which select the rules", () => {
     expect(themeAttributes(DEFAULT_THEME)).toEqual({ "data-site-accent": "blue", "data-site-mode": "light", "data-site-width": "narrow" });
     expect(themeAttributes({ accent: "red", mode: "dark", width: "full" })).toEqual({ "data-site-accent": "red", "data-site-mode": "dark", "data-site-width": "full" });
+    expect(themeAttributes({ accent: "red", mode: "auto", width: "wide", font: "serif" })).toEqual({ "data-site-accent": "red", "data-site-mode": "auto", "data-site-width": "wide", "data-site-font": "serif" });
+  });
+  it("names the brand color's accent 'custom' (its colors come with the page's own style sheet), whatever accent the theme still says", () => {
+    expect(themeAttributes({ accent: "green", mode: "light", width: "narrow", brand: "#aa3355" })["data-site-accent"]).toBe("custom");
+    expect(themeAttributes({ accent: "green", mode: "light", width: "narrow" })["data-site-accent"]).toBe("green");
   });
   it("has a rule for each width of the page, keyed by the same attribute", () => {
     for (const width of ["wide", "full"]) expect(css, width).toContain(`[data-site-width="${width}"]`);
   });
 });
+
+/** The rules inside the `@media (prefers-color-scheme: dark)` block of the stylesheet, by selector. */
+function darkMedia(): Record<string, Record<string, string>> {
+  const start = css.indexOf("@media (prefers-color-scheme: dark) {");
+  if (start < 0) throw new Error("no dark media block");
+  let depth = 0;
+  let end = start;
+  for (let at = css.indexOf("{", start); at < css.length; at++) {
+    if (css[at] === "{") depth++;
+    else if (css[at] === "}" && --depth === 0) {
+      end = at;
+      break;
+    }
+  }
+  const block = css.slice(css.indexOf("{", start) + 1, end);
+  return Object.fromEntries(
+    [...block.matchAll(/\n\s*(\[[^{]+?)\s*\{([^}]*)\}/g)].map((rule) => [
+      rule[1],
+      Object.fromEntries([...rule[2].matchAll(/(--[a-z-]+):\s*(#[0-9a-fA-F]{6})/g)].map((m) => [m[1], m[2].toLowerCase()])),
+    ]),
+  );
+}
+
+describe("the automatic mode", () => {
+  it("is the light colors, and the dark colors where the visitor's device asks for dark: the same values as the two modes, for the base and for every accent", () => {
+    expect(declarations('[data-site-mode="auto"]')).toEqual(declarations('[data-site-mode="light"]'));
+    const media = darkMedia();
+    expect(media['[data-site-mode="auto"]']).toEqual(declarations('[data-site-mode="dark"]'));
+    for (const accent of ACCENTS) {
+      expect(declarations(`[data-site-accent="${accent}"][data-site-mode="auto"]`), `${accent} light`).toEqual(declarations(`[data-site-accent="${accent}"][data-site-mode="light"]`));
+      expect(media[`[data-site-accent="${accent}"][data-site-mode="auto"]`], `${accent} dark`).toEqual(declarations(`[data-site-accent="${accent}"][data-site-mode="dark"]`));
+    }
+    expect(Object.keys(media)).toHaveLength(1 + ACCENTS.length);
+  });
+  it("comes after the light rule of the same selector, so the dark one wins where it applies", () => {
+    expect(css.indexOf('[data-site-mode="auto"] {')).toBeLessThan(css.indexOf("@media (prefers-color-scheme: dark) {"));
+  });
+});
+
+describe("the bases the brand colors are made against", () => {
+  it("are the stylesheet's own: the page's background, headings, text and secondary text, light and dark", () => {
+    for (const mode of ["light", "dark"] as const) {
+      const rule = declarations(`[data-site-mode="${mode}"]`);
+      expect({ bg: rule["--site-bg"], ink: rule["--site-ink"], text: rule["--site-text"], muted: rule["--site-muted"] }).toEqual(BASES[mode]);
+    }
+  });
+});
+
+describe("the font of the page", () => {
+  it("has a rule for each font, with the same stack as the style model's (written once for the page and once for a block)", () => {
+    const normalize = (value: string) => value.replace(/\s+/g, "").toLowerCase();
+    for (const font of FONT_FAMILIES) {
+      const match = new RegExp(`\\n\\[data-site-font="${font}"\\]\\s*\\{\\s*font-family:\\s*([^;]+);`).exec(css);
+      expect(match, font).not.toBeNull();
+      expect(normalize(match![1]), font).toBe(normalize(FONT_CSS[font]));
+    }
+  });
+});
+
