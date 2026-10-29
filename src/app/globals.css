@@ -2873,6 +2873,74 @@ a.site-menu-link:hover {
 .site-address {
   overflow-wrap: anywhere;
 }
+/* The versions: links to see one and to see what changed, beside the one that brings it back as the draft. */
+.release-links {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-left: auto;
+  margin-right: 16px;
+  font-size: 14px;
+}
+.release-links a,
+.release-compare a,
+.release-changes-group a {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+.release-compare p {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 16px;
+  margin: 0;
+}
+.release-compare a[aria-current="true"] {
+  font-weight: 700;
+  text-decoration: none;
+}
+.release-changes-group h3 {
+  margin: 16px 0 6px;
+  font-size: 16px;
+}
+.release-changes-group ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 20px;
+}
+.release-changes-group li[data-kind="added"]::marker {
+  color: #1a7f37;
+}
+.release-changes-group li[data-kind="removed"]::marker {
+  color: #c62828;
+}
+.release-changes-group li[data-kind="changed"]::marker,
+.release-changes-group li[data-kind="moved"]::marker {
+  color: #b7791f;
+}
+/* What the page of a version shows as new or different from the one it is compared with: an outline outside the block, so the layout does not move. */
+.site-preview [data-diff="added"] {
+  outline: 3px solid #1a7f37;
+  outline-offset: 3px;
+}
+.site-preview [data-diff="changed"] {
+  outline: 3px solid #b7791f;
+  outline-offset: 3px;
+}
+.diff-chip {
+  display: inline-block;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 2px solid currentColor;
+  font-weight: 600;
+}
+.diff-chip[data-diff="added"] {
+  color: #1a7f37;
+}
+.diff-chip[data-diff="changed"] {
+  color: #b7791f;
+}
 .site-preview .site {
   min-height: 0;
   border: 1px solid var(--color-line);

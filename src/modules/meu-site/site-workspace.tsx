@@ -277,6 +277,21 @@ export function SiteWorkspace({ slug, initial, live, releases, services, images,
                     {release.createdByName ? ` por ${release.createdByName}` : ""}.
                   </span>
                 </span>
+                <span className="release-links">
+                  <Link href={`/profissional/meu-site/previa?versao=${release.number}`} aria-label={`Ver a versão ${release.number}`}>
+                    Ver
+                  </Link>
+                  {release.number > 1 && (
+                    <Link href={`/profissional/meu-site/previa?versao=${release.number}&desde=${release.number - 1}`} aria-label={`O que mudou na versão ${release.number} desde a ${release.number - 1}`}>
+                      O que mudou
+                    </Link>
+                  )}
+                  {release.live && (
+                    <Link href={`/profissional/meu-site/previa?desde=${release.number}`} aria-label={`O que mudou no rascunho desde a versão ${release.number}`}>
+                      Mudanças do rascunho
+                    </Link>
+                  )}
+                </span>
                 {canEdit &&
                   (confirmingRestore === release.id ? (
                     <span className="inline-form">

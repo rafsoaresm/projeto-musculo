@@ -151,6 +151,33 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
       };
     },
 
+    /**
+     * A published version as it was published (the services it wrote into the page are the ones of that moment), for the person to look at and
+     * to compare. Null for a number that is not a version of this site, and for a stored version that is not a document (it is not shown).
+     */
+    async release(number: number): Promise<{ number: number; createdAt: string; createdByName: string | null; live: boolean; content: SiteContent } | null> {
+      if (!Number.isInteger(number)) return null;
+      const row = await db
+        .prepare(
+          `SELECT r.number, r.created_at AS createdAt, au.name AS createdByName, r.content,
+                  EXISTS (SELECT 1 FROM site_published p WHERE p.site_id = r.site_id AND p.release_id = r.id) AS live
+           FROM site_releases r JOIN sites s ON s.id = r.site_id LEFT JOIN auth_user au ON au.id = r.created_by
+           WHERE s.organization_id = ?1 AND r.number = ?3 AND ${reads}`,
+        )
+        .bind(organizationId, userId, number)
+        .first<{ number: number; createdAt: string; createdByName: string | null; content: string; live: number }>();
+      if (!row) return null;
+      let raw: unknown;
+      try {
+        raw = JSON.parse(row.content);
+      } catch {
+        return null;
+      }
+      const parsed = safeParseContent(raw);
+      if (!parsed.success) return null;
+      return { number: row.number, createdAt: row.createdAt, createdByName: row.createdByName, live: row.live === 1, content: parsed.data };
+    },
+
     /** The draft as the public page would show it, with the services resolved now. For the preview. */
     async preview(): Promise<{ slug: string; content: SiteContent } | null> {
       const draft = await draftRow();
