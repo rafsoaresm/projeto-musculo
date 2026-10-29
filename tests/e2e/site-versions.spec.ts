@@ -83,7 +83,7 @@ test("versions: each one can be seen as it was published, compared with another 
   await versions(page).getByRole("link", { name: "O que mudou na versão 2 desde a 1" }).click();
   await expect(page).toHaveURL(/\/previa\?versao=2&desde=1$/);
   await expect(page.getByRole("heading", { name: "O que mudou da versão 1 para a versão 2" })).toBeVisible();
-  const site = page.getByRole("region", { name: "O site" });
+  const site = page.getByRole("region", { name: "O site", exact: true });
   await expect(site).toContainText(`O título do site mudou de “${oldTitle}” para “Marina Personal”.`);
   const home = page.getByRole("region", { name: "Página inicial" });
   await expect(home).toContainText("Acrescentado: Parágrafo “Atendimento presencial e");
@@ -105,12 +105,12 @@ test("versions: each one can be seen as it was published, compared with another 
   await expect(frame(page).getByText("Formada há dez anos")).toBeVisible();
   // The other way round: what version 1 would have to change to be version 2, from the draft's side, is nothing to the draft: it is version 2.
   await page.getByRole("navigation", { name: "Comparar versões" }).getByRole("link", { name: "o rascunho" }).click();
-  await expect(page.getByRole("region", { name: "O site" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "O site", exact: true })).toHaveCount(0);
   await expect(page.getByText("Nada mudou entre estas duas versões.")).toBeVisible();
   await expect(marked(page, "added")).toHaveCount(0);
   await page.getByRole("navigation", { name: "Comparar versões" }).getByRole("link", { name: "não comparar" }).click();
   await expect(page.getByRole("heading", { name: "Versão 2", level: 1 })).toBeVisible();
-  await expect(page.getByRole("region", { name: "O site" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "O site", exact: true })).toHaveCount(0);
 
   // ---- the draft, changed after the publication, against the version that is public ----
   await page.goto("./profissional/meu-site");
@@ -125,7 +125,7 @@ test("versions: each one can be seen as it was published, compared with another 
   await versions(page).getByRole("link", { name: "O que mudou no rascunho desde a versão 2" }).click();
   await expect(page.getByRole("heading", { name: "Prévia do rascunho", level: 1 })).toBeVisible();
   await expect(page.getByRole("heading", { name: "O que mudou da versão 2 para o rascunho" })).toBeVisible();
-  await expect(page.getByRole("region", { name: "O site" })).toContainText("O título do site mudou de “Marina Personal” para “Marina Personal Trainer”.");
+  await expect(page.getByRole("region", { name: "O site", exact: true })).toContainText("O título do site mudou de “Marina Personal” para “Marina Personal Trainer”.");
   await expect(page.getByRole("region", { name: "Página inicial" })).toContainText("Acrescentado: Título “Novidade”.");
   await expect(marked(page, "added")).toHaveText("Novidade");
   // The version that is public does not have it.
@@ -189,7 +189,7 @@ test("versions on a phone: the list has the links, and the version and its chang
   await publish(page, 2);
   await closeEditor(page);
   await versions(page).getByRole("link", { name: "O que mudou na versão 2 desde a 1" }).click();
-  await expect(page.getByRole("region", { name: "O site" })).toContainText("O título do site mudou");
+  await expect(page.getByRole("region", { name: "O site", exact: true })).toContainText("O título do site mudou");
   await expect(page.locator(".site-preview")).toBeVisible();
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);

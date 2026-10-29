@@ -603,7 +603,7 @@ describe("drawing the pages of a site", () => {
 });
 
 describe("what a page says to the browser and to search engines", () => {
-  const published = (content: SiteContent): PublicSite => ({ slug: "marina", number: 1, publishedAt: "2026-10-29T12:00:00.000Z", content, images: {} });
+  const published = (content: SiteContent): PublicSite => ({ slug: "marina", number: 1, publishedAt: "2026-10-29T12:00:00.000Z", content, images: {}, inquiriesOpen: false });
   const content = site([paragraph("a")], [sub("p1", "sobre", [paragraph("b")], { title: "Sobre mim", description: "Quem sou" }), sub("p2", "planos", [paragraph("c")], { title: "Planos" })]);
   it("titles the home page with the site's, and a page with its own then the site's", () => {
     expect(publicMetadata(published(content), HOME)).toMatchObject({ title: { absolute: "Marina Treinos" }, description: "Treino com acompanhamento" });

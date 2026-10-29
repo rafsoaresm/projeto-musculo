@@ -2229,6 +2229,25 @@ label.check input {
 .service-main h3 {
   margin: 0 0 4px;
 }
+/* The messages left in the contact form of the public page, waiting for the professional. */
+.inquiry-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.inquiry-list .panel > * + * {
+  margin-top: 10px;
+}
+.inquiry-message {
+  padding: 12px 14px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-muted, var(--color-surface));
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .lead-stages {
   display: flex;
   flex-wrap: wrap;
@@ -2771,6 +2790,79 @@ a.site-menu-link:hover {
   border: 1px solid var(--site-soft-line);
   border-radius: var(--radius-card);
   background: var(--site-soft);
+}
+/* The contact form of a published page: plain fields in the page's own colours. The bait field is outside the window and out of reach of the keyboard. */
+.site-contact-form {
+  margin: 24px 0;
+}
+.site-form {
+  display: grid;
+  gap: 14px;
+  max-width: 560px;
+  margin-top: 12px;
+}
+.site-form-fields {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.site-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--site-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+.site-form input:not([type="checkbox"]),
+.site-form textarea {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 14px;
+  border: 1px solid var(--site-line);
+  border-radius: var(--radius-input);
+  background: var(--site-bg);
+  color: var(--site-ink);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 400;
+}
+.site-form textarea {
+  min-height: 110px;
+  resize: vertical;
+}
+.site-form .site-form-consent {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+  font-weight: 400;
+  line-height: 1.45;
+}
+.site-form .site-form-consent input {
+  flex: none;
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  min-height: 22px;
+  margin-top: 1px;
+  accent-color: var(--site-accent);
+}
+.site-form-bait {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+.site-form-fields:disabled {
+  pointer-events: none;
+}
+.site-form button[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 .site-hint {
   padding: 10px 12px;

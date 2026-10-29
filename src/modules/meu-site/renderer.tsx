@@ -10,10 +10,12 @@ import {
   type BoxNode,
   type Channel,
   type ComponentNode,
+  type ContactFormNode,
   type ElementNode,
   type SiteContent,
   type SiteNode,
 } from "./contracts";
+import { FIELD } from "./inquiries";
 import { anchorDomId, nodeClass } from "./site-css";
 import { themeAttributes } from "./site-theme";
 import { hasAnyStyle } from "./screens";
@@ -24,8 +26,9 @@ import { DELIVERY_LABEL } from "@/modules/leads/contracts";
  * The public page, from a document. The editor's canvas, its preview and the published page use this same
  * component, so what is seen before publishing is what is published. Everything it prints is text that React
  * escapes; the only links are made from the contact fields by `channelUrl` and friends, which accept nothing
- * but a phone number, an e-mail address and a handle, or point at another node of the same page. No script, no
- * third-party resource, no form. Images are only those of the site's library, from the page's own address.
+ * but a phone number, an e-mail address and a handle, or point at another node of the same page. No script and no
+ * third-party resource; the only form is the contact form (a block with fixed fields, sent to this same app), and it is
+ * on the page only when `forms` says it is open. Images are only those of the site's library, from the page's own address.
  *
  * A node with a style carries the class of its own identifier (`s-<id>`), which the stylesheet made by `buildSiteCss`
  * is keyed by; the page itself has no `style` attribute. Without `edit` (the public page and the preview) it prints
@@ -51,6 +54,19 @@ export interface ResolvedImage {
 }
 export type ImageResolver = (assetId: string) => ResolvedImage | null;
 
+/**
+ * Where the contact form of a published page is sent and which privacy notice it points to. It is given to the renderer only when the form is open
+ * (see inquiries.ts: the environment and the site both said yes). `null` is a published page whose form is closed: the block is not there. Absent
+ * (the editor's canvas and the preview) it is drawn as a sample that sends nothing.
+ */
+export interface PublicForm {
+  /** The address the form is sent to, relative to the page. */
+  action: string;
+  /** The page the form is on, as its address ("" for the home page): it comes back with the message. */
+  page: string;
+  noticeUrl: string;
+}
+
 export interface EditHooks {
   /** A text of a node, as a field that can be typed over. */
   text: (field: FieldSpec) => ReactNode;
@@ -70,6 +86,8 @@ interface Ctx {
   nav?: SiteNav;
   /** Blocks to mark as added or changed (the page of a version being compared with another): they get `data-diff`, which the stylesheet outlines. */
   marks?: ReadonlyMap<string, "added" | "changed">;
+  /** The contact form: where it is sent, `null` when it is closed on a published page, absent where it is only a sample. */
+  forms?: PublicForm | null;
   /**
    * Set while the nodes of a component are drawn as one instance has them. In the editor they are not blocks of the page (only the instance
    * is): they carry no identifier for the canvas, and a text is a field only when the instance can change it (`overridable`, the nodes of
@@ -446,6 +464,8 @@ function NodeView({ node, ctx }: { node: SiteNode; ctx: Ctx }) {
           </div>
         </section>
       );
+    case "contactForm":
+      return <ContactFormView node={node} ctx={ctx} />;
     case "box":
       return <BoxView node={node} ctx={ctx} />;
     case "component":
@@ -457,6 +477,88 @@ function NodeView({ node, ctx }: { node: SiteNode; ctx: Ctx }) {
     case "image":
       return <ElementView item={node} ctx={ctx} />;
   }
+}
+
+/**
+ * The contact form. On a published page it is a plain HTML form sent to this app (no script): a name, an e-mail or a phone, a message, a box that says
+ * the privacy notice was read, and a field a person never sees (a program fills it, and is told it worked). Closed, it is not there. In the editor
+ * and in the preview it is a sample with the fields turned off: the title, the line above and the text of the button are the page's own.
+ */
+function ContactFormView({ node, ctx }: { node: ContactFormNode; ctx: Ctx }) {
+  const id = node.id;
+  const live = ctx.forms ?? null;
+  if (ctx.forms === null) return null;
+  const field = (name: string) => `${ctx.scope}${id}-${name}`;
+  return (
+    <section {...attrsOf(node, ctx, "site-section site-contact-form")}>
+      <Eyebrow ctx={ctx} id={id} value={node.eyebrow} />
+      {shown(ctx, node.heading) && (
+        <h2>
+          <T ctx={ctx} id={id} path="heading" value={node.heading} placeholder="Título do formulário" max={120} />
+        </h2>
+      )}
+      {shown(ctx, node.text) && (
+        <p className="site-text">
+          <T ctx={ctx} id={id} path="text" value={node.text} placeholder="Texto (opcional)" max={300} multiline />
+        </p>
+      )}
+      <form className="site-form" method="post" action={live?.action} {...(live ? {} : { "aria-label": "Amostra do formulário" })}>
+        <fieldset className="site-form-fields" disabled={!live}>
+          {live && <input type="hidden" name={FIELD.page} value={live.page} />}
+          <label htmlFor={field("nome")}>
+            Nome
+            <input id={field("nome")} name={FIELD.name} required minLength={2} maxLength={160} autoComplete="name" />
+          </label>
+          <label htmlFor={field("contato")}>
+            E-mail ou telefone com DDD
+            <input id={field("contato")} name={FIELD.contact} required maxLength={254} autoComplete="email" />
+          </label>
+          <label htmlFor={field("mensagem")}>
+            Mensagem (opcional)
+            <textarea id={field("mensagem")} name={FIELD.message} rows={4} maxLength={1000} />
+          </label>
+          {live && (
+            <div className="site-form-bait" aria-hidden="true">
+              <label>
+                Não preencha este campo
+                <input name={FIELD.bait} tabIndex={-1} autoComplete="off" />
+              </label>
+            </div>
+          )}
+          <label className="site-form-consent">
+            <input type="checkbox" name={FIELD.consent} required />
+            <span>
+              Li o{" "}
+              {live ? (
+                <a href={live.noticeUrl} target="_blank" rel="noopener noreferrer">
+                  aviso de privacidade
+                </a>
+              ) : (
+                "aviso de privacidade"
+              )}{" "}
+              e concordo em ser contatado(a) por este profissional.
+            </span>
+          </label>
+        </fieldset>
+        {ctx.edit ? (
+          <span className="button primary site-button-stand-in">
+            <T ctx={ctx} id={id} path="buttonLabel" value={node.buttonLabel} placeholder="Texto do botão" max={40} />
+          </span>
+        ) : (
+          node.buttonLabel !== "" && (
+            <button type="submit" className="button primary" disabled={!live}>
+              {node.buttonLabel}
+            </button>
+          )
+        )}
+      </form>
+      {!live && (
+        <p className="site-hint">
+          Amostra: o formulário só funciona na página publicada, depois que os formulários públicos estiverem abertos pela plataforma e o recebimento de mensagens estiver ligado no Meu Site. Enquanto isso ele não aparece para quem visita.
+        </p>
+      )}
+    </section>
+  );
 }
 
 /** The logo is decoration next to the name, which is text: its description would only repeat it. */
@@ -509,6 +611,7 @@ export function SiteRenderer({
   bare = false,
   nav,
   marks,
+  forms,
 }: {
   content: SiteContent;
   edit?: EditHooks;
@@ -518,6 +621,8 @@ export function SiteRenderer({
   nav?: SiteNav;
   /** Blocks to mark as added or changed, for a version being compared with another. */
   marks?: ReadonlyMap<string, "added" | "changed">;
+  /** The contact form: where it is sent, `null` when it is closed on a published page; absent in the editor and in the preview (a sample). */
+  forms?: PublicForm | null;
   /** Only the blocks, without the header with the name of the site and the footer with the contacts (the editor draws a component alone). */
   bare?: boolean;
 }) {
@@ -527,7 +632,7 @@ export function SiteRenderer({
     nodes.flatMap((entry): string[] => ((entry.type === "button" || entry.type === "link") && entry.anchor && existing.has(entry.anchor) ? [entry.anchor] : [])),
   );
   const firstHero = nodes.find((entry) => entry.type === "hero")?.id ?? null;
-  const ctx: Ctx = { content, edit, images, anchors, firstHero, scope, nav, marks };
+  const ctx: Ctx = { content, edit, images, anchors, firstHero, scope, nav, marks, forms };
   const logo = content.logoAssetId ? images?.(content.logoAssetId) ?? null : null;
   const contacts = [
     { label: "WhatsApp", href: whatsappUrl(content.contact.whatsapp), external: true },

@@ -225,6 +225,7 @@ export function leadsFor(db: D1Database, context: AuthenticatedContext | null) {
             `UPDATE leads SET name = ?4, email = ?5, phone = ?6, email_key = ?7, phone_key = ?8, source = ?9,
                               service_id = ?10, updated_at = ?11
              WHERE organization_id = ?1 AND id = ?3 AND student_id IS NULL AND ${worksLeads}
+               AND (?9 <> 'SITE' OR source = 'SITE')
                AND (?10 IS NULL OR ?10 = service_id OR ${activeService("?10")})`,
           )
           .bind(

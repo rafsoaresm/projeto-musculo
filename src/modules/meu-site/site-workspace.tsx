@@ -15,7 +15,7 @@ import { PREPARE_MESSAGE, prepareImage } from "./image-upload";
 import type { RemoveResult, UploadResult } from "./image-picker";
 import { PublicAddress } from "./public-address";
 import { VisualEditor } from "./visual-editor";
-import { changeSiteAddress, publishSite, restoreSiteRelease, saveSiteDraft, unpublishSite, type SaveResult } from "./actions";
+import { changeSiteAddress, publishSite, restoreSiteRelease, saveSiteDraft, setSiteInquiries, unpublishSite, type SaveResult } from "./actions";
 import { AUTOSAVE_DELAY_MS, AUTOSAVE_SAVED, AUTOSAVE_STOPPED, SAVE_UNREACHABLE, afterFailure, shouldAutosave } from "./autosave";
 import { useAutosavePreference } from "./use-autosave";
 
@@ -26,6 +26,8 @@ interface Props {
   releases: ReleaseRow[];
   services: ServiceChoice[];
   images: { available: boolean; library: AssetRow[] };
+  /** The site's own switch for the contact form, how many messages wait for the professional, and whether the environment has opened the public forms at all. */
+  inquiries: { open: boolean; waiting: number; platformOpen: boolean; canWork: boolean };
   canEdit: boolean;
 }
 
@@ -51,7 +53,7 @@ type Note = ReturnType<typeof useNote>;
  * draft saved, and what is public changes only on "Publicar". The editor is a window over this state: the
  * answers to what is pressed inside it are shown inside it, and the ones of this screen stay here.
  */
-export function SiteWorkspace({ slug, initial, live, releases, services, images, canEdit }: Props) {
+export function SiteWorkspace({ slug, initial, live, releases, services, images, inquiries, canEdit }: Props) {
   const router = useRouter();
   const mountPath = useMountPath();
   const [library, setLibrary] = useState<AssetRow[]>(images.library);
@@ -64,6 +66,7 @@ export function SiteWorkspace({ slug, initial, live, releases, services, images,
   const saveNote = useNote();
   const editorNote = useNote();
   const addressNote = useNote();
+  const inquiriesNote = useNote();
   const versionsNote = useNote();
   const [issues, setIssues] = useState<PublishIssue[]>([]);
   const [newSlug, setNewSlug] = useState(slug);
@@ -196,6 +199,13 @@ export function SiteWorkspace({ slug, initial, live, releases, services, images,
       }
     });
   }
+  function switchInquiries(open: boolean) {
+    startTransition(async () => {
+      const result = await setSiteInquiries(open);
+      inquiriesNote.say(result.message, !result.ok);
+      router.refresh();
+    });
+  }
   function changeAddress() {
     startTransition(async () => {
       const result = await changeSiteAddress(newSlug);
@@ -260,6 +270,44 @@ export function SiteWorkspace({ slug, initial, live, releases, services, images,
         {!canEdit && <p className="small muted">Só o proprietário ou a gestão editam e publicam o site. Você pode ver a prévia do rascunho.</p>}
         {stateNote.element}
         {!editorOpen && saveNote.element}
+      </section>
+
+      <section className="panel" aria-labelledby="mensagens-site">
+        <h2 id="mensagens-site">Mensagens do site</h2>
+        <p className="small muted">
+          O bloco “Formulário de contato” deixa quem visita a página escrever para você. A mensagem não vira lead nem aluno sozinha: ela espera em Leads até você decidir.
+        </p>
+        <p className="small">
+          {inquiries.platformOpen ? <Pill tone="success">Formulários abertos pela plataforma</Pill> : <Pill tone="neutral">Formulários fechados pela plataforma</Pill>}{" "}
+          {inquiries.open ? <Pill tone="success">Recebimento ligado</Pill> : <Pill tone="neutral">Recebimento desligado</Pill>}
+        </p>
+        {!inquiries.platformOpen && (
+          <p className="small muted">
+            Os formulários públicos só abrem depois que o aviso de privacidade público e o parecer jurídico sobre leads existirem. Enquanto isso, o bloco aparece só no editor e
+            na prévia, e ligar o recebimento não o mostra para quem visita.
+          </p>
+        )}
+        {canEdit && (
+          <div className="persist-actions">
+            {inquiries.open ? (
+              <button type="button" className="button secondary" disabled={pending} onClick={() => switchInquiries(false)}>
+                Desligar o recebimento de mensagens
+              </button>
+            ) : (
+              <button type="button" className="button secondary" disabled={pending} onClick={() => switchInquiries(true)}>
+                Ligar o recebimento de mensagens
+              </button>
+            )}
+          </div>
+        )}
+        {inquiries.canWork && (
+          <div className="persist-actions">
+            <Link className="button small secondary" href="/profissional/leads/mensagens">
+              {inquiries.waiting === 0 ? "Ver as mensagens do site" : `Ver as mensagens do site (${inquiries.waiting} esperando)`}
+            </Link>
+          </div>
+        )}
+        {inquiriesNote.element}
       </section>
 
       {canEdit && !live && (

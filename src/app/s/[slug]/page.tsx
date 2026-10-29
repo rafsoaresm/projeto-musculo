@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { publishedSiteBySlug } from "@/db/sites";
 import { HOME } from "@/modules/meu-site/contracts";
-import { PublicSitePage, publicMetadata } from "@/modules/meu-site/public-site";
+import { PublicSitePage, formsGate, publicMetadata } from "@/modules/meu-site/public-site";
 
 // A page that is public, for anybody: no session, no cookies read, nothing of the tool around it. What it
 // shows is the release the pointer names; an address that does not exist, a page never published and one
@@ -22,5 +22,6 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 export default async function PublicSite({ params }: { params: Promise<{ slug: string }> }) {
   const site = await load((await params).slug);
   if (!site) notFound();
-  return <PublicSitePage site={site} pageId={HOME} />;
+  const { env } = await getCloudflareContext({ async: true });
+  return <PublicSitePage site={site} pageId={HOME} gate={formsGate(env, process.env)} />;
 }

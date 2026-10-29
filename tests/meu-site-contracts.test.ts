@@ -97,12 +97,13 @@ describe("the document of the page", () => {
     expect(siteContent.safeParse(starterContent("Marina")).success).toBe(true);
   });
   it("accepts every kind of node, empty, on the page and inside a container: a container takes sections too", () => {
-    expect([...BLOCK_KINDS]).toEqual(["hero", "text", "services", "about", "quote", "stats", "faq", "cta", "box", "heading", "paragraph", "button", "link", "image"]);
+    expect([...BLOCK_KINDS]).toEqual(["hero", "text", "services", "about", "quote", "stats", "faq", "cta", "contactForm", "box", "heading", "paragraph", "button", "link", "image"]);
     expect([...BLOCK_TYPES]).toEqual([...BLOCK_KINDS, "component"]);
     for (const type of BLOCK_KINDS) {
-      const made = emptyBlock(type, `b-${type}`);
+      // An identifier is lower case, digits and hyphens: the names of two kinds are camel case, so they are lowered for the test's own ids.
+      const made = emptyBlock(type, `b-${type.toLowerCase()}`);
       expect(siteContent.safeParse(withBlocks([made])).success, type).toBe(true);
-      expect(siteContent.safeParse(withBlocks([box("c", [emptyBlock(type, `in-${type}`)])])).success, `${type} in a container`).toBe(true);
+      expect(siteContent.safeParse(withBlocks([box("c", [emptyBlock(type, `in-${type.toLowerCase()}`)])])).success, `${type} in a container`).toBe(true);
     }
   });
   it("accepts containers inside containers, as many as the limit, and refuses one more", () => {

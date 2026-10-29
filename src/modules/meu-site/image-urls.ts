@@ -26,6 +26,8 @@ export const publicImageUrl = (slug: string, assetId: string, from: PublicLevel 
 export const publicStyleUrl = (slug: string, version: number, from: PublicLevel = "home") => (from === "home" ? `./${slug}/estilo.css?v=${version}` : `./estilo.css?v=${version}`);
 /** The home page of the published site, from the home page or from another page. */
 export const publicHomeUrl = (slug: string, from: PublicLevel) => (from === "home" ? `./${slug}` : `../${slug}`);
+/** Where the contact form of a published page is sent, from the home page or from another page (the route is `/s/<slug>/m/contato`). */
+export const publicFormUrl = (slug: string, from: PublicLevel) => (from === "home" ? `./${slug}/m/contato` : "./m/contato");
 /** Another page of the published site, from the home page or from another page. */
 export const publicPageUrl = (slug: string, pageSlug: string, from: PublicLevel) => (from === "home" ? `./${slug}/${pageSlug}` : `./${pageSlug}`);
 /**
