@@ -3938,6 +3938,94 @@ button.ve-layer-toggle {
   white-space: nowrap;
   pointer-events: none;
 }
+/* The blocks of the selection that are not the primary: only an outline (the tools and handles are the primary's). */
+.ve-select-extra {
+  outline-style: dashed;
+  outline-width: 2px;
+}
+/* The rectangle drawn with Shift held, which picks the blocks it touches. */
+.ve-marquee {
+  position: absolute;
+  z-index: 6;
+  box-sizing: border-box;
+  border: 1px solid var(--color-primary);
+  background: var(--color-primary-soft);
+  opacity: 0.6;
+  pointer-events: none;
+}
+/* A layer that is the primary of a selection of several. */
+.ve-layer[data-primary] {
+  box-shadow: inset 3px 0 0 var(--color-primary);
+}
+/* The name of a layer, typed over in place. */
+.ve-layer-name {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 2px solid var(--color-primary);
+  border-radius: 10px;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+}
+.ve-multi-note {
+  margin: 0 0 8px;
+}
+/* The menu of a block. It is inside the editor's dialog, at the point of the click. */
+.ve-menu {
+  position: fixed;
+  z-index: 50;
+  min-width: 230px;
+  padding: 4px;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--color-surface);
+  box-shadow: 0 8px 24px rgba(31, 41, 51, 0.22);
+  outline: none;
+}
+.ve-menu button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-ink);
+  font-size: 14px;
+  text-align: left;
+}
+.ve-menu button[data-current],
+.ve-menu button:hover:not(:disabled) {
+  background: var(--color-primary-soft);
+}
+.ve-menu button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.ve-menu .ve-danger {
+  color: var(--color-error);
+}
+.ve-menu .ve-danger[data-current],
+.ve-menu .ve-danger:hover:not(:disabled) {
+  background: var(--color-error-soft);
+}
+.ve-menu kbd {
+  color: var(--color-muted);
+  font: inherit;
+  font-size: 12px;
+}
+.ve-menu hr {
+  margin: 4px 6px;
+  border: 0;
+  border-top: 1px solid var(--color-line);
+}
 /* The line an edge snaps to while a handle is dragged. */
 .ve-guide {
   position: absolute;

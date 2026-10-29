@@ -1,5 +1,5 @@
 "use client";
-import { useState, type DragEvent, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
 import {
   AlignLeft,
   ChartNoAxesColumn,
@@ -26,7 +26,7 @@ import {
   UserRound,
   type LucideIcon,
 } from "lucide-react";
-import { type SiteContent, type SiteNode } from "./contracts";
+import { NAME_MAX, type SiteContent, type SiteNode } from "./contracts";
 import type { Drag } from "./editor-canvas";
 import type { Slot } from "./editor-model";
 import { nodeText, nodeTitle } from "./node-label";
@@ -112,6 +112,43 @@ export function Library({ onAdd, startDrag, endDrag }: { onAdd: (key: string) =>
   );
 }
 
+/** The name of a layer, typed over in place: Enter keeps it, Escape gives it up, and leaving the field keeps it. It is only for the person (it is not in the page). */
+function LayerName({ entry, rename }: { entry: SiteNode; rename: (id: string, name: string | null) => void }) {
+  const field = useRef<HTMLInputElement>(null);
+  const done = useRef(false);
+  useEffect(() => {
+    field.current?.focus();
+    field.current?.select();
+  }, []);
+  const finish = (keep: boolean) => {
+    if (done.current) return;
+    done.current = true;
+    rename(entry.id, keep ? (field.current?.value ?? "") : null);
+  };
+  return (
+    <input
+      ref={field}
+      className="ve-layer-name"
+      aria-label={`Nome da camada ${nodeTitle(entry)}`}
+      defaultValue={entry.name ?? ""}
+      placeholder={nodeTitle(entry)}
+      maxLength={NAME_MAX}
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => {
+        event.stopPropagation();
+        if (event.key === "Enter") {
+          event.preventDefault();
+          finish(true);
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          finish(false);
+        }
+      }}
+      onBlur={() => finish(true)}
+    />
+  );
+}
+
 type Zone = "before" | "after" | "inside";
 const END = Number.MAX_SAFE_INTEGER;
 
@@ -122,8 +159,12 @@ const END = Number.MAX_SAFE_INTEGER;
 export function Layers({
   content,
   screen,
-  selectedId,
+  selectedIds,
   select,
+  menu,
+  renamingId,
+  startRename,
+  rename,
   toggleHidden,
   drag,
   startDrag,
@@ -134,8 +175,16 @@ export function Layers({
   content: SiteContent;
   /** The size of the screen being edited: the eye of each layer is about it. */
   screen: Screen;
-  selectedId: string | null;
-  select: (id: string | null) => void;
+  /** What is selected, in the order it was chosen (the last is the primary). */
+  selectedIds: readonly string[];
+  /** A click chooses a layer; with Ctrl or Cmd it adds the layer to the selection (or takes it away), with Shift it chooses every layer from the last one chosen to this one. */
+  select: (id: string | null, how?: "replace" | "toggle" | "range") => void;
+  menu: (id: string, x: number, y: number) => void;
+  /** The layer whose name is being typed over (double click, F2, or the menu), if any. */
+  renamingId: string | null;
+  startRename: (id: string) => void;
+  /** Gives the layer the name typed (empty: back to the block's own name), or, with null, gives the rename up. */
+  rename: (id: string, name: string | null) => void;
   toggleHidden: (id: string) => void;
   drag: Drag | null;
   startDrag: (drag: Drag) => void;
@@ -218,10 +267,26 @@ export function Layers({
           ) : (
             <span className="ve-layer-toggle" aria-hidden="true" />
           )}
-          <button type="button" className="ve-layer" aria-current={selectedId === entry.id ? "true" : undefined} onClick={() => select(entry.id)}>
-            <strong>{nodeTitle(entry)}</strong>
-            {text && <span className="ve-layer-text">{text}</span>}
-          </button>
+          {renamingId === entry.id ? (
+            <LayerName entry={entry} rename={rename} />
+          ) : (
+            <button
+              type="button"
+              className="ve-layer"
+              aria-current={selectedIds.includes(entry.id) ? "true" : undefined}
+              data-primary={selectedIds[selectedIds.length - 1] === entry.id && selectedIds.length > 1 ? "" : undefined}
+              title="Clique para escolher. Ctrl ou Cmd: junta à seleção. Shift: do último escolhido até aqui. Dois cliques ou F2: dar um nome"
+              onClick={(event) => select(entry.id, event.shiftKey ? "range" : event.ctrlKey || event.metaKey ? "toggle" : "replace")}
+              onDoubleClick={() => startRename(entry.id)}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                menu(entry.id, event.clientX, event.clientY);
+              }}
+            >
+              <strong>{nodeTitle(entry)}</strong>
+              {text && <span className="ve-layer-text">{text}</span>}
+            </button>
+          )}
           <button
             type="button"
             className="ve-layer-eye"
@@ -252,7 +317,7 @@ export function Layers({
         <li>
           <div className="ve-layer-row" data-depth={0}>
             <span className="ve-layer-toggle" aria-hidden="true" />
-            <button type="button" className="ve-layer" aria-current={selectedId === null ? "true" : undefined} onClick={() => select(null)}>
+            <button type="button" className="ve-layer" aria-current={selectedIds.length === 0 ? "true" : undefined} onClick={() => select(null)}>
               <strong>Configurações da página</strong>
             </button>
           </div>
