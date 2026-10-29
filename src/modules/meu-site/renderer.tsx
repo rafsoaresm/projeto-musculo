@@ -68,6 +68,8 @@ interface Ctx {
   scope: string;
   /** The pages of the site: where a button or a link that goes to a page leads. Absent where there is no site around the page (a page drawn alone). */
   nav?: SiteNav;
+  /** Blocks to mark as added or changed (the page of a version being compared with another): they get `data-diff`, which the stylesheet outlines. */
+  marks?: ReadonlyMap<string, "added" | "changed">;
   /**
    * Set while the nodes of a component are drawn as one instance has them. In the editor they are not blocks of the page (only the instance
    * is): they carry no identifier for the canvas, and a text is a field only when the instance can change it (`overridable`, the nodes of
@@ -86,6 +88,7 @@ function attrsOf(node: SiteNode, ctx: Ctx, classes: string) {
     "data-block-id": ctx.edit && !ctx.instance ? node.id : undefined,
     "data-type": ctx.edit && !ctx.instance ? node.type : undefined,
     "data-empty": ctx.edit && !ctx.instance && node.type === "box" && node.children.length === 0 ? "" : undefined,
+    "data-diff": ctx.marks?.get(node.id),
   };
 }
 
@@ -505,6 +508,7 @@ export function SiteRenderer({
   scope = "",
   bare = false,
   nav,
+  marks,
 }: {
   content: SiteContent;
   edit?: EditHooks;
@@ -512,6 +516,8 @@ export function SiteRenderer({
   scope?: string;
   /** The pages of the site: the menu in the header, and where the links to a page lead. */
   nav?: SiteNav;
+  /** Blocks to mark as added or changed, for a version being compared with another. */
+  marks?: ReadonlyMap<string, "added" | "changed">;
   /** Only the blocks, without the header with the name of the site and the footer with the contacts (the editor draws a component alone). */
   bare?: boolean;
 }) {
@@ -521,7 +527,7 @@ export function SiteRenderer({
     nodes.flatMap((entry): string[] => ((entry.type === "button" || entry.type === "link") && entry.anchor && existing.has(entry.anchor) ? [entry.anchor] : [])),
   );
   const firstHero = nodes.find((entry) => entry.type === "hero")?.id ?? null;
-  const ctx: Ctx = { content, edit, images, anchors, firstHero, scope, nav };
+  const ctx: Ctx = { content, edit, images, anchors, firstHero, scope, nav, marks };
   const logo = content.logoAssetId ? images?.(content.logoAssetId) ?? null : null;
   const contacts = [
     { label: "WhatsApp", href: whatsappUrl(content.contact.whatsapp), external: true },

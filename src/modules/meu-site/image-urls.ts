@@ -28,8 +28,24 @@ export const publicStyleUrl = (slug: string, version: number, from: PublicLevel 
 export const publicHomeUrl = (slug: string, from: PublicLevel) => (from === "home" ? `./${slug}` : `../${slug}`);
 /** Another page of the published site, from the home page or from another page. */
 export const publicPageUrl = (slug: string, pageSlug: string, from: PublicLevel) => (from === "home" ? `./${slug}/${pageSlug}` : `./${pageSlug}`);
-/** The pages in the preview, which is at `<mount>/profissional/meu-site/previa` (a page is chosen by `?pagina=`). */
-export const previewPageUrl = (pageId: string | null) => (pageId === null ? "./previa" : `./previa?pagina=${encodeURIComponent(pageId)}`);
+/**
+ * The preview, which is at `<mount>/profissional/meu-site/previa`: of the draft, or of a version (`?versao=`, a number), with the changes since
+ * another one (`?desde=`, a number or "rascunho"), and one page of it (`?pagina=`).
+ */
+export interface PreviewTarget {
+  versao?: string;
+  desde?: string;
+  pagina?: string | null;
+}
+export function previewUrl(target: PreviewTarget = {}): string {
+  const query: string[] = [];
+  if (target.versao) query.push(`versao=${encodeURIComponent(target.versao)}`);
+  if (target.desde) query.push(`desde=${encodeURIComponent(target.desde)}`);
+  if (target.pagina) query.push(`pagina=${encodeURIComponent(target.pagina)}`);
+  return query.length > 0 ? `./previa?${query.join("&")}` : "./previa";
+}
+/** A page of the preview (the version and the comparison stay as they are). */
+export const previewPageUrl = (pageId: string | null, keep: Omit<PreviewTarget, "pagina"> = {}) => previewUrl({ ...keep, pagina: pageId });
 /** The editor's address, absolute: `base` is the mount path the browser is at ("" or "/app"). */
 export const editorImageUrl = (base: string, assetId: string) => `${base}/profissional/meu-site/imagens/${assetId}`;
 /** From the preview page, which is at `<mount>/profissional/meu-site/previa`. */

@@ -730,3 +730,38 @@ describe("a site with more pages than the home page", () => {
     expect(JSON.stringify(draft)).not.toContain('"items"');
   });
 });
+
+describe("reading a published version, to look at it and to compare it", () => {
+  const releasesOf = async () => (await owner().overview())!.releases;
+  it("gives the version as it was published, with who made it and whether it is the one that is public", async () => {
+    const releases = await releasesOf();
+    expect(releases.length).toBeGreaterThan(1);
+    const newest = releases.reduce((a, b) => (b.number > a.number ? b : a));
+    const oldest = releases.reduce((a, b) => (b.number < a.number ? b : a));
+    const read = (await owner().release(newest.number))!;
+    expect(read).toMatchObject({ number: newest.number, createdAt: newest.createdAt, createdByName: newest.createdByName, live: newest.live });
+    expect(read.content.schemaVersion).toBe(3);
+    const stored = JSON.parse((await one<{ content: string }>("SELECT content FROM site_releases WHERE id = ?", newest.id))!.content);
+    expect(read.content.title).toBe(stored.title);
+    const older = (await owner().release(oldest.number))!;
+    expect(older.live).toBe(oldest.live);
+    expect(older.number).toBe(oldest.number);
+  });
+  it("gives nothing for a number that is not a version of this site, or not a number", async () => {
+    for (const number of [0, -1, 1.5, Number.NaN, 9999, Number.MAX_SAFE_INTEGER]) expect(await owner().release(number), String(number)).toBeNull();
+  });
+  it("is readable by who reads the site, and by nobody else; each organization sees its own", async () => {
+    const [{ number }] = await releasesOf();
+    expect((await sitesFor(db, scope("commercial-a")).release(number))?.number).toBe(number);
+    expect((await sitesFor(db, scope("manager-a")).release(number))?.number).toBe(number);
+    for (const who of ["tech-a", "finance-a", "outsider", "blocked-a", "revoked-a"]) expect(await sitesFor(db, scope(who)).release(number), who).toBeNull();
+    // The other organization has a site, with no version: the number of this one is not one of theirs.
+    expect(await sitesFor(db, scope("owner-b", "org-b")).release(number)).toBeNull();
+  });
+  it("gives nothing for a version stored as something that is not a document, instead of failing", async () => {
+    const siteId = (await one<{ id: string }>("SELECT id FROM sites WHERE organization_id = 'org-a'"))!.id;
+    const next = (await one<{ n: number }>("SELECT COALESCE(MAX(number), 0) + 1 AS n FROM site_releases WHERE site_id = ?", siteId))!.n;
+    await db.prepare("INSERT INTO site_releases(id,site_id,number,draft_revision,content,content_sha256,created_by) VALUES ('rel-not-a-doc', ?, ?, 1, '{\"schemaVersion\":9}', ?, 'owner-a')").bind(siteId, next, "c".repeat(64)).run();
+    expect(await owner().release(next)).toBeNull();
+  });
+});
