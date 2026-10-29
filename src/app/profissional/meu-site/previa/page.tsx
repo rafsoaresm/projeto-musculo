@@ -8,8 +8,10 @@ import { siteAssetsFor } from "@/db/site-assets";
 import { sitesFor } from "@/db/sites";
 import { Notice, PageHeading } from "@/components/ui";
 import { canSeeSite } from "@/modules/meu-site/access";
-import { libraryCssImages, libraryImages } from "@/modules/meu-site/image-urls";
+import { HOME, pageById, pageContent } from "@/modules/meu-site/contracts";
+import { libraryCssImages, libraryImages, previewPageUrl } from "@/modules/meu-site/image-urls";
 import { SiteRenderer } from "@/modules/meu-site/renderer";
+import { siteNav } from "@/modules/meu-site/site-nav";
 import { buildSiteCss } from "@/modules/meu-site/site-css";
 import { InlineSiteStyles } from "@/modules/meu-site/site-styles";
 
@@ -17,12 +19,16 @@ export const dynamic = "force-dynamic";
 // The preview is for the person editing: nobody indexes it, and nothing here is cached.
 export const metadata: Metadata = { title: "Prévia do site", robots: { index: false, follow: false } };
 
-export default async function SitePreview() {
+/** `?pagina=` chooses the page shown (the home page when it is absent or is not a page of the draft). */
+export default async function SitePreview({ searchParams }: { searchParams: Promise<{ pagina?: string | string[] }> }) {
   const { db, context, workspace } = await requireWorkspace();
   if (!canSeeSite(workspace.role)) redirect("/profissional/meu-site");
   const preview = await sitesFor(db, context).preview();
   if (!preview) redirect("/profissional/meu-site");
   const library = await siteAssetsFor(db, await getSiteMediaBucket(), context).list();
+  const asked = (await searchParams).pagina;
+  const shown = typeof asked === "string" && pageById(preview.content, asked) ? asked : HOME;
+  const nav = siteNav(preview.content, shown, (target) => previewPageUrl(target === HOME ? null : target));
   return (
     <>
       <PageHeading
@@ -41,7 +47,7 @@ export default async function SitePreview() {
       </Notice>
       <div className="site-preview" aria-label="Prévia da página">
         <InlineSiteStyles css={buildSiteCss(preview.content, libraryCssImages(null, library))} />
-        <SiteRenderer content={preview.content} images={libraryImages(null, library)} />
+        <SiteRenderer content={pageContent(preview.content, shown)} images={libraryImages(null, library)} nav={nav} />
       </div>
     </>
   );

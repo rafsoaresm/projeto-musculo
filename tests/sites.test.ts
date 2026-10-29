@@ -650,3 +650,83 @@ describe("a page with styles for the tablet and the phone", () => {
     if (outcome.status === "warnings") expect(outcome.issues.map((issue) => issue.blockId)).toEqual(["row"]);
   });
 });
+
+describe("a site with more pages than the home page", () => {
+  const repo = () => sitesFor(db, scope("owner-d", "org-d"));
+  const page = (id: string, slug: string, blocks: SiteContent["blocks"], over: object = {}) => ({ id, slug, title: slug, description: "", blocks, ...over });
+  const withPages = (): SiteContent => ({
+    ...complete(),
+    title: "Estudio D",
+    blocks: [...complete().blocks, { id: "to-sobre", type: "button", label: "Sobre mim", page: "p1" } as SiteContent["blocks"][number]],
+    pages: [
+      page("p1", "sobre", [{ id: "sobre-t", type: "text", eyebrow: "", heading: "Sobre", text: "Quem sou" }, { id: "sobre-s", type: "text", eyebrow: "", heading: "Formação", text: "Educação física" }], { title: "Sobre mim", description: "Quem sou" }),
+      page("p2", "planos", [{ id: "planos-t", type: "text", eyebrow: "", heading: "Planos", text: "Valores" }]),
+    ],
+  });
+  const save = async (content: SiteContent, minute: number) => {
+    const saved = await repo().saveDraft(content, (await repo().overview())!.draft.revision, at(minute));
+    if (saved.status !== "saved") throw new Error(JSON.stringify(saved));
+    return saved.revision;
+  };
+  it("saves it, publishes it as one release and serves every page of that release", async () => {
+    const revision = await save(withPages(), 150);
+    const outcome = await repo().publish(revision, at(151));
+    expect(outcome.status).toBe("published");
+    const served = (await publishedSiteBySlug(db, "estudio-d"))!;
+    expect(served.content.pages!.map((entry) => [entry.id, entry.slug, entry.title])).toEqual([["p1", "sobre", "Sobre mim"], ["p2", "planos", "planos"]]);
+    expect(served.content.pages![0].blocks.map((entry) => entry.id)).toEqual(["sobre-t", "sobre-s"]);
+    expect(served.content.blocks[2]).toMatchObject({ id: "to-sobre", page: "p1" });
+    // What is stored is the document as it was sent, pages and all.
+    const stored = JSON.parse((await one<{ content: string }>("SELECT content FROM site_releases WHERE id = (SELECT release_id FROM site_published WHERE site_id = (SELECT id FROM sites WHERE organization_id = 'org-d'))"))!.content);
+    expect(stored.pages).toHaveLength(2);
+  });
+  it("writes the services into the blocks of every page when it publishes", async () => {
+    const created = await servicesFor(db, scope("owner-d", "org-d")).create({ name: "Consultoria online", description: "", delivery: "ONLINE" }, at(152));
+    if (created.status !== "saved") throw new Error("not saved");
+    const content = withPages();
+    content.pages![0].blocks[1] = { id: "sobre-s", type: "services", eyebrow: "", heading: "Serviços", intro: "", serviceIds: [created.id] };
+    const revision = await save(content, 153);
+    expect((await repo().publish(revision, at(154))).status).toBe("published");
+    const served = (await publishedSiteBySlug(db, "estudio-d"))!;
+    expect(served.content.pages![0].blocks[1]).toMatchObject({ items: [{ name: "Consultoria online", delivery: "ONLINE" }] });
+  });
+  it("says which page a warning is about, publishes anyway when asked, and is stopped by what stops a page of the home kind", async () => {
+    const content = withPages();
+    content.pages![1].blocks[0] = { id: "planos-t", type: "text", eyebrow: "", heading: "Planos", text: "" };
+    const revision = await save(content, 155);
+    const asked = await repo().publish(revision, at(156));
+    expect(asked.status).toBe("warnings");
+    if (asked.status === "warnings") expect(asked.issues.map((issue) => [issue.page, issue.blockId, issue.severity])).toEqual([["p2", "planos-t", "warning"]]);
+    expect((await repo().publish(revision, at(157), { withWarnings: true })).status).toBe("published");
+    const blocked = withPages();
+    blocked.pages![1].blocks[0] = { id: "planos-q", type: "quote", eyebrow: "", quote: "Gostei", author: "Ana", authorized: false };
+    const stopped = await repo().publish(await save(blocked, 158), at(159), { withWarnings: true });
+    expect(stopped.status).toBe("invalid");
+    if (stopped.status === "invalid") expect(stopped.issues.filter((issue) => issue.severity === "blocking").map((issue) => [issue.page, issue.blockId])).toEqual([["p2", "planos-q"]]);
+  });
+  it("refuses to save pages the contract does not accept: a repeated address, a reserved one, the home page's identifier, a block identifier repeated on another page, too many pages", async () => {
+    const revision = (await repo().overview())!.draft.revision;
+    const bad = (pages: unknown) => repo().saveDraft({ ...withPages(), pages } as never, revision, at(160));
+    const ok = withPages().pages!;
+    await expect(bad([ok[0], { ...ok[1], slug: "sobre" }])).rejects.toThrow();
+    await expect(bad([{ ...ok[0], slug: "m" }])).rejects.toThrow();
+    await expect(bad([{ ...ok[0], id: "home" }])).rejects.toThrow();
+    await expect(bad([ok[0], { ...ok[1], id: "p1" }])).rejects.toThrow();
+    await expect(bad([{ ...ok[0], blocks: [{ id: "h1", type: "paragraph", text: "x" }] }])).rejects.toThrow();
+    await expect(bad(Array.from({ length: 11 }, (_, index) => page(`q${index}`, `pagina-${index}`, [])))).rejects.toThrow();
+    expect((await repo().overview())!.draft.revision).toBe(revision);
+  });
+  it("keeps serving a release made before the site had pages, and brings a release with pages back as a draft with its pages and without the resolved services", async () => {
+    const releases = (await repo().overview())!.releases;
+    const withoutPages = releases.find((release) => release.number === 4)!;
+    const revision = (await repo().overview())!.draft.revision;
+    expect(await repo().restore(withoutPages.id, revision, at(161))).toEqual({ status: "restored", revision: revision + 1 });
+    expect(JSON.parse((await one<{ content: string }>("SELECT content FROM site_drafts WHERE site_id = (SELECT id FROM sites WHERE organization_id = 'org-d')"))!.content)).not.toHaveProperty("pages");
+    const latest = releases.reduce((newest, release) => (release.number > newest.number ? release : newest));
+    const back = await repo().restore(latest.id, revision + 1, at(162));
+    expect(back.status).toBe("restored");
+    const draft = JSON.parse((await one<{ content: string }>("SELECT content FROM site_drafts WHERE site_id = (SELECT id FROM sites WHERE organization_id = 'org-d')"))!.content);
+    expect(draft.pages).toHaveLength(2);
+    expect(JSON.stringify(draft)).not.toContain('"items"');
+  });
+});

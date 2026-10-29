@@ -8,9 +8,12 @@ import {
   applyOverrides,
   componentById,
   componentsOf,
+  documentNodes,
   emptyBlock,
   expandedCount,
   newBlockId,
+  pagesOf,
+  swapPage,
   type BoxNode,
   type ComponentDef,
   type ComponentNode,
@@ -18,7 +21,7 @@ import {
   type SiteContent,
   type SiteNode,
 } from "./contracts";
-import { cloneWithNewIds, insertNode, locate, removeBlocks, topmost, updateBlock, type Outcome, type Slot } from "./editor-model";
+import { cloneWithNewIds, insertNode, locate, removeBlocks, topmost, updateBlock, type Outcome, type Refusal, type Slot } from "./editor-model";
 import { SCREEN_KEY, SCREENS, type Styled } from "./screens";
 import type { Style } from "./style";
 
@@ -65,8 +68,23 @@ function withComponents(content: SiteContent, list: readonly ComponentDef[]): Si
   return list.length > 0 ? { ...rest, components: [...list] } : rest;
 }
 
+/** The instances of a component on the page the document is showing (`blocks`). */
 const instancesOf = (content: SiteContent, componentId: string): ComponentNode[] =>
   allNodes(content.blocks).filter((entry): entry is ComponentNode => entry.type === "component" && entry.componentId === componentId);
+
+/**
+ * A component is the site's, and its instances are on every page; what is done to them is done page by page. The step is given the document as
+ * each page's own (the blocks of the page are `blocks`: see `swapPage`) and gives the document back, or says why not (then nothing is changed).
+ */
+function onEveryPage(content: SiteContent, step: (page: SiteContent) => { ok: true; content: SiteContent } | { ok: false; reason: Refusal }): { ok: true; content: SiteContent } | { ok: false; reason: Refusal } {
+  let current = content;
+  for (const pageId of [null, ...pagesOf(content).map((entry) => entry.id)]) {
+    const outcome = step(swapPage(current, pageId));
+    if (!outcome.ok) return outcome;
+    current = swapPage(outcome.content, pageId);
+  }
+  return { ok: true, content: current };
+}
 
 /** A name for a component that is not used by another one: "Componente", "Componente 2"... */
 function freeName(content: SiteContent, wanted: string): string {
@@ -169,18 +187,22 @@ export function detachInstance(content: SiteContent, instanceId: string): Outcom
 }
 
 /**
- * A component taken out of the site. Every instance of it first becomes plain blocks, so nothing on the page is lost, and the component is
+ * A component taken out of the site. Every instance of it, on every page, first becomes plain blocks, so nothing is lost, and the component is
  * gone from the list. Nothing is changed when one of them cannot be put back (the page is full).
  */
 export function deleteComponent(content: SiteContent, componentId: string): Outcome {
   if (!componentById(content, componentId)) return { ok: false, reason: "no-component" };
-  let current = content;
-  for (const instance of instancesOf(content, componentId)) {
-    const outcome = detachInstance(current, instance.id);
-    if (!outcome.ok) return outcome;
-    current = outcome.content;
-  }
-  return { ok: true, content: withComponents(current, componentsOf(current).filter((entry) => entry.id !== componentId)), id: componentId };
+  const detached = onEveryPage(content, (page) => {
+    let current = page;
+    for (const instance of instancesOf(page, componentId)) {
+      const outcome = detachInstance(current, instance.id);
+      if (!outcome.ok) return outcome;
+      current = outcome.content;
+    }
+    return { ok: true, content: current };
+  });
+  if (!detached.ok) return detached;
+  return { ok: true, content: withComponents(detached.content, componentsOf(detached.content).filter((entry) => entry.id !== componentId)), id: componentId };
 }
 
 export function renameComponent(content: SiteContent, componentId: string, wanted: string): SiteContent {
@@ -188,10 +210,14 @@ export function renameComponent(content: SiteContent, componentId: string, wante
   const name = nameOf(wanted);
   if (!definition || name === "" || name === definition.name) return content;
   const list = componentsOf(content).map((entry) => (entry.id === componentId ? { ...entry, name } : entry));
-  // The instances that were showing the old name in the layers follow it.
-  return instancesOf(content, componentId)
-    .filter((instance) => instance.name === definition.name)
-    .reduce((current, instance) => updateBlock(current, instance.id, (entry) => ({ ...entry, name })), withComponents(content, list));
+  // The instances that were showing the old name in the layers follow it, on every page.
+  const renamed = onEveryPage(withComponents(content, list), (page) => ({
+    ok: true,
+    content: instancesOf(page, componentId)
+      .filter((instance) => instance.name === definition.name)
+      .reduce((current, instance) => updateBlock(current, instance.id, (entry) => ({ ...entry, name })), page),
+  }));
+  return renamed.ok ? renamed.content : content;
 }
 
 // ---- editing the component itself ----
@@ -234,13 +260,17 @@ export function setComponentRoot(content: SiteContent, componentId: string, bloc
   if (inside.length > MAX_COMPONENT_NODES) return { ok: false, reason: "limit-component-nodes" };
   const next = { ...definition, root };
   const list = componentsOf(content).map((entry) => (entry.id === componentId ? next : entry));
-  let changed = withComponents(content, list);
-  for (const instance of instancesOf(changed, componentId)) {
-    const kept = pruned(instance, next);
-    if (kept !== instance) changed = updateBlock(changed, instance.id, () => kept);
-  }
-  if (expandedCount(changed) > MAX_EXPANDED_NODES) return { ok: false, reason: "limit-expanded" };
-  return { ok: true, content: changed, id: root.id };
+  const pruning = onEveryPage(withComponents(content, list), (page) => {
+    let current = page;
+    for (const instance of instancesOf(page, componentId)) {
+      const kept = pruned(instance, next);
+      if (kept !== instance) current = updateBlock(current, instance.id, () => kept);
+    }
+    return { ok: true, content: current };
+  });
+  if (!pruning.ok) return pruning;
+  if (expandedCount(pruning.content) > MAX_EXPANDED_NODES) return { ok: false, reason: "limit-expanded" };
+  return { ok: true, content: pruning.content, id: root.id };
 }
 
 // ---- what an instance says ----
@@ -300,6 +330,10 @@ export function resetOverrides(content: SiteContent, instanceId: string, nodeId?
     return { ...entry, overrides };
   });
 }
+
+/** How many instances of a component the site has, on all its pages. */
+export const usesOf = (content: SiteContent, componentId: string): number =>
+  documentNodes(content).filter((entry) => entry.type === "component" && entry.componentId === componentId).length;
 
 /** Whether an instance changes anything of its component. */
 export const isChanged = (instance: ComponentNode): boolean => Object.keys(instance.overrides).length > 0;

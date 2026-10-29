@@ -6,11 +6,13 @@ import {
   MAX_DEPTH,
   MAX_EXPANDED_NODES,
   MAX_NODES,
+  MAX_SITE_NODES,
   allNodes,
   boxDepth,
   emptyBlock,
   expandedCount,
   newBlockId,
+  siteNodeCount,
   type BlockType,
   type PlainBlockType,
   type BoxNode,
@@ -42,6 +44,7 @@ export type Refusal =
   | "limit-blocks"
   | "limit-children"
   | "limit-nodes"
+  | "limit-site-nodes"
   | "limit-depth"
   | "not-siblings"
   | "nested-component"
@@ -61,7 +64,8 @@ export const REFUSAL_MESSAGE: Record<Refusal, string> = {
   cycle: "Um contêiner não pode ser colocado dentro dele mesmo.",
   "limit-blocks": `A página aceita até ${MAX_BLOCKS} blocos.`,
   "limit-children": `Cada contêiner aceita até ${MAX_CHILDREN} blocos dentro.`,
-  "limit-nodes": `O site aceita até ${MAX_NODES} blocos no total, contando os que estão dentro de contêineres.`,
+  "limit-nodes": `Cada página aceita até ${MAX_NODES} blocos no total, contando os que estão dentro de contêineres.`,
+  "limit-site-nodes": `O site aceita até ${MAX_SITE_NODES} blocos somando todas as páginas.`,
   "limit-depth": `Os contêineres aceitam até ${MAX_DEPTH} níveis, um dentro do outro.`,
   "not-siblings": "Só dá para agrupar blocos que estão no mesmo lugar (na página ou no mesmo contêiner).",
   "nested-component": "Um componente não pode ter outro componente dentro. Desvincule o bloco antes.",
@@ -169,6 +173,7 @@ export function insertNode(content: SiteContent, entry: SiteNode, slot: Slot): O
   if (!list) return { ok: false, reason: slot.parent !== null && locate(content, slot.parent) ? "not-accepted" : "not-found" };
   if (list.length >= capacityOf(slot.parent)) return { ok: false, reason: fullFor(slot.parent) };
   if (allNodes(content.blocks).length + countOf(entry) > MAX_NODES) return { ok: false, reason: "limit-nodes" };
+  if (siteNodeCount(content) + countOf(entry) > MAX_SITE_NODES) return { ok: false, reason: "limit-site-nodes" };
   const refusal = placement(content, entry, slot.parent);
   if (refusal) return { ok: false, reason: refusal };
   const next = [...list];
@@ -263,6 +268,7 @@ export function wrapBlock(content: SiteContent, id: string): Outcome {
   if (!from) return { ok: false, reason: "not-found" };
   const wrapper = { ...(emptyBlock("box") as BoxNode), children: [from.node] };
   if (allNodes(content.blocks).length + 1 > MAX_NODES) return { ok: false, reason: "limit-nodes" };
+  if (siteNodeCount(content) + 1 > MAX_SITE_NODES) return { ok: false, reason: "limit-site-nodes" };
   const refusal = placement(removeBlock(content, id), wrapper, from.parentId);
   if (refusal) return { ok: false, reason: refusal };
   const next = [...childrenOf(content, from.parentId)!];
@@ -361,6 +367,7 @@ export function wrapBlocks(content: SiteContent, ids: readonly string[]): Outcom
   if (found.some((entry) => entry.parentId !== parentId)) return { ok: false, reason: "not-siblings" };
   const wrapper = { ...(emptyBlock("box") as BoxNode), children: found.map((entry) => entry.node) };
   if (allNodes(content.blocks).length + 1 > MAX_NODES) return { ok: false, reason: "limit-nodes" };
+  if (siteNodeCount(content) + 1 > MAX_SITE_NODES) return { ok: false, reason: "limit-site-nodes" };
   const without = removeBlocks(content, tops);
   const refusal = placement(without, wrapper, parentId);
   if (refusal) return { ok: false, reason: refusal };

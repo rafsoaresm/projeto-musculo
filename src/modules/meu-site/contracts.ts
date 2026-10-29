@@ -18,6 +18,10 @@ import { styleSchema, type Style } from "./style";
  * it: the node is the instance, which can only change the texts, buttons and images that the definition leaves open
  * (`overrides`) and its own style. A component never holds another one, so there is no cycle to follow.
  *
+ * A site may have more pages besides the home page (`blocks`): each of `pages` has its own address (`slug`), title (the menu's label), description
+ * for search engines and blocks. The limits of a page (blocks, nodes, depth) are the ones of a page; the site has a limit of its own for all of them.
+ * A button or a link may go to a page (`page`: "home" or the identifier of one), in the same way it goes to a contact or to a block of its own page.
+ *
  * `schemaVersion` lets a later change of the blocks read the documents that already exist. Versions 1 (five kinds of
  * block, no theme) and 2 (sections, "2 columns" with elements inside, a theme) are still read: releases are immutable,
  * so a page published in an older version keeps being served, upgraded in memory by `parseContent`, and a draft in an
@@ -33,7 +37,14 @@ export const MAX_CHILDREN = 40;
 export const MAX_DEPTH = 8;
 /** Every node of the document, the ones inside containers included. */
 export const MAX_NODES = 200;
-export const MAX_CONTENT_BYTES = 150_000;
+/** Nodes of all the pages together (the ones inside the definitions of the components are not counted: they have their own limits). */
+export const MAX_SITE_NODES = 800;
+export const MAX_CONTENT_BYTES = 400_000;
+/** Pages besides the home page. */
+export const MAX_PAGES = 10;
+export const PAGE_TITLE_MAX = 40;
+/** The identifier of the home page in a link to a page. */
+export const HOME = "home";
 /** Components kept in a site, and nodes in the definition of one. */
 export const MAX_COMPONENTS = 20;
 export const MAX_COMPONENT_NODES = 40;
@@ -212,16 +223,18 @@ const heading = z
   .object({ ...base, ...headingShape, level: z.number().int().min(2).max(6) })
   .strict();
 const paragraph = z.object({ ...base, ...paragraphShape }).strict();
-/** The point a button or a link goes to: a contact, or another node of the same page (not both). */
+/** The point a button or a link goes to: a contact, another node of the same page, or another page of the site (only one of them). */
 const anchor = id.optional();
+const pageRef = id.optional();
+const oneDestination = (node: { channel?: unknown; anchor?: unknown; page?: unknown }) => [node.channel, node.anchor, node.page].filter((value) => value !== undefined).length <= 1;
 const button = z
-  .object({ ...base, ...buttonShape, anchor })
+  .object({ ...base, ...buttonShape, anchor, page: pageRef })
   .strict()
-  .refine((node) => !(node.channel && node.anchor), { message: "a button goes to a contact or to a block, not both" });
+  .refine(oneDestination, { message: "a button goes to a contact, to a block or to a page, only one of them" });
 const link = z
-  .object({ ...base, type: z.literal("link"), label: plain(BUTTON_MAX), channel: z.enum(CHANNELS).optional(), anchor })
+  .object({ ...base, type: z.literal("link"), label: plain(BUTTON_MAX), channel: z.enum(CHANNELS).optional(), anchor, page: pageRef })
   .strict()
-  .refine((node) => !(node.channel && node.anchor), { message: "a link goes to a contact or to a block, not both" });
+  .refine(oneDestination, { message: "a link goes to a contact, to a block or to a page, only one of them" });
 const image = z.object({ ...base, ...imageShape }).strict();
 /**
  * What an instance may change in the nodes of its component: the texts of titles and paragraphs, the label and the contact of buttons and
@@ -330,6 +343,39 @@ export const theme = z
   })
   .strict();
 
+/**
+ * An address of a page of the site, below the site's own: lowercase letters, digits and hyphens. "m" is not allowed: `/m/` is where the images
+ * of the page are served from.
+ */
+export const PAGE_SLUG_RESERVED = ["m"] as const;
+export const pageSlug = z
+  .string()
+  .transform((value) => value.trim().toLowerCase())
+  .pipe(
+    z
+      .string()
+      .min(1)
+      .max(40)
+      .regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/)
+      .refine((value) => !value.includes("--"))
+      .refine((value) => !(PAGE_SLUG_RESERVED as readonly string[]).includes(value)),
+  );
+/**
+ * A page of the site besides the home page. `title` is its label in the menu and in the title of the tab; it may be empty in a draft (publishing
+ * says so, and the menu leaves the page out until it has one). `inMenu` is absent for the page that is in the menu.
+ */
+export const pageSchema = z
+  .object({
+    id,
+    slug: pageSlug,
+    title: plain(PAGE_TITLE_MAX),
+    description: plain(DESCRIPTION_MAX),
+    inMenu: z.boolean().optional(),
+    blocks: z.array(node).max(MAX_BLOCKS),
+  })
+  .strict();
+export type PageDef = z.infer<typeof pageSchema>;
+
 /** Every node of the document, the ones inside containers included, in reading order. */
 export function allNodes(blocks: readonly SiteNode[]): SiteNode[] {
   const out: SiteNode[] = [];
@@ -357,29 +403,61 @@ export function boxDepth(blocks: readonly SiteNode[]): number {
   return deepest;
 }
 
+// ---- pages ----
+
+/** The pages of a document besides the home page (none when it has not got the list). */
+export const pagesOf = (content: { pages?: readonly PageDef[] }): readonly PageDef[] => content.pages ?? [];
+export const pageById = (content: { pages?: readonly PageDef[] }, pageId: string): PageDef | undefined => (content.pages ?? []).find((entry) => entry.id === pageId);
+
+/**
+ * The document as the editor shows one page of it: the blocks of the page are `blocks` (so everything that works on "the page" works on it), and
+ * the blocks of the home page take its place in `pages`. Every tree is still in the document, so what looks across pages (the identifiers, the
+ * components, the images, the limits of the site) is the same. Doing it twice gives the document back. The home page, or a page that is not
+ * there, is the document itself.
+ */
+export function swapPage<T extends { blocks: SiteNode[]; pages?: PageDef[] }>(content: T, pageId: string | null): T {
+  if (pageId === null || pageId === HOME) return content;
+  const target = (content.pages ?? []).find((entry) => entry.id === pageId);
+  if (!target) return content;
+  return { ...content, blocks: target.blocks, pages: (content.pages ?? []).map((entry) => (entry.id === pageId ? { ...entry, blocks: content.blocks } : entry)) };
+}
+/** The document as one page draws it: the blocks of the page in place of the home page's. */
+export const pageContent = <T extends { blocks: SiteNode[]; pages?: PageDef[] }>(content: T, pageId: string | null): T => {
+  const swapped = swapPage(content, pageId);
+  return swapped === content ? content : { ...swapped, pages: content.pages };
+};
+
 // ---- components ----
 
 /** What of a document the functions below look at. */
 interface Held {
   blocks: readonly SiteNode[];
   components?: readonly ComponentDef[];
+  pages?: ReadonlyArray<{ id: string; blocks: readonly SiteNode[] }>;
 }
+/** Every tree of nodes of the document: the home page's blocks, then each page's. The limits of a page are checked tree by tree. */
+const treesOf = (content: Pick<Held, "blocks" | "pages">): Array<readonly SiteNode[]> => [content.blocks, ...(content.pages ?? []).map((entry) => entry.blocks)];
 /** The components of a document (none when it has not got the list). */
 export const componentsOf = (content: Pick<Held, "components">): readonly ComponentDef[] => content.components ?? [];
 export const componentById = (content: Pick<Held, "components">, componentId: string): ComponentDef | undefined => componentsOf(content).find((entry) => entry.id === componentId);
-/** Every node the document keeps: the ones on the page and the ones in the definitions of its components. */
-export const documentNodes = (content: Held): SiteNode[] => [...allNodes(content.blocks), ...componentsOf(content).flatMap((entry) => allNodes([entry.root]))];
+/** Every node the document keeps: the ones on its pages and the ones in the definitions of its components. */
+export const documentNodes = (content: Held): SiteNode[] => [...treesOf(content).flatMap((blocks) => allNodes(blocks)), ...componentsOf(content).flatMap((entry) => allNodes([entry.root]))];
+/** The nodes of all the pages together, the ones inside containers included (what `MAX_SITE_NODES` limits). */
+export const siteNodeCount = (content: Pick<Held, "blocks" | "pages">): number => treesOf(content).reduce((sum, blocks) => sum + allNodes(blocks).length, 0);
 
-/** What an instance of a component adds up to once it is drawn: the instance itself and every node of the component. */
+/**
+ * What the most crowded page adds up to once its instances of components are drawn: each instance itself and every node of its component. A page
+ * is what the server prints for a visit, so the limit is of a page, not of the site.
+ */
 export function expandedCount(content: Held): number {
   const sizes = new Map(componentsOf(content).map((entry) => [entry.id, allNodes([entry.root]).length]));
-  return allNodes(content.blocks).reduce((sum, entry) => sum + 1 + (entry.type === "component" ? sizes.get(entry.componentId) ?? 0 : 0), 0);
+  return Math.max(...treesOf(content).map((blocks) => allNodes(blocks).reduce((sum, entry) => sum + 1 + (entry.type === "component" ? sizes.get(entry.componentId) ?? 0 : 0), 0)));
 }
 
 /**
  * The root of a component as one instance draws it: the nodes of the definition with the instance's own texts, labels, contacts and images laid over.
  * What the definition does not leave open, and a field that does not belong to the node, is ignored; an override of a button's contact takes away
- * its link to a block (a button goes to one or the other).
+ * its link to a block or to a page (a button goes to only one place).
  */
 export function applyOverrides(root: SiteNode, overrides: ComponentNode["overrides"]): SiteNode {
   if (Object.keys(overrides).length === 0) return root;
@@ -389,7 +467,10 @@ export function applyOverrides(root: SiteNode, overrides: ComponentNode["overrid
     if (!own || !open) return entry;
     const merged: Record<string, unknown> = { ...entry };
     for (const field of open) if (own[field] !== undefined) merged[field] = own[field];
-    if ((entry.type === "button" || entry.type === "link") && own.channel !== undefined) delete merged.anchor;
+    if ((entry.type === "button" || entry.type === "link") && own.channel !== undefined) {
+      delete merged.anchor;
+      delete merged.page;
+    }
     return merged as unknown as SiteNode;
   })[0];
 }
@@ -402,7 +483,7 @@ function componentsAreWhole(content: Held): boolean {
     const inside = allNodes([entry.root]);
     if (inside.length > MAX_COMPONENT_NODES || inside.some((item) => item.type === "component")) return false;
   }
-  for (const instance of allNodes(content.blocks)) {
+  for (const instance of treesOf(content).flatMap((blocks) => allNodes(blocks))) {
     if (instance.type !== "component") continue;
     const definition = list.find((entry) => entry.id === instance.componentId);
     if (definition && !node.safeParse(applyOverrides(definition.root, instance.overrides)).success) return false;
@@ -443,11 +524,16 @@ export const siteContent = z
     blocks: z.array(node).max(MAX_BLOCKS),
     /** The components of the site, each kept once; absent when there is none. */
     components: z.array(componentDef).max(MAX_COMPONENTS).optional(),
+    /** The pages besides the home page (`blocks`), in the order of the menu; absent when the site has only one. */
+    pages: z.array(pageSchema).max(MAX_PAGES).optional(),
   })
   .strict()
   .refine((content) => new Set(documentNodes(content).map((b) => b.id)).size === documentNodes(content).length, { message: "block ids repeat" })
-  .refine((content) => allNodes(content.blocks).length <= MAX_NODES, { message: "too many blocks" })
-  .refine((content) => boxDepth(content.blocks) <= MAX_DEPTH && componentsOf(content).every((entry) => boxDepth([entry.root]) <= MAX_DEPTH), { message: "containers nested too deep" })
+  .refine((content) => pagesOf(content).every((entry, at, list) => entry.id !== HOME && list.findIndex((other) => other.id === entry.id) === at), { message: "page ids repeat" })
+  .refine((content) => pagesOf(content).every((entry, at, list) => list.findIndex((other) => other.slug === entry.slug) === at), { message: "page addresses repeat" })
+  .refine((content) => treesOf(content).every((blocks) => allNodes(blocks).length <= MAX_NODES), { message: "too many blocks" })
+  .refine((content) => siteNodeCount(content) <= MAX_SITE_NODES, { message: "too many blocks in the site" })
+  .refine((content) => treesOf(content).every((blocks) => boxDepth(blocks) <= MAX_DEPTH) && componentsOf(content).every((entry) => boxDepth([entry.root]) <= MAX_DEPTH), { message: "containers nested too deep" })
   .refine(componentsAreWhole, { message: "components are not valid" })
   .refine((content) => expandedCount(content) <= MAX_EXPANDED_NODES, { message: "too many blocks once the components are drawn" })
   .refine((content) => JSON.stringify(content).length <= MAX_CONTENT_BYTES, { message: "too large" });
@@ -700,11 +786,12 @@ export function resolveServices(content: SiteContent, live: ReadonlyMap<string, 
   return withEachNode(content, resolve);
 }
 
-/** The document with `change` applied to every node, on the page and in the components. */
-function withEachNode(content: SiteContent, change: (entry: SiteNode) => SiteNode): SiteContent {
-  const blocks = mapNodes(content.blocks, change);
-  if (!content.components) return { ...content, blocks };
-  return { ...content, blocks, components: content.components.map((entry) => ({ ...entry, root: mapNodes([entry.root], change)[0] })) };
+/** The document with `change` applied to every node, on every page and in the components. */
+export function withEachNode(content: SiteContent, change: (entry: SiteNode) => SiteNode): SiteContent {
+  const next: SiteContent = { ...content, blocks: mapNodes(content.blocks, change) };
+  if (content.pages) next.pages = content.pages.map((entry) => ({ ...entry, blocks: mapNodes(entry.blocks, change) }));
+  if (content.components) next.components = content.components.map((entry) => ({ ...entry, root: mapNodes([entry.root], change)[0] }));
+  return next;
 }
 
 /** What the draft keeps: a release brought back as a draft loses the resolved services, which are made again. */
@@ -786,6 +873,8 @@ export const titleSchema = plain(TITLE_MAX).pipe(z.string().min(2));
 // ---- what must be complete to publish ----
 
 export interface PublishIssue {
+  /** The page the issue is about: its identifier, or null for the home page and for what concerns the whole site. */
+  page: string | null;
   /** Position (from 1) of the block on the page, for the message; null for what concerns the whole page. */
   block: number | null;
   /** The node the issue is about (the one inside a container, when it is that), so the editor can show it. */
@@ -806,10 +895,16 @@ export interface PublishIssue {
  */
 export function publishIssues(content: SiteContent, liveServiceIds: ReadonlySet<string>, assetIds: ReadonlySet<string> | null = null): PublishIssue[] {
   const issues: PublishIssue[] = [];
-  const add = (block: number | null, blockId: string | null, message: string, severity: PublishIssue["severity"] = "warning") => issues.push({ block, blockId, message, severity });
+  /** The page being looked at: what is found is about it, and the message says which one when it is not the home page. */
+  let where: { page: string | null; prefix: string } = { page: null, prefix: "" };
+  const add = (block: number | null, blockId: string | null, message: string, severity: PublishIssue["severity"] = "warning") =>
+    issues.push({ page: where.page, block, blockId, message: `${where.prefix}${message}`, severity });
   if (!content.title) add(null, null, "Dê um título ao site.", "blocking");
   if (content.blocks.length === 0) add(null, null, "Acrescente pelo menos um bloco.", "blocking");
-  const nodeIds = new Set(allNodes(content.blocks).map((entry) => entry.id));
+  /** The blocks of the page being looked at: a button may go to one of them. */
+  let nodeIds = new Set<string>();
+  const pageExists = (target: string) => target === HOME || pageById(content, target) !== undefined;
+  const places = pagesOf(content).length > 0 ? "um contato, um bloco desta página ou outra página" : "um contato ou um bloco da página";
 
   /** A button is a pair: a text and a contact. Both empty is "no button"; one of them alone is a mistake. */
   const button = (at: number, blockId: string, label: string, buttonLabel: string, channel: Channel | undefined) => {
@@ -819,15 +914,17 @@ export function publishIssues(content: SiteContent, liveServiceIds: ReadonlySet<
     else if (!channelUrl(content.contact, channel))
       add(at, blockId, `${label}: o botão leva ao ${CHANNEL_LABEL[channel]}, mas esse contato não está preenchido ou é inválido.`);
   };
-  /** A button or a link of its own: a text, and a place to go (a contact, or another block of the page). */
+  /** A button or a link of its own: a text, and a place to go (a contact, another block of the page, or another page of the site). */
   const destination = (at: number, label: string, item: ButtonNode | LinkNode) => {
     const noun = item.type === "link" ? "link" : "botão";
-    if (!item.label && !item.channel && !item.anchor) add(at, item.id, `${label}: o ${noun} precisa de texto e de um destino (um contato ou um bloco da página).`);
+    const goes = item.channel || item.anchor || item.page;
+    if (!item.label && !goes) add(at, item.id, `${label}: o ${noun} precisa de texto e de um destino (${places}).`);
     else if (!item.label) add(at, item.id, `${label}: escreva o texto do ${noun}.`);
-    else if (!item.channel && !item.anchor) add(at, item.id, `${label}: escolha para onde o ${noun} leva.`);
+    else if (!goes) add(at, item.id, `${label}: escolha para onde o ${noun} leva.`);
     else if (item.channel && !channelUrl(content.contact, item.channel))
       add(at, item.id, `${label}: o ${noun} leva ao ${CHANNEL_LABEL[item.channel]}, mas esse contato não está preenchido ou é inválido.`);
     else if (item.anchor && !nodeIds.has(item.anchor)) add(at, item.id, `${label}: o ${noun} leva a um bloco que não existe mais. Escolha outro.`);
+    else if (item.page && !pageExists(item.page)) add(at, item.id, `${label}: o ${noun} leva a uma página que não existe mais. Escolha outra.`);
   };
   const element = (at: number, label: string, item: ElementNode) => {
     if (item.type === "heading" && !item.text) add(at, item.id, `${label}: escreva o título.`);
@@ -913,7 +1010,16 @@ export function publishIssues(content: SiteContent, liveServiceIds: ReadonlySet<
         break;
     }
   };
+  nodeIds = new Set(allNodes(content.blocks).map((entry) => entry.id));
   content.blocks.forEach((b, index) => visit(b, index + 1, [], b));
+  for (const entry of pagesOf(content)) {
+    where = { page: entry.id, prefix: `Página “${entry.title || entry.slug}”: ` };
+    nodeIds = new Set(allNodes(entry.blocks).map((inner) => inner.id));
+    if (!entry.title) add(null, null, "dê um título à página: ele é o nome dela no menu, e sem ele a página fica fora do menu.");
+    if (entry.blocks.length === 0) add(null, null, "a página está sem blocos. Acrescente algum ou apague a página.");
+    entry.blocks.forEach((b, index) => visit(b, index + 1, [], b));
+  }
+  where = { page: null, prefix: "" };
   if (content.logoAssetId && assetIds && !assetIds.has(content.logoAssetId)) add(null, null, "O logotipo escolhido não está mais na biblioteca. Escolha outro ou tire o logotipo.");
   return issues;
 }
