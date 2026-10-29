@@ -346,20 +346,24 @@ export function BlockHandles({ host }: { host: HandleHost }) {
           onFinish={finish}
         />
       ))}
-      {EDGES.map((edge) => (
-        <Grip
-          key={edge}
-          name={`padding-${edge}`}
-          active={active}
-          className="ve-handle ve-h-pad"
-          data-edge={edge}
-          title={`Margem interna ${EDGE_NAME[edge]}: arraste. Shift: os quatro lados. Alt: os dois lados`}
-          onBegin={(event) => begin(event, `padding-${edge}`, padding(edge))}
-          onMove={move}
-          onFinish={finish}
-        />
-      ))}
-      <Grip name="radius" active={active} className="ve-handle ve-h-radius" title="Arredondamento: arraste" onBegin={(event) => begin(event, "radius", rounding)} onMove={move} onFinish={finish} />
+      {/* An instance of a component has no inside of its own: the padding and the rounding are the component's, changed by editing it. */}
+      {node.type !== "component" &&
+        EDGES.map((edge) => (
+          <Grip
+            key={edge}
+            name={`padding-${edge}`}
+            active={active}
+            className="ve-handle ve-h-pad"
+            data-edge={edge}
+            title={`Margem interna ${EDGE_NAME[edge]}: arraste. Shift: os quatro lados. Alt: os dois lados`}
+            onBegin={(event) => begin(event, `padding-${edge}`, padding(edge))}
+            onMove={move}
+            onFinish={finish}
+          />
+        ))}
+      {node.type !== "component" && (
+        <Grip name="radius" active={active} className="ve-handle ve-h-radius" title="Arredondamento: arraste" onBegin={(event) => begin(event, "radius", rounding)} onMove={move} onFinish={finish} />
+      )}
       {Array.from({ length: gapCount }, (_, index) => (
         <Grip
           key={index}

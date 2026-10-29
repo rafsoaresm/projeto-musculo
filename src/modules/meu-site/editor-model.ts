@@ -1,13 +1,18 @@
 import {
   MAX_BLOCKS,
   MAX_CHILDREN,
+  MAX_COMPONENTS,
+  MAX_COMPONENT_NODES,
   MAX_DEPTH,
+  MAX_EXPANDED_NODES,
   MAX_NODES,
   allNodes,
   boxDepth,
   emptyBlock,
+  expandedCount,
   newBlockId,
   type BlockType,
+  type PlainBlockType,
   type BoxNode,
   type SiteContent,
   type SiteNode,
@@ -30,7 +35,22 @@ export interface Slot {
 }
 export const PAGE: Slot["parent"] = null;
 
-export type Refusal = "not-found" | "not-accepted" | "cycle" | "limit-blocks" | "limit-children" | "limit-nodes" | "limit-depth" | "not-siblings";
+export type Refusal =
+  | "not-found"
+  | "not-accepted"
+  | "cycle"
+  | "limit-blocks"
+  | "limit-children"
+  | "limit-nodes"
+  | "limit-depth"
+  | "not-siblings"
+  | "nested-component"
+  | "limit-components"
+  | "limit-component-nodes"
+  | "limit-expanded"
+  | "empty-component"
+  | "no-component"
+  | "foreign-component";
 export type Outcome = { ok: true; content: SiteContent; id: string } | { ok: false; reason: Refusal };
 /** What a change to several nodes gives: the document, and the identifiers of the nodes it made or kept. */
 export type ManyOutcome = { ok: true; content: SiteContent; ids: string[] } | { ok: false; reason: Refusal };
@@ -44,6 +64,13 @@ export const REFUSAL_MESSAGE: Record<Refusal, string> = {
   "limit-nodes": `O site aceita até ${MAX_NODES} blocos no total, contando os que estão dentro de contêineres.`,
   "limit-depth": `Os contêineres aceitam até ${MAX_DEPTH} níveis, um dentro do outro.`,
   "not-siblings": "Só dá para agrupar blocos que estão no mesmo lugar (na página ou no mesmo contêiner).",
+  "nested-component": "Um componente não pode ter outro componente dentro. Desvincule o bloco antes.",
+  "limit-components": `O site aceita até ${MAX_COMPONENTS} componentes.`,
+  "limit-component-nodes": `Um componente aceita até ${MAX_COMPONENT_NODES} blocos, contando os que estão dentro de contêineres.`,
+  "limit-expanded": `Com os componentes desenhados, a página passaria de ${MAX_EXPANDED_NODES} blocos.`,
+  "empty-component": "O componente precisa de pelo menos um bloco.",
+  "no-component": "Esse componente não existe mais.",
+  "foreign-component": "O bloco copiado usa um componente que não está neste site e não veio junto.",
 };
 
 /** Whether a node of this type holds other nodes. */
@@ -117,7 +144,7 @@ function rebuild(nodes: readonly SiteNode[], id: string, change: (entry: SiteNod
   return changed ? out : nodes;
 }
 
-function withChildren(content: SiteContent, parentId: string | null, list: SiteNode[]): SiteContent {
+export function withChildren(content: SiteContent, parentId: string | null, list: SiteNode[]): SiteContent {
   if (parentId === null) return { ...content, blocks: list };
   return { ...content, blocks: rebuild(content.blocks, parentId, (entry) => (entry.type === "box" ? { ...entry, children: list } : entry)) as SiteNode[] };
 }
@@ -146,11 +173,13 @@ export function insertNode(content: SiteContent, entry: SiteNode, slot: Slot): O
   if (refusal) return { ok: false, reason: refusal };
   const next = [...list];
   next.splice(clamp(slot.index, list.length), 0, entry);
-  return { ok: true, content: withChildren(content, slot.parent, next), id: entry.id };
+  const changed = withChildren(content, slot.parent, next);
+  if (expandedCount(changed) > MAX_EXPANDED_NODES) return { ok: false, reason: "limit-expanded" };
+  return { ok: true, content: changed, id: entry.id };
 }
 
 /** A new empty node of the type in the slot. */
-export const insertBlock = (content: SiteContent, type: BlockType, slot: Slot): Outcome => insertNode(content, emptyBlock(type), slot);
+export const insertBlock = (content: SiteContent, type: PlainBlockType, slot: Slot): Outcome => insertNode(content, emptyBlock(type), slot);
 
 /** Takes a node where it is and puts it in the slot, keeping everything it holds. Where it stood is not counted twice. */
 export function moveBlock(content: SiteContent, id: string, slot: Slot): Outcome {
@@ -238,7 +267,9 @@ export function wrapBlock(content: SiteContent, id: string): Outcome {
   if (refusal) return { ok: false, reason: refusal };
   const next = [...childrenOf(content, from.parentId)!];
   next[from.index] = wrapper;
-  return { ok: true, content: withChildren(content, from.parentId, next), id: wrapper.id };
+  const changed = withChildren(content, from.parentId, next);
+  if (expandedCount(changed) > MAX_EXPANDED_NODES) return { ok: false, reason: "limit-expanded" };
+  return { ok: true, content: changed, id: wrapper.id };
 }
 
 /** Takes a container away and leaves what it held, in its place. */
@@ -335,7 +366,9 @@ export function wrapBlocks(content: SiteContent, ids: readonly string[]): Outcom
   if (refusal) return { ok: false, reason: refusal };
   const next = [...childrenOf(without, parentId)!];
   next.splice(found[0].index, 0, wrapper);
-  return { ok: true, content: withChildren(without, parentId, next), id: wrapper.id };
+  const changed = withChildren(without, parentId, next);
+  if (expandedCount(changed) > MAX_EXPANDED_NODES) return { ok: false, reason: "limit-expanded" };
+  return { ok: true, content: changed, id: wrapper.id };
 }
 
 /** Changes each of the nodes with a function that gives the new one. */

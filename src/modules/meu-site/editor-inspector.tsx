@@ -1,5 +1,5 @@
 "use client";
-import { ArrowDown, ArrowLeftToLine, ArrowUp, Copy, Group, IndentIncrease, Plus, Trash2, Ungroup } from "lucide-react";
+import { ArrowDown, ArrowLeftToLine, ArrowUp, Component, Copy, Group, IndentIncrease, Plus, Trash2, Ungroup } from "lucide-react";
 import {
   ANSWER_MAX,
   AUTHOR_MAX,
@@ -43,6 +43,7 @@ import type { ServiceChoice } from "@/db/sites";
 import type { AssetRow } from "@/db/site-assets";
 import type { NodeAction } from "./editor-canvas";
 import { ImagePicker, type RemoveResult, type UploadResult } from "./image-picker";
+import { ComponentPanel, type ComponentActions } from "./component-panel";
 import { ALT_MAX, CAPTION_MAX } from "./images";
 
 type Change = (next: SiteContent, key?: string) => void;
@@ -220,9 +221,15 @@ export function BlockInspector({
   act,
   select,
   ids,
+  onComponent,
+  inComponent,
 }: {
   content: SiteContent;
   id: string;
+  /** Going into a component, taking an instance back to plain blocks, and making a component of what is selected. */
+  onComponent: ComponentActions & { create: () => void };
+  /** A component is being edited: another one cannot be made from what is in it. */
+  inComponent: boolean;
   /** Everything that is selected (the block shown is the last): a change of style is made to all of them. */
   ids: readonly string[];
   services: ServiceChoice[];
@@ -427,6 +434,8 @@ export function BlockInspector({
       )}
 
 
+          {entry.type === "component" && <ComponentPanel content={content} instance={entry} images={images} onChange={onChange} actions={onComponent} />}
+
           {entry.type === "box" && (
             <>
               <label>
@@ -529,6 +538,11 @@ export function BlockInspector({
             <button type="button" className="button small secondary" onClick={() => act(id, "duplicate")}>
               <Copy size={16} /> Duplicar
             </button>
+            {entry.type !== "component" && (
+              <button type="button" className="button small secondary" disabled={inComponent} title={inComponent ? "Dentro de um componente não dá para criar outro" : "Guardar este bloco como um componente, para usar em vários lugares"} onClick={onComponent.create}>
+                <Component size={16} /> Criar componente
+              </button>
+            )}
             <button type="button" className="button small danger-outline" onClick={() => act(id, "delete")}>
               <Trash2 size={16} /> Excluir
             </button>

@@ -365,3 +365,49 @@ describe("when something changes between the check and the write", () => {
     expect(await count("SELECT 1 FROM site_release_assets ra WHERE NOT EXISTS (SELECT 1 FROM site_assets a WHERE a.id = ra.asset_id)")).toBe(0);
   });
 });
+
+describe("images used by components", () => {
+  const component = (assetId: string): NonNullable<SiteContent["components"]>[number] => ({
+    id: "foto",
+    name: "Foto",
+    root: { ...emptyBlock("box", "foto-box"), children: [{ ...emptyBlock("image", "foto-img"), assetId, alt: "Marina" }] } as SiteContent["blocks"][number],
+  });
+  const instance = (id: string, overrides: object = {}) => ({ id, type: "component", componentId: "foto", overrides }) as SiteContent["blocks"][number];
+  const page = (blocks: SiteContent["blocks"], assetId: string): SiteContent => ({ ...withImage("", { blocks }), components: [component(assetId)] });
+  const hero = () => withImage("").blocks[0];
+
+  it("counts the images of a component, in its definition and in what an instance chooses, as used by the page, and serves them from the published version", async () => {
+    const stored = await assets().add(png([text("pad-components")].map((chunkText) => chunk("tEXt", [...chunkText]))), at(60));
+    if (stored.status !== "stored") throw new Error(JSON.stringify(stored));
+    const chosen = stored.asset.id;
+    const content = page([hero(), instance("i1"), instance("i2", { "foto-img": { assetId: chosen, alt: "Outra" } })], firstId);
+    expect(referencedAssetIds(content).sort()).toEqual([firstId, chosen].sort());
+    const outcome = await saveAndPublish(content, 61);
+    expect(outcome.status).toBe("published");
+    const published = (await publishedSiteBySlug(db, "marina-a"))!;
+    expect(Object.keys(published.images).sort()).toEqual([firstId, chosen].sort());
+    expect(published.content.components).toHaveLength(1);
+    for (const id of [firstId, chosen]) {
+      const served = await publishedAssetBySlug(db, bucket, "marina-a", id);
+      expect(served, id).not.toBeNull();
+      await served!.body.cancel();
+    }
+  });
+  it("does not let a component's image keep the library's image from being removed while the page uses it, and leaves out of the page one that is not there", async () => {
+    // The image only the component uses is the draft's: it cannot be removed from the library.
+    const alone = await assets().add(png([chunk("tEXt", [...text("only-the-component")])]), at(63));
+    if (alone.status !== "stored") throw new Error(JSON.stringify(alone));
+    const overview = (await sites().overview())!;
+    const saved = await sites().saveDraft(page([hero(), instance("i1")], alone.asset.id), overview.draft.revision, at(64));
+    if (saved.status !== "saved") throw new Error(JSON.stringify(saved));
+    expect(await assets().remove(alone.asset.id, at(65))).toEqual({ status: "in_draft" });
+    // An image an instance chooses that is not in the library is a warning about the instance, and is left out of what is published.
+    const missing = page([hero(), instance("i2", { "foto-img": { assetId: "gone" } })], firstId);
+    const asked = await saveAndPublish(missing, 66);
+    expect(asked.status).toBe("warnings");
+    if (asked.status === "warnings") expect(asked.issues.map((issue) => issue.blockId)).toEqual(["i2"]);
+    const anyway = await saveAndPublish(missing, 68, "owner-a", "org-a", true);
+    expect(anyway.status).toBe("published");
+    expect(Object.keys((await publishedSiteBySlug(db, "marina-a"))!.images)).toEqual([firstId]);
+  });
+});

@@ -8,6 +8,8 @@ import {
   CircleHelp,
   Columns2,
   Columns3,
+  Component,
+  Copy,
   CreditCard,
   Grid3x3,
   Eye,
@@ -26,11 +28,13 @@ import {
   Quote,
   RectangleHorizontal,
   Rows3,
+  Pencil,
   Square,
+  Trash2,
   UserRound,
   type LucideIcon,
 } from "lucide-react";
-import { NAME_MAX, type SiteContent, type SiteNode } from "./contracts";
+import { NAME_MAX, type ComponentDef, type SiteContent, type SiteNode } from "./contracts";
 import type { Drag } from "./editor-canvas";
 import type { Slot } from "./editor-model";
 import { nodeText, nodeTitle } from "./node-label";
@@ -68,11 +72,36 @@ const ICON: Record<string, LucideIcon> = {
 };
 const GROUPS: Group[] = ["structure", "element", "section", "template"];
 
+/** The key a component has among the things that can be added: `component:<id>`. */
+export const COMPONENT_KEY = "component:";
+
+/** What the library does with the components of the site, besides adding an instance (a click or a drag, like any block). */
+export interface LibraryComponents {
+  /** The components of the site. */
+  list: readonly ComponentDef[];
+  edit: (componentId: string) => void;
+  copy: (componentId: string) => void;
+  remove: (componentId: string) => void;
+}
+
 /**
  * The blocks that can be added: dragged onto the page (or into the layers), or (without dragging) added with a click or
  * Enter: inside the container that is selected, after the block that is selected, or at the end of the page.
  */
-export function Library({ onAdd, startDrag, endDrag }: { onAdd: (key: string) => void; startDrag: (drag: Drag) => void; endDrag: () => void }) {
+export function Library({
+  onAdd,
+  startDrag,
+  endDrag,
+  components,
+  editingComponent,
+}: {
+  onAdd: (key: string) => void;
+  startDrag: (drag: Drag) => void;
+  endDrag: () => void;
+  components: LibraryComponents;
+  /** The name of the component being edited, if one is: its components are not offered then (a component cannot hold another one). */
+  editingComponent: string | null;
+}) {
   const press = (key: string) => (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
@@ -114,6 +143,55 @@ export function Library({ onAdd, startDrag, endDrag }: { onAdd: (key: string) =>
           </div>
         </section>
       ))}
+      <section aria-label="Componentes">
+        <h3 className="ve-subtitle">Componentes</h3>
+        {editingComponent !== null ? (
+          <p className="small muted">Você está editando o componente “{editingComponent}”. Um componente não pode ter outro componente dentro.</p>
+        ) : components.list.length === 0 ? (
+          <p className="small muted">Um componente é um bloco que você usa em vários lugares e muda num só. Selecione blocos na página, clique com o botão direito e escolha “Criar componente”.</p>
+        ) : (
+          <ul className="ve-components">
+            {components.list.map((entry) => {
+              const key = `${COMPONENT_KEY}${entry.id}`;
+              return (
+                <li key={entry.id} className="ve-component">
+                  <div
+                    className="ve-tile"
+                    role="button"
+                    tabIndex={0}
+                    draggable
+                    aria-label={`Acrescentar o componente ${entry.name}`}
+                    title="Arraste para a página ou para as camadas, ou clique para acrescentar"
+                    onClick={() => onAdd(key)}
+                    onKeyDown={press(key)}
+                    onDragStart={(event) => {
+                      event.dataTransfer.effectAllowed = "copy";
+                      event.dataTransfer.setData("text/plain", key);
+                      startDrag({ kind: "new", key });
+                    }}
+                    onDragEnd={endDrag}
+                  >
+                    <Component size={22} aria-hidden="true" />
+                    <strong>{entry.name}</strong>
+                    <span>Componente</span>
+                  </div>
+                  <div className="ve-component-actions" role="group" aria-label={`Ações do componente ${entry.name}`}>
+                    <button type="button" className="ve-icon-button" aria-label={`Editar o componente ${entry.name}`} title="Editar o componente: vale para todos os blocos que o usam" onClick={() => components.edit(entry.id)}>
+                      <Pencil size={15} aria-hidden="true" />
+                    </button>
+                    <button type="button" className="ve-icon-button" aria-label={`Acrescentar uma cópia de ${entry.name}`} title="Acrescentar uma cópia: blocos comuns, que não seguem o componente" onClick={() => components.copy(entry.id)}>
+                      <Copy size={15} aria-hidden="true" />
+                    </button>
+                    <button type="button" className="ve-icon-button" aria-label={`Excluir o componente ${entry.name}`} title="Excluir o componente: os blocos que o usam viram blocos comuns" onClick={() => components.remove(entry.id)}>
+                      <Trash2 size={15} aria-hidden="true" />
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
       <p className="small muted ve-tip">
         Arraste um bloco para a página, para uma linha entre dois blocos ou para dentro de um contêiner. Sem arrastar: selecione um contêiner e clique no bloco
         para colocá-lo dentro dele. Dê dois cliques num texto da página para escrever nele.

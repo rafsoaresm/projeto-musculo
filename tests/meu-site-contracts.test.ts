@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  BLOCK_KINDS,
   BLOCK_TYPES,
   MAX_BLOCKS,
   MAX_CHILDREN,
@@ -24,6 +25,7 @@ import {
   withoutResolvedServices,
   type Block,
   type SiteContent,
+  type PlainBlockType,
 } from "@/modules/meu-site/contracts";
 
 const full = (over: Partial<SiteContent> = {}): SiteContent => ({
@@ -39,7 +41,7 @@ const full = (over: Partial<SiteContent> = {}): SiteContent => ({
   ...over,
 });
 const withBlocks = (blocks: Block[]) => full({ blocks });
-const block = <T extends Block["type"]>(type: T, id: string, over: Partial<Extract<Block, { type: T }>> = {}) =>
+const block = <T extends PlainBlockType>(type: T, id: string, over: Partial<Extract<Block, { type: T }>> = {}) =>
   ({ ...emptyBlock(type, id), ...over }) as Block;
 /** A container holding what is given. */
 const box = (id: string, children: Block[], over: object = {}) => ({ ...emptyBlock("box", id), children, ...over }) as Block;
@@ -95,8 +97,9 @@ describe("the document of the page", () => {
     expect(siteContent.safeParse(starterContent("Marina")).success).toBe(true);
   });
   it("accepts every kind of node, empty, on the page and inside a container: a container takes sections too", () => {
-    expect([...BLOCK_TYPES]).toEqual(["hero", "text", "services", "about", "quote", "stats", "faq", "cta", "box", "heading", "paragraph", "button", "link", "image"]);
-    for (const type of BLOCK_TYPES) {
+    expect([...BLOCK_KINDS]).toEqual(["hero", "text", "services", "about", "quote", "stats", "faq", "cta", "box", "heading", "paragraph", "button", "link", "image"]);
+    expect([...BLOCK_TYPES]).toEqual([...BLOCK_KINDS, "component"]);
+    for (const type of BLOCK_KINDS) {
       const made = emptyBlock(type, `b-${type}`);
       expect(siteContent.safeParse(withBlocks([made])).success, type).toBe(true);
       expect(siteContent.safeParse(withBlocks([box("c", [emptyBlock(type, `in-${type}`)])])).success, `${type} in a container`).toBe(true);

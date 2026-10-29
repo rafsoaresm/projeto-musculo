@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { describe, expect, it } from "vitest";
 import { SiteRenderer, type EditHooks, type FieldSpec, type ImageResolver } from "@/modules/meu-site/renderer";
 import { libraryImages, publicImages } from "@/modules/meu-site/image-urls";
-import { emptyBlock, starterContent, type Block, type SiteContent } from "@/modules/meu-site/contracts";
+import { emptyBlock, starterContent, type Block, type PlainBlockType, type SiteContent } from "@/modules/meu-site/contracts";
 
 const render = (content: SiteContent, edit?: EditHooks, images?: ImageResolver) => renderToStaticMarkup(createElement(SiteRenderer, { content, edit, images }));
 
@@ -22,7 +22,7 @@ const page = (over: Partial<SiteContent> = {}): SiteContent => ({
   ],
   ...over,
 });
-const of = <T extends Block["type"]>(type: T, id: string, over: Partial<Extract<Block, { type: T }>>) => ({ ...emptyBlock(type, id), ...over }) as Block;
+const of = <T extends PlainBlockType>(type: T, id: string, over: Partial<Extract<Block, { type: T }>>) => ({ ...emptyBlock(type, id), ...over }) as Block;
 const rich = (): SiteContent =>
   page({
     theme: { accent: "green", mode: "dark", width: "wide" },

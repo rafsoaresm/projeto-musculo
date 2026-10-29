@@ -1,14 +1,15 @@
 "use client";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Eye, Pencil, Redo2, Undo2, X } from "lucide-react";
-import { referencedAssetIds, resolveServices, type PublishIssue, type SiteContent } from "./contracts";
+import { componentById, componentsOf, referencedAssetIds, resolveServices, type OverrideFields, type PublishIssue, type SiteContent, type SiteNode } from "./contracts";
 import { COMPACT_QUERY, CanvasSurface, EditorContext, canvasHooks, useCompact, type CanvasControls, type Drag, type EditorApi, type ManyAction, type NodeAction } from "./editor-canvas";
 import { BlockInspector, PageSettings, type ImageSupport } from "./editor-inspector";
 import { editorImageUrl, libraryCssImages, libraryImages } from "./image-urls";
 import type { RemoveResult, UploadResult } from "./image-picker";
 import type { AssetRow } from "@/db/site-assets";
 import { useMountPath } from "@/components/use-mount-path";
-import { Layers, Library } from "./editor-library";
+import { COMPONENT_KEY, Layers, Library } from "./editor-library";
+import { componentView, createComponent, deleteComponent, detachInstance, insertCopy, newInstance, setComponentRoot, setOverride } from "./component-model";
 import { ContextMenu, type MenuEntry } from "./context-menu";
 import { applyStyle, blocksPayload, parseBlocks, parseStyle, pasteBlocks, stylePayload, type PasteContext } from "./clipboard";
 import { primaryOf, reconcile, selectRange, toggleId } from "./selection";
@@ -93,7 +94,19 @@ function addSlot(content: SiteContent, selectedId: string | null): Slot {
  * modal dialog, so nothing behind it can be reached while editing.
  */
 export function VisualEditor(props: VisualEditorProps) {
-  const { content, onEdit, services } = props;
+  const { services } = props;
+  /** The document itself. What the editor shows and changes is `content`: the same, or the nodes of the component being edited as if they were the page. */
+  const realContent = props.content;
+  const [editingId, setEditingId] = useState<string | null>(null);
+  /** The instance the component was opened from, so closing it goes back there. */
+  const [openedFrom, setOpenedFrom] = useState<string | null>(null);
+  const editing = editingId !== null ? componentById(realContent, editingId) : undefined;
+  // A component that is gone (the creation was undone, say) is not being edited any more.
+  if (editingId !== null && !editing) {
+    setEditingId(null);
+    setOpenedFrom(null);
+  }
+  const content = useMemo(() => (editing && editingId !== null ? componentView(realContent, editingId) ?? realContent : realContent), [realContent, editing, editingId]);
   const mountPath = useMountPath();
   const dialog = useRef<HTMLDialogElement>(null);
   /** What is selected, in the order it was chosen: the last is the primary, which the panel shows and the handles sit on. */
@@ -130,6 +143,25 @@ export function VisualEditor(props: VisualEditorProps) {
   const [drag, setDrag] = useState<Drag | null>(null);
   const [target, setTarget] = useState<Landing | null>(null);
   const [message, setMessage] = useState("");
+  /** What was done that is worth saying (not an error). */
+  const [notice, setNotice] = useState("");
+  /**
+   * A change of the document. While a component is being edited the change is to the view of it (its nodes as the page): it is written back as
+   * the component, or refused with the reason (a component with nothing in it, too many nodes, too many for the page once drawn).
+   */
+  const onEdit = (next: SiteContent, key?: string) => {
+    if (editingId === null || !editing) {
+      props.onEdit(next, key);
+      return;
+    }
+    const outcome = setComponentRoot(realContent, editingId, next.blocks);
+    if (outcome.ok) {
+      props.onEdit(outcome.content, key);
+      setMessage("");
+    } else {
+      setMessage(REFUSAL_MESSAGE[outcome.reason]);
+    }
+  };
   /** A block to bring into view (one just added, or chosen from a list). A new object each time, so the same block can be asked again. */
   const [scrollTo, setScrollTo] = useState<{ id: string } | null>(null);
 
@@ -150,7 +182,10 @@ export function VisualEditor(props: VisualEditorProps) {
   useEffect(() => {
     selectedNow.current = selected;
   });
-  const resolved = useMemo(() => resolveServices(content, new Map(services.map((service) => [service.id, service]))), [content, services]);
+  const liveServices = useMemo(() => new Map(services.map((service) => [service.id, service])), [services]);
+  const resolved = useMemo(() => resolveServices(content, liveServices), [content, liveServices]);
+  /** The whole page with its components, for the preview and for the style sheet (which has the rules of every node, the components' included). */
+  const resolvedPage = useMemo(() => resolveServices(realContent, liveServices), [realContent, liveServices]);
   // The editor is never drawn on the server (it opens on a click), so the browser's address is there.
   const base = mountPath();
   const imageResolver = useMemo(() => libraryImages(base, props.images.library), [base, props.images.library]);
@@ -158,12 +193,13 @@ export function VisualEditor(props: VisualEditorProps) {
     available: props.images.available,
     library: props.images.library,
     src: (assetId) => editorImageUrl(base, assetId),
-    usedIds: new Set(referencedAssetIds(content)),
+    usedIds: new Set(referencedAssetIds(realContent)),
     upload: props.images.upload,
     remove: props.images.remove,
   };
 
   const apply = (result: Outcome) => {
+    setNotice("");
     if (result.ok) {
       onEdit(result.content);
       setSelection([result.id]);
@@ -174,6 +210,7 @@ export function VisualEditor(props: VisualEditorProps) {
     }
   };
   const applyMany = (result: ManyOutcome) => {
+    setNotice("");
     if (result.ok) {
       onEdit(result.content);
       setSelection(result.ids);
@@ -184,11 +221,13 @@ export function VisualEditor(props: VisualEditorProps) {
     }
   };
 
+  /** A new block for something of the library: a kind of block, a ready-made section, or an instance of a component. */
+  const newFor = (key: string): SiteNode | null => (key.startsWith(COMPONENT_KEY) ? newInstance(content, key.slice(COMPONENT_KEY.length)) : catalogueItem(key)?.create() ?? null);
   const canDrop = (slot: Slot): boolean => {
     if (!drag) return false;
     if (drag.kind === "new") {
-      const item = catalogueItem(drag.key);
-      return item ? insertNode(content, item.create(), slot).ok : false;
+      const made = newFor(drag.key);
+      return made ? insertNode(content, made, slot).ok : false;
     }
     return moveBlock(content, drag.id, slot).ok;
   };
@@ -275,6 +314,58 @@ export function VisualEditor(props: VisualEditorProps) {
     setPanel("blocks");
     setRenaming(id);
   };
+
+  // ---- components ----
+
+  /** Goes into a component to change it: its nodes are the page until "Concluir edição". Every block that uses the component draws the change. */
+  const editComponent = (componentId: string) => {
+    const definition = componentById(realContent, componentId);
+    if (!definition) return;
+    const from = selected ? locate(content, selected)?.node : undefined;
+    setOpenedFrom(from?.type === "component" && from.componentId === componentId ? from.id : null);
+    setEditingId(componentId);
+    setSelection([definition.root.id]);
+    setScrollTo({ id: definition.root.id });
+    setMode("edit");
+    setLeftTab("blocks");
+    setPanel("page");
+    setMenu(null);
+    setMessage("");
+    setNotice("");
+  };
+  const finishComponent = () => {
+    const back = openedFrom && locate(realContent, openedFrom) ? openedFrom : null;
+    setEditingId(null);
+    setOpenedFrom(null);
+    setSelection(back ? [back] : []);
+    if (back) setScrollTo({ id: back });
+    setMessage("");
+  };
+  const makeComponent = () => {
+    const outcome = createComponent(content, ids);
+    apply(outcome);
+    if (outcome.ok) setNotice(`Componente “${componentsOf(outcome.content).at(-1)?.name ?? ""}” criado. Use-o em outros lugares pela biblioteca.`);
+  };
+  const detach = (instanceId: string) => {
+    apply(detachInstance(content, instanceId));
+    setNotice("");
+  };
+  const copyComponent = (componentId: string) => {
+    apply(insertCopy(content, componentId, addSlot(content, selected)));
+    setNotice("");
+  };
+  const removeComponent = (componentId: string) => {
+    const outcome = deleteComponent(realContent, componentId);
+    if (!outcome.ok) {
+      setMessage(REFUSAL_MESSAGE[outcome.reason]);
+      return;
+    }
+    onEdit(outcome.content);
+    setSelection([]);
+    setMessage("");
+    setNotice("Componente excluído. Os blocos que o usavam viraram blocos comuns.");
+  };
+
   const openMenu = (id: string, x: number, y: number) => {
     setSelection((previous) => (reconcile(content, previous).includes(id) ? previous : [id]));
     setMenu({ id, x, y });
@@ -291,6 +382,13 @@ export function VisualEditor(props: VisualEditorProps) {
         { label: "Agrupar em um contêiner", shortcut: "Ctrl+G", run: () => actMany("wrap") },
         { label: "Desagrupar", shortcut: "Ctrl+Shift+G", disabled: !(ids.length === 1 && menuNode.type === "box"), run: () => selected && act(selected, "unwrap") },
         null,
+        ...(ids.length === 1 && menuNode.type === "component"
+          ? [
+              { label: "Editar o componente", run: () => editComponent(menuNode.componentId) },
+              { label: "Desvincular do componente", run: () => detach(menuNode.id) },
+            ]
+          : [{ label: ids.length > 1 ? "Criar um componente com estes blocos" : "Criar componente", disabled: Boolean(editing), run: makeComponent }]),
+        null,
         { label: "Copiar estilo", shortcut: "Ctrl+Alt+C", run: () => toSystem(copyStyleOf()) },
         { label: "Colar estilo", shortcut: "Ctrl+Alt+V", disabled: !hasStyleCopy, run: () => void pasteStyleFromSystem() },
         null,
@@ -303,8 +401,8 @@ export function VisualEditor(props: VisualEditorProps) {
   const dropAt = (slot: Slot) => {
     if (drag) {
       if (drag.kind === "new") {
-        const item = catalogueItem(drag.key);
-        if (item) apply(insertNode(content, item.create(), slot));
+        const made = newFor(drag.key);
+        if (made) apply(insertNode(content, made, slot));
       } else {
         apply(moveBlock(content, drag.id, slot));
       }
@@ -337,7 +435,12 @@ export function VisualEditor(props: VisualEditorProps) {
     },
     actMany,
     menu: openMenu,
-    commitText: (blockId, path, value) => onEdit(updateBlock(content, blockId, (entry) => setIn(entry, path, value))),
+    commitText: (blockId, path, value) => {
+      // A text of a component that the instance changes is written in the instance, under the node of the component it is for.
+      const [scope, nodeId, field] = path.split(".");
+      if (scope === "overrides" && nodeId && field) onEdit(setOverride(content, blockId, nodeId, field as keyof OverrideFields, value));
+      else onEdit(updateBlock(content, blockId, (entry) => setIn(entry, path, value)));
+    },
     drag,
     startDrag,
     endDrag,
@@ -352,11 +455,11 @@ export function VisualEditor(props: VisualEditorProps) {
   };
   const hooks = canvasHooks();
   const add = (key: string) => {
-    const item = catalogueItem(key);
-    if (item) apply(insertNode(content, item.create(), addSlot(content, selected)));
+    const made = newFor(key);
+    if (made) apply(insertNode(content, made, addSlot(content, selected)));
   };
   // The frames of the canvas are different widths in one window, so their sizes of the screen are container queries (see site-css.ts).
-  const styles = useMemo(() => buildSiteCss(resolved, { ...libraryCssImages(base, props.images.library), container: true }), [resolved, base, props.images.library]);
+  const styles = useMemo(() => buildSiteCss(resolvedPage, { ...libraryCssImages(base, props.images.library), container: true }), [resolvedPage, base, props.images.library]);
 
   // Shortcuts: Ctrl/Cmd+S saves, Ctrl/Cmd+Z undoes, Ctrl/Cmd+Shift+Z (or Y) redoes; Ctrl/Cmd with + or - zooms the canvas, with 0 puts it back
   // to 100% (with Shift, fits it to the window); the arrows move the canvas when no block is selected. Heard on the document, not on
@@ -455,6 +558,9 @@ export function VisualEditor(props: VisualEditorProps) {
       } else if (!modifier && !event.altKey && event.key === "Escape" && ids.length > 0) {
         event.preventDefault();
         setSelection([]);
+      } else if (!modifier && !event.altKey && event.key === "Escape" && editing) {
+        event.preventDefault();
+        finishComponent();
       } else if (!modifier && !event.altKey && event.key === "F2" && ids.length === 1 && selected) {
         event.preventDefault();
         startRename(selected);
@@ -505,6 +611,7 @@ export function VisualEditor(props: VisualEditorProps) {
             {statusText}
           </p>
           {message && <p role="alert" className="form-error">{message}</p>}
+          {notice && !message && <p role="status" className="ve-notice">{notice}</p>}
           {props.note}
         </div>
         <div className="ve-toolbar">
@@ -543,12 +650,14 @@ export function VisualEditor(props: VisualEditorProps) {
             pending={props.pending}
             onPublishAnyway={props.onPublishAnyway}
             action={(issue) =>
-              issue.blockId && locate(content, issue.blockId) ? (
+              issue.blockId && locate(realContent, issue.blockId) ? (
                 <button
                   type="button"
                   className="button small secondary"
                   onClick={() => {
                     const blockId = issue.blockId!;
+                    setEditingId(null);
+                    setOpenedFrom(null);
                     setMode("edit");
                     setSelection([blockId]);
                     setScrollTo({ id: blockId });
@@ -582,7 +691,13 @@ export function VisualEditor(props: VisualEditorProps) {
             </button>
           </div>
           {leftTab === "blocks" ? (
-            <Library onAdd={add} startDrag={startDrag} endDrag={endDrag} />
+            <Library
+              onAdd={add}
+              startDrag={startDrag}
+              endDrag={endDrag}
+              components={{ list: componentsOf(realContent), edit: editComponent, copy: copyComponent, remove: removeComponent }}
+              editingComponent={editing?.name ?? null}
+            />
           ) : (
             <Layers
               content={content}
@@ -624,6 +739,16 @@ export function VisualEditor(props: VisualEditorProps) {
             </div>
             <PublicAddress slug={props.slug} className="ve-address" />
           </div>
+          {editing && (
+            <div className="ve-component-banner" role="status">
+              <span>
+                Editando o componente <strong>{editing.name}</strong>. O que você mudar vale para todos os blocos que o usam.
+              </span>
+              <button type="button" className="button small primary" onClick={finishComponent}>
+                Concluir edição
+              </button>
+            </div>
+          )}
           <InlineSiteStyles css={styles} />
           <EditorContext.Provider value={api}>
             <CanvasSurface
@@ -634,7 +759,11 @@ export function VisualEditor(props: VisualEditorProps) {
               onVisible={setVisible}
               interactive={mode === "edit"}
               page={(size) =>
-                mode === "edit" ? <SiteRenderer content={resolved} edit={hooks} images={imageResolver} /> : <SiteRenderer content={resolved} images={imageResolver} scope={`${size}-`} />
+                mode === "edit" ? (
+                  <SiteRenderer content={resolved} edit={hooks} images={imageResolver} bare={Boolean(editing)} />
+                ) : (
+                  <SiteRenderer content={resolvedPage} images={imageResolver} scope={`${size}-`} />
+                )
               }
             />
           </EditorContext.Provider>
@@ -642,7 +771,7 @@ export function VisualEditor(props: VisualEditorProps) {
 
         <aside className="ve-right" aria-label="Propriedades">
           <div className="ve-panel-head">
-            <h2>{selectedLabel ?? "Página"}</h2>
+            <h2>{selectedLabel ?? (editing ? "Componente" : "Página")}</h2>
           </div>
           {selected ? (
             <BlockInspector
@@ -662,7 +791,13 @@ export function VisualEditor(props: VisualEditorProps) {
                 setSelection([id]);
                 setScrollTo({ id });
               }}
+              onComponent={{ edit: editComponent, detach, create: makeComponent }}
+              inComponent={Boolean(editing)}
             />
+          ) : editing ? (
+            <p className="small muted">
+              Você está editando o componente “{editing.name}”. Escolha um bloco dele na página ou nas camadas para mudá-lo. Quando terminar, use “Concluir edição”.
+            </p>
           ) : (
             <PageSettings content={content} onChange={onEdit} images={imageSupport} />
           )}
