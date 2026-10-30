@@ -13,6 +13,8 @@ import {
   FAQ_MAX,
   HEADING_LEVELS,
   HEADING_MAX,
+  IMAGE_RATIOS,
+  IMAGE_RATIO_LABEL,
   IMAGE_SIZES,
   IMAGE_SIZE_LABEL,
   NAME_MAX,
@@ -27,6 +29,7 @@ import {
   allNodes,
   type BoxTag,
   type Channel,
+  type ImageRatio,
   type ImageSize,
   type SiteContent,
   type SiteNode,
@@ -596,6 +599,17 @@ export function BlockInspector({
           />
           <Text label="Descrição da imagem (para quem não consegue vê-la)" value={entry.alt} max={ALT_MAX} rows={2} onChange={(alt) => patch({ alt })} />
           <Text label="Legenda (opcional)" value={entry.caption} max={CAPTION_MAX} onChange={(caption) => patch({ caption })} />
+          <label>
+            Proporção
+            <select value={entry.ratio ?? "auto"} onChange={(event) => patch({ ratio: event.target.value === "auto" ? undefined : (event.target.value as ImageRatio) })}>
+              {IMAGE_RATIOS.map((ratio) => (
+                <option key={ratio} value={ratio}>
+                  {IMAGE_RATIO_LABEL[ratio]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="small muted">Com uma proporção, a imagem é cortada no centro para preencher o quadro; “Original” a mostra inteira, como foi enviada.</p>
           <label>
             Tamanho
             <select value={entry.size} onChange={(event) => patch({ size: event.target.value as ImageSize })}>

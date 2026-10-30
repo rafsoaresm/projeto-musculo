@@ -52,19 +52,19 @@ beforeAll(async () => {
   );
   db = await mf.getD1Database("DB");
   await migrate(db, ALL_MIGRATIONS);
-  const people = ["owner-a", "manager-a", "commercial-a", "tech-a", "finance-a", "owner-b", "outsider", "blocked-a", "revoked-a", "commercial-c", "owner-d", "owner-e"];
+  const people = ["owner-a", "manager-a", "commercial-a", "tech-a", "finance-a", "owner-b", "outsider", "blocked-a", "revoked-a", "commercial-c", "owner-d", "owner-e", "owner-f", "owner-g"];
   await db.batch([
     ...people.map((id) =>
       db.prepare("INSERT INTO auth_user(id,name,email,created_at,updated_at) VALUES (?1,?1,?2,0,0)").bind(id, `${id}@example.test`),
     ),
     db.prepare(`INSERT INTO users(id) VALUES ${people.filter((p) => p !== "blocked-a").map((p) => `('${p}')`).join(",")}`),
     db.prepare("INSERT INTO users(id, disabled_at) VALUES ('blocked-a', '2026-10-01T00:00:00.000Z')"),
-    db.prepare("INSERT INTO organizations(id,name) VALUES ('org-a','Studio A'),('org-b','Studio B'),('org-c','Studio C'),('org-d','Studio D'),('org-e','Studio E')"),
+    db.prepare("INSERT INTO organizations(id,name) VALUES ('org-a','Studio A'),('org-b','Studio B'),('org-c','Studio C'),('org-d','Studio D'),('org-e','Studio E'),('org-f','Studio F'),('org-g','Studio G')"),
     db.prepare(
       `INSERT INTO memberships(organization_id,user_id,role,revoked_at) VALUES
        ('org-a','owner-a','OWNER',NULL),('org-a','manager-a','MANAGER',NULL),('org-a','commercial-a','COMMERCIAL',NULL),
        ('org-a','tech-a','TECHNICAL',NULL),('org-a','finance-a','FINANCE',NULL),('org-b','owner-b','OWNER',NULL),
-       ('org-a','blocked-a','MANAGER',NULL),('org-a','revoked-a','MANAGER','2026-10-02T00:00:00.000Z'),('org-c','commercial-c','COMMERCIAL',NULL),('org-d','owner-d','OWNER',NULL),('org-e','owner-e','OWNER',NULL)`,
+       ('org-a','blocked-a','MANAGER',NULL),('org-a','revoked-a','MANAGER','2026-10-02T00:00:00.000Z'),('org-c','commercial-c','COMMERCIAL',NULL),('org-d','owner-d','OWNER',NULL),('org-e','owner-e','OWNER',NULL),('org-f','owner-f','OWNER',NULL),('org-g','owner-g','OWNER',NULL)`,
     ),
   ]);
 });
@@ -788,6 +788,23 @@ describe("a site that starts from a model", () => {
     expect(draft.revision).toBe(1);
     // Saved again as it is: nothing in it is refused.
     expect(await repo().saveDraft(draft.content, draft.revision, at(201))).toEqual({ status: "saved", revision: 2 });
+  });
+  it("makes the sites of layouts with their pages and their look, from the same model names the form sends", async () => {
+    const other = sitesFor(db, scope("owner-f", "org-f"));
+    expect(await other.create({ slug: "estudio-f", title: "Estudio F", model: "athlete" }, at(210))).toEqual({ status: "created" });
+    const draft = (await other.overview())!.draft;
+    expect(draft.content.blocks.map((entry) => entry.name)).toEqual(["Destaque dividido", "Faixa de números", "Sobre em painéis", "Cartões coloridos", "Chamada final em faixa"]);
+    expect(draft.content.theme).toMatchObject({ accent: "green", width: "wide" });
+    expect(draft.content.pages!.map((entry) => entry.slug)).toEqual(["sobre-mim", "servicos", "contato"]);
+    // Saved again as it is, and published with warnings only.
+    expect(await other.saveDraft(draft.content, draft.revision, at(211))).toEqual({ status: "saved", revision: 2 });
+    const asked = await other.publish(2, at(212));
+    expect(asked.status).toBe("warnings");
+    expect((await other.publish(2, at(213), { withWarnings: true })).status).toBe("published");
+    const trainer = sitesFor(db, scope("owner-g", "org-g"));
+    expect(await trainer.create({ slug: "estudio-g", title: "Estudio G", model: "trainer" }, at(214))).toEqual({ status: "created" });
+    expect((await trainer.overview())!.draft.content).toMatchObject({ theme: { accent: "orange", width: "wide" } });
+    expect((await trainer.overview())!.draft.content.pages).toHaveLength(4);
   });
   it("is published with the warnings about what is still empty, page by page, and never stopped by a page that is only empty", async () => {
     const revision = (await repo().overview())!.draft.revision;

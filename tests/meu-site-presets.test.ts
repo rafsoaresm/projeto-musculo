@@ -15,7 +15,7 @@ const page = (blocks: SiteNode[]): SiteContent => ({
 });
 
 describe("what the library offers", () => {
-  it("has every kind of block once, in four groups, each with a label and a hint", () => {
+  it("has every kind of block once, in five groups, each with a label and a hint", () => {
     const keys = CATALOGUE.map((item) => item.key);
     expect(new Set(keys).size).toBe(keys.length);
     for (const item of CATALOGUE) {
@@ -25,7 +25,7 @@ describe("what the library offers", () => {
       expect(catalogueItem(item.key)).toBe(item);
     }
     expect(catalogueItem("nope")).toBeUndefined();
-    expect(new Set(CATALOGUE.map((item) => item.group))).toEqual(new Set(["structure", "element", "section", "template"]));
+    expect(new Set(CATALOGUE.map((item) => item.group))).toEqual(new Set(["structure", "element", "section", "template", "layout"]));
   });
   it("makes nodes the server accepts, each time with new identifiers, whose styles and names are in the contract", () => {
     for (const item of CATALOGUE) {

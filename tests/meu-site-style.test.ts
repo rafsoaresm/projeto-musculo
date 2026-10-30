@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { emptyBlock, siteContent, type Block, type SiteContent } from "@/modules/meu-site/contracts";
 import { buildSiteCss, nodeClass } from "@/modules/meu-site/site-css";
-import { COLOR_TOKENS, SPECS, cssDeclarations, isEmptyStyle, lengthFits, parseLength, styleAssetIds, styleSchema, type CssContext } from "@/modules/meu-site/style";
+import { COLOR_TOKENS, FONT_CSS, STYLE_FONTS, SPECS, cssDeclarations, isEmptyStyle, lengthFits, parseLength, styleAssetIds, styleSchema, type CssContext } from "@/modules/meu-site/style";
 
 const images: CssContext = { imageUrl: (assetId) => (assetId === "asset-1" ? "/app/s/marina/m/asset-1" : null) };
 const css = (style: unknown) => cssDeclarations(style, images);
@@ -77,6 +77,15 @@ describe("the style schema", () => {
         overflow: "hidden",
       }),
     ).toBe(true);
+  });
+  it("has a condensed font for big titles beside the page's three, made only of fonts the device already has", () => {
+    expect([...STYLE_FONTS]).toEqual(["sans", "serif", "mono", "display"]);
+    expect(styleSchema.safeParse({ fontFamily: "display" }).success).toBe(true);
+    expect(css({ fontFamily: "display" })).toEqual([`font-family:${FONT_CSS.display}`]);
+    // It falls back to a plain sans when the device has none of the condensed ones, and loads nothing from anyone else.
+    expect(FONT_CSS.display).toMatch(/^Impact,/);
+    expect(FONT_CSS.display).toMatch(/,sans-serif$/);
+    expect(FONT_CSS.display).not.toMatch(/url|http|@import/i);
   });
   it("refuses a property that does not exist, and a value out of its list or range", () => {
     for (const bad of [

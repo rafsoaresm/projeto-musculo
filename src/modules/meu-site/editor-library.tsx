@@ -14,9 +14,12 @@ import {
   Grid3x3,
   Eye,
   EyeOff,
+  GalleryHorizontal,
+  Hash,
   Heading,
   Image as ImageIcon,
   LayoutGrid,
+  LayoutPanelLeft,
   LayoutPanelTop,
   LayoutTemplate,
   Link as LinkIcon,
@@ -24,6 +27,7 @@ import {
   MessagesSquare,
   PanelBottom,
   PanelTop,
+  PanelsTopLeft,
   Pilcrow,
   Quote,
   RectangleHorizontal,
@@ -69,8 +73,15 @@ const ICON: Record<string, LucideIcon> = {
   "template-plans": CreditCard,
   "template-testimonials": MessagesSquare,
   "template-footer": PanelBottom,
+  "layout-split-hero": LayoutPanelLeft,
+  "layout-split-hero-reverse": PanelsTopLeft,
+  "layout-numbers": Hash,
+  "layout-link-band": GalleryHorizontal,
+  "layout-cards": LayoutGrid,
+  "layout-about-panels": Columns3,
+  "layout-final-band": Megaphone,
 };
-const GROUPS: Group[] = ["structure", "element", "section", "template"];
+const GROUPS: Group[] = ["structure", "element", "section", "template", "layout"];
 
 /** The key a component has among the things that can be added: `component:<id>`. */
 export const COMPONENT_KEY = "component:";

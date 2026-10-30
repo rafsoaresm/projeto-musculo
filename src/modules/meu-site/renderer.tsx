@@ -201,7 +201,7 @@ function ElementView({ item, ctx }: { item: ElementNode; ctx: Ctx }) {
   if (item.type === "image") {
     const image = item.assetId ? ctx.images?.(item.assetId) ?? null : null;
     return (
-      <figure {...attrsOf(item, ctx, "site-image site-leaf")} data-size={item.size}>
+      <figure {...attrsOf(item, ctx, "site-image site-leaf")} data-size={item.size} data-ratio={item.ratio && item.ratio !== "auto" ? item.ratio : undefined}>
         {image ? (
           // eslint-disable-next-line @next/next/no-img-element -- served by this app from a private bucket; the size is known
           <img src={image.src} width={image.width} height={image.height} alt={item.alt} loading="lazy" decoding="async" />

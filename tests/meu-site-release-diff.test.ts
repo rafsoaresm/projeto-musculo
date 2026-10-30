@@ -126,6 +126,11 @@ describe("what changed in the blocks", () => {
     expect(texts(only(site([node("image", "i", { assetId: "a", alt: "x" })]), site([node("image", "i", { assetId: "b", alt: "x" })])))).toEqual(["Imagem “x”: mudou a imagem."]);
     expect(texts(only(site([node("button", "b", { label: "Ir", channel: "whatsapp" })]), site([node("button", "b", { label: "Ir", page: "p1" })])))).toEqual(["Botão “Ir”: mudou o contato e a página de destino."]);
   });
+  it("tells that the shape of an image's frame changed", () => {
+    const before = site([node("image", "i", { assetId: "a", alt: "x" })]);
+    const after = site([node("image", "i", { assetId: "a", alt: "x", ratio: "4:5" })]);
+    expect(texts(only(before, after))).toEqual(["Imagem “x”: mudou a proporção da imagem."]);
+  });
   it("tells a block that is in another place, and one that moved to another page", () => {
     const a = paragraph("a", "Move");
     const before = site([box("c1", [a]), box("c2", [])], { pages: [sub("p1", "sobre", [paragraph("z")])] });

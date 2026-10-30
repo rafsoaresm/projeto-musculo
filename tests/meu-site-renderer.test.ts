@@ -348,6 +348,16 @@ describe("images on the public page", () => {
     expect(html).toContain('<figure class="site-image site-leaf" data-size="medium">');
     expect(html).toContain("<figcaption>No estúdio</figcaption>");
   });
+  it("marks the shape of the frame for the stylesheet, and only when there is one", () => {
+    const frame = (over: object) => render(page({ blocks: [image("i", over)] }), undefined, pub);
+    expect(frame({ ratio: "4:5" })).toContain('<figure class="site-image site-leaf" data-size="medium" data-ratio="4:5">');
+    expect(frame({ ratio: "auto" })).not.toContain("data-ratio");
+    expect(frame({})).not.toContain("data-ratio");
+    // An empty frame is drawn only in the editor, with the same shape.
+    const editing = render(page({ blocks: [image("i", { assetId: "", alt: "", ratio: "3:4" })] }), hooks().edit);
+    expect(editing).toContain('data-ratio="3:4"');
+    expect(editing).toContain("site-image-empty");
+  });
   it("loads from nowhere but the page's own address: every src, even with a hostile id or title", () => {
     const hostile = { "a\"onerror=\"x": { width: 1, height: 1 } };
     const html = render(page({ blocks: [image("i"), image("j", { assetId: "a\"onerror=\"x", alt: '"><script>alert(1)</script>' })], logoAssetId: "a-2", title: "<b>x</b>" }), undefined, (id) => publicImages("marina", { ...hostile, "a-1": { width: 1, height: 1 }, "a-2": { width: 1, height: 1 } })(id));
