@@ -1,8 +1,12 @@
 import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { requireWorkspace } from "@/modules/auth/server";
 import { builderDocsFor } from "@/db/builder-docs";
+import { builderFilesFor } from "@/db/builder-files";
+import { getSiteMediaBucket } from "@/db/binding";
+import { sitesFor } from "@/db/sites";
 import { canEditSite } from "@/modules/meu-site/access";
 import { EditorError, call, type Params } from "@/modules/frappe-editor/protocol";
+import { UPLOAD_METHODS, handleUpload, mountOf } from "@/modules/frappe-editor/upload";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +51,17 @@ async function answer(request: Request, { params }: { params: Promise<{ path: st
   }
   if (!canEditSite(session.workspace.role)) return failure(403, "PermissionError", "Só o proprietário ou a gestão editam o site.");
 
+  // The file picker posts a form, not JSON.
+  if (UPLOAD_METHODS.has(method)) {
+    if (request.method !== "POST") return failure(405, "ValidationError", "O envio de arquivos é feito por POST.");
+    const result = await handleUpload(request, {
+      add: async (bytes, name) => builderFilesFor(session.db, await getSiteMediaBucket(), session.context).add(bytes, name),
+      slug: await sitesFor(session.db, session.context).slug(),
+      mount: mountOf(request.url),
+    });
+    return result.ok ? Response.json({ message: result.message }, { headers: NO_STORE }) : failure(result.status, result.excType, result.message);
+  }
+
   let body: Params = {};
   if (request.method === "POST") {
     if (Number(request.headers.get("content-length") ?? "0") > MAX_BODY_BYTES) return failure(413, "ValidationError", "O pedido é grande demais.");
@@ -66,6 +81,7 @@ async function answer(request: Request, { params }: { params: Promise<{ path: st
       user: session.user.email,
       now: () => new Date(),
       hash,
+      siteReady: async () => (await sitesFor(session.db, session.context).slug()) !== null,
     };
     return Response.json(await call(env, method, params_), { headers: NO_STORE });
   } catch (error) {

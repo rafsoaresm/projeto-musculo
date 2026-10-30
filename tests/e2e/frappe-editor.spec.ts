@@ -53,12 +53,16 @@ test("frappe editor: opens under the mount with nothing fixed to the root and no
   const pageName = new URL(page.url()).pathname.split("/").pop()!;
   await expect(page.getByText("Select a block to edit properties")).toBeVisible();
   // "c" is the shortcut of the container tool.
+  await expect(page.getByText("body", { exact: true }).first()).toBeVisible();
   await page.keyboard.press("c");
-  await page.mouse.move(560, 260);
-  await page.mouse.down();
-  await page.mouse.move(900, 420, { steps: 8 });
-  await page.mouse.up();
-  await expect(page.getByText("container", { exact: true }).first()).toBeVisible();
+  // Drawn again if the canvas had not taken the first drag yet (the whole suite runs at once on a busy machine).
+  await expect(async () => {
+    await page.mouse.move(560, 260);
+    await page.mouse.down();
+    await page.mouse.move(900, 420, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.getByText("container", { exact: true }).first()).toBeVisible({ timeout: 2000 });
+  }).toPass({ timeout: 20_000 });
   // The panel of properties is the one that lets the person write any color: a hexadecimal, not a closed list.
   await expect(page.getByText("Background", { exact: true })).toBeVisible();
   await expect

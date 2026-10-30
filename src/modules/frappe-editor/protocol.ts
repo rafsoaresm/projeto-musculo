@@ -34,6 +34,8 @@ export interface Env {
   now: () => Date;
   /** `length` lowercase letters and digits that nobody can guess. */
   hash: (length: number) => string;
+  /** Does the organization have an address for its site? A page can only be published where it has one. Absent: not asked. */
+  siteReady?: () => Promise<boolean>;
 }
 
 export type Params = Record<string, unknown>;
@@ -269,15 +271,21 @@ async function promoteDraft(env: Env, page: Doc): Promise<Params> {
   return { blocks: page.draft_blocks, draft_blocks: null };
 }
 
+async function needSite(env: Env): Promise<void> {
+  if (env.siteReady && !(await env.siteReady())) fail(417, "ValidationError", "Defina o endereço do site em Meu Site antes de publicar uma página.");
+}
+
 async function pageMethod(env: Env, name: string, method: string, args: Params): Promise<{ message: unknown; page?: Doc }> {
   const page = await get(env, { doctype: "Builder Page", name });
   const now = stamp(env.now());
   switch (method) {
     case "publish": {
+      await needSite(env);
       const saved = await save(env, page, { published: 1, staging: 0, published_at: now, ...(await promoteDraft(env, page)) });
       return { message: saved.route, page: saved };
     }
     case "publish_to_staging": {
+      await needSite(env);
       if (Number(page.published)) fail(417, "ValidationError", "Esta página está no ar. Marque-a como em teste.");
       const saved = await save(env, page, { staging: 1, ...(await promoteDraft(env, page)) });
       return { message: saved.route, page: saved };

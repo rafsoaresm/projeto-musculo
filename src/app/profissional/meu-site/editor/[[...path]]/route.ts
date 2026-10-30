@@ -1,6 +1,7 @@
 import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { getURLFromRedirectError } from "next/dist/client/components/redirect";
 import { requireWorkspace } from "@/modules/auth/server";
+import { sitesFor } from "@/db/sites";
 import { canEditSite } from "@/modules/meu-site/access";
 import { EDITOR_SHELL } from "@/modules/frappe-editor/shell.generated";
 
@@ -33,12 +34,17 @@ function goTo(target: string) {
  */
 export async function GET() {
   let role: string;
+  let slug: string | null = null;
   try {
-    role = (await requireWorkspace()).workspace.role;
+    const session = await requireWorkspace();
+    role = session.workspace.role;
+    if (canEditSite(role)) slug = await sitesFor(session.db, session.context).slug();
   } catch (error) {
     if (isRedirectError(error)) return goTo(getURLFromRedirectError(error) ?? "/entrar");
     throw error;
   }
   if (!canEditSite(role)) return new Response("Só o proprietário ou a gestão editam o site.", { status: 403, headers: { ...HEADERS, "Content-Type": "text/plain; charset=utf-8" } });
-  return new Response(EDITOR_SHELL, { headers: HEADERS });
+  // The address of the site (letters, digits and hyphens: it is checked when it is made) lets the editor open the published page at `/site/<address>`.
+  const shell = slug ? EDITOR_SHELL.replace("<head>", `<head>\n<script>window.__EDITOR_SITE__ = ${JSON.stringify(slug)};</script>`) : EDITOR_SHELL;
+  return new Response(shell, { headers: HEADERS });
 }

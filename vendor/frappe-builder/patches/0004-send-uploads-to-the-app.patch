@@ -1,0 +1,17 @@
+--- a/frontend/src/setupFrappeUIResource.ts
++++ b/frontend/src/setupFrappeUIResource.ts
+@@ -7,6 +7,14 @@
+ 	setConfig("requestBaseUrl", embeddedApi);
+ 	// the host app only accepts calls that carry this header: a form on another site cannot send it
+ 	setConfig("requestHeaders", { "X-Site-Request": "1" });
++	// the file uploader of frappe-ui posts to a root-relative address and sets no header of its own: its calls go to the app's address, with the mark
++	const open = XMLHttpRequest.prototype.open;
++	XMLHttpRequest.prototype.open = function (this: XMLHttpRequest, method: string, url: string | URL, ...rest: unknown[]) {
++		const address = String(url);
++		if (!address.startsWith("/api/method/")) return (open as (...args: unknown[]) => void).call(this, method, url, ...rest);
++		(open as (...args: unknown[]) => void).call(this, method, embeddedApi + address, ...rest);
++		this.setRequestHeader("X-Site-Request", "1");
++	} as typeof XMLHttpRequest.prototype.open;
+ }
+ import { editorDemo } from "@/utils/editorDemo";
+ import { createEditorDemoBackend } from "@/utils/editorDemoBackend";

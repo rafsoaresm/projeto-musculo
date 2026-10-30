@@ -128,6 +128,15 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
   }
 
   return {
+    /** The address of the site, for whoever may read it; null while the organization has none. */
+    async slug(): Promise<string | null> {
+      const row = await db
+        .prepare(`SELECT s.slug FROM sites s WHERE s.organization_id = ?1 AND ${reads}`)
+        .bind(organizationId, userId)
+        .first<{ slug: string }>();
+      return row?.slug ?? null;
+    },
+
     async overview(): Promise<SiteOverview | null> {
       const draft = await draftRow();
       if (!draft) return null;

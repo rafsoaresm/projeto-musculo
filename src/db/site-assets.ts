@@ -167,9 +167,9 @@ export function siteAssetsFor(db: D1Database, bucket: R2Bucket | null, context: 
 }
 
 /**
- * The public reading of one image: no session, and only if the release that the page's pointer names uses it. An
- * unknown address, a malformed identifier, an image that is only in the library or in a draft, one of a page that was
- * taken offline, and one of another site all answer the same (null).
+ * The public reading of one image: no session, and only if the release that the page's pointer names uses it, or if it was sent from
+ * the new editor (builder-files.ts) to this site's organization. An unknown address, a malformed identifier, an image that is only in
+ * the library or in a draft, one of a page that was taken offline, and one of another site all answer the same (null).
  */
 export async function publishedAssetBySlug(db: D1Database, bucket: R2Bucket | null, slug: string, assetId: string): Promise<AssetBody | null> {
   if (!bucket || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])$/.test(slug) || !/^[0-9a-f-]{36}$/.test(assetId)) return null;
@@ -184,7 +184,18 @@ export async function publishedAssetBySlug(db: D1Database, bucket: R2Bucket | nu
     )
     .bind(slug, assetId)
     .first<{ key: string; contentType: ImageType; bytes: number; sha256: string }>();
-  if (!row) return null;
-  const object = (await bucket.get(row.key)) as R2ObjectBody | null;
-  return object ? { body: object.body as unknown as ReadableStream, contentType: row.contentType, bytes: row.bytes, sha256: row.sha256 } : null;
+  // Not an image of a version of the first editor: one sent from the new editor (public by its address; see migration 0028).
+  const found =
+    row ??
+    (await db
+      .prepare(
+        `SELECT f.object_key AS key, f.content_type AS contentType, f.bytes, f.sha256
+         FROM sites s JOIN builder_files f ON f.organization_id = s.organization_id
+         WHERE s.slug = ? AND f.id = ?`,
+      )
+      .bind(slug, assetId)
+      .first<{ key: string; contentType: ImageType; bytes: number; sha256: string }>());
+  if (!found) return null;
+  const object = (await bucket.get(found.key)) as R2ObjectBody | null;
+  return object ? { body: object.body as unknown as ReadableStream, contentType: found.contentType, bytes: found.bytes, sha256: found.sha256 } : null;
 }

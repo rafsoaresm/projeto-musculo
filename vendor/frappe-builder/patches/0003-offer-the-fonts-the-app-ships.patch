@@ -1,0 +1,28 @@
+--- a/frontend/src/utils/fontManager.ts
++++ b/frontend/src/utils/fontManager.ts
+@@ -28,8 +28,9 @@
+ 
+ const GF_CSS = "https://fonts.googleapis.com/css2";
+ 
+-// Embedded in another app, no font is asked of Google: a visitor's address would go to a third party. The picker offers the fonts every
+-// device has and the fonts the person uploads, and a family that is not on the device falls back to the next one in its list.
++// Embedded in another app, no font is asked of Google: a visitor's address would go to a third party. The picker offers the fonts the app
++// ships (window.__EDITOR_FONTS__, with their @font-face already in the page), the fonts every device has and the fonts the person uploads,
++// and a family that is not on the device falls back to the next one in its list.
+ const embedded = Boolean((window as unknown as { __EDITOR_API__?: string }).__EDITOR_API__);
+ const SYSTEM_FAMILIES = [
+ 	"Arial",
+@@ -82,7 +83,12 @@
+ 
+ export function loadFontList(): Promise<FontListItem[]> {
+ 	if (embedded && !fontListPromise) {
+-		fontListItems.value = SYSTEM_FAMILIES.map((family) => ({ family, variants: ["regular", "italic", "700", "700italic"] }));
++		const shipped = (window as unknown as { __EDITOR_FONTS__?: FontListItem[] }).__EDITOR_FONTS__ ?? [];
++		const shippedNames = new Set(shipped.map((item) => item.family));
++		fontListItems.value = [
++			...shipped,
++			...SYSTEM_FAMILIES.filter((family) => !shippedNames.has(family)).map((family) => ({ family, variants: ["regular", "italic", "700", "700italic"] })),
++		];
+ 		fontListPromise = Promise.resolve(fontListItems.value);
+ 	}
+ 	if (!fontListPromise) {
