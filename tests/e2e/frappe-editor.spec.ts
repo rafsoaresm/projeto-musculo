@@ -50,7 +50,7 @@ test("frappe editor: opens under the mount with nothing fixed to the root and no
   // ---- a page from scratch, and a container drawn on it ----
   await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByText("Start from scratch").click();
-  await expect(page).toHaveURL(new RegExp(`${mount}/profissional/meu-site/editor/page/[a-z0-9-]+$`));
+  await expect(page).toHaveURL(new RegExp(`${mount}/profissional/meu-site/editor/page/(?!new$)[a-z0-9-]+$`));
   const pageName = new URL(page.url()).pathname.split("/").pop()!;
   await expect(page.getByText("Select a block to edit properties")).toBeVisible();
   // "c" is the shortcut of the container tool.

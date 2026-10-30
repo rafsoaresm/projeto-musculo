@@ -49,7 +49,7 @@ test("frappe publish: a page made in the editor is published at /site/<address> 
   await page.goto("./profissional/meu-site/editor");
   await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByText("Start from scratch").click();
-  await expect(page).toHaveURL(new RegExp(`${mount}/profissional/meu-site/editor/page/[a-z0-9-]+$`));
+  await expect(page).toHaveURL(new RegExp(`${mount}/profissional/meu-site/editor/page/(?!new$)[a-z0-9-]+$`));
   const pageName = new URL(page.url()).pathname.split("/").pop()!;
   await expect(page.getByText("body", { exact: true }).first()).toBeVisible();
   await page.keyboard.press("c");
