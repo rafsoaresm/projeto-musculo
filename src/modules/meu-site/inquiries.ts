@@ -72,9 +72,26 @@ export interface InquiryValue {
 export type ParsedInquiry = { kind: "ok"; value: InquiryValue } | { kind: "bot" } | { kind: "invalid"; field: InquiryField };
 
 /** Controls and invisible formatting characters would make two different texts look the same (new lines are fine in a message). */
-const clean = (raw: string) => raw.replace(/\r\n/g, "\n").trim();
-const hasHidden = (text: string, lines: boolean) => /[\p{Cc}\p{Cf}]/u.test(lines ? text.replace(/\n/g, "") : text);
+export const cleanText = (raw: string) => raw.replace(/\r\n/g, "\n").trim();
+export const hasHiddenText = (text: string, lines: boolean) => /[\p{Cc}\p{Cf}]/u.test(lines ? text.replace(/\n/g, "") : text);
+const clean = cleanText;
+const hasHidden = hasHiddenText;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** A name as the inbox keeps it (2 to 160 letters, nothing hidden), or null. */
+export function readName(raw: string): string | null {
+  const name = clean(raw);
+  return name.length < 2 || name.length > INQUIRY_NAME_MAX || hasHidden(name, false) ? null : name;
+}
+
+/** A way to reach the person as the inbox keeps it: an e-mail, or a phone number with its area code. Null when it is neither. */
+export function readContact(raw: string): { email: string | null; phone: string | null } | null {
+  const contact = clean(raw);
+  if (contact.length < 3 || contact.length > INQUIRY_CONTACT_MAX || hasHidden(contact, false)) return null;
+  if (contact.includes("@")) return EMAIL.test(contact) ? { email: contact, phone: null } : null;
+  if (contact.length > 30 || !/^[\d\s()+.-]+$/.test(contact) || phoneKey(contact) === null) return null;
+  return { email: null, phone: contact };
+}
 
 const text = (form: Pick<FormData, "get">, name: string): string | null => {
   const value = form.get(name);
@@ -87,19 +104,11 @@ const text = (form: Pick<FormData, "get">, name: string): string | null => {
  */
 export function parseInquiry(form: Pick<FormData, "get">): ParsedInquiry {
   if ((text(form, FIELD.bait) ?? "") !== "") return { kind: "bot" };
-  const name = clean(text(form, FIELD.name) ?? "");
-  if (name.length < 2 || name.length > INQUIRY_NAME_MAX || hasHidden(name, false)) return { kind: "invalid", field: "name" };
-  const contact = clean(text(form, FIELD.contact) ?? "");
-  if (contact.length < 3 || contact.length > INQUIRY_CONTACT_MAX || hasHidden(contact, false)) return { kind: "invalid", field: "contact" };
-  let email: string | null = null;
-  let phone: string | null = null;
-  if (contact.includes("@")) {
-    if (!EMAIL.test(contact)) return { kind: "invalid", field: "contact" };
-    email = contact;
-  } else {
-    if (contact.length > 30 || !/^[\d\s()+.-]+$/.test(contact) || phoneKey(contact) === null) return { kind: "invalid", field: "contact" };
-    phone = contact;
-  }
+  const name = readName(text(form, FIELD.name) ?? "");
+  if (name === null) return { kind: "invalid", field: "name" };
+  const contact = readContact(text(form, FIELD.contact) ?? "");
+  if (contact === null) return { kind: "invalid", field: "contact" };
+  const { email, phone } = contact;
   const rawMessage = clean(text(form, FIELD.message) ?? "");
   if (rawMessage.length > INQUIRY_MESSAGE_MAX || hasHidden(rawMessage, true)) return { kind: "invalid", field: "message" };
   if (text(form, FIELD.consent) !== "on") return { kind: "invalid", field: "consent" };

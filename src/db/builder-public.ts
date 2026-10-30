@@ -24,6 +24,8 @@ export interface PublicPage {
   settings: Record<string, unknown>;
   /** The text of the page's style sheets (the client scripts of type CSS). */
   styles: string[];
+  /** The site's own switch for the messages of its forms (it is born off; the environment's switch is a different one). */
+  inquiriesOpen: boolean;
 }
 
 const MAX_COMPONENT_ROUNDS = 6;
@@ -73,10 +75,14 @@ function referencesIn(tree: unknown, into: Map<string, Set<string>>): void {
 
 const chunks = <T>(items: T[], size: number): T[][] => Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, (index + 1) * size));
 
-export async function publicBuilderPage(db: D1Database, rawSlug: string, requestedRoute: string): Promise<PublicPage | null> {
+/**
+ * The published page an address names. `exactName` (the editor's name of a page) reads that page itself instead of choosing by route: for the
+ * panel that lists the forms of each page on the air, where the home page has to be told from the page the home address would show.
+ */
+export async function publicBuilderPage(db: D1Database, rawSlug: string, requestedRoute: string, exactName?: string): Promise<PublicPage | null> {
   const slug = slugSchema.safeParse(rawSlug);
   if (!slug.success) return null;
-  const site = await db.prepare("SELECT organization_id AS organizationId FROM sites WHERE slug = ?").bind(slug.data).first<{ organizationId: string }>();
+  const site = await db.prepare("SELECT organization_id AS organizationId, inquiries_open AS inquiriesOpen FROM sites WHERE slug = ?").bind(slug.data).first<{ organizationId: string; inquiriesOpen: number }>();
   if (!site) return null;
   const org = site.organizationId;
 
@@ -92,11 +98,8 @@ export async function publicBuilderPage(db: D1Database, rawSlug: string, request
   ]);
   const settingsRow = shared!.results.find((row) => row.doctype === "Builder Settings");
   const settings = (settingsRow ? parse(settingsRow.data) : null) ?? {};
-  const chosen = pickPage(
-    pages!.results.map((row) => ({ name: row.name, route: row.route ?? "", publishedAt: row.publishedAt ?? "" })),
-    requestedRoute,
-    text(settings.home_page),
-  );
+  const refs = pages!.results.map((row) => ({ name: row.name, route: row.route ?? "", publishedAt: row.publishedAt ?? "" }));
+  const chosen = exactName !== undefined ? (refs.find((ref) => ref.name === exactName) ?? null) : pickPage(refs, requestedRoute, text(settings.home_page));
   if (!chosen) return null;
 
   const row = await db
@@ -172,5 +175,20 @@ export async function publicBuilderPage(db: D1Database, rawSlug: string, request
     }
   }
 
-  return { slug: slug.data, route: routeOf(text(page.route)), page, blocks, components, tokens, settings, styles };
+  return { slug: slug.data, route: routeOf(text(page.route)), page, blocks, components, tokens, settings, styles, inquiriesOpen: site.inquiriesOpen === 1 };
+}
+
+/** Whether an address has at least one published page of the new editor (the same pages `publicBuilderPage` answers). */
+export async function hasPublishedBuilderPage(db: D1Database, rawSlug: string): Promise<boolean> {
+  const slug = slugSchema.safeParse(rawSlug);
+  if (!slug.success) return false;
+  const row = await db
+    .prepare(
+      `SELECT 1 AS ok FROM sites s WHERE s.slug = ?1 AND EXISTS (
+         SELECT 1 FROM builder_docs b WHERE b.organization_id = s.organization_id AND b.doctype = 'Builder Page'
+           AND json_extract(b.data, '$.published') = 1 AND COALESCE(json_extract(b.data, '$.dynamic_route'), 0) = 0)`,
+    )
+    .bind(slug.data)
+    .first();
+  return row !== null;
 }

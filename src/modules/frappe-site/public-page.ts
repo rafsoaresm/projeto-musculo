@@ -6,7 +6,8 @@ import type { PublicPage } from "@/db/builder-public";
 import { freeCss } from "./css";
 import { buildDocument, PUBLIC_CSP, type PageMeta } from "./document";
 import { fontFaces } from "./fonts";
-import { renderBlocks } from "./render";
+import { FORM_SEND_PATH, type FormDefinition } from "./form";
+import { renderBlocks, type RenderInput } from "./render";
 import { toMountRoot, urlContext } from "./urls";
 
 export { PUBLIC_CSP };
@@ -14,15 +15,26 @@ export { PUBLIC_CSP };
 const text = (value: unknown) => (typeof value === "string" ? value : "");
 const flag = (value: unknown) => Number(value) === 1 || value === true;
 
-export function publicDocument(found: PublicPage, depth: number): string {
-  const url = urlContext(found.slug, depth);
+/** What a page is drawn from, the same for the document a visitor gets and for the reading of its forms when a message arrives. */
+function renderInput(found: PublicPage, depth: number, noticeUrl: string | null): RenderInput {
   const tokenValue = new Map(found.tokens.map((token) => [token.name, token.value]));
-  const rendered = renderBlocks({
+  return {
     blocks: found.blocks,
     component: (id, version) => (version ? found.components.get(`${id}@${version}`) : undefined) ?? found.components.get(id) ?? null,
     fontToken: (name) => tokenValue.get(name.replace(/^--/, "")) ?? null,
-    url,
-  });
+    url: urlContext(found.slug, depth),
+    // A form is drawn only when the environment opened the public forms (a privacy notice to point to) AND the site opened its own switch.
+    forms: { route: found.route, send: noticeUrl && found.inquiriesOpen ? { action: `${toMountRoot(depth)}site/${found.slug}/${FORM_SEND_PATH}`, noticeUrl } : null },
+  };
+}
+
+/** The forms of a published page, as they are on it now (drawn or not). */
+export const formsOfPage = (found: PublicPage): FormDefinition[] => renderBlocks(renderInput(found, 0, null)).forms;
+
+/** `noticeUrl` is the address of the privacy notice when the environment has opened the public forms, otherwise null. */
+export function publicDocument(found: PublicPage, depth: number, noticeUrl: string | null = null): string {
+  const url = urlContext(found.slug, depth);
+  const rendered = renderBlocks(renderInput(found, depth, noticeUrl));
   const { page, settings } = found;
   const meta: PageMeta = {
     title: text(page.page_title) || text(page.page_name) || "Página",

@@ -38,6 +38,14 @@ export type DiscardInquiryOutcome = { status: "discarded" } | { status: "not_fou
 const HOUR_MS = 60 * 60 * 1000;
 
 /**
+ * A site is public when it has a published version of the first editor, or a published page of the new one (the same pages the public route of
+ * the new editor answers: published, and not a dynamic route). `s` is the sites row.
+ */
+const PUBLIC_SITE = `(EXISTS (SELECT 1 FROM site_published p WHERE p.site_id = s.id)
+  OR EXISTS (SELECT 1 FROM builder_docs b WHERE b.organization_id = s.organization_id AND b.doctype = 'Builder Page'
+    AND json_extract(b.data, '$.published') = 1 AND COALESCE(json_extract(b.data, '$.dynamic_route'), 0) = 0))`;
+
+/**
  * The public door. `sender` is the keyed hash of the sender's address (or null where there is no address to hash): it is only counted, and emptied
  * after the hour the count looks at. One statement decides everything (open, published, room in the inbox, the two limits) and writes, so two requests
  * at once cannot both pass a limit.
@@ -59,7 +67,7 @@ export async function receiveInquiry(
          SELECT ?1, s.organization_id, s.id, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11
          FROM sites s
          WHERE s.slug = ?12 AND s.inquiries_open = 1
-           AND EXISTS (SELECT 1 FROM site_published p WHERE p.site_id = s.id)
+           AND ${PUBLIC_SITE}
            AND (SELECT COUNT(*) FROM site_inquiries q WHERE q.site_id = s.id) < ?13
            AND (SELECT COUNT(*) FROM site_inquiries q WHERE q.site_id = s.id AND q.created_at > ?14) < ?15
            AND (?10 IS NULL OR (SELECT COUNT(*) FROM site_inquiries q WHERE q.site_id = s.id AND q.ip_key = ?10 AND q.created_at > ?14) < ?16)`,
@@ -90,7 +98,7 @@ export async function receiveInquiry(
   if (results[0].meta.changes > 0) return { status: "received" };
   // Nothing was written: say whether the form is closed (or the site is not public) or the limits were reached.
   const open = await db
-    .prepare(`SELECT 1 AS ok FROM sites s WHERE s.slug = ?1 AND s.inquiries_open = 1 AND EXISTS (SELECT 1 FROM site_published p WHERE p.site_id = s.id)`)
+    .prepare(`SELECT 1 AS ok FROM sites s WHERE s.slug = ?1 AND s.inquiries_open = 1 AND ${PUBLIC_SITE}`)
     .bind(slug.data)
     .first();
   return open ? { status: "limited" } : { status: "closed" };

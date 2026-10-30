@@ -5,7 +5,9 @@ import { renderBlocks } from "@/modules/frappe-site/render";
 import { urlContext } from "@/modules/frappe-site/urls";
 
 const url = urlContext("studio", 0);
-const draw = (block: string) => renderBlocks({ blocks: block, component: () => null, fontToken: () => null, url });
+// The forms of the public pages are drawn only where the site opened them; these are drawn as an open site draws them.
+const forms = { route: "contato", send: { action: "../site/studio/m/contato", noticeUrl: "https://example.test/aviso" } };
+const draw = (block: string) => renderBlocks({ blocks: block, component: () => null, fontToken: () => null, url, forms });
 
 describe("the templates that come with the editor", () => {
   it("are the ones of Frappe Builder that need nothing the public page does not run: navbars, hero sections, footer, testimonial, forms and the basic blocks", () => {
@@ -31,6 +33,12 @@ describe("the templates that come with the editor", () => {
   it("draw on the public page with their drawings (logos and icons are inline SVG) and without anything that runs or comes from another site", () => {
     for (const template of STANDARD_TEMPLATES) {
       const out = draw(template.block);
+      // The newsletter has only an e-mail: nothing to call the person by, so it is not drawn (the panel of Meu Site says what it lacks).
+      if (template.id === "form_2") {
+        expect(out.body).toBe("<body></body>");
+        expect(out.forms[0]!.problems).toEqual(["Falta o campo do nome: um campo de texto."]);
+        continue;
+      }
       expect(out.body.length, template.id).toBeGreaterThan(20);
       expect(out.body, template.id).not.toMatch(/<script|<iframe|onclick|onload|javascript:|https?:\/\/[^"' )]*\.(js|css)/i);
       expect(out.truncated, template.id).toBe(false);

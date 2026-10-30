@@ -89,9 +89,9 @@ describe("what a page may be made of", () => {
     expect(draw([{ element: "div", attributes: { onclick: "alert(1)", id: "a b", title: '"><script>' }, innerHTML: "x" }]).body).toBe('<body><div title="&quot;&gt;&lt;script&gt;">x</div></body>');
   });
 
-  it("writes forms without an action: where they go is the site's to decide, never the page's", () => {
+  it("draws a form only where the site says forms go: the page never decides where a visitor's words are sent (tests/frappe-site-form-render.test.ts)", () => {
     const out = draw([{ element: "form", attributes: { action: "https://evil.test/steal", method: "post" }, children: [{ element: "input", attributes: { type: "text", name: "nome", formaction: "x" } }] }]).body;
-    expect(out).toBe('<body><form method="post"><input type="text" name="nome"></form></body>');
+    expect(out).toBe("<body></body>");
   });
 });
 
