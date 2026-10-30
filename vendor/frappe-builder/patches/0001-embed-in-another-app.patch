@@ -1,0 +1,185 @@
+diff --git a/frontend/src/data/plugins.ts b/frontend/src/data/plugins.ts
+index e237c79..2b56354 100644
+--- a/frontend/src/data/plugins.ts
++++ b/frontend/src/data/plugins.ts
+@@ -3,7 +3,7 @@ import { devPlugin, isDevPlugin } from "@/plugins/devPlugin";
+ import { loadPlugin, runningPlugins } from "@/plugins/loader";
+ import { useStorage } from "@vueuse/core";
+ import { call, createResource, getCachedResource, toast } from "frappe-ui";
+-import { computed, reactive, shallowRef } from "vue";
++import { computed, reactive, ref, shallowRef } from "vue";
+ 
+ const METHOD = "builder.plugins.installations";
+ const HUB_API = "api/method/builder_hub.plugins.api";
+@@ -12,7 +12,9 @@ const CATALOG_CACHE = "plugins-catalog";
+ const PROTOCOL_VERSION = 1;
+ 
+ /** A choice of this user in this browser. It is not an access control, so the server does not read it. */
+-const pluginsDisabled = useStorage("builderPluginsDisabled", false);
++// embedded in another app there are no plugins: the catalog is a server of Frappe's and the editor is not extended from the outside
++const embedded = Boolean((window as unknown as { __EDITOR_API__?: string }).__EDITOR_API__);
++const pluginsDisabled = embedded ? ref(true) : useStorage("builderPluginsDisabled", false);
+ 
+ /** The server names the Hub, because only a manager can read Builder Settings. */
+ const getHubMethodUrl = async (method: string) =>
+diff --git a/frontend/src/main.ts b/frontend/src/main.ts
+index b699f3d..c70781a 100644
+--- a/frontend/src/main.ts
++++ b/frontend/src/main.ts
+@@ -38,7 +38,8 @@ Promise.all([ensureTranslations(), plugins]).then(([, loaded]) => {
+ 	app.use(router);
+ 	app.use(FrappeUI);
+ 	if (!editorDemo) {
+-		app.use(telemetryPlugin, { app_name: "builder" });
++		// embedded in another app, nothing is reported to anyone: the telemetry would load a script from Frappe's servers
++		if (!window.__EDITOR_API__) app.use(telemetryPlugin, { app_name: "builder" });
+ 		// the demo runs inside the published page, where these names would capture its edit link
+ 		window.name = "frappe-builder";
+ 	}
+@@ -59,6 +60,7 @@ Promise.all([ensureTranslations(), plugins]).then(([, loaded]) => {
+ 
+ declare global {
+ 	interface Window {
++		__EDITOR_API__?: string;
+ 		is_developer_mode?: boolean;
+ 		builder_version: string;
+ 	}
+diff --git a/frontend/src/router.ts b/frontend/src/router.ts
+index 998dfd2..adf995f 100644
+--- a/frontend/src/router.ts
++++ b/frontend/src/router.ts
+@@ -47,11 +47,16 @@ const validateVisit = async function (
+ 	return validatePermission(next);
+ };
+ 
++// embedded in another app, the login is that app's and its cookie cannot be read from here: the page is only served to a signed-in person
++// who may edit the site, and every call the editor makes is checked again on the server
++const embedded = Boolean((window as unknown as { __EDITOR_API__?: string }).__EDITOR_API__);
++
+ function isUserLoggedIn() {
+-	return document.cookie.includes("user_id") && !document.cookie.includes("user_id=Guest");
++	return embedded || (document.cookie.includes("user_id") && !document.cookie.includes("user_id=Guest"));
+ }
+ 
+ function getSessionUser() {
++	if (embedded) return "editor";
+ 	return decodeURIComponent(document.cookie.split("user_id=")[1].split(";")[0]) || "Guest";
+ }
+ 
+diff --git a/frontend/src/setupFrappeUIResource.ts b/frontend/src/setupFrappeUIResource.ts
+index 78a3007..7153a9e 100644
+--- a/frontend/src/setupFrappeUIResource.ts
++++ b/frontend/src/setupFrappeUIResource.ts
+@@ -1,5 +1,13 @@
+ // Placed in separate file to setup frappe resource fetcher before loading the app.
+ import { frappeRequest, setConfig } from "frappe-ui";
++
++// embedded in another app: its server answers under a path of its own, set by the page that loads the editor
++const embeddedApi = (window as unknown as { __EDITOR_API__?: string }).__EDITOR_API__;
++if (embeddedApi) {
++	setConfig("requestBaseUrl", embeddedApi);
++	// the host app only accepts calls that carry this header: a form on another site cannot send it
++	setConfig("requestHeaders", { "X-Site-Request": "1" });
++}
+ import { editorDemo } from "@/utils/editorDemo";
+ import { createEditorDemoBackend } from "@/utils/editorDemoBackend";
+ 
+diff --git a/frontend/src/utils/fontManager.ts b/frontend/src/utils/fontManager.ts
+index 7354c25..2c10ef6 100644
+--- a/frontend/src/utils/fontManager.ts
++++ b/frontend/src/utils/fontManager.ts
+@@ -27,6 +27,28 @@ const WEIGHT_LABELS: Record<FontWeight, string> = {
+ };
+ 
+ const GF_CSS = "https://fonts.googleapis.com/css2";
++
++// Embedded in another app, no font is asked of Google: a visitor's address would go to a third party. The picker offers the fonts every
++// device has and the fonts the person uploads, and a family that is not on the device falls back to the next one in its list.
++const embedded = Boolean((window as unknown as { __EDITOR_API__?: string }).__EDITOR_API__);
++const SYSTEM_FAMILIES = [
++	"Arial",
++	"Helvetica",
++	"Verdana",
++	"Tahoma",
++	"Trebuchet MS",
++	"Georgia",
++	"Times New Roman",
++	"Palatino",
++	"Garamond",
++	"Courier New",
++	"Impact",
++	"Arial Narrow",
++	"system-ui",
++	"serif",
++	"sans-serif",
++	"monospace",
++];
+ const fontCache = new Map<string, Promise<string>>();
+ 
+ // A preview renders one label — a family's own name, or a Font token's label, which
+@@ -59,6 +81,10 @@ const fontListItems = shallowRef<FontListItem[]>([]);
+ let fontListPromise: Promise<FontListItem[]> | null = null;
+ 
+ export function loadFontList(): Promise<FontListItem[]> {
++	if (embedded && !fontListPromise) {
++		fontListItems.value = SYSTEM_FAMILIES.map((family) => ({ family, variants: ["regular", "italic", "700", "700italic"] }));
++		fontListPromise = Promise.resolve(fontListItems.value);
++	}
+ 	if (!fontListPromise) {
+ 		fontListPromise = import("@/utils/fontList.json").then((m) => {
+ 			fontListItems.value = m.default.items as FontListItem[];
+@@ -108,6 +134,7 @@ async function inGoogleCatalog(font: string): Promise<boolean> {
+ }
+ 
+ async function loadGoogleFont(font: string, weight?: string, italic = false): Promise<string> {
++	if (embedded) return font;
+ 	if (!(await inGoogleCatalog(font))) return font;
+ 	if (weight && !(await carriesVariant(font, weight))) weight = undefined;
+ 	// without a real italic the browser slants the roman, same as on the published page
+@@ -198,6 +225,8 @@ const isCustomFont = (font: string) =>
+ // Google's text= parameter returns a face carrying only the requested characters, which
+ // for a preview is the label it has to render — roughly 1KB rather than the full file.
+ async function loadSubsetFace(font: string, label: string): Promise<string> {
++	// nothing to fetch: the label is drawn in the family itself, which the device has or does not
++	if (embedded) return font;
+ 	const glyphs = [...new Set(label)].join("");
+ 	const res = await fetch(`${GF_CSS}?family=${encodeURIComponent(font)}&text=${encodeURIComponent(glyphs)}`);
+ 	if (!res.ok) throw new Error(`No Google font named ${font}`);
+diff --git a/frontend/vite.config.mjs b/frontend/vite.config.mjs
+index 4174b0c..e116814 100644
+--- a/frontend/vite.config.mjs
++++ b/frontend/vite.config.mjs
+@@ -15,7 +15,12 @@ export default defineConfig({
+ 			frontendRoute: "/_builder",
+ 			// Resolved from the bench layout when one is around; stated here so a
+ 			// standalone checkout builds too.
+-			buildConfig: { indexHtmlPath: "../builder/www/_builder.html" },
++			buildConfig: {
++				indexHtmlPath: process.env.FRAPPE_EDITOR_SHELL || "../builder/www/_builder.html",
++				// embedded build: where the files go and a base that does not name the mount path
++				...(process.env.FRAPPE_EDITOR_OUT ? { outDir: path.resolve(process.env.FRAPPE_EDITOR_OUT) } : null),
++				...(process.env.FRAPPE_EDITOR_BASE ? { baseUrl: process.env.FRAPPE_EDITOR_BASE } : null),
++			},
+ 			frappeProxy: {
+ 				port: 8080,
+ 				source: "^/(app|desk|login|api|assets|files|pages|builder_assets)",
+@@ -44,10 +49,15 @@ export default defineConfig({
+ 		}),
+ 		vue(),
+ 		frameworkUI(),
+-		hostModules({
+-			root: import.meta.dirname,
+-			configFile: path.resolve(import.meta.dirname, "vite.config.mjs"),
+-		}),
++		// the embedded build runs no plugins, so it needs neither the host modules nor the import map
++		...(process.env.FRAPPE_EDITOR_NO_HOST
++			? []
++			: [
++					hostModules({
++						root: import.meta.dirname,
++						configFile: path.resolve(import.meta.dirname, "vite.config.mjs"),
++					}),
++				]),
+ 	],
+ 	build: {
+ 		chunkSizeWarningLimit: 1500,

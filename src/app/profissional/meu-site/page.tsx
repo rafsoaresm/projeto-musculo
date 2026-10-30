@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { requireWorkspace } from "@/modules/auth/server";
 import { getSiteMediaBucket } from "@/db/binding";
@@ -39,6 +40,20 @@ export default async function MySite() {
         title="Meu Site"
         description="A página pública do seu trabalho: você arrasta os blocos no editor visual, confere na prévia e publica quando quiser."
       />
+      {canEdit && (
+        <Notice>
+          <p>
+            <strong>Editor novo, em teste.</strong> É o Frappe Builder: blocos, cores (roda e hexadecimal) e estilos livres, com o cabeçalho, o logotipo e o rodapé
+            como blocos que você edita. Ele <strong>ainda não publica</strong>: o que você montar fica guardado como rascunho, e o site no ar continua sendo o do editor
+            abaixo.
+          </p>
+          <p>
+            <Link className="button small secondary" href="/profissional/meu-site/editor" prefetch={false}>
+              Abrir o editor novo
+            </Link>
+          </p>
+        </Notice>
+      )}
       {overview ? (
         <SiteWorkspace
           slug={overview.site.slug}
