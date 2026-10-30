@@ -571,6 +571,24 @@ describe("drawing the pages of a site", () => {
     // Out of the menu, and the page is the only one in it: no menu.
     expect(draw(site([paragraph("a")], [sub("p2", "planos", [], { inMenu: false })]), HOME)).not.toContain("site-menu");
   });
+  it("folds the menu into a Menu button that needs no script: a checkbox and its label, tied to the list, with each link once", () => {
+    const content = site([node("hero", "h", { heading: "Oi" })], [sub("p1", "sobre", [paragraph("a")]), sub("p3", "contato", [paragraph("c")])]);
+    const html = draw(content, "p1");
+    expect(html).toContain('<input type="checkbox" id="site-menu-toggle" class="site-menu-state" aria-controls="site-menu-toggle-list"/>');
+    expect(html).toContain('<label for="site-menu-toggle" class="site-menu-toggle"><span class="site-menu-icon" aria-hidden="true"></span>Menu</label>');
+    expect(html).toContain('<ul id="site-menu-toggle-list">');
+    expect(html.match(/class="site-menu-link"/g)).toHaveLength(3);
+    expect(html.match(/aria-current="page"/g)).toHaveLength(1);
+    // The button comes before the list, so the stylesheet can open the list with the state of the box (`:checked ~ ul`).
+    expect(html.indexOf("site-menu-state")).toBeLessThan(html.indexOf("site-menu-toggle-list"));
+    // A page drawn more than once in one window (the frames of the editor) does not repeat the identifier.
+    const nav = siteNav(content, HOME, (id, slug) => (id === HOME ? "./marina" : `./marina/${slug}`));
+    const frame = (scope: string) => renderToStaticMarkup(createElement(SiteRenderer, { content: pageContent(content, HOME), nav, scope }));
+    expect(frame("tablet-")).toContain('id="tablet-site-menu-toggle"');
+    expect(frame("tablet-")).toContain('for="tablet-site-menu-toggle"');
+    expect(frame("tablet-")).toContain('aria-controls="tablet-site-menu-toggle-list"');
+    expect(frame("mobile-")).not.toContain("tablet-");
+  });
   it("draws the blocks of the page asked for, and not those of another", () => {
     const content = site([paragraph("a", "Texto da inicial")], [sub("p1", "sobre", [paragraph("b", "Texto de sobre")])]);
     expect(draw(content, "p1")).toContain("Texto de sobre");
