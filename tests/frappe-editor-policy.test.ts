@@ -36,4 +36,17 @@ describe("what the editor may run and load", () => {
     expect(EDITOR_SHELL).not.toMatch(/(?:src|href)=["']https?:/i);
     expect(EDITOR_SHELL).not.toMatch(/\son[a-z]+=/i);
   });
+
+  it("the editor's own files set no event handler as an attribute (`onerror=\"…\"` and the like): under this policy those would never run, and the feature behind them would silently be lost", async () => {
+    const { readdirSync, readFileSync } = await import("node:fs");
+    const dir = new URL("../public/frappe-editor/assets/", import.meta.url);
+    const found: string[] = [];
+    for (const name of readdirSync(dir).filter((file) => file.endsWith(".js"))) {
+      const code = readFileSync(new URL(name, dir), "utf8");
+      // A property named like a handler with a string for its value: how Vue writes an attribute such as onerror="this.src=…".
+      for (const match of code.matchAll(/[{,]\s*on(?:error|load|click|mouse[a-z]*|key[a-z]*|focus|blur|change|input|submit|drag[a-z]*|drop|wheel|scroll)\s*:\s*\(?\s*(?:`|'|")/g)) found.push(`${name}: ${match[0].trim()}`);
+    }
+    expect(found).toEqual([]);
+  });
 });
+

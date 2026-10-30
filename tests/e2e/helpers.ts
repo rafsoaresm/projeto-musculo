@@ -205,11 +205,14 @@ export async function trackPolicy(page: Page) {
   await page.addInitScript(() => {
     const w = window as unknown as { __refused: string[] };
     w.__refused = [];
-    document.addEventListener("securitypolicyviolation", (event) => w.__refused.push(`${event.violatedDirective} ${event.blockedURI} ${event.sourceFile}`));
+    document.addEventListener("securitypolicyviolation", (event) => {
+      const target = event.target instanceof Element ? event.target.outerHTML.slice(0, 160) : "";
+      w.__refused.push(`${event.violatedDirective} ${event.blockedURI} ${event.sourceFile} ${target}`);
+    });
   });
 }
 
 export async function policyRefusals(page: Page): Promise<string[]> {
   const all = await page.evaluate(() => (window as unknown as { __refused?: string[] }).__refused ?? []);
-  return all.filter((entry) => !/^script-src eval \S+\/frappe-editor\/assets\/PageBuilder-[\w-]+\.js$/.test(entry));
+  return all.filter((entry) => !/^script-src eval \S+\/frappe-editor\/assets\/PageBuilder-[\w-]+\.js\s*$/.test(entry));
 }

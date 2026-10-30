@@ -1,0 +1,52 @@
+diff --git a/frontend/src/components/PageCard.vue b/frontend/src/components/PageCard.vue
+index 49cd4a6..8a37376 100644
+--- a/frontend/src/components/PageCard.vue
++++ b/frontend/src/components/PageCard.vue
+@@ -9,7 +9,7 @@
+ 				width="250"
+ 				height="140"
+ 				:src="page.meta_image || page.preview"
+-				onerror="this.src='/assets/builder/images/fallback.png'"
++				@error="($event.target as HTMLImageElement).src = '/assets/builder/images/fallback.png'"
+ 				alt=""
+ 				class="block aspect-video w-full overflow-hidden rounded-5 object-cover shadow dark:border dark:border-outline-gray-1" />
+ 			<div class="flex items-center gap-1">
+diff --git a/frontend/src/components/PageListItem.vue b/frontend/src/components/PageListItem.vue
+index 22064b9..f1d7bf6 100644
+--- a/frontend/src/components/PageListItem.vue
++++ b/frontend/src/components/PageListItem.vue
+@@ -11,7 +11,7 @@
+ 					height="82"
+ 					:src="page.meta_image || page.preview"
+ 					alt=""
+-					onerror="this.src='/assets/builder/images/fallback.png'"
++					@error="($event.target as HTMLImageElement).src = '/assets/builder/images/fallback.png'"
+ 					class="block aspect-video w-36 flex-shrink-0 overflow-hidden rounded-6 bg-surface-gray-1 object-cover shadow-md" />
+ 				<div class="flex flex-1 items-start justify-between overflow-hidden">
+ 					<span class="flex h-full w-full flex-col justify-between text-base">
+diff --git a/frontend/src/components/Templates/TemplateGroupCard.vue b/frontend/src/components/Templates/TemplateGroupCard.vue
+index 1a98128..87b849e 100644
+--- a/frontend/src/components/Templates/TemplateGroupCard.vue
++++ b/frontend/src/components/Templates/TemplateGroupCard.vue
+@@ -8,7 +8,7 @@
+ 			<img
+ 				:src="group.thumbnail || group.preview || fallbackImage"
+ 				:alt="group.title"
+-				onerror="this.src='/assets/builder/images/fallback.png'"
++				@error="($event.target as HTMLImageElement).src = '/assets/builder/images/fallback.png'"
+ 				class="aspect-video w-full rounded-5 bg-surface-gray-1 object-cover object-top" />
+ 			<div
+ 				class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/40 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+diff --git a/frontend/src/components/Templates/TemplatePageCard.vue b/frontend/src/components/Templates/TemplatePageCard.vue
+index 92a534e..42aa22e 100644
+--- a/frontend/src/components/Templates/TemplatePageCard.vue
++++ b/frontend/src/components/Templates/TemplatePageCard.vue
+@@ -6,7 +6,7 @@
+ 			<img
+ 				:src="page.thumbnail || page.preview || fallbackImage"
+ 				:alt="page.page_title || page.name"
+-				onerror="this.src='/assets/builder/images/fallback.png'"
++				@error="($event.target as HTMLImageElement).src = '/assets/builder/images/fallback.png'"
+ 				class="aspect-video w-full rounded-5 bg-surface-gray-1 object-cover object-top" />
+ 			<div
+ 				class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/40 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
