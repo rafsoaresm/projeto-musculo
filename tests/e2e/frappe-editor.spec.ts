@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { createProfessional, localIP, newActor } from "./helpers";
+import { createProfessional, localIP, newActor, policyRefusals, trackPolicy } from "./helpers";
 
 /** What the editor reads from its server, asked the way the editor asks (same origin, with the header that marks its calls). */
 const asEditor = (page: Page, method: string, params: Record<string, unknown>) =>
@@ -24,6 +24,8 @@ test("frappe editor: opens under the mount with nothing fixed to the root and no
   const unique = crypto.randomUUID().slice(0, 8);
   await createProfessional(page, `Estúdio ${unique}`, "Marina Frappe");
 
+  // The editor runs under the policy of its page: a normal session must not be refused anything (a refusal here is the editor losing a feature).
+  await trackPolicy(page);
   const origin = new URL(baseURL!).origin;
   const mount = new URL(baseURL!).pathname.replace(/\/$/, "");
   const outside: string[] = [];
@@ -85,6 +87,10 @@ test("frappe editor: opens under the mount with nothing fixed to the root and no
   for (const path of calls) expect(path.startsWith(`${mount}/api/builder-editor/api/method/`), path).toBe(true);
   expect(files.length).toBeGreaterThan(10);
   for (const path of files) expect(path.startsWith(`${mount}/frappe-editor/`), path).toBe(true);
+
+  // ---- the editor answered with its content policy, and that policy refused nothing of what was done above ----
+  expect(await policyRefusals(page)).toEqual([]);
+  expect((await page.request.get("./profissional/meu-site/editor")).headers()["content-security-policy"]).toMatch(/script-src 'self' 'nonce-[0-9a-f]{32}'/);
 
   // ---- another organization sees none of it ----
   const other = await newActor(browser, baseURL);

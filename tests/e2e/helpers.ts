@@ -195,3 +195,24 @@ export async function turnOnTwoFactor(page: Page, accountPath: string) {
   await expect(page.getByText("Verificação em duas etapas ativada.", { exact: false })).toBeVisible();
   return { key, recovery };
 }
+
+/**
+ * Records what the content policy of a page refuses (the editor runs under one). Call before the page is opened; read with `policyRefusals`.
+ * One refusal is known and harmless: a library bundled with the editor tries `Function("return this")()` to find the global object and, refused,
+ * falls back to `window` (see `PageBuilder-*.js`); it is left out. Anything else is the editor losing something, or a block trying something.
+ */
+export async function trackPolicy(page: Page) {
+  await page.addInitScript(() => {
+    const w = window as unknown as { __refused: string[] };
+    w.__refused = [];
+    document.addEventListener("securitypolicyviolation", (event) => {
+      const target = event.target instanceof Element ? event.target.outerHTML.slice(0, 160) : "";
+      w.__refused.push(`${event.violatedDirective} ${event.blockedURI} ${event.sourceFile} ${target}`);
+    });
+  });
+}
+
+export async function policyRefusals(page: Page): Promise<string[]> {
+  const all = await page.evaluate(() => (window as unknown as { __refused?: string[] }).__refused ?? []);
+  return all.filter((entry) => !/^script-src eval \S+\/frappe-editor\/assets\/PageBuilder-[\w-]+\.js\s*$/.test(entry));
+}
