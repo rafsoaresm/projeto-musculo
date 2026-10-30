@@ -79,7 +79,7 @@ describe("which editor a site is made in", () => {
 
   it("is listed with the pages of the new editor: which are published and at what route", async () => {
     const overview = await sites().overview();
-    expect(overview?.newEditor).toEqual({ published: [{ route: "home", title: "home" }], pages: 2 });
+    expect(overview?.newEditor).toEqual({ published: [{ name: "home", route: "home", title: "home" }], pages: 2 });
     expect((await sites("owner-b", "org-b").overview())?.newEditor.pages).toBe(1);
   });
 });

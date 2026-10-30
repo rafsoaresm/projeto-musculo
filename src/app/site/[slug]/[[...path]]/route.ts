@@ -3,6 +3,7 @@ import { publicBuilderPage } from "@/db/builder-public";
 import { sha256Hex } from "@/db/crypto";
 import { notFoundDocument, publicDocument, PUBLIC_CSP } from "@/modules/frappe-site/public-page";
 import { requestedRoute } from "@/modules/frappe-site/routes";
+import { formsGate } from "@/modules/meu-site/inquiries";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,9 @@ export async function GET(request: Request, { params }: Params) {
   const { env } = await getCloudflareContext({ async: true });
   const found = await publicBuilderPage(env.DB, slug, route);
   if (!found) return notFound();
-  const html = publicDocument(found, path?.length ?? 0);
+  // The forms of the page are drawn only when the environment opened the public forms (and the site its own switch: the document checks it).
+  const gate = formsGate(env, process.env);
+  const html = publicDocument(found, path?.length ?? 0, gate.open ? gate.noticeUrl : null);
   const etag = `"${await sha256Hex(html)}"`;
   const headers = { ...base, "Cache-Control": "public, no-cache", ETag: etag };
   if (request.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers });

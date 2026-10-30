@@ -64,6 +64,17 @@ function decode(value: string): string {
   });
 }
 
+/**
+ * The text of a piece of rich text as a person reads it: tags dropped, entities decoded, hidden characters and runs of white space made one space.
+ * For labels and the like (never written back as markup: whoever uses it escapes it again).
+ */
+export function plainText(html: string): string {
+  return decode(html.replace(/<[^>]*>?/g, " "))
+    .replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 // ---- addresses ----
 
 const SCHEME = /^([a-z][a-z0-9+.-]*):/i;

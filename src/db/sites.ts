@@ -56,7 +56,7 @@ export interface ReleaseRow {
 export interface SiteOverview {
   site: { id: string; slug: string; engine: SiteEngine };
   /** The pages published from the new editor (route and title), and how many files it holds. */
-  newEditor: { published: Array<{ route: string; title: string }>; pages: number };
+  newEditor: { published: Array<{ name: string; route: string; title: string }>; pages: number };
   draft: { content: SiteContent; revision: number; updatedAt: string };
   live: { number: number; publishedAt: string; draftRevision: number } | null;
   releases: ReleaseRow[];
@@ -182,19 +182,19 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
           .first<{ open: number; engine: SiteEngine; waiting: number }>(),
         db
           .prepare(
-            `SELECT json_extract(d.data, '$.route') AS route, COALESCE(json_extract(d.data, '$.page_title'), d.name) AS title,
+            `SELECT d.name AS name, json_extract(d.data, '$.route') AS route, COALESCE(json_extract(d.data, '$.page_title'), d.name) AS title,
                     COALESCE(json_extract(d.data, '$.published'), 0) AS published
              FROM builder_docs d WHERE d.organization_id = ?1 AND d.doctype = 'Builder Page' AND ${reads}
                AND COALESCE(json_extract(d.data, '$.is_template'), 0) = 0
              ORDER BY json_extract(d.data, '$.published_at'), d.name LIMIT 200`,
           )
           .bind(organizationId, userId)
-          .all<{ route: string | null; title: string; published: number }>(),
+          .all<{ name: string; route: string | null; title: string; published: number }>(),
       ]);
       return {
         site: { id: draft.siteId, slug: draft.slug, engine: inquiries?.engine ?? "native" },
         newEditor: {
-          published: editorPages.results.filter((page) => page.published === 1).map((page) => ({ route: (page.route ?? "").replace(/^\/+|\/+$/g, ""), title: page.title })),
+          published: editorPages.results.filter((page) => page.published === 1).map((page) => ({ name: page.name, route: (page.route ?? "").replace(/^\/+|\/+$/g, ""), title: page.title })),
           pages: editorPages.results.length,
         },
         inquiries: { open: inquiries?.open === 1, waiting: inquiries?.waiting ?? 0 },

@@ -7,6 +7,7 @@
  * address and style goes through html.ts and css.ts. tests/frappe-site-render.test.ts holds the cases.
  */
 import { blockRules, cssValue, freeCss, type StyleMap } from "./css";
+import { bindAttributes, buildForm, FORM_FIELD, routeFitsInbox, type BuiltForm, type FormDefinition } from "./form";
 import { cleanAttributes, escapeAttribute, escapeText, sanitizeRichText, serializeAttributes, type UrlContext } from "./html";
 
 export type Block = Record<string, unknown>;
@@ -19,6 +20,11 @@ export interface RenderInput {
   /** What a font token (`var(--id)`) stands for, to know which family a block asks for. */
   fontToken(name: string): string | null;
   url: UrlContext;
+  /**
+   * The forms of the page: the route they are on (as the inbox keeps it) and where they send. Without `send` (the forms are closed, or this is
+   * only a reading of the page) a form is read but not drawn: a form that goes nowhere would only take what a visitor writes.
+   */
+  forms?: { route: string; send: { action: string; noticeUrl: string } | null };
 }
 
 export interface FontUse {
@@ -38,6 +44,8 @@ export interface Rendered {
   /** How many blocks were drawn, and whether the page was cut at the limit. */
   count: number;
   truncated: boolean;
+  /** The forms of the page, drawn or not, in the order of the page. */
+  forms: FormDefinition[];
 }
 
 const MAX_BLOCKS = 20_000;
@@ -127,6 +135,17 @@ interface State {
   next: number;
   /** The styles of the root block (the page's body). */
   root: StyleMap;
+  /** The forms found so far, the ids they were given, and the form being drawn (forms do not nest). */
+  forms: FormDefinition[];
+  formIds: Set<string>;
+  form: ActiveForm | null;
+}
+
+interface ActiveForm {
+  built: BuiltForm;
+  /** The consent box, the bait and the hidden fields, to be written before the first button that sends. */
+  extras: string;
+  placed: boolean;
 }
 
 function familyOf(font: string, state: State): string {
@@ -170,6 +189,44 @@ function hasCondition(block: Block): boolean {
   return isRecord(condition) && text(condition.key) !== "";
 }
 
+/** A block with the components of everything below it merged in, so a form is read as it is drawn. A repeater draws no children without its data. */
+function resolveDeep(source: Block, state: State, depth: number): Block {
+  const block = resolveComponent(source, state);
+  mergeRawStyles(block);
+  const repeater = block.isRepeaterBlock && isRecord(block.dataKey) && text(block.dataKey.key);
+  block.children = repeater || depth >= MAX_DEPTH ? [] : records(block.children).map((child) => resolveDeep(child, state, depth + 1));
+  return block;
+}
+
+/** A form's id on the page: its block id, made different from the ones before it (a component with a form can be used twice). */
+function formId(block: Block, state: State): string {
+  const raw = text(block.blockId);
+  const base = /^[A-Za-z0-9_-]{1,64}$/.test(raw) ? raw : "form";
+  let id = base;
+  for (let n = 2; state.formIds.has(id); n += 1) id = `${base}-${n}`;
+  state.formIds.add(id);
+  return id;
+}
+
+const hidden = (name: string, value: string) => `<input type="hidden" name="${name}" value="${escapeAttribute(value)}">`;
+
+/** What a form carries that the person did not draw: the box for the privacy notice, the bait a person never sees, and where the message comes from. */
+function formExtras(definition: FormDefinition, route: string, noticeUrl: string): string {
+  return (
+    `<div style="display: block; width: 100%; margin: 8px 0; font-size: 0.875rem; text-align: left;"><label style="display: flex; gap: 8px; align-items: flex-start;">` +
+    `<input type="checkbox" name="${FORM_FIELD.consent}" required style="margin-top: 3px; flex: none;"><span>Li o ` +
+    `<a href="${escapeAttribute(noticeUrl)}" target="_blank" rel="noopener noreferrer">aviso de privacidade</a> e concordo em ser contatado(a) por este profissional.</span></label></div>` +
+    `<div aria-hidden="true" style="position: absolute; left: -10000px; top: auto; width: 1px; height: 1px; overflow: hidden;"><label>Não preencha este campo` +
+    `<input type="text" name="${FORM_FIELD.bait}" tabindex="-1" autocomplete="off"></label></div>` +
+    hidden(FORM_FIELD.route, route) +
+    hidden(FORM_FIELD.form, definition.id) +
+    hidden(FORM_FIELD.version, definition.version)
+  );
+}
+
+/** For a form with no button of its own: without one it could not be sent. */
+const DEFAULT_BUTTON = '<button type="submit" style="padding: 8px 16px; border: 1px solid currentColor; border-radius: 6px; cursor: pointer;">Enviar</button>';
+
 function renderBlock(source: Block, state: State, ancestorFont: string | null, ancestorItalic: boolean, depth: number, root: boolean): string {
   if (state.count >= MAX_BLOCKS || depth > MAX_DEPTH) {
     state.truncated = true;
@@ -187,6 +244,21 @@ function renderBlock(source: Block, state: State, ancestorFont: string | null, a
   let element = original === "p" || original === "__raw_html__" ? "div" : original;
   if (element === "body" && !root) element = "div";
   if (!ELEMENTS.has(element)) element = "div";
+  // A form is read first (what its controls are), then drawn only if it can receive messages; a form inside a form is a plain box.
+  let opened: ActiveForm | null = null;
+  if (element === "form") {
+    if (state.form) element = "div";
+    else {
+      resolveDeep(block, state, depth);
+      const built = buildForm(block, { id: formId(block, state), hidden: hasCondition });
+      const forms = state.input.forms;
+      if (forms && !routeFitsInbox(forms.route)) built.definition.problems.push("O endereço desta página tem mais de 40 letras ou caracteres que a caixa de entrada não guarda.");
+      state.forms.push(built.definition);
+      if (!forms?.send || built.definition.problems.length > 0) return "";
+      opened = { built, extras: formExtras(built.definition, forms.route, forms.send.noticeUrl), placed: false };
+      state.form = opened;
+    }
+  }
 
   const base = styleMap(block.baseStyles);
   const tablet = styleMap(block.tabletStyles);
@@ -213,6 +285,26 @@ function renderBlock(source: Block, state: State, ancestorFont: string | null, a
   if ((element === "img" || element === "video") && attributes.src === undefined) {
     element = "div";
     attributes = cleanAttributes("div", pairs, state.input.url);
+  }
+
+  let before = "";
+  if (state.form) {
+    const binding = state.form.built.bindings.get(block);
+    if (binding?.role === "ignored") return "";
+    if (binding) bindAttributes(attributes, binding);
+    if (element === "button" || (element === "input" && attributes.type === "submit")) {
+      if (element === "button" && attributes.type !== "button" && attributes.type !== "reset") attributes.type = "submit";
+      delete attributes.name;
+      if (element === "button") delete attributes.value;
+      if (attributes.type === "submit" && !state.form.placed) {
+        state.form.placed = true;
+        before = state.form.extras;
+      }
+    }
+  }
+  if (opened) {
+    attributes.method = "post";
+    attributes.action = state.input.forms!.send!.action;
   }
 
   const classes = classList(block.classes).filter((name) => /^[A-Za-z0-9_-]{1,80}$/.test(name));
@@ -242,16 +334,18 @@ function renderBlock(source: Block, state: State, ancestorFont: string | null, a
   let html: string;
   if (VOID.has(element)) html = open;
   else {
-    let inner = "";
+    let inner = element === "select" && state.form?.built.bindings.get(block)?.role === "field" ? '<option value=""></option>' : "";
     const content = text(block.innerHTML);
     if (content) inner += PLAIN_TEXT.has(element) ? escapeText(content) : sanitizeRichText(content, state.input.url);
     const children = records(block.children);
     if (!(block.isRepeaterBlock && isRecord(block.dataKey) && text(block.dataKey.key))) {
       for (const child of children) inner += renderBlock(child, state, font, italic, depth + 1, false);
     }
+    if (opened && !opened.placed) inner += opened.extras + DEFAULT_BUTTON;
     html = `${open}${inner}</${element}>`;
   }
-  return picture ? `<${picture} style="display: contents;">${darkSource}${html}</${picture}>` : html;
+  if (opened) state.form = null;
+  return before + (picture ? `<${picture} style="display: contents;">${darkSource}${html}</${picture}>` : html);
 }
 
 /** What the root block paints, for `html` and `body` (so a full-width page leaves no white edge): the first of background, image and color that is set. */
@@ -274,7 +368,7 @@ export function renderBlocks(input: RenderInput): Rendered {
     }
   }
   const list = Array.isArray(parsed) ? records(parsed) : isRecord(parsed) ? [parsed] : [];
-  const state: State = { input, rules: [], fonts: new Map(), count: 0, truncated: false, next: 0, root: {} };
+  const state: State = { input, rules: [], fonts: new Map(), count: 0, truncated: false, next: 0, root: {}, forms: [], formIds: new Set(), form: null };
   let body = "";
   let attributes = "";
   const first = list[0];
@@ -296,5 +390,6 @@ export function renderBlocks(input: RenderInput): Rendered {
     background: rootBackground(state.root, input.url.asset),
     count: state.count,
     truncated: state.truncated,
+    forms: state.forms,
   };
 }
