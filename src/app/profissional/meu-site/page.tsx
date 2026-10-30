@@ -12,7 +12,7 @@ import { canWorkLeads } from "@/modules/leads/access";
 import { CreateSite } from "@/modules/meu-site/create-site";
 import { SiteWorkspace } from "@/modules/meu-site/site-workspace";
 import { NewEditorPanel } from "@/modules/meu-site/new-editor-panel";
-import { formsOnTheAir } from "@/modules/meu-site/new-editor-forms";
+import { contentOnTheAir } from "@/modules/meu-site/new-editor-forms";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Meu Site" };
@@ -34,7 +34,7 @@ export default async function MySite() {
   const library = overview ? await siteAssetsFor(db, bucket, context).list() : [];
   const { env } = await getCloudflareContext({ async: true });
   const platformOpen = formsGate(env, process.env).open;
-  const onTheAir = overview ? await formsOnTheAir(env.DB, overview.site.slug, overview.newEditor.published) : { forms: [], skipped: 0 };
+  const onTheAir = overview ? await contentOnTheAir(env.DB, overview.site.slug, overview.newEditor.published) : { forms: [], code: [], skipped: 0 };
   return (
     <>
       <PageHeading
@@ -49,7 +49,8 @@ export default async function MySite() {
           published={overview.newEditor.published}
           pages={overview.newEditor.pages}
           waiting={overview.inquiries.waiting}
-          forms={onTheAir}
+          forms={{ forms: onTheAir.forms, skipped: onTheAir.skipped }}
+          code={{ pages: onTheAir.code, networkOpen: overview.code.externalOpen }}
           inquiries={{ open: overview.inquiries.open, platformOpen, canWork: canWorkLeads(workspace.role) }}
           canEdit={canEdit}
         />

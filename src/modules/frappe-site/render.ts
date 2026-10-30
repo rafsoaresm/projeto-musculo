@@ -7,6 +7,7 @@
  * address and style goes through html.ts and css.ts. tests/frappe-site-render.test.ts holds the cases.
  */
 import { blockRules, cssValue, freeCss, type StyleMap } from "./css";
+import { CODE_BLOCKS_MAX, CODE_LETTERS_MAX, freeCodeOf, reachesOutside, type CodeBlock } from "./code";
 import { bindAttributes, buildForm, FORM_FIELD, routeFitsInbox, type BuiltForm, type FormDefinition } from "./form";
 import { cleanAttributes, escapeAttribute, escapeText, sanitizeRichText, serializeAttributes, type UrlContext } from "./html";
 
@@ -25,6 +26,11 @@ export interface RenderInput {
    * only a reading of the page) a form is read but not drawn: a form that goes nowhere would only take what a visitor writes.
    */
   forms?: { route: string; send: { action: string; noticeUrl: string } | null };
+  /**
+   * Where the frame of a block of free code is served from (a relative address, from the page). Without it free code is read but not drawn: the box
+   * stays, empty. The code of a page never goes into the page itself.
+   */
+  code?: { src(index: number): string };
 }
 
 export interface FontUse {
@@ -46,6 +52,8 @@ export interface Rendered {
   truncated: boolean;
   /** The forms of the page, drawn or not, in the order of the page. */
   forms: FormDefinition[];
+  /** The free code of the page, in the order of the page: what its frames show. */
+  codeBlocks: CodeBlock[];
 }
 
 const MAX_BLOCKS = 20_000;
@@ -139,6 +147,7 @@ interface State {
   forms: FormDefinition[];
   formIds: Set<string>;
   form: ActiveForm | null;
+  codeBlocks: CodeBlock[];
 }
 
 interface ActiveForm {
@@ -260,6 +269,19 @@ function renderBlock(source: Block, state: State, ancestorFont: string | null, a
     }
   }
 
+  // Free code is never drawn into the page: it is a frame, with the box (and the styles) of the block, that shows a document of its own.
+  const code = freeCodeOf(block);
+  let codeSrc: string | null = null;
+  if (code !== null) {
+    element = "div";
+    if (state.input.code && state.codeBlocks.length < CODE_BLOCKS_MAX && code.length <= CODE_LETTERS_MAX) {
+      const index = state.codeBlocks.length;
+      state.codeBlocks.push({ index, html: code, external: reachesOutside(code) });
+      codeSrc = state.input.code.src(index);
+      element = "iframe";
+    }
+  }
+
   const base = styleMap(block.baseStyles);
   const tablet = styleMap(block.tabletStyles);
   const mobile = styleMap(block.mobileStyles);
@@ -287,6 +309,7 @@ function renderBlock(source: Block, state: State, ancestorFont: string | null, a
     attributes = cleanAttributes("div", pairs, state.input.url);
   }
 
+  if (codeSrc !== null) attributes = { src: codeSrc, title: "Código", sandbox: "allow-scripts", loading: "lazy", referrerpolicy: "no-referrer" };
   let before = "";
   if (state.form) {
     const binding = state.form.built.bindings.get(block);
@@ -333,6 +356,7 @@ function renderBlock(source: Block, state: State, ancestorFont: string | null, a
   const open = `<${element}${serializeAttributes(attributes)}>`;
   let html: string;
   if (VOID.has(element)) html = open;
+  else if (code !== null) html = `${open}</${element}>`;
   else {
     let inner = element === "select" && state.form?.built.bindings.get(block)?.role === "field" ? '<option value=""></option>' : "";
     const content = text(block.innerHTML);
@@ -368,7 +392,7 @@ export function renderBlocks(input: RenderInput): Rendered {
     }
   }
   const list = Array.isArray(parsed) ? records(parsed) : isRecord(parsed) ? [parsed] : [];
-  const state: State = { input, rules: [], fonts: new Map(), count: 0, truncated: false, next: 0, root: {}, forms: [], formIds: new Set(), form: null };
+  const state: State = { input, rules: [], fonts: new Map(), count: 0, truncated: false, next: 0, root: {}, forms: [], formIds: new Set(), form: null, codeBlocks: [] };
   let body = "";
   let attributes = "";
   const first = list[0];
@@ -391,5 +415,6 @@ export function renderBlocks(input: RenderInput): Rendered {
     count: state.count,
     truncated: state.truncated,
     forms: state.forms,
+    codeBlocks: state.codeBlocks,
   };
 }

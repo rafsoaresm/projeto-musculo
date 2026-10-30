@@ -4,9 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMountPath } from "@/components/use-mount-path";
 import { Pill } from "@/components/ui";
-import { deleteSite, setSiteEngine, setSiteInquiries } from "./actions";
+import { deleteSite, setSiteCodeNetwork, setSiteEngine, setSiteInquiries } from "./actions";
 import { PublicAddress } from "./public-address";
-import type { PanelForm } from "./new-editor-forms";
+import type { PanelCode, PanelForm } from "./new-editor-forms";
 
 export interface NewEditorState {
   slug: string;
@@ -20,6 +20,8 @@ export interface NewEditorState {
   forms: { forms: PanelForm[]; skipped: number };
   /** The site's own switch, the environment's, and whether this login works the leads (and so may open the inbox). */
   inquiries: { open: boolean; platformOpen: boolean; canWork: boolean };
+  /** The pages on the air that have free code, and the site's switch for what that code may reach outside the site. */
+  code: { pages: PanelCode[]; networkOpen: boolean };
   canEdit: boolean;
 }
 
@@ -27,7 +29,7 @@ export interface NewEditorState {
  * The new editor (Frappe Builder) in Meu Site: where to open it, which of its pages are on the air and at what address, which editor makes the
  * main address of the site, and the way out: deleting the whole site to start again from nothing.
  */
-export function NewEditorPanel({ slug, engine, published, pages, waiting, forms, inquiries, canEdit }: NewEditorState) {
+export function NewEditorPanel({ slug, engine, published, pages, waiting, forms, inquiries, code, canEdit }: NewEditorState) {
   const router = useRouter();
   const mountPath = useMountPath();
   const [message, setMessage] = useState("");
@@ -37,6 +39,12 @@ export function NewEditorPanel({ slug, engine, published, pages, waiting, forms,
   const switchInquiries = (open: boolean) =>
     startTransition(async () => {
       const result = await setSiteInquiries(open);
+      setMessage(result.message);
+      if (result.ok) router.refresh();
+    });
+  const switchNetwork = (open: boolean) =>
+    startTransition(async () => {
+      const result = await setSiteCodeNetwork(open);
       setMessage(result.message);
       if (result.ok) router.refresh();
     });
@@ -136,6 +144,57 @@ export function NewEditorPanel({ slug, engine, published, pages, waiting, forms,
               {waiting === 0 ? "Ver as mensagens do site" : `Ver as mensagens do site (${waiting} esperando)`}
             </Link>
           </div>
+        )}
+        <h3>Código livre</h3>
+        <p className="small muted">
+          O bloco <strong>HTML</strong> (e os de <strong>incorporar</strong>, como um vídeo) aceita HTML, estilo e JavaScript escritos por você. Na página publicada ele aparece{" "}
+          <strong>num quadro isolado</strong>: o código roda, mas não enxerga a sua conta, os cookies nem o resto da página, e <strong>por padrão não carrega nada de fora</strong> (nem scripts,
+          nem estilos, nem imagens ou vídeos de outros sites). Defina a largura e a altura do bloco no editor; sem isso o quadro tem o tamanho que o navegador dá (300 × 150). Um desenho
+          (SVG, como um logotipo) não é código: entra na página, filtrado.
+        </p>
+        <p className="small">
+          {code.networkOpen ? <Pill tone="warning">O código pode carregar coisas de outros sites (https)</Pill> : <Pill tone="success">O código não carrega nada de fora</Pill>}
+        </p>
+        {code.pages.length === 0 ? (
+          <p className="muted">Nenhuma página no ar tem código livre.</p>
+        ) : (
+          <ul className="small" aria-label="Código livre das páginas no ar">
+            {code.pages.map((entry) => (
+              <li key={`${entry.route}-${entry.title}`}>
+                {entry.title} ({entry.route ? `/${entry.route}` : "página sem endereço"}): {entry.blocks === 1 ? "1 bloco" : `${entry.blocks} blocos`} de código
+                {entry.external > 0 && (
+                  <>
+                    ,{" "}
+                    <strong>
+                      {entry.external === 1 ? "1 pede" : `${entry.external} pedem`} algo de fora
+                    </strong>
+                    {code.networkOpen ? "." : ": não vai aparecer enquanto o código não puder carregar coisas de outros sites."}
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {canEdit && (
+          <>
+            {!code.networkOpen && (
+              <p className="small muted">
+                Se você liberar, o código passa a poder carregar scripts, estilos, imagens e quadros de endereços <code>https</code>, e quem visita a página <strong>manda o seu endereço de internet
+                a esses sites</strong>: o aviso de privacidade do seu site deve dizer isso.
+              </p>
+            )}
+            <div className="persist-actions">
+              {code.networkOpen ? (
+                <button type="button" className="button secondary" disabled={pending} onClick={() => switchNetwork(false)}>
+                  Bloquear de novo o que o código carrega de fora
+                </button>
+              ) : (
+                <button type="button" className="button secondary" disabled={pending} onClick={() => switchNetwork(true)}>
+                  Deixar o código carregar coisas de outros sites
+                </button>
+              )}
+            </div>
+          </>
         )}
         <h3>Endereço principal</h3>
         {engine === "frappe" ? (
