@@ -169,6 +169,10 @@ describe("what is served is what is published, of that site", () => {
       get("marina-a", "home", "9"),
       get("marina-a", "home", "x"),
       get("marina-a", "home", "007x"),
+      get("marina-a", "home", "0x0"), // other spellings of a number (hex, exponent, sign, space) are not another address for a block
+      get("marina-a", "home", "1e0"),
+      get("marina-a", "home", "%2B0"),
+      get("marina-a", "home", "%200"),
       get("marina-a", "home", "100"),
       get("marina-a", "home", "-1"),
       get("marina-a", "..%2Fhome", "0"),
