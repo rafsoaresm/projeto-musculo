@@ -130,10 +130,30 @@ test("frappe publish: a page made in the editor is published at /site/<address> 
   expect(hostilePage.status()).toBe(200);
   const hostileHtml = await hostilePage.text();
   expect(hostileHtml).toContain("<b>negrito</b>");
-  expect(hostileHtml).not.toMatch(/<script|<iframe|onerror|onclick|javascript:|evil\.test|action=|display: none/i);
+  expect(hostileHtml).not.toMatch(/<script|onerror|onclick|javascript:|evil\.test|action=|display: none|srcdoc|allow-same-origin/i);
   // what was a script element is a plain box with its text as text, and the free HTML block drew nothing of its script
   expect(hostileHtml).toContain("<div>alert(5)</div>");
   expect(hostileHtml).not.toContain("alert(8)");
+  // The two blocks that hold free code (the free HTML and the frame of another site) are frames of the site itself, with no way back to it, and the code is not in the page.
+  const frames = [...hostileHtml.matchAll(/<iframe\b[^>]*>/g)].map((match) => match[0]);
+  expect(frames).toHaveLength(2);
+  for (const frame of frames) {
+    expect(frame).toContain('sandbox="allow-scripts"');
+    expect(frame).toMatch(/ src="\.\.\/\.\.\/site\/[a-z0-9-]+\/m\/codigo\/[A-Za-z0-9_-]+\/\d"/);
+  }
+  // Served apart, as code, behind a policy that walls it in and (the site's switch being closed) gives it no network: the frame of another site cannot even open.
+  const hostileAt = new URL(`./site/${slug}/hostil`, baseURL!).href;
+  const served = await Promise.all(frames.map((frame) => page.request.get(new URL(/ src="([^"]+)"/.exec(frame)![1]!, hostileAt).href)));
+  const codes = await Promise.all(served.map((answer) => answer.text()));
+  for (const answer of served) {
+    const policy = answer.headers()["content-security-policy"] ?? "";
+    expect(policy).toContain("sandbox allow-scripts");
+    expect(policy).not.toContain("allow-same-origin");
+    expect(policy).not.toContain("frame-src");
+    expect(policy).not.toContain("https:");
+  }
+  expect(codes.some((code) => code.includes('<iframe src="https://evil.test"'))).toBe(true);
+  expect(codes.some((code) => code.includes("<script>alert(8)</script>"))).toBe(true);
 
   // ---- an address that is not a page, a page that is not published and another site's address are the same answer ----
   for (const path of [`./site/${slug}/nao-existe`, `./site/${slug}/..%2Fhostil`, `./site/nao-existe-${unique}`, `./site/${slug}/%00`]) {
