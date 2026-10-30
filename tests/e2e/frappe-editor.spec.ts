@@ -39,8 +39,9 @@ test("frappe editor: opens under the mount with nothing fixed to the root and no
   });
 
   // ---- the editor opens, and is the editor of Frappe Builder ----
-  // The way in is the Meu Site screen: a link that works under any mount path.
+  // The way in is the Meu Site screen: a link that works under any mount path (the site gets its address first, born in the new editor).
   await page.goto("./profissional/meu-site");
+  await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Criar meu site" }).click();
   await page.getByRole("link", { name: "Abrir o editor novo" }).click();
   await expect(page).toHaveURL(new RegExp(`${mount}/profissional/meu-site/editor/?$`));
   await expect(page.getByRole("heading", { name: "All Pages" })).toBeVisible();

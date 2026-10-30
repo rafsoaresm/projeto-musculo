@@ -103,3 +103,11 @@ describe("the order, the fields and the page of a list", () => {
     expect(page([1, 2, 3, 4], 9, 2)).toEqual([]);
   });
 });
+
+describe("ordering numbers", () => {
+  it("goes by value, not by text: 14 comes after 2", () => {
+    const docs = [2, 14, 1, 100].map((sort_order) => ({ doctype: "Block Template", name: `t${sort_order}`, sort_order }));
+    expect(order(docs, "sort_order asc").map((doc) => doc.name)).toEqual(["t1", "t2", "t14", "t100"]);
+    expect(order(docs, "sort_order desc").map((doc) => doc.name)).toEqual(["t100", "t14", "t2", "t1"]);
+  });
+});

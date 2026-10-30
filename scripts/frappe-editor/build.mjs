@@ -17,6 +17,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { writeBlockTemplates } from "./block-templates.mjs";
 import { writeFonts } from "./fonts.mjs";
 import { writeResetCss } from "./reset-css.mjs";
 
@@ -49,24 +50,12 @@ function checkout(name, sparse) {
 
 function applyPatches(builderDir) {
   const dir = path.join(ROOT, "vendor", "frappe-builder", "patches");
+  // Always from the files of the pinned commit, so that patches that touch the same file stack the same way every time.
+  run("git", ["checkout", "--force", "--", "."], { cwd: builderDir });
+  run("git", ["clean", "-fdq", "--", "frontend/src", "builder"], { cwd: builderDir });
   for (const file of fs.readdirSync(dir).filter((name) => name.endsWith(".patch")).sort()) {
-    const patch = path.join(dir, file);
-    const tries = (extra) => {
-      try {
-        execFileSync("git", ["apply", ...extra, "--check", patch], { cwd: builderDir, stdio: "ignore" });
-        return true;
-      } catch {
-        return false;
-      }
-    };
-    if (tries([])) {
-      run("git", ["apply", patch], { cwd: builderDir });
-      console.log(`patch applied: ${file}`);
-    } else if (tries(["--reverse"])) {
-      console.log(`patch already applied: ${file}`);
-    } else {
-      throw new Error(`the patch ${file} fits neither the clean nor the patched checkout of the editor`);
-    }
+    run("git", ["apply", path.join(dir, file)], { cwd: builderDir });
+    console.log(`patch applied: ${file}`);
   }
 }
 
@@ -199,4 +188,4 @@ fs.writeFileSync(
 );
 fs.rmSync(dist, { recursive: true, force: true });
 fs.rmSync(shell, { force: true });
-console.log(`done: ${path.relative(ROOT, OUT)}, ${path.relative(ROOT, SHELL_TS)} and ${writeResetCss(builderDir)}`);
+console.log(`done: ${path.relative(ROOT, OUT)}, ${path.relative(ROOT, SHELL_TS)}, ${writeResetCss(builderDir)} and ${writeBlockTemplates(builderDir).ts}`);

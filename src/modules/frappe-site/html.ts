@@ -2,7 +2,8 @@
  * The HTML of a public page made in the embedded editor. What a block holds as text ("innerHTML": bold, links, lists ...) and the
  * attributes of its element are rewritten from an allowed list of tags and attributes, never passed through: the output is built from
  * tokens, with every value escaped again, so what this module validated is exactly what the browser reads. Scripts, frames, objects,
- * event handlers, `javascript:` addresses and third-party addresses do not get through. The response also carries a strict
+ * event handlers, `javascript:` addresses and third-party addresses do not get through. Inline SVG (a logo, an icon) does, drawn only from the
+ * shapes, gradients and clips of the graphics and never from what can run or load (scripts, styles, animation, foreign content, outside images). The response also carries a strict
  * Content-Security-Policy (document.ts), a second wall for whatever this one misses.
  * tests/frappe-site-html.test.ts feeds it the usual ways around such a filter.
  */
@@ -22,11 +23,13 @@ const TEXT_TAGS = "a abbr b bdi bdo br cite code del dfn em i ins kbd mark q s s
 const BLOCK_TAGS =
   "address article aside blockquote caption dd details div dl dt figcaption figure footer h1 h2 h3 h4 h5 h6 header hr li main nav ol p pre section summary table tbody td tfoot th thead tr ul".split(" ");
 /** The tags of the text of a block. (The elements of the blocks themselves are chosen in render.ts.) */
-const RICH_TAGS = new Set([...TEXT_TAGS, ...BLOCK_TAGS, "img"]);
+/** Inside an `<svg>` only: the shapes, gradients, clips and masks of a drawing. Nothing that animates, runs, styles or embeds. */
+const SVG_TAGS = new Set("g path circle ellipse rect line polyline polygon defs lineargradient radialgradient stop clippath mask pattern use image text tspan symbol".split(" "));
+const RICH_TAGS = new Set([...TEXT_TAGS, ...BLOCK_TAGS, "img", "svg"]);
 const VOID = new Set(["br", "hr", "img", "wbr", "input", "source", "col"]);
 /** Elements whose content is not markup (or changes how the rest is read): they go away with everything inside. Any other tag that is not allowed goes away alone and its text stays. */
 const DROPPED_WITH_CONTENT = new Set([
-  "script", "style", "textarea", "title", "xmp", "iframe", "noembed", "noframes", "noscript", "plaintext", "template", "svg", "math", "object", "applet", "head",
+  "script", "style", "textarea", "title", "xmp", "iframe", "noembed", "noframes", "noscript", "plaintext", "template", "math", "object", "applet", "head",
 ]);
 
 const ENTITY = /^&(#[0-9]{1,7}|#x[0-9a-fA-F]{1,6}|[A-Za-z][A-Za-z0-9]{1,31});/;
@@ -120,6 +123,52 @@ const GLOBAL: Record<string, Rule> = {
   tabindex: oneOf("0", "-1"),
 };
 
+const unit: Rule = (value) => (/^-?(\d+\.?\d*|\.\d+)(e-?\d+)?(%|px|em|rem|pt)?$/i.test(value.trim()) ? value.trim() : null);
+const words = (pattern: RegExp, max = 400): Rule => (value) => (value.length <= max && pattern.test(value) ? value : null);
+const PAINT = /^(none|currentColor|inherit|transparent|#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,25}|(rgb|rgba|hsl|hsla)\([\d\s.,%/]+\)|url\(#[\w-]{1,60}\)( (none|currentColor|#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,25}))?)$/;
+const REFERENCE = /^(none|url\(#[\w-]{1,60}\))$/;
+const GEOMETRY = /^[\w\s.,()+\-%]*$/;
+const drawingHref: Rule = (value) => {
+  const url = plain(value);
+  if (/^#[\w-]{1,60}$/.test(url)) return url;
+  return IMAGE_DATA.test(url) && url.length <= 400_000 ? url : null;
+};
+const enumerated = (...values: string[]): Rule => (value) => (values.includes(value.trim()) ? value.trim() : null);
+
+/** The attributes of the shapes of a drawing. Colors and references are checked by what they may be, not only by what they may not be. */
+const SVG_ATTRS: Record<string, Rule> = {
+  viewbox: words(/^[\d\s.,-]+$/, 100),
+  preserveaspectratio: words(/^[a-zA-Z\s]{0,40}$/, 40),
+  width: unit, height: unit, x: unit, y: unit, x1: unit, y1: unit, x2: unit, y2: unit, cx: unit, cy: unit, r: unit, rx: unit, ry: unit, offset: unit,
+  d: words(/^[MmLlHhVvCcSsQqTtAaZz0-9eE.,\s+-]*$/, 40_000),
+  points: words(GEOMETRY, 20_000),
+  transform: words(GEOMETRY, 400),
+  gradienttransform: words(GEOMETRY, 400),
+  patterntransform: words(GEOMETRY, 400),
+  fill: words(PAINT, 120),
+  stroke: words(PAINT, 120),
+  color: words(PAINT, 120),
+  "stop-color": words(PAINT, 120),
+  "clip-path": words(REFERENCE, 80),
+  mask: words(REFERENCE, 80),
+  "fill-rule": enumerated("nonzero", "evenodd"),
+  "clip-rule": enumerated("nonzero", "evenodd"),
+  "stroke-linecap": enumerated("butt", "round", "square"),
+  "stroke-linejoin": enumerated("miter", "round", "bevel"),
+  "stroke-width": unit, "stroke-miterlimit": unit, "stroke-dashoffset": unit, opacity: unit, "fill-opacity": unit, "stroke-opacity": unit, "stop-opacity": unit, "font-size": unit,
+  "stroke-dasharray": words(GEOMETRY, 200),
+  gradientunits: enumerated("userSpaceOnUse", "objectBoundingBox"),
+  patternunits: enumerated("userSpaceOnUse", "objectBoundingBox"),
+  patterncontentunits: enumerated("userSpaceOnUse", "objectBoundingBox"),
+  clippathunits: enumerated("userSpaceOnUse", "objectBoundingBox"),
+  maskunits: enumerated("userSpaceOnUse", "objectBoundingBox"),
+  "text-anchor": enumerated("start", "middle", "end"),
+  "font-weight": words(/^(normal|bold|bolder|lighter|[1-9]00)$/, 10),
+  href: drawingHref,
+  "xlink:href": drawingHref,
+  focusable: enumerated("true", "false"),
+};
+
 const BY_TAG: Record<string, Record<string, Rule>> = {
   a: { href: (value, ctx) => linkUrl(value, ctx), target: oneOf("_blank", "_self"), download: bool },
   img: { src: media, alt: text(), width: size, height: size, loading: oneOf("lazy", "eager"), decoding: oneOf("async", "auto", "sync") },
@@ -187,7 +236,7 @@ export function inlineStyle(value: string, ctx: UrlContext): string {
  * checked by its own rule. Handlers (`on...`), `srcdoc`, `action`, `formaction` and the rest are not on the list.
  */
 export function cleanAttributes(tag: string, attrs: ReadonlyArray<readonly [string, string]>, ctx: UrlContext): Record<string, string> {
-  const own = Object.hasOwn(BY_TAG, tag) ? BY_TAG[tag]! : {};
+  const own = tag === "svg" || SVG_TAGS.has(tag) ? SVG_ATTRS : Object.hasOwn(BY_TAG, tag) ? BY_TAG[tag]! : {};
   const out: Record<string, string> = {};
   for (const [rawName, rawValue] of attrs) {
     const name = rawName.toLowerCase();
@@ -222,6 +271,8 @@ export function serializeAttributes(attrs: Record<string, string>): string {
 interface StartTag {
   name: string;
   attrs: Array<[string, string]>;
+  /** Written `<tag ... />`: for the shapes of a drawing that is a complete element. */
+  selfClosing: boolean;
   /** Where the tag ends (after the `>`), or -1 when the text ends first. */
   end: number;
 }
@@ -237,10 +288,12 @@ function readTag(html: string, nameStart: number): StartTag | null {
   const name = found[0].toLowerCase();
   let pos = nameStart + found[0].length;
   const attrs: Array<[string, string]> = [];
+  let selfClosing = false;
   while (pos < html.length) {
     const char = html[pos]!;
-    if (char === ">") return { name, attrs, end: pos + 1 };
+    if (char === ">") return { name, attrs, selfClosing, end: pos + 1 };
     if (/\s|\//.test(char)) {
+      if (char === "/" && html[pos + 1] === ">") selfClosing = true;
       pos += 1;
       continue;
     }
@@ -259,7 +312,7 @@ function readTag(html: string, nameStart: number): StartTag | null {
       const quote = html[pos];
       if (quote === '"' || quote === "'") {
         const close = html.indexOf(quote, pos + 1);
-        if (close === -1) return { name, attrs, end: -1 };
+        if (close === -1) return { name, attrs, selfClosing, end: -1 };
         value = html.slice(pos + 1, close);
         pos = close + 1;
       } else {
@@ -271,7 +324,7 @@ function readTag(html: string, nameStart: number): StartTag | null {
     }
     attrs.push([attr[0], value]);
   }
-  return { name, attrs, end: -1 };
+  return { name, attrs, selfClosing, end: -1 };
 }
 
 /** Skips an element whose content is not markup: the position after its closing tag (or the end of the text). */
@@ -330,9 +383,16 @@ export function sanitizeRichText(source: string, ctx: UrlContext): string {
       i = skipElement(html, i, tag.name);
       continue;
     }
-    if (!RICH_TAGS.has(tag.name)) continue;
+    const shape = SVG_TAGS.has(tag.name);
+    // A shape is one only inside a drawing.
+    if (shape ? !stack.includes("svg") : !RICH_TAGS.has(tag.name)) continue;
     const attrs = cleanAttributes(tag.name, tag.attrs, ctx);
     if (tag.name === "img" && attrs.src === undefined) continue;
+    if ((tag.name === "image" || tag.name === "use") && attrs.href === undefined && attrs["xlink:href"] === undefined) continue;
+    if ((shape || tag.name === "svg") && tag.selfClosing) {
+      out.push(`<${tag.name}${serializeAttributes(attrs)}/>`);
+      continue;
+    }
     out.push(`<${tag.name}${serializeAttributes(attrs)}>`);
     if (!VOID.has(tag.name)) {
       if (stack.length >= MAX_DEPTH) out.pop();

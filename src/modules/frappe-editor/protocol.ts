@@ -36,6 +36,8 @@ export interface Env {
   hash: (length: number) => string;
   /** Does the organization have an address for its site? A page can only be published where it has one. Absent: not asked. */
   siteReady?: () => Promise<boolean>;
+  /** Documents that come with the editor, the same for everyone and not to be changed (the standard block templates). Absent: none. */
+  builtin?: (doctype: string) => Doc[];
 }
 
 export type Params = Record<string, unknown>;
@@ -132,11 +134,18 @@ async function ensureFreeRoute(env: Env, route: string, except: string) {
 
 // ---- documents ----
 
+const builtinOf = (env: Env, doctype: string, name: string) => env.builtin?.(doctype).find((doc) => doc.name === name);
+function notBuiltin(env: Env, doctype: string, name: string) {
+  if (builtinOf(env, doctype, name)) fail(403, "PermissionError", "Este modelo vem com o editor e não pode ser alterado. Salve uma cópia com outro nome.");
+}
+
 async function get(env: Env, params: Params): Promise<Doc> {
   const doctype = doctypeOf(params.doctype);
   const name = text(params.name) || (SINGLES.has(doctype) ? doctype : "");
   const found = await env.store.get(doctype, name);
   if (found) return found;
+  const builtin = builtinOf(env, doctype, name);
+  if (builtin) return builtin;
   if (SINGLES.has(doctype)) return single(doctype, env.now(), env.user);
   return fail(404, "DoesNotExistError", `${doctype} ${name} não foi encontrado.`);
 }
@@ -145,7 +154,9 @@ async function getList(env: Env, params: Params): Promise<unknown[]> {
   const doctype = doctypeOf(params.doctype);
   let docs: Doc[];
   try {
-    docs = select(await env.store.list(doctype), params.filters, params.or_filters);
+    const own = await env.store.list(doctype);
+    const taken = new Set(own.map((doc) => doc.name));
+    docs = select([...own, ...(env.builtin?.(doctype) ?? []).filter((doc) => !taken.has(doc.name))], params.filters, params.or_filters);
   } catch (error) {
     if (error instanceof Error && error.message === "BAD_FILTER") fail(417, "ValidationError", "O filtro pedido não é aceito.");
     throw error;
@@ -160,6 +171,7 @@ async function insert(env: Env, params: Params): Promise<Doc> {
   const doctype = doctypeOf(given.doctype);
   const now = env.now();
   const doc = normalize({ ...given, doctype, name: await nameFor(env, doctype, given.name) });
+  if (builtinOf(env, doctype, text(doc.name))) fail(409, "DuplicateEntryError", `${doctype} ${doc.name} já existe.`);
   doc.creation = stamp(now);
   doc.modified = stamp(now);
   doc.owner = env.user;
@@ -203,6 +215,7 @@ async function save(env: Env, doc: Doc, changes: Params): Promise<Doc> {
 async function setValue(env: Env, params: Params): Promise<Doc> {
   const doctype = doctypeOf(params.doctype);
   const name = text(params.name) || (SINGLES.has(doctype) ? doctype : "");
+  notBuiltin(env, doctype, name);
   const field = params.fieldname;
   const changes: Params = typeof field === "string" && !field.startsWith("{") ? { [field]: params.value } : record(field);
   const existing = await env.store.get(doctype, name);
@@ -220,6 +233,7 @@ async function remove(env: Env, params: Params): Promise<string> {
   const doctype = doctypeOf(params.doctype);
   const name = text(params.name);
   if (SINGLES.has(doctype)) fail(417, "ValidationError", "Esse documento não é apagado.");
+  notBuiltin(env, doctype, name);
   const outcome = await env.store.remove(doctype, name);
   if (outcome === "not_found") fail(404, "DoesNotExistError", `${doctype} ${name} não foi encontrado.`);
   if (outcome === "forbidden") fail(403, "PermissionError", "Só o proprietário ou a gestão alteram o site.");
@@ -237,6 +251,8 @@ async function renameDoc(env: Env, params: Params): Promise<string> {
   const from = text(params.old_name ?? params.old);
   const to = text(params.new_name ?? params.new).trim();
   if (!to) fail(417, "ValidationError", "O novo nome está vazio.");
+  notBuiltin(env, doctype, from);
+  if (builtinOf(env, doctype, to)) fail(409, "DuplicateEntryError", `${doctype} ${to} já existe.`);
   const outcome = await env.store.rename(doctype, from, to);
   if (outcome === "not_found") fail(404, "DoesNotExistError", `${doctype} ${from} não foi encontrado.`);
   if (outcome === "exists") fail(409, "DuplicateEntryError", `${doctype} ${to} já existe.`);

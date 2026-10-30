@@ -43,7 +43,7 @@ test("frappe publish: a page made in the editor is published at /site/<address> 
   await page.goto("./profissional/meu-site");
   const create = page.getByRole("form", { name: "Criar o meu site" });
   await create.getByRole("button", { name: "Criar meu site" }).click();
-  await expect(page.getByText("Fora do ar").first()).toBeVisible();
+  await expect(page.getByRole("region", { name: "Editor novo (Frappe Builder)" })).toBeVisible();
 
   // ---- a page from scratch in the editor: a container and a text drawn on it, published with the button ----
   await page.goto("./profissional/meu-site/editor");

@@ -330,3 +330,63 @@ describe("helpers", () => {
     expect(stamp(new Date("2026-10-30T10:15:42.123Z"))).toBe("2026-10-30 10:15:42.123000");
   });
 });
+
+describe("publishing needs an address for the site", () => {
+  it("refuses to publish (and to put in test) while the organization has none, and publishes once it has", async () => {
+    const page = await newPage({ draft_blocks: blocks("a") });
+    const without = (): Env => ({ ...env(), siteReady: async () => false });
+    for (const method of ["publish", "publish_to_staging"]) {
+      const error = await call(without(), "run_doc_method", { dt: "Builder Page", dn: page.name, method }).then(
+        () => null,
+        (caught) => caught,
+      );
+      expect(error, method).toBeInstanceOf(EditorError);
+      expect((error as EditorError).status).toBe(417);
+      expect((error as EditorError).message).toContain("endereço do site");
+    }
+    expect((await store.get("Builder Page", page.name))?.published).toBe(0);
+    const ready: Env = { ...env(), siteReady: async () => true };
+    expect(((await call(ready, "run_doc_method", { dt: "Builder Page", dn: page.name, method: "publish" })).docs?.[0] as Doc).published).toBe(1);
+  });
+});
+
+describe("the templates that come with the editor", () => {
+  const standard = (name: string, over: Params = {}): Doc => ({ doctype: "Block Template", name, template_name: name, category: "Structure", sort_order: 2, block: "{}", preview: "/x/a.png", ...over });
+  const withBuiltin = (): Env => ({ ...env(), builtin: (doctype) => (doctype === "Block Template" ? [standard("Navbar 1"), standard("Form 1", { category: "Basic Forms", sort_order: 14 })] : []) });
+  const asBuiltin = (method: string, params: Params) => call(withBuiltin(), method, params);
+
+  it("are listed with the person's own, ordered and filtered like any list, and read by name", async () => {
+    await run("frappe.client.insert", { doc: { doctype: "Block Template", name: "Meu modelo", template_name: "Meu modelo", category: "Basic", block: "{}", sort_order: 1 } });
+    const listed = (await asBuiltin("frappe.client.get_list", { doctype: "Block Template", fields: ["name", "category"], order_by: "sort_order asc" })).message as Array<{ name: string }>;
+    expect(listed.map((doc) => doc.name)).toEqual(["Meu modelo", "Navbar 1", "Form 1"]);
+    const forms = (await asBuiltin("frappe.client.get_list", { doctype: "Block Template", filters: { category: "Basic Forms" } })).message as Array<{ name: string }>;
+    expect(forms.map((doc) => doc.name)).toEqual(["Form 1"]);
+    expect(((await asBuiltin("frappe.client.get", { doctype: "Block Template", name: "Navbar 1" })).message as Doc).preview).toBe("/x/a.png");
+    // a document of the person with the same name wins in the list, and is not listed twice
+    await store.insert(standard("Navbar 1", { category: "Basic", sort_order: 9 }));
+    const again = (await asBuiltin("frappe.client.get_list", { doctype: "Block Template", fields: ["name", "category"] })).message as Array<{ name: string; category: string }>;
+    expect(again.filter((doc) => doc.name === "Navbar 1")).toEqual([{ name: "Navbar 1", category: "Basic" }]);
+  });
+  it("are not changed, removed, renamed or taken over by a name, and the other documents are not touched by any of it", async () => {
+    for (const [method, params] of [
+      ["frappe.client.set_value", { doctype: "Block Template", name: "Form 1", fieldname: "category", value: "Basic" }],
+      ["frappe.client.save", { doc: { doctype: "Block Template", name: "Form 1", block: "evil" } }],
+      ["frappe.client.delete", { doctype: "Block Template", name: "Form 1" }],
+      ["frappe.client.rename_doc", { doctype: "Block Template", old_name: "Form 1", new_name: "Outro" }],
+      ["frappe.client.rename_doc", { doctype: "Block Template", old_name: "Meu", new_name: "Form 1" }],
+      ["frappe.client.insert", { doc: { doctype: "Block Template", name: "Form 1", block: "{}" } }],
+    ] as const) {
+      const error = await asBuiltin(method, params).then(
+        () => null,
+        (caught) => caught,
+      );
+      expect(error, method).toBeInstanceOf(EditorError);
+      expect([403, 409]).toContain((error as EditorError).status);
+    }
+    expect(store.rows.size).toBe(0);
+  });
+  it("are nothing for the other types of document", async () => {
+    expect(((await asBuiltin("frappe.client.get_list", { doctype: "Builder Component" })).message as unknown[]).length).toBe(0);
+    await fails("frappe.client.get", { doctype: "Builder Component", name: "Navbar 1" }, 404);
+  });
+});

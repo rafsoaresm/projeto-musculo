@@ -1,1 +1,0 @@
-import{u as e}from"./builderStore-Bdzxnp0w.js";var t=e({doctype:`Website Settings`,name:`Website Settings`});export{t};

@@ -121,8 +121,10 @@ export function order(docs: readonly Doc[], orderBy: unknown): Doc[] {
   if (keys.length === 0) return [...docs];
   return [...docs].sort((a, b) => {
     for (const { field, descending } of keys) {
-      const left = asText(a[field]);
-      const right = asText(b[field]);
+      // Numbers go by value (a `sort_order` of 14 comes after 2), anything else by its text.
+      const numbers = typeof a[field] === "number" && typeof b[field] === "number";
+      const left = numbers ? (a[field] as number) : asText(a[field]);
+      const right = numbers ? (b[field] as number) : asText(b[field]);
       if (left === right) continue;
       const result = left < right ? -1 : 1;
       return descending ? -result : result;

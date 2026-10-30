@@ -182,9 +182,9 @@ function renderBlock(source: Block, state: State, ancestorFont: string | null, a
   if (hasCondition(block)) return "";
 
   const original = text(block.originalElement) || text(block.element) || "div";
-  // The "HTML" block (free code) is not part of the page: it only runs in its own isolated frame (see isolated.ts).
-  if (original === "__raw_html__") return "";
-  let element = original === "p" ? "div" : original;
+  // The "HTML" block holds free code. What is drawn of it is what is safe to draw: text, marks and inline SVG (a logo, an icon), through the same
+  // filter as any text; the rest (scripts, frames, forms of its own) is not part of the page.
+  let element = original === "p" || original === "__raw_html__" ? "div" : original;
   if (element === "body" && !root) element = "div";
   if (!ELEMENTS.has(element)) element = "div";
 

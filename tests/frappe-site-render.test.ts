@@ -61,17 +61,18 @@ describe("what a page may be made of", () => {
     expect(draw([{ element: "div", children: [{ element: "body", innerHTML: "x" }] }]).body).toBe("<body><div><div>x</div></div></body>");
   });
 
-  it("does not draw the HTML block (free code runs only in its own isolated frame), a block with a condition on data, or what a repeater would loop over", () => {
+  it("draws the HTML block as safe text and drawings (a logo, an icon) and not as code, and does not draw a block with a condition on data or what a repeater would loop over", () => {
     const out = draw(
       body([
-        { element: "div", originalElement: "__raw_html__", innerHTML: "<script>alert(1)</script>" },
+        { element: "div", originalElement: "__raw_html__", innerHTML: '<script>alert(1)</script><svg viewBox="0 0 4 4" onload="x"><path d="M0 0 L4 4"/></svg><p onclick="x">texto</p>', baseStyles: { width: "40px" } },
         { element: "div", innerHTML: "condicional", visibilityCondition: "mostrar" },
         { element: "div", innerHTML: "condicional 2", visibilityCondition: { key: "mostrar", comesFrom: "props" } },
         { element: "div", isRepeaterBlock: true, dataKey: { key: "itens", comesFrom: "dataScript" }, children: [{ element: "div", innerHTML: "item" }] },
         { element: "div", innerHTML: "visível", visibilityCondition: "" },
       ]),
     ).body;
-    expect(out).not.toMatch(/script|condicional|item/);
+    expect(out).toContain('<div class="fb-2"><svg viewbox="0 0 4 4"><path d="M0 0 L4 4"/></svg><p>texto</p></div>');
+    expect(out).not.toMatch(/script|onload|onclick|alert|condicional|item/);
     expect(out).toContain("visível");
   });
 

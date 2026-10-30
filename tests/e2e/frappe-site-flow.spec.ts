@@ -103,7 +103,7 @@ test("meu site, new editor: a site born in it, an image sent from the editor, th
   expect((await stranger.request.get(`./s/${slug}`, noFollow)).status()).toBe(307);
 
   // ---- delete everything: the address typed again, and then it is nothing, for visitors and for the editor, and can be started again ----
-  await panel.getByRole("button", { name: "Excluir o site…" }).click();
+  await page.getByRole("button", { name: "Excluir o site…" }).click();
   const deleting = page.getByRole("form", { name: "Excluir o site" });
   await deleting.getByLabel(/Para confirmar, digite o endereço/).fill("outro-endereco");
   await expect(deleting.getByRole("button", { name: "Excluir o site para sempre" })).toBeDisabled();

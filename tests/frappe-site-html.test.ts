@@ -14,13 +14,13 @@ describe("the text of a block", () => {
       expect(clean(html), html).toBe(html);
   });
 
-  it("drops scripts, styles, frames, objects, svg and math with everything inside", () => {
+  it("drops scripts, styles, frames, objects and math with everything inside", () => {
     expect(clean("a<script>alert(1)</script>b")).toBe("ab");
     expect(clean("a<SCRIPT src=//evil.test/x.js></SCRIPT>b")).toBe("ab");
     expect(clean("a<style>*{display:none}</style>b")).toBe("ab");
     expect(clean('a<iframe src="https://evil.test"></iframe>b')).toBe("ab");
     expect(clean("a<object data=x><param name=a value=b></object>b")).toBe("ab");
-    expect(clean('a<svg onload="alert(1)"><script>alert(1)</script></svg>b')).toBe("ab");
+    expect(clean('a<svg onload="alert(1)"><script>alert(1)</script></svg>b')).toBe("a<svg></svg>b");
     expect(clean("a<math><mi>x</mi></math>b")).toBe("ab");
     expect(clean("a<textarea><b>x</b></textarea>b")).toBe("ab");
     expect(clean("a<template><img src=x></template>b")).toBe("ab");
@@ -122,6 +122,51 @@ describe("the text of a block", () => {
     expect(deep.match(/<div>/g)).toHaveLength(100);
     expect(deep.match(/<\/div>/g)).toHaveLength(100);
     expect(clean("x".repeat(600_000)).length).toBe(500_000);
+  });
+});
+
+describe("inline SVG: a logo or an icon", () => {
+  const logo =
+    '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" class="icon"><defs><linearGradient id="g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff0000"/><stop offset="1" stop-color="rgb(0, 0, 255)"/></linearGradient><clipPath id="c1"><rect x="0" y="0" width="24" height="24"/></clipPath></defs><g clip-path="url(#c1)"><path d="M12 2 L22 22 H2 Z" fill="url(#g1)" fill-rule="evenodd"/><circle cx="12" cy="12" r="4"/><use href="#g1"/></g><text x="2" y="20" font-size="4" text-anchor="middle">Marina</text></svg>';
+  it("is kept as it was drawn: shapes, gradients, clips and text, with the self-closing ones complete (never holding what follows)", () => {
+    const out = clean(logo);
+    expect(out).toBe(
+      '<svg viewbox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" class="icon"><defs><lineargradient id="g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff0000"/><stop offset="1" stop-color="rgb(0, 0, 255)"/></lineargradient><clippath id="c1"><rect x="0" y="0" width="24" height="24"/></clippath></defs><g clip-path="url(#c1)"><path d="M12 2 L22 22 H2 Z" fill="url(#g1)" fill-rule="evenodd"/><circle cx="12" cy="12" r="4"/><use href="#g1"/></g><text x="2" y="20" font-size="4" text-anchor="middle">Marina</text></svg>',
+    );
+    expect(clean(`<p>antes</p>${logo}<p>depois</p>`)).toBe(`<p>antes</p>${out}<p>depois</p>`);
+  });
+
+  it("does not run, animate, restyle, embed or fetch: whatever the way it is written", () => {
+    const hostile = [
+      '<svg><script>alert(1)</script></svg>',
+      '<svg onload="alert(1)"></svg>',
+      '<svg><style>*{display:none}</style></svg>',
+      '<svg><a xlink:href="javascript:alert(1)"><text>x</text></a></svg>',
+      '<svg><animate attributeName="href" values="javascript:alert(1)"/></svg>',
+      '<svg><set attributeName="onmouseover" to="alert(1)"/></svg>',
+      '<svg><foreignObject><iframe src="https://evil.test"></iframe></foreignObject></svg>',
+      '<svg><use href="https://evil.test/x.svg#a"/></svg>',
+      '<svg><use xlink:href="data:image/svg+xml;base64,PHN2Zz4="/></svg>',
+      '<svg><image href="https://evil.test/p.png"/></svg>',
+      '<svg><image href="data:image/svg+xml;base64,PHN2Zz4="/></svg>',
+      '<svg><path d="M0 0 url(https://evil.test)" fill="url(https://evil.test/a)" onclick="alert(1)"/></svg>',
+      '<svg><rect width="10" height="10" fill="javascript:alert(1)" style="background:url(javascript:alert(1))"/></svg>',
+      '<svg><circle r="expression(alert(1))"/></svg>',
+      '<svg><title>x</title><desc>y</desc></svg>',
+    ];
+    for (const html of hostile) {
+      const out = clean(html);
+      expect(out, html).not.toMatch(/script|onload|onclick|onmouseover|javascript:|evil\.test|<style|<animate|<set|foreignobject|<iframe|<title|<desc|expression|data:image\/svg/i);
+    }
+    // what is valid in the same drawing stays
+    expect(clean('<svg><rect width="10" height="10" fill="javascript:alert(1)" onclick="x"/></svg>')).toBe('<svg><rect width="10" height="10"/></svg>');
+    expect(clean('<svg><use xlink:href="data:image/svg+xml;base64,PHN2Zz4="/><circle r="2"/></svg>')).toBe('<svg><circle r="2"/></svg>');
+    expect(clean('<svg><image href="data:image/png;base64,AAAA" width="4" height="4"/></svg>')).toBe('<svg><image href="data:image/png;base64,AAAA" width="4" height="4"/></svg>');
+  });
+
+  it("has shapes only inside a drawing: outside one, they are not elements of the page", () => {
+    expect(clean('<path d="M0 0"/><circle r="2"/><use href="#a"/><image href="data:image/png;base64,AAAA"/><text>no</text>')).toBe("no");
+    expect(clean('<svg><path d="M0 0"></svg><path d="M1 1"/>')).toBe('<svg><path d="M0 0"></path></svg>');
   });
 });
 
