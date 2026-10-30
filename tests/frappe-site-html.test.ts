@@ -44,6 +44,7 @@ describe("the text of a block", () => {
       "java&#x09;script:alert(1)",
       "&#106;avascript:alert(1)",
       "&#x6A;avascript&colon;alert(1)",
+      "&amp;#106;avascript:alert(1)",
       "javascript&colon;alert(1)",
       "&#0000106avascript:alert(1)",
       "data:text/html,<script>alert(1)</script>",

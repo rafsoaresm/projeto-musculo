@@ -29,8 +29,8 @@ beforeAll(async () => {
   await db.batch([
     db.prepare("INSERT INTO auth_user(id,name,email,created_at,updated_at) VALUES ('user-a','A','a@example.test',0,0)"),
     db.prepare("INSERT INTO users(id) VALUES ('user-a')"),
-    db.prepare("INSERT INTO organizations(id,name) VALUES ('org-a','Studio A'),('org-b','Studio B'),('org-c','Studio C')"),
-    db.prepare("INSERT INTO sites(id, organization_id, slug, created_by) VALUES ('site-a','org-a','studio-a','user-a'),('site-b','org-b','studio-b','user-a')"),
+    db.prepare("INSERT INTO organizations(id,name) VALUES ('org-a','Studio A'),('org-b','Studio B'),('org-c','Studio C'),('org-d','Studio D')"),
+    db.prepare("INSERT INTO sites(id, organization_id, slug, created_by) VALUES ('site-a','org-a','studio-a','user-a'),('site-b','org-b','studio-b','user-a'),('site-d','org-d','studio-d','user-a')"),
     // org-a: a home page and a page that is only a draft, a published one under a nested route, a dynamic one, a component with a nested one.
     put("org-a", "Builder Page", "home", { route: "home", published: 1, published_at: "2026-10-01T10:00:00Z", page_title: "Início", blocks: tree("publicado"), draft_blocks: tree("RASCUNHO SECRETO") }),
     put("org-a", "Builder Page", "draft-only", { route: "rascunho", published: 0, blocks: tree("nunca publicado"), draft_blocks: tree("x") }),
@@ -53,6 +53,10 @@ beforeAll(async () => {
     // org-b has the same names and routes, with other content.
     put("org-b", "Builder Page", "home", { route: "home", published: 1, published_at: "2026-10-01T10:00:00Z", blocks: tree("do outro estúdio") }),
     put("org-b", "Builder Token", "brand", { value: "#f00" }),
+    // org-d: an unpublished page that would be the home page, and a published one; org-b has a page with the NAME of one of org-a's, under another route.
+    put("org-d", "Builder Page", "home", { route: "home", published: 0, blocks: tree("não publicada") }),
+    put("org-d", "Builder Page", "sobre", { route: "sobre", published: 1, published_at: "2026-10-05T10:00:00Z", blocks: tree("sobre do d") }),
+    put("org-b", "Builder Page", "nested", { route: "outro", published: 1, published_at: "2026-10-06T10:00:00Z", blocks: tree("do b") }),
     // org-c has a page but no site (no address to be reached by).
     put("org-c", "Builder Page", "home", { route: "home", published: 1, blocks: tree("sem endereço") }),
   ]);
@@ -97,6 +101,16 @@ describe("the public reading of a published page", () => {
     expect(await publicBuilderPage(db, "studio-b", "componentes")).toBeNull();
     const a = await publicBuilderPage(db, "studio-a", "home");
     expect(JSON.stringify(a)).not.toContain("outro estúdio");
+  });
+
+  it("does not let a page that is not published, or a page of another organization, take part in choosing the page", async () => {
+    // the home address is the published page, not the draft that has the route of a home page
+    expect((await publicBuilderPage(db, "studio-d", ""))?.page.name).toBe("sobre");
+    expect(await publicBuilderPage(db, "studio-d", "home")).toBeNull();
+    // a route of another organization is nothing here, even where this one has a page of the same name
+    expect(await publicBuilderPage(db, "studio-b", "servicos/personal")).toBeNull();
+    expect((await publicBuilderPage(db, "studio-b", "outro"))?.page.name).toBe("nested");
+    expect(JSON.stringify((await publicBuilderPage(db, "studio-b", "outro"))?.blocks)).toContain("do b");
   });
 
   it("answers nothing for an address that is not one, that does not exist or that has no site", async () => {

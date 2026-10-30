@@ -3,7 +3,7 @@ import type { PublicPage } from "@/db/builder-public";
 import { PUBLIC_CSP, publicDocument, notFoundDocument } from "@/modules/frappe-site/public-page";
 import { pickPage, requestedRoute, routeOf } from "@/modules/frappe-site/routes";
 import { toMountRoot, urlContext } from "@/modules/frappe-site/urls";
-import { tokensCss } from "@/modules/frappe-site/document";
+import { inStyle, tokensCss } from "@/modules/frappe-site/document";
 
 const ID = "0b9f2f7a-3c1e-4d55-9a7e-6f5d4c3b2a10";
 const found = (over: Partial<PublicPage> = {}, page: Record<string, unknown> = {}): PublicPage => ({
@@ -57,6 +57,11 @@ describe("the document of a public page", () => {
       ":root {\n--brand: light-dark(#0a5, #3c8);\n--plain: 4px;\n}",
     );
     expect(tokensCss([], () => null)).toBe("");
+  });
+
+  it("has a last wall for the style element: no `<` reaches it, whatever the css was", () => {
+    expect(inStyle("a { content: '</style><script>alert(1)</script>' }")).toBe("a { content: '\\3c /style>\\3c script>alert(1)\\3c /script>' }");
+    expect(inStyle("a { color: red }")).toBe("a { color: red }");
   });
 
   it("keeps the page light when the settings of the editor say so", () => {

@@ -78,7 +78,7 @@ picture img { filter: none }
 @media (prefers-color-scheme: dark) { :root:not([data-prefers-color-scheme="light"]) { --builder-image-dim: brightness(0.85) contrast(1.05) } }`;
 
 /** CSS for a <style> element: nothing in it can end the element. */
-const inStyle = (css: string) => css.replace(/</g, "\\3c ");
+export const inStyle = (css: string) => css.replace(/</g, "\\3c ");
 
 export function buildDocument(input: DocumentInput): string {
   const { rendered, meta } = input;

@@ -25,6 +25,9 @@ describe("values of declarations", () => {
   it("refuse whatever can end the declaration, the rule or the style element, or fetch from another site", () => {
     const attacks = [
       "red; } body { display: none",
+      "red; color: blue",
+      "red;background:url(/files/x)",
+      "a;b",
       "red}",
       "red{",
       "</style><script>alert(1)</script>",
