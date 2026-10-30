@@ -136,7 +136,7 @@ function familyOf(font: string, state: State): string {
 }
 
 /** Records the family a style asks for, and the weight it asks it at. */
-function useFont(state: State, styles: StyleMap, inherited: string | null, italic: boolean): void {
+function recordFont(state: State, styles: StyleMap, inherited: string | null, italic: boolean): void {
   let font = text(styles.fontFamily) || (styles.fontWeight ? (inherited ?? "") : "");
   if (!font) return;
   font = familyOf(font, state);
@@ -194,7 +194,7 @@ function renderBlock(source: Block, state: State, ancestorFont: string | null, a
   const styles = [base, mobile, tablet];
   const font = styles.map((entry) => text(entry.fontFamily).replace(/^['"]|['"]$/g, "")).find(Boolean) || ancestorFont;
   const italic = styles.map((entry) => entry.fontStyle).filter(Boolean).map((value) => /^(italic|oblique)$/i.test(String(value)))[0] ?? ancestorItalic;
-  for (const entry of styles) useFont(state, entry, font, italic);
+  for (const entry of styles) recordFont(state, entry, font, italic);
 
   const pairs = Object.entries({ ...styleMap(block.attributes), ...styleMap(block.customAttributes) }).filter((pair): pair is [string, string] => typeof pair[1] === "string");
   let attributes = cleanAttributes(element, pairs, state.input.url);

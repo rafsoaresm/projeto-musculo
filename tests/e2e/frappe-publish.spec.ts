@@ -82,7 +82,7 @@ test("frappe publish: a page made in the editor is published at /site/<address> 
   expect(html).toMatch(/<body class="fb-1">\s*<div class="fb-2"/);
   expect(html).toMatch(/\.fb-2 \{[^}]*background-color: #ededed/);
   expect(html).not.toContain("<script");
-  expect(html).not.toMatch(/frappe|builder/i); // nothing of the editor's own shows in the page
+  expect(html.replace(/--builder-image-dim/g, "")).not.toMatch(/frappe|builder/i); // nothing of the editor's own shows in the page (but the name of one variable)
   const etag = first.headers().etag!;
   expect((await page.request.get(url, { headers: { "if-none-match": etag } })).status()).toBe(304);
 

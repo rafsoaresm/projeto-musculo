@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { publishedSiteBySlug } from "@/db/sites";
+import { publishedSiteBySlug, siteEngineBySlug } from "@/db/sites";
 import { HOME } from "@/modules/meu-site/contracts";
 import { PublicSitePage, formsGate, publicMetadata } from "@/modules/meu-site/public-site";
 
@@ -20,8 +20,11 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 }
 
 export default async function PublicSite({ params }: { params: Promise<{ slug: string }> }) {
-  const site = await load((await params).slug);
-  if (!site) notFound();
+  const { slug } = await params;
   const { env } = await getCloudflareContext({ async: true });
+  // The site was put in the new editor: the main address leads to its pages (the first editor's versions stay stored, unshown).
+  if ((await siteEngineBySlug(env.DB, slug)) === "frappe") redirect(`/site/${slug}`);
+  const site = await load(slug);
+  if (!site) notFound();
   return <PublicSitePage site={site} pageId={HOME} gate={formsGate(env, process.env)} />;
 }
