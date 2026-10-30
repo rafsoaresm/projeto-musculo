@@ -26,6 +26,8 @@ export interface PublicPage {
   styles: string[];
   /** The site's own switch for the messages of its forms (it is born off; the environment's switch is a different one). */
   inquiriesOpen: boolean;
+  /** The site's own switch for what its free code may reach outside (born off: the code can fetch nothing). */
+  codeExternalOpen: boolean;
 }
 
 const MAX_COMPONENT_ROUNDS = 6;
@@ -82,7 +84,7 @@ const chunks = <T>(items: T[], size: number): T[][] => Array.from({ length: Math
 export async function publicBuilderPage(db: D1Database, rawSlug: string, requestedRoute: string, exactName?: string): Promise<PublicPage | null> {
   const slug = slugSchema.safeParse(rawSlug);
   if (!slug.success) return null;
-  const site = await db.prepare("SELECT organization_id AS organizationId, inquiries_open AS inquiriesOpen FROM sites WHERE slug = ?").bind(slug.data).first<{ organizationId: string; inquiriesOpen: number }>();
+  const site = await db.prepare("SELECT organization_id AS organizationId, inquiries_open AS inquiriesOpen, code_external_open AS codeExternalOpen FROM sites WHERE slug = ?").bind(slug.data).first<{ organizationId: string; inquiriesOpen: number; codeExternalOpen: number }>();
   if (!site) return null;
   const org = site.organizationId;
 
@@ -175,7 +177,7 @@ export async function publicBuilderPage(db: D1Database, rawSlug: string, request
     }
   }
 
-  return { slug: slug.data, route: routeOf(text(page.route)), page, blocks, components, tokens, settings, styles, inquiriesOpen: site.inquiriesOpen === 1 };
+  return { slug: slug.data, route: routeOf(text(page.route)), page, blocks, components, tokens, settings, styles, inquiriesOpen: site.inquiriesOpen === 1, codeExternalOpen: site.codeExternalOpen === 1 };
 }
 
 /** Whether an address has at least one published page of the new editor (the same pages `publicBuilderPage` answers). */

@@ -37,6 +37,17 @@ export const STANDARD_TEMPLATES: StandardTemplate[] = [
   "block": "{\"attributes\": {\"href\": \"#\"},\"baseStyles\": {\"alignItems\": \"center\",\"background\": \"#171717\",\"borderRadius\": \"4px\",\"display\": \"flex\",\"flexDirection\": \"column\",\"height\": \"fit-content\",\"justifyContent\": \"center\",\"padding\": \"6px 8px\",\"width\": \"fit-content\"},\"blockId\": \"4ur2l2mc6\",\"blockName\": \"button-link\",\"children\": [{\"attributes\": {},\"baseStyles\": {\"color\": \"var(--neutral-white, #FFF)\",\"fontSize\": \"14px\",\"fontWeight\": \"420\",\"height\": \"fit-content\",\"left\": \"auto\",\"letterSpacing\": \"0.28px\",\"lineHeight\": \"115%\",\"minWidth\": \"30px\",\"position\": \"static\",\"top\": \"auto\",\"width\": \"fit-content\"},\"blockId\": \"3z5gwjl2f\",\"children\": [],\"classes\": [\"__text_block__\"],\"customAttributes\": {},\"dataKey\": null,\"element\": \"p\",\"innerHTML\": \"<p>Button</p>\",\"mobileStyles\": {},\"rawStyles\": {},\"tabletStyles\": {}}],\"classes\": [\"__text_block__\"],\"customAttributes\": {},\"dataKey\": null,\"editable\": false,\"element\": \"a\",\"mobileStyles\": {},\"rawStyles\": {\"flex-shrink\": \"0\",\"hover:background\": \"#383838\",\"transition\": \"all 0.1s ease-out\"},\"tabletStyles\": {}}"
  },
  {
+  "id": "embed",
+  "name": "Embed",
+  "template_name": "Embed",
+  "category": "Advanced",
+  "sort_order": 17,
+  "preview": "templates/embed.png",
+  "preview_width": 1,
+  "preview_height": 1,
+  "block": "{\"blockId\":\"1vw78v0md\",\"children\":[],\"baseStyles\":{\"height\":\"fit-content\",\"width\":\"fit-content\"},\"rawStyles\":{},\"mobileStyles\":{},\"tabletStyles\":{},\"attributes\":{},\"classes\":[],\"dataKey\":null,\"blockName\":\"Embed HTML\",\"element\":\"div\",\"innerHTML\":\"<div style=\\\"color:#8e8e8e;background:#f4f4f4;display:grid;width:500px;height:155px;place-items:center;font-size:16px;\\\">\\n    <p>Paste HTML or double click to edit</p>\\n</div>\",\"originalElement\":\"__raw_html__\",\"customAttributes\":{}}"
+ },
+ {
   "id": "footer_1",
   "name": "Footer 1",
   "template_name": "Footer 1",

@@ -5,7 +5,7 @@ Pedido do usuário (30/10/2026): o editor do Meu Site estava "muito rígido" (ca
 1. **Caminho:** embutir o **Frappe Builder de verdade** (o editor Vue dele), com um adaptador nosso no lugar do backend Frappe.
 2. **Código livre:** CSS, cores e estilos **totalmente livres**; HTML e JavaScript livres **só dentro de um bloco isolado** (`iframe` com `sandbox`, sem acesso ao painel nem às sessões).
 
-O editor próprio (React, estilos tipados, 0.35 a 0.49) **fica no ar como reserva** até o novo cobrir o mesmo; nenhum site existente é tocado até o profissional pedir. **Estado em 30/10/2026 (0.50.0, implantada: deploy `75abf59a`, com as migrations 0027 e 0028 aplicadas no log; nada lido ao vivo, PENDENCIAS C31): F1, F2, F3, F4 e F8 entregues e verificadas localmente; F5 em parte (os 17 modelos de bloco do próprio Frappe, entre eles barras de navegação com logotipo, destaques, rodapé e três formulários); F6 entregue na 0.51 (formulário com os campos que a pessoa desenha, fechado por padrão); **0.51.1: a brecha do canvas do editor (bloco HTML rodando na página do app) corrigida, ver PENDENCIAS B41**; F7 por fazer.** O que não foi verificado está no fim.
+O editor próprio (React, estilos tipados, 0.35 a 0.49) **fica no ar como reserva** até o novo cobrir o mesmo; nenhum site existente é tocado até o profissional pedir. **Estado em 30/10/2026 (0.50.0, implantada: deploy `75abf59a`, com as migrations 0027 e 0028 aplicadas no log; nada lido ao vivo, PENDENCIAS C31): F1, F2, F3, F4 e F8 entregues e verificadas localmente; F5 em parte (os 18 modelos de bloco do próprio Frappe, entre eles barras de navegação com logotipo, destaques, rodapé e três formulários); F6 entregue na 0.51 (formulário com os campos que a pessoa desenha, fechado por padrão); **0.51.1 (implantada, deploy `1272ae93`): a brecha do canvas do editor (bloco HTML rodando na página do app) corrigida, ver PENDENCIAS B41**; **F7 entregue na 0.52 (código livre num quadro isolado, migration 0029; verificada localmente, ainda não implantada, PENDENCIAS C34).** O que não foi verificado está no fim.
 
 ## O que foi verificado (viabilidade, 30/10/2026)
 
@@ -42,7 +42,7 @@ O editor próprio (React, estilos tipados, 0.35 a 0.49) **fica no ar como reserv
 | F4 | Publicar: renderizador em TypeScript, CSS gerado, filtro, rota pública, política de conteúdo | **Entregue (0.50)** em `/site/<endereço>/<rota>` |
 | F5 | Componentes, modelos de bloco e de página | **Em parte:** os 17 modelos do Frappe na biblioteca. **Fica:** modelos de página prontos e os layouts da 0.49 como blocos |
 | F6 | Formulário com campos configuráveis ligado à caixa de entrada de Leads | **Entregue (0.51)**, fechado por padrão. **Fica:** ver PENDENCIAS B40 (anexos, resposta automática, validação além do tipo) |
-| F7 | Bloco "Código" isolado (`iframe sandbox`) e scripts do cliente isolados | **Por fazer** |
+| F7 | Bloco "Código" isolado (`iframe sandbox`) e scripts do cliente isolados | **Entregue (0.52)**: o bloco "HTML" e os de incorporar viram um quadro `sandbox="allow-scripts"` sem `allow-same-origin`, sem internet por padrão, com a chave por site. **Fica:** ver PENDENCIAS B42 (a chave é do site todo, tela cheia de vídeo não testada, o modelo YouTube fora, o que não foi verificado) |
 | F8 | Excluir e recomeçar o projeto; escolha do editor por site; convivência com o editor atual | **Entregue (0.50)** |
 | F9 | Conversão opcional de um site do editor atual (documento v3) para blocos do Frappe | Só se o usuário pedir |
 

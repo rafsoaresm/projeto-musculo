@@ -65,4 +65,5 @@ export const ALL_MIGRATIONS = [
   "0026_site_inquiries.sql",
   "0027_builder_docs.sql",
   "0028_builder_files_engine.sql",
+  "0029_code_external_open.sql",
 ];

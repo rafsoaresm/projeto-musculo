@@ -33,6 +33,8 @@ export const SITE_UNPUBLISHED = "SITE_UNPUBLISHED";
 export const SITE_ADDRESS_CHANGED = "SITE_ADDRESS_CHANGED";
 export const SITE_INQUIRIES_OPENED = "SITE_INQUIRIES_OPENED";
 export const SITE_INQUIRIES_CLOSED = "SITE_INQUIRIES_CLOSED";
+export const SITE_CODE_NETWORK_OPENED = "SITE_CODE_NETWORK_OPENED";
+export const SITE_CODE_NETWORK_CLOSED = "SITE_CODE_NETWORK_CLOSED";
 export const SITE_ENGINE_CHANGED = "SITE_ENGINE_CHANGED";
 export const SITE_DELETED = "SITE_DELETED";
 
@@ -63,6 +65,8 @@ export interface SiteOverview {
   services: ServiceChoice[];
   /** The site's own switch for the messages of the contact form (born closed), and how many messages wait for the professional. */
   inquiries: { open: boolean; waiting: number };
+  /** The site's switch for what the free code of its pages may reach outside the site (born off). */
+  code: { externalOpen: boolean };
 }
 export interface PublicSite {
   slug: string;
@@ -93,6 +97,7 @@ export type DeleteSiteOutcome =
   | { status: "inquiries_waiting"; count: number }
   | { status: "not_found" };
 export type InquiriesSwitchOutcome = { status: "saved"; open: boolean } | { status: "not_found" };
+export type CodeNetworkOutcome = InquiriesSwitchOutcome;
 export type AddressOutcome = { status: "changed" } | { status: "slug_taken" } | { status: "public" } | { status: "not_found" };
 export type RestoreOutcome = { status: "restored"; revision: number } | { status: "conflict" } | { status: "not_found" };
 
@@ -175,11 +180,11 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
         liveServices(),
         db
           .prepare(
-            `SELECT s.inquiries_open AS open, s.engine, (SELECT COUNT(*) FROM site_inquiries q WHERE q.site_id = s.id) AS waiting
+            `SELECT s.inquiries_open AS open, s.engine, s.code_external_open AS codeOpen, (SELECT COUNT(*) FROM site_inquiries q WHERE q.site_id = s.id) AS waiting
              FROM sites s WHERE s.id = ?3 AND s.organization_id = ?1 AND ${reads}`,
           )
           .bind(organizationId, userId, draft.siteId)
-          .first<{ open: number; engine: SiteEngine; waiting: number }>(),
+          .first<{ open: number; engine: SiteEngine; waiting: number; codeOpen: number }>(),
         db
           .prepare(
             `SELECT d.name AS name, json_extract(d.data, '$.route') AS route, COALESCE(json_extract(d.data, '$.page_title'), d.name) AS title,
@@ -198,6 +203,7 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
           pages: editorPages.results.length,
         },
         inquiries: { open: inquiries?.open === 1, waiting: inquiries?.waiting ?? 0 },
+        code: { externalOpen: inquiries?.codeOpen === 1 },
         draft: { content: parseContent(JSON.parse(draft.content)), revision: draft.revision, updatedAt: draft.updatedAt },
         live: liveRow ?? null,
         releases: releases.results.map((r) => ({ ...r, live: r.live === 1 })),
@@ -372,6 +378,30 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
       ]);
       if (results[0].meta.changes > 0) return { status: "saved", open };
       // Nothing changed: either it already was so (fine), or this login may not write the site.
+      const allowed = await db
+        .prepare(`SELECT 1 AS ok FROM sites s WHERE s.id = ?3 AND s.organization_id = ?1 AND ${writes}`)
+        .bind(organizationId, userId, draft.siteId)
+        .first();
+      return allowed ? { status: "saved", open } : { status: "not_found" };
+    },
+
+    /**
+     * Opens or closes what the free code of the site's pages may reach outside the site (owner and manager): closed, the frames of the code fetch
+     * nothing from anywhere; open, they may load `https` scripts, styles, images and frames, which tells those sites the visitor's address. It takes
+     * effect at the next request of a frame: the frame is served with the switch, not from a release.
+     */
+    async setCodeExternalOpen(open: boolean, now = new Date()): Promise<CodeNetworkOutcome> {
+      const draft = await draftRow();
+      if (!draft) return { status: "not_found" };
+      const wanted = open ? 1 : 0;
+      const stamp = now.toISOString();
+      const results = await db.batch([
+        db
+          .prepare(`UPDATE sites SET code_external_open = ?3, updated_at = ?4 WHERE id = ?5 AND organization_id = ?1 AND code_external_open <> ?3 AND ${writes}`)
+          .bind(organizationId, userId, wanted, stamp, draft.siteId),
+        audit(open ? SITE_CODE_NETWORK_OPENED : SITE_CODE_NETWORK_CLOSED, draft.siteId, stamp),
+      ]);
+      if (results[0].meta.changes > 0) return { status: "saved", open };
       const allowed = await db
         .prepare(`SELECT 1 AS ok FROM sites s WHERE s.id = ?3 AND s.organization_id = ?1 AND ${writes}`)
         .bind(organizationId, userId, draft.siteId)

@@ -128,6 +128,21 @@ export async function setSiteInquiries(open: boolean): Promise<SimpleResult> {
   }
 }
 
+/** The site's own switch for what the free code of its pages may reach outside the site (it sends the visitor's address to those sites). */
+export async function setSiteCodeNetwork(open: boolean): Promise<SimpleResult> {
+  const { db, context } = await requireWorkspace();
+  try {
+    const outcome = await sitesFor(db, context).setCodeExternalOpen(open === true);
+    if (outcome.status === "saved") {
+      refresh();
+      return { ok: true, message: outcome.open ? "O código livre das páginas passou a poder carregar coisas de outros sites (https)." : "O código livre das páginas deixou de poder carregar coisas de outros sites." };
+    }
+    return { ok: false, message: FORBIDDEN };
+  } catch {
+    return { ok: false, message: FAILED };
+  }
+}
+
 export async function changeSiteAddress(slug: string): Promise<SimpleResult> {
   const { db, context } = await requireWorkspace();
   try {

@@ -16,6 +16,7 @@ const found = (over: Partial<PublicPage> = {}, page: Record<string, unknown> = {
   settings: {},
   styles: [],
   inquiriesOpen: false,
+  codeExternalOpen: false,
   ...over,
 });
 

@@ -54,25 +54,29 @@ describe("blocks become elements with the classes of their styles", () => {
 
 describe("what a page may be made of", () => {
   it("turns an element that is not on the list into a div, and draws no script, frame or object", () => {
-    for (const element of ["script", "iframe", "object", "embed", "style", "link", "meta", "svg", "dialog", "template", "x-custom"]) {
+    // (an `iframe` block is not here: it is a frame of free code, see tests/frappe-site-code.test.ts)
+    for (const element of ["script", "object", "embed", "style", "link", "meta", "svg", "dialog", "template", "x-custom"]) {
       const out = draw([{ element, innerHTML: "dentro", baseStyles: { color: "red" } }]).body;
       expect(out, element).toBe(`<body><div class="fb-1">dentro</div></body>`);
     }
     expect(draw([{ element: "div", children: [{ element: "body", innerHTML: "x" }] }]).body).toBe("<body><div><div>x</div></div></body>");
   });
 
-  it("draws the HTML block as safe text and drawings (a logo, an icon) and not as code, and does not draw a block with a condition on data or what a repeater would loop over", () => {
+  it("draws a drawing (a logo, an icon) in the page, filtered, and the HTML block as a box with no code in it; does not draw a block with a condition on data or what a repeater would loop over", () => {
     const out = draw(
       body([
-        { element: "div", originalElement: "__raw_html__", innerHTML: '<script>alert(1)</script><svg viewBox="0 0 4 4" onload="x"><path d="M0 0 L4 4"/></svg><p onclick="x">texto</p>', baseStyles: { width: "40px" } },
+        { element: "div", originalElement: "__raw_html__", innerHTML: '<script>alert(1)</script><p onclick="x">texto</p>', baseStyles: { width: "40px" } },
+        { element: "div", originalElement: "__raw_html__", innerHTML: '<svg viewBox="0 0 4 4" onload="x"><path d="M0 0 L4 4"/><script>alert(2)</script></svg>' },
         { element: "div", innerHTML: "condicional", visibilityCondition: "mostrar" },
         { element: "div", innerHTML: "condicional 2", visibilityCondition: { key: "mostrar", comesFrom: "props" } },
         { element: "div", isRepeaterBlock: true, dataKey: { key: "itens", comesFrom: "dataScript" }, children: [{ element: "div", innerHTML: "item" }] },
         { element: "div", innerHTML: "visível", visibilityCondition: "" },
       ]),
     ).body;
-    expect(out).toContain('<div class="fb-2"><svg viewbox="0 0 4 4"><path d="M0 0 L4 4"/></svg><p>texto</p></div>');
-    expect(out).not.toMatch(/script|onload|onclick|alert|condicional|item/);
+    // free code is never written into the page (with no frame to send it to, the box is empty); a drawing is, with what could run taken out
+    expect(out).toContain('<div class="fb-2"></div>');
+    expect(out).toContain('<div><svg viewbox="0 0 4 4"><path d="M0 0 L4 4"/></svg></div>');
+    expect(out).not.toMatch(/script|onload|onclick|alert|texto|condicional|item/);
     expect(out).toContain("visível");
   });
 

@@ -5,8 +5,11 @@
  * with the preview pictures copied to public/frappe-editor/templates. Run by build.mjs; alone:
  * `node scripts/frappe-editor/block-templates.mjs <checkout of the builder repository>`.
  *
- * Left out for now, because they need what this app does not run on a public page yet: the one that switches the theme with a script, and the ones
- * that embed another site's player or free code (embed, video, YouTube). They come back with the isolated code block.
+ * Left out, because they need what a public page does not do: the one that switches the theme with a script of the page (a frame of free code cannot
+ * reach the page), the video block, whose address points to a file of another site (a public page only plays its own files), and the YouTube one, whose
+ * address is a property that a script of the block turns into the `src` of its frame (the public page runs no script of the blocks: a person who
+ * typed the link would see the video in the editor and an empty box on the site). A video goes in the "Embed" template instead: the embed code of the
+ * site that hosts it is pasted there, and on the public page it is a frame of the isolated code block (it plays when the site opened the network).
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -15,7 +18,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const TARGET = path.join(ROOT, "src", "modules", "frappe-editor", "block-templates.generated.ts");
 const PREVIEWS = path.join(ROOT, "public", "frappe-editor", "templates");
-const LEFT_OUT = new Set(["embed", "theme_switcher", "video", "youtube"]);
+const LEFT_OUT = new Set(["theme_switcher", "video", "youtube"]);
 
 export function writeBlockTemplates(builderDir) {
   const source = path.join(builderDir, "builder", "builder", "builder_block_template");

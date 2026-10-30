@@ -6,6 +6,7 @@ import type { PublicPage } from "@/db/builder-public";
 import { freeCss } from "./css";
 import { buildDocument, PUBLIC_CSP, type PageMeta } from "./document";
 import { fontFaces } from "./fonts";
+import { CODE_PATH, type CodeBlock } from "./code";
 import { FORM_SEND_PATH, type FormDefinition } from "./form";
 import { renderBlocks, type RenderInput } from "./render";
 import { toMountRoot, urlContext } from "./urls";
@@ -23,13 +24,24 @@ function renderInput(found: PublicPage, depth: number, noticeUrl: string | null)
     component: (id, version) => (version ? found.components.get(`${id}@${version}`) : undefined) ?? found.components.get(id) ?? null,
     fontToken: (name) => tokenValue.get(name.replace(/^--/, "")) ?? null,
     url: urlContext(found.slug, depth),
+    // The frame of a block of free code is the document `/site/<address>/m/codigo/<page>/<n>`, written from where the page is.
+    code: { src: (index) => `${toMountRoot(depth)}site/${found.slug}/${CODE_PATH}/${encodeURIComponent(text(found.page.name))}/${index}` },
     // A form is drawn only when the environment opened the public forms (a privacy notice to point to) AND the site opened its own switch.
     forms: { route: found.route, send: noticeUrl && found.inquiriesOpen ? { action: `${toMountRoot(depth)}site/${found.slug}/${FORM_SEND_PATH}`, noticeUrl } : null },
   };
 }
 
+/** What a published page holds that is read rather than drawn: its forms (drawn or not) and its free code, in the order of the page (what its frames show). */
+export function contentOfPage(found: PublicPage): { forms: FormDefinition[]; code: CodeBlock[] } {
+  const { forms, codeBlocks } = renderBlocks(renderInput(found, 0, null));
+  return { forms, code: codeBlocks };
+}
+
 /** The forms of a published page, as they are on it now (drawn or not). */
-export const formsOfPage = (found: PublicPage): FormDefinition[] => renderBlocks(renderInput(found, 0, null)).forms;
+export const formsOfPage = (found: PublicPage): FormDefinition[] => contentOfPage(found).forms;
+
+/** The free code of a published page, in the order of the page: what the frames of its blocks show. */
+export const codeOfPage = (found: PublicPage): CodeBlock[] => contentOfPage(found).code;
 
 /** `noticeUrl` is the address of the privacy notice when the environment has opened the public forms, otherwise null. */
 export function publicDocument(found: PublicPage, depth: number, noticeUrl: string | null = null): string {
