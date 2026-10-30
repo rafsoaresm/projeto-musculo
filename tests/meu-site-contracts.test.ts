@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   BLOCK_KINDS,
   BLOCK_TYPES,
+  IMAGE_RATIOS,
+  IMAGE_RATIO_LABEL,
   MAX_BLOCKS,
   MAX_CHILDREN,
   MAX_DEPTH,
@@ -440,6 +442,15 @@ describe("images on the page", () => {
     expect(siteContent.safeParse(withBlocks([imageBlock("a", { assetId: "x".repeat(65) })])).success).toBe(false);
     expect(siteContent.safeParse(withBlocks([imageBlock("a", { alt: "x".repeat(201) })])).success).toBe(false);
     expect(siteContent.safeParse(withBlocks([imageBlock("a", { caption: "x".repeat(201) })])).success).toBe(false);
+  });
+  it("may have a shape for its frame out of a closed list; a document without one is still the same as it was", () => {
+    expect(emptyBlock("image", "i")).not.toHaveProperty("ratio");
+    expect([...IMAGE_RATIOS]).toEqual(["auto", "1:1", "4:5", "3:4", "4:3", "3:2", "16:9"]);
+    for (const ratio of IMAGE_RATIOS) {
+      expect(siteContent.safeParse(withBlocks([imageBlock("a", { ratio })])).success, ratio).toBe(true);
+      expect(IMAGE_RATIO_LABEL[ratio], ratio).toBeTruthy();
+    }
+    for (const ratio of ["2:1", "1/1", "square", "", 1]) expect(siteContent.safeParse(withBlocks([imageBlock("a", { ratio })])).success, String(ratio)).toBe(false);
   });
   it("fits in a container, and the logo is an id too", () => {
     expect(siteContent.safeParse(withBlocks([box("c", [imageBlock("in")])])).success).toBe(true);

@@ -1,4 +1,4 @@
-import { pageModel, section, type PageModel, type SiteModel } from "./page-models";
+import { LAYOUT_SITES, pageModel, section, type PageModel, type SiteModel } from "./page-models";
 import {
   DESCRIPTION_MAX,
   HOME,
@@ -103,14 +103,37 @@ export function pageFromModel(content: Pick<SiteContent, "pages">, model: PageMo
   return { id: newId, slug: freeSlug(content as SiteContent, slugFromTitle(model.title)), title: model.title, description: "", blocks: model.build() };
 }
 
-/** The starter of a site model: the single page, or the home page with four more (the menu is made from their titles, in this order). */
+/** The pages that come with a site, from their models, in the order of the menu. */
+function pagesFrom(keys: readonly string[]): PageDef[] {
+  let pages: PageDef[] = [];
+  for (const key of keys) pages = [...pages, pageFromModel({ pages }, pageModel(key)!, newBlockId())];
+  return pages;
+}
+
+/** The node with its first heading (in the order of the page) written as the name of the site. */
+function titled(node: SiteNode, title: string): SiteNode {
+  let done = false;
+  return mapNodes([node], (entry) => {
+    if (done || entry.type !== "heading") return entry;
+    done = true;
+    return { ...entry, text: title };
+  })[0];
+}
+
+/**
+ * The starter of a site model: the single page, the home page with four more (the menu is made from their titles, in this order), or a home built
+ * of the layouts of the library, with the pages and the look of its model (`LAYOUT_SITES`).
+ */
 export function starterOf(model: SiteModel, title: string): SiteContent {
   const single = starterContent(title);
   if (model === "single") return single;
-  const [hero, ...rest] = single.blocks;
-  let pages: PageDef[] = [];
-  for (const key of ["about", "services", "faq", "contact"]) pages = [...pages, pageFromModel({ pages }, pageModel(key)!, newBlockId())];
-  return { ...single, blocks: [hero, section("template-highlights"), ...rest], pages };
+  if (model === "complete") {
+    const [hero, ...rest] = single.blocks;
+    return { ...single, blocks: [hero, section("template-highlights"), ...rest], pages: pagesFrom(["about", "services", "faq", "contact"]) };
+  }
+  const plan = LAYOUT_SITES[model];
+  const [opening, ...others] = plan.home.map(section);
+  return { ...single, theme: { ...single.theme, ...plan.theme }, blocks: [titled(opening, title), ...others], pages: pagesFrom(plan.pages) };
 }
 
 /** The same blocks with new identifiers, and the links to a block of the page following the copy. Components stay the site's (an instance is still one). */

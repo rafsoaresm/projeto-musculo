@@ -6,7 +6,7 @@ import type { Style } from "./style";
  * room around it, a row lays its content side by side), written into the document like any other style so the person
  * sees it in the style panel and changes it there; nothing about a preset is hidden in the page's stylesheet.
  */
-export type Group = "structure" | "element" | "section" | "template";
+export type Group = "structure" | "element" | "section" | "template" | "layout";
 export interface CatalogueItem {
   key: string;
   group: Group;
@@ -96,6 +96,132 @@ const imageAndText = (): SiteNode =>
     column([heading(2), paragraph(), contactButton("Falar comigo")], { gap: "12px", align: "start", grow: 1, shrink: 1, basis: "280px", minWidth: "0px" }),
   ]);
 
+// ---- layouts: sections that arrange a page the way a designed site does (a big title beside a picture, a band of numbers, colored cards) ----
+//
+// Same rule as the templates above: containers and elements with a plain starting style (each size of the screen written in the node), nothing hidden
+// and no text or picture invented. A picture is an empty frame of a shape (the editor draws the frame, the person chooses the image); the words that are
+// filled in are only the text of the contact buttons. The colors are names of the theme (`solid`, `on`, `soft`), so they follow the accent the person picks.
+
+/** The same node with a style at each size. */
+const styled = <T extends SiteNode>(node: T, style: Style, sizes: { tablet?: Style; mobile?: Style } = {}): T => ({
+  ...node,
+  style,
+  ...(sizes.tablet ? { styleTablet: sizes.tablet } : null),
+  ...(sizes.mobile ? { styleMobile: sizes.mobile } : null),
+});
+/** A picture in a frame of a shape, cropped at the centre to fill it. */
+const framed = (ratio: "1:1" | "4:5" | "3:4" | "4:3" | "3:2" | "16:9", style: Style = {}): SiteNode => ({ ...image("full", { radius: "24px", ...style }), ratio }) as SiteNode;
+/** A small line above a title: capital letters, spaced, in the color of the accent. */
+const KICKER: Style = { fontSize: "13px", fontWeight: 700, letterSpacing: "2px", textTransform: "uppercase", color: "accent" };
+const bigTitle = (size: string, sizes: { tablet?: string; mobile?: string } = {}): SiteNode =>
+  styled(heading(2), { fontFamily: "display", fontSize: size, fontWeight: 800, lineHeight: 1, textTransform: "uppercase" }, {
+    ...(sizes.tablet ? { tablet: { fontSize: sizes.tablet } } : null),
+    ...(sizes.mobile ? { mobile: { fontSize: sizes.mobile } } : null),
+  });
+
+/** A band with a color of its own keeps some air above and below, so two of them (or a band and a card) do not touch. */
+const BAND_MARGIN = SIDES("24px", "0px");
+
+/** A title beside a picture; `pictureFirst` puts the picture on the left. On the phone one is over the other. */
+const splitHero = (pictureFirst: boolean) => (): SiteNode => {
+  const copy = column(
+    [
+      styled(paragraph(), KICKER),
+      bigTitle("64px", { tablet: "52px", mobile: "40px" }),
+      styled(paragraph(), { fontSize: "18px", color: "muted" }),
+      contactButton("Falar comigo"),
+    ],
+    { gap: "16px", align: "start", justify: "center" },
+  );
+  return adapted(
+    pictureFirst ? "Destaque com imagem à esquerda" : "Destaque dividido",
+    "section",
+    { display: "grid", columns: 2, gap: "48px", align: "center", padding: SIDES("56px", "0px") },
+    { tablet: { gap: "32px" }, mobile: { columns: 1, gap: "24px", padding: SIDES("32px", "0px") } },
+    pictureFirst ? [framed("4:5"), copy] : [copy, framed("4:5")],
+  );
+};
+/** Four numbers across, each with its caption, on a soft band. The numbers are left for the person to write. */
+const numbersBand = (): SiteNode =>
+  adapted(
+    "Faixa de números",
+    "section",
+    { display: "grid", columns: 4, gap: "16px", padding: SIDES("28px", "20px"), background: "soft", radius: "16px", margin: BAND_MARGIN },
+    { tablet: { columns: 2 }, mobile: { columns: 2, padding: SIDES("20px", "12px") } },
+    Array.from({ length: 4 }, () =>
+      column(
+        [
+          styled(heading(3), { fontFamily: "display", fontSize: "44px", fontWeight: 800, lineHeight: 1, textAlign: "center" }, { mobile: { fontSize: "34px" } }),
+          styled(paragraph(), { fontSize: "14px", color: "muted", textAlign: "center" }),
+        ],
+        { gap: "6px", align: "stretch" },
+      ),
+    ),
+  );
+/** A colored band with five short items in a row (the names of the places of the page, or of what is offered). */
+const linkBand = (): SiteNode =>
+  adapted(
+    "Faixa de links",
+    "section",
+    { display: "flex", direction: "row", wrap: "wrap", justify: "between", align: "center", gap: "16px", padding: SIDES("18px", "24px"), background: "solid", color: "on", radius: "14px", margin: BAND_MARGIN },
+    { mobile: { justify: "center", padding: SIDES("16px", "16px") } },
+    Array.from({ length: 5 }, () => styled(paragraph(), { fontWeight: 700, textAlign: "center" })),
+  );
+/** Three cards: filled with the accent, dark, and only outlined; each with a title, a text and a contact button. */
+const colorCards = (): SiteNode => {
+  const card = (name: string, look: Style, button: Style): SiteNode =>
+    box(name, "article", { display: "flex", direction: "column", align: "start", gap: "12px", padding: SIDES("28px", "24px"), radius: "20px", minHeight: "240px", ...look }, [
+      styled(heading(3), { fontFamily: "display", fontSize: "26px", fontWeight: 800, lineHeight: 1.1, textTransform: "uppercase" }),
+      paragraph(),
+      styled(contactButton("Saiba mais"), button),
+    ]);
+  return adapted(
+    "Cartões coloridos",
+    "section",
+    { display: "grid", columns: 3, gap: "20px", padding: SIDES("48px", "0px") },
+    { tablet: { columns: 2 }, mobile: { columns: 1, padding: SIDES("32px", "0px") } },
+    [
+      card("Cartão cheio", { background: "solid", color: "on" }, { background: "white", color: "black" }),
+      card("Cartão escuro", { background: "black", color: "white" }, { background: "white", color: "black" }),
+      card("Cartão vazado", { borderWidth: "2px", borderStyle: "solid", borderColor: "ink" }, {}),
+    ],
+  );
+};
+/** A picture, a card of text and another picture side by side (a little tighter on the tablet); on the phone they stack. */
+const aboutPanels = (): SiteNode =>
+  adapted(
+    "Sobre em painéis",
+    "section",
+    { display: "grid", columns: 3, gap: "16px", align: "stretch", padding: SIDES("48px", "0px") },
+    { tablet: { gap: "12px" }, mobile: { columns: 1, gap: "16px", padding: SIDES("32px", "0px") } },
+    [
+      framed("3:4"),
+      styled(
+        box("Texto", "div", {}, [
+          styled(paragraph(), KICKER),
+          styled(heading(2), { fontFamily: "display", fontSize: "34px", fontWeight: 800, lineHeight: 1.05, textTransform: "uppercase" }, { tablet: { fontSize: "24px" }, mobile: { fontSize: "34px" } }),
+          paragraph(),
+          labelled("Ler mais"),
+        ]),
+        { display: "flex", direction: "column", gap: "14px", justify: "center", align: "start", padding: SIDES("28px", "24px"), background: "soft", radius: "24px" },
+        { tablet: { padding: SIDES("20px", "16px") }, mobile: { padding: SIDES("28px", "24px") } },
+      ),
+      framed("3:4"),
+    ],
+  );
+/** A closing band: a big title on one side, a line of text and a button on the other. */
+const finalBand = (): SiteNode =>
+  adapted(
+    "Chamada final em faixa",
+    "section",
+    { display: "grid", columns: 2, gap: "32px", align: "center", padding: SIDES("40px", "40px"), background: "solid", color: "on", radius: "24px", margin: BAND_MARGIN },
+    { tablet: { padding: SIDES("32px", "32px") }, mobile: { columns: 1, gap: "20px", padding: SIDES("28px", "20px") } },
+    [
+      bigTitle("48px", { mobile: "36px" }),
+      column([paragraph(), styled(contactButton("Falar comigo"), { background: "black", color: "white" })], { gap: "16px", align: "start" }),
+    ],
+  );
+
 export const CATALOGUE: readonly CatalogueItem[] = [
   { key: "section", group: "structure", label: "Seção", hint: "Faixa da página", create: () => box("Seção", "section", SECTION) },
   { key: "container", group: "structure", label: "Contêiner", hint: "Centralizado", create: () => box("Contêiner", "div", CONTAINER) },
@@ -130,8 +256,15 @@ export const CATALOGUE: readonly CatalogueItem[] = [
   { key: "template-plans", group: "template", label: "Planos", hint: "Três cartões com botão", create: plans },
   { key: "template-testimonials", group: "template", label: "Depoimentos", hint: "Três depoimentos lado a lado", create: testimonials },
   { key: "template-footer", group: "template", label: "Rodapé", hint: "Texto e links de contato", create: pageFooter },
+  { key: "layout-split-hero", group: "layout", label: "Destaque dividido", hint: "Título grande ao lado de uma imagem", create: splitHero(false) },
+  { key: "layout-split-hero-reverse", group: "layout", label: "Destaque com imagem à esquerda", hint: "A imagem primeiro, o título ao lado", create: splitHero(true) },
+  { key: "layout-numbers", group: "layout", label: "Faixa de números", hint: "Quatro números em destaque", create: numbersBand },
+  { key: "layout-link-band", group: "layout", label: "Faixa de links", hint: "Uma faixa colorida com cinco itens", create: linkBand },
+  { key: "layout-cards", group: "layout", label: "Cartões coloridos", hint: "Três cartões: cheio, escuro e vazado", create: colorCards },
+  { key: "layout-about-panels", group: "layout", label: "Sobre em painéis", hint: "Imagem, texto e imagem", create: aboutPanels },
+  { key: "layout-final-band", group: "layout", label: "Chamada final em faixa", hint: "Título grande, texto e botão", create: finalBand },
 ];
 
-export const GROUP_LABEL: Record<Group, string> = { structure: "Estrutura", element: "Elementos básicos", section: "Seções prontas", template: "Modelos" };
+export const GROUP_LABEL: Record<Group, string> = { structure: "Estrutura", element: "Elementos básicos", section: "Seções prontas", template: "Modelos", layout: "Layouts" };
 
 export const catalogueItem = (key: string): CatalogueItem | undefined => CATALOGUE.find((item) => item.key === key);

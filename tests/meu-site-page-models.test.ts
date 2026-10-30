@@ -16,7 +16,7 @@ import {
   type SiteNode,
 } from "@/modules/meu-site/contracts";
 import { addPage, addPageFrom, pageFromModel, starterOf } from "@/modules/meu-site/page-model";
-import { PAGE_MODELS, SITE_MODELS, SITE_MODEL_LABEL, pageModel } from "@/modules/meu-site/page-models";
+import { LAYOUT_SITES, PAGE_MODELS, SITE_MODELS, SITE_MODEL_LABEL, pageModel, section } from "@/modules/meu-site/page-models";
 
 const base = (over: Partial<SiteContent> = {}): SiteContent => ({
   schemaVersion: 3,
@@ -163,8 +163,8 @@ describe("a page that starts from a model", () => {
 });
 
 describe("a site that starts from a model", () => {
-  it("is one page, as it always was, or the complete site", () => {
-    expect(SITE_MODELS).toEqual(["single", "complete"]);
+  it("is one page, as it always was, the complete site, or one of the two made of layouts", () => {
+    expect(SITE_MODELS).toEqual(["single", "complete", "athlete", "trainer"]);
     for (const model of SITE_MODELS) expect(SITE_MODEL_LABEL[model].label.length).toBeGreaterThan(3);
     const single = starterOf("single", "Marina Treinos");
     expect(single.blocks.map((node) => node.type)).toEqual(starterContent("Marina Treinos").blocks.map((node) => node.type));
@@ -199,5 +199,61 @@ describe("a site that starts from a model", () => {
     const one = ids(starterOf("complete", "A"));
     const two = ids(starterOf("complete", "B"));
     expect(one.some((id) => two.includes(id))).toBe(false);
+  });
+});
+
+describe("the sites made of layouts", () => {
+  const LAYOUT_WORDS = new Set([...ALLOWED, "Saiba mais", "Ler mais"]);
+  const names = (content: SiteContent) => content.blocks.map((node) => node.name);
+  it("are the two the library has the sections for, each with the look that suits it, and every section they ask for is in the library", () => {
+    expect(Object.keys(LAYOUT_SITES)).toEqual(["athlete", "trainer"]);
+    for (const plan of Object.values(LAYOUT_SITES)) for (const key of [...plan.home]) expect(section(key).id, key).toBeTruthy();
+    for (const model of ["athlete", "trainer"] as const) expect(SITE_MODEL_LABEL[model].hint.length, model).toBeGreaterThan(40);
+  });
+  it("athlete: a title beside a picture, the numbers, the panels, the cards and the closing band, in green, with three more pages", () => {
+    const athlete = starterOf("athlete", "Marina Corrida");
+    expect(siteContent.safeParse(athlete).success).toBe(true);
+    expect(names(athlete)).toEqual(["Destaque dividido", "Faixa de números", "Sobre em painéis", "Cartões coloridos", "Chamada final em faixa"]);
+    expect(athlete.theme).toEqual({ accent: "green", mode: "light", width: "wide" });
+    expect(pagesOf(athlete).map((entry) => [entry.slug, entry.title])).toEqual([
+      ["sobre-mim", "Sobre mim"],
+      ["servicos", "Serviços"],
+      ["contato", "Contato"],
+    ]);
+  });
+  it("trainer: the picture first, the band of areas, the cards, the picture with text and the closing band, in orange, with four more pages", () => {
+    const trainer = starterOf("trainer", "Luna Personal");
+    expect(siteContent.safeParse(trainer).success).toBe(true);
+    expect(names(trainer)).toEqual(["Destaque com imagem à esquerda", "Faixa de links", "Cartões coloridos", "Imagem e texto", "Chamada final em faixa"]);
+    expect(trainer.theme).toEqual({ accent: "orange", mode: "light", width: "wide" });
+    expect(pagesOf(trainer).map((entry) => entry.slug)).toEqual(["sobre-mim", "servicos", "perguntas-frequentes", "contato"]);
+  });
+  it("write the name of the site as the big title and nothing else of their own: no number, no promise, no picture of anyone", () => {
+    for (const model of ["athlete", "trainer"] as const) {
+      const content = starterOf(model, "Marina Corrida");
+      const headings = documentNodes(content).filter((node) => node.type === "heading");
+      expect(headings.filter((node) => node.text !== "").map((node) => node.text), model).toEqual(["Marina Corrida"]);
+      expect((allNodes([content.blocks[0]]).find((node) => node.type === "heading") as { text: string }).text, model).toBe("Marina Corrida");
+      const allowed = new Set([...LAYOUT_WORDS, "Marina Corrida"]);
+      for (const text of texts(documentNodes(content))) expect(allowed.has(text), `${model}: ${text}`).toBe(true);
+      for (const node of documentNodes(content)) if (node.type === "image") expect([node.assetId, node.alt, node.caption], model).toEqual(["", "", ""]);
+    }
+  });
+  it("fit the longest title a site may have, and are not stopped when they are published as they are", () => {
+    for (const model of ["athlete", "trainer"] as const) {
+      expect(siteContent.safeParse(starterOf(model, "x".repeat(80))).success, model).toBe(true);
+      const content = starterOf(model, "Marina Corrida");
+      const issues = publishIssues(content, new Set());
+      expect(issues.filter((issue) => issue.severity === "blocking"), model).toEqual([]);
+      expect(issues.length, model).toBeGreaterThan(0);
+      expect(siteNodeCount(content), model).toBeLessThan(MAX_SITE_NODES / 2);
+    }
+  });
+  it("are made anew each time: no identifier is shared, not even between the two models", () => {
+    const ids = (content: SiteContent) => documentNodes(content).map((node) => node.id);
+    const all = [ids(starterOf("athlete", "A")), ids(starterOf("athlete", "B")), ids(starterOf("trainer", "C"))];
+    for (const one of all) expect(new Set(one).size).toBe(one.length);
+    expect(all[0].some((id) => all[1].includes(id) || all[2].includes(id))).toBe(false);
+    expect(all[1].some((id) => all[2].includes(id))).toBe(false);
   });
 });

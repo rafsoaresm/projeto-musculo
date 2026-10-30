@@ -77,9 +77,35 @@ export const PAGE_MODELS: readonly PageModel[] = [
 export const pageModel = (key: string): PageModel | undefined => PAGE_MODELS.find((entry) => entry.key === key);
 
 /** What a site starts with, by the model the person chose when creating it. */
-export const SITE_MODELS = ["single", "complete"] as const;
+export const SITE_MODELS = ["single", "complete", "athlete", "trainer"] as const;
 export type SiteModel = (typeof SITE_MODELS)[number];
 export const SITE_MODEL_LABEL: Record<SiteModel, { label: string; hint: string }> = {
   single: { label: "Uma página só", hint: "Um destaque e uma chamada para contato, para você montar do seu jeito." },
   complete: { label: "Site completo", hint: "Início, Sobre mim, Serviços, Perguntas frequentes e Contato, com menu, para você escrever o que cada um diz." },
+  athlete: {
+    label: "Atleta e instrutor(a)",
+    hint: "Título grande ao lado da sua foto, faixa de números, painéis sobre você, cartões e chamada final, em verde. Com Sobre mim, Serviços e Contato.",
+  },
+  trainer: {
+    label: "Personal trainer",
+    hint: "Sua foto à esquerda do título, faixa com suas áreas, cartões coloridos, imagem com texto e chamada final, em laranja. Com Sobre mim, Serviços, Perguntas frequentes e Contato.",
+  },
 };
+
+/**
+ * The sites made of the layouts of the library (the "layout" group of presets.ts): the sections of the home page in order, the pages that come with
+ * it, and the look that suits them (an accent of the closed list and a wide page). The first section of the home gets the name of the site as its
+ * big title, the way the hero of the complete site does; everything else is left empty, with no text and no picture invented.
+ */
+export const LAYOUT_SITES = {
+  athlete: {
+    theme: { accent: "green", width: "wide" },
+    home: ["layout-split-hero", "layout-numbers", "layout-about-panels", "layout-cards", "layout-final-band"],
+    pages: ["about", "services", "contact"],
+  },
+  trainer: {
+    theme: { accent: "orange", width: "wide" },
+    home: ["layout-split-hero-reverse", "layout-link-band", "layout-cards", "template-image-text", "layout-final-band"],
+    pages: ["about", "services", "faq", "contact"],
+  },
+} as const;

@@ -102,6 +102,8 @@ export const ALIGNS = ["start", "center", "end", "stretch", "baseline"] as const
 export const SELF_ALIGNS = ["auto", "start", "center", "end", "stretch"] as const;
 export const JUSTIFIES = ["start", "center", "end", "between", "around", "evenly"] as const;
 export const FONT_FAMILIES = ["sans", "serif", "mono"] as const;
+/** What the style of a block may use: the page's fonts and a condensed one for big titles ("display"). Only fonts the device already has. */
+export const STYLE_FONTS = [...FONT_FAMILIES, "display"] as const;
 export const TEXT_ALIGNS = ["left", "center", "right", "justify"] as const;
 export const TEXT_TRANSFORMS = ["none", "uppercase", "lowercase", "capitalize"] as const;
 export const TEXT_DECORATIONS = ["none", "underline", "line-through"] as const;
@@ -122,10 +124,12 @@ const JUSTIFY_CSS: Record<(typeof JUSTIFIES)[number], string> = {
   evenly: "space-evenly",
 };
 // System fonts only: the page loads nothing from anyone else.
-export const FONT_CSS: Record<(typeof FONT_FAMILIES)[number], string> = {
+export const FONT_CSS: Record<(typeof STYLE_FONTS)[number], string> = {
   sans: "system-ui,-apple-system,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif",
   serif: "Georgia,Cambria,Times New Roman,Times,serif",
   mono: "ui-monospace,SFMono-Regular,Menlo,Consolas,Liberation Mono,monospace",
+  // Condensed and heavy where the device has such a font (Impact, Haettenschweiler, Arial Narrow); a plain heavy sans where it has none.
+  display: "Impact,Haettenschweiler,Arial Narrow Bold,Arial Narrow,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif",
 };
 const SHADOW_CSS: Record<(typeof SHADOWS)[number], string> = {
   none: "none",
@@ -177,7 +181,7 @@ export const styleSchema = z
     minHeight: length(SPECS.heightLimit).optional(),
     maxHeight: length(SPECS.heightLimit).optional(),
     // type
-    fontFamily: z.enum(FONT_FAMILIES).optional(),
+    fontFamily: z.enum(STYLE_FONTS).optional(),
     fontSize: length(SPECS.fontSize).optional(),
     fontWeight: z
       .number()

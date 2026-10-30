@@ -2903,18 +2903,52 @@ a.site-menu-link:hover {
   display: grid;
   gap: 8px;
   margin: 0;
+  /* The corners of the picture are the frame's: the radius of its style (the caption below is not clipped by it). */
+  border-radius: var(--radius-card);
 }
 .site-image img {
   display: block;
   width: 100%;
   height: auto;
-  border-radius: var(--radius-card);
+  border-radius: inherit;
 }
 .site-image[data-size="medium"] {
   max-width: 560px;
 }
 .site-image[data-size="small"] {
   max-width: 320px;
+}
+/* A picture in a frame of a shape: it is cropped at the centre to fill it (and so is the stand-in, so the layout shows the shape before there is a picture). */
+.site-image[data-ratio="1:1"] img,
+.site-image[data-ratio="1:1"] .site-image-empty {
+  aspect-ratio: 1 / 1;
+}
+.site-image[data-ratio="4:5"] img,
+.site-image[data-ratio="4:5"] .site-image-empty {
+  aspect-ratio: 4 / 5;
+}
+.site-image[data-ratio="3:4"] img,
+.site-image[data-ratio="3:4"] .site-image-empty {
+  aspect-ratio: 3 / 4;
+}
+.site-image[data-ratio="4:3"] img,
+.site-image[data-ratio="4:3"] .site-image-empty {
+  aspect-ratio: 4 / 3;
+}
+.site-image[data-ratio="3:2"] img,
+.site-image[data-ratio="3:2"] .site-image-empty {
+  aspect-ratio: 3 / 2;
+}
+.site-image[data-ratio="16:9"] img,
+.site-image[data-ratio="16:9"] .site-image-empty {
+  aspect-ratio: 16 / 9;
+}
+.site-image[data-ratio] img {
+  height: 100%;
+  object-fit: cover;
+}
+.site-image[data-ratio] .site-image-empty {
+  min-height: 0;
 }
 .site-image figcaption {
   color: var(--site-muted);
@@ -2927,7 +2961,7 @@ a.site-menu-link:hover {
   min-height: 140px;
   padding: 16px;
   border: 2px dashed var(--site-line);
-  border-radius: var(--radius-card);
+  border-radius: inherit;
   color: var(--site-muted);
   font-size: 14px;
   text-align: center;
@@ -3841,6 +3875,93 @@ button.ve-layer-toggle {
   font-size: 13px;
   font-weight: 700;
 }
+/* The first step of a site: what it starts with, as cards with a drawing of each model. */
+.model-choice {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+.model-card {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  font-weight: 400;
+  cursor: pointer;
+}
+.model-card:has(input:checked) {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px var(--color-primary);
+}
+.model-card:has(input:focus-visible) {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+.model-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-ink);
+}
+.model-head input[type="radio"] {
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
+  min-height: 20px;
+  padding: 0;
+  margin: 0;
+  accent-color: var(--color-primary);
+}
+.model-hint {
+  color: var(--color-text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.model-thumb {
+  display: block;
+  width: 100%;
+  height: auto;
+  --thumb-accent: var(--color-primary);
+}
+/* The solid color of the accent each model starts with: the same as the page's own (`data-site-accent` green and orange). */
+.model-thumb[data-model="athlete"] {
+  --thumb-accent: #1b6e3c;
+}
+.model-thumb[data-model="trainer"] {
+  --thumb-accent: #b45309;
+}
+.model-thumb .t-page {
+  fill: var(--color-surface);
+  stroke: var(--color-line-strong);
+}
+.model-thumb .t-page-fill {
+  fill: var(--color-surface);
+}
+.model-thumb .t-ink {
+  fill: var(--color-ink);
+}
+.model-thumb .t-muted {
+  fill: var(--color-line-strong);
+}
+.model-thumb .t-soft {
+  fill: var(--thumb-accent);
+  fill-opacity: 0.14;
+}
+.model-thumb .t-pic {
+  fill: var(--thumb-accent);
+  fill-opacity: 0.38;
+}
+.model-thumb .t-accent {
+  fill: var(--thumb-accent);
+}
+.model-thumb .t-outline {
+  fill: none;
+  stroke: var(--color-ink);
+  stroke-width: 1.5;
+}
 .ve-swatches {
   display: flex;
   flex-wrap: wrap;
@@ -4605,10 +4726,11 @@ button.ve-layer-toggle {
 }
 .site-editable:empty::before {
   content: attr(data-placeholder);
-  color: var(--site-muted);
+  /* The color of the text it stands for, faded: on a band or a card with a color of its own it stays readable. */
+  color: inherit;
   font-style: italic;
   font-weight: 400;
-  opacity: 0.8;
+  opacity: 0.55;
 }
 .ve-canvas [data-block-id]:hover > .site-editable:not([data-editing]) {
   text-decoration: underline dotted var(--color-primary-line);

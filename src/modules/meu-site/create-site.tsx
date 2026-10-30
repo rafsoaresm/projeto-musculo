@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { createSite } from "./actions";
 import { SLUG_MAX, TITLE_MAX } from "./contracts";
 import { SITE_MODELS, SITE_MODEL_LABEL, type SiteModel } from "./page-models";
+import { SiteModelThumb } from "./site-model-thumb";
 
 /** The first step: an address, a title and what the site starts with. Everything else is edited afterwards, in the draft. */
 export function CreateSite({ suggestedSlug, suggestedTitle }: { suggestedSlug: string; suggestedTitle: string }) {
@@ -36,14 +37,18 @@ export function CreateSite({ suggestedSlug, suggestedTitle }: { suggestedSlug: s
       </label>
       <fieldset className="ve-choice">
         <legend>Começar com</legend>
-        {SITE_MODELS.map((entry) => (
-          <label key={entry} className="check-row">
-            <input type="radio" name="site-model" checked={model === entry} onChange={() => setModel(entry)} />
-            <span>
-              <strong>{SITE_MODEL_LABEL[entry].label}.</strong> {SITE_MODEL_LABEL[entry].hint}
-            </span>
-          </label>
-        ))}
+        <div className="model-choice">
+          {SITE_MODELS.map((entry) => (
+            <label key={entry} className="model-card">
+              <SiteModelThumb model={entry} />
+              <span className="model-head">
+                <input type="radio" name="site-model" checked={model === entry} onChange={() => setModel(entry)} />
+                <strong>{SITE_MODEL_LABEL[entry].label}.</strong>
+              </span>
+              <span className="model-hint">{SITE_MODEL_LABEL[entry].hint}</span>
+            </label>
+          ))}
+        </div>
       </fieldset>
       <p className="small muted">
         O site fica em <code>/s/{slug || "seu-endereco"}</code> e só aparece para as pessoas depois que você publicar. Dá para mudar o endereço

@@ -216,6 +216,18 @@ const buttonShape = { type: z.literal("button"), label: plain(BUTTON_MAX), chann
 export const IMAGE_SIZES = ["full", "medium", "small"] as const;
 export type ImageSize = (typeof IMAGE_SIZES)[number];
 export const IMAGE_SIZE_LABEL: Record<ImageSize, string> = { full: "Largura toda", medium: "Média", small: "Pequena" };
+/** The shape of the picture's frame: "auto" keeps the picture as it is; the others crop it to fill that shape (the width over the height). */
+export const IMAGE_RATIOS = ["auto", "1:1", "4:5", "3:4", "4:3", "3:2", "16:9"] as const;
+export type ImageRatio = (typeof IMAGE_RATIOS)[number];
+export const IMAGE_RATIO_LABEL: Record<ImageRatio, string> = {
+  auto: "Original",
+  "1:1": "Quadrada (1:1)",
+  "4:5": "Retrato (4:5)",
+  "3:4": "Retrato alto (3:4)",
+  "4:3": "Paisagem (4:3)",
+  "3:2": "Paisagem larga (3:2)",
+  "16:9": "Panorâmica (16:9)",
+};
 /** An image of the site's library. `assetId` is "" until one is chosen; the description is for who cannot see it. */
 const imageShape = {
   type: z.literal("image"),
@@ -223,6 +235,7 @@ const imageShape = {
   alt: plain(ALT_MAX),
   caption: plain(CAPTION_MAX),
   size: z.enum(IMAGE_SIZES),
+  ratio: z.enum(IMAGE_RATIOS).optional(),
 };
 
 const hero = z.object({ ...base, ...heroShape }).strict();

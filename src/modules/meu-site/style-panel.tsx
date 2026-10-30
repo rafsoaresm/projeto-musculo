@@ -24,7 +24,7 @@ const WRAPS = [option("nowrap", "Sem quebra"), option("wrap", "Quebrar")] as con
 const ALIGNS = [option("start", "Início"), option("center", "Centro"), option("end", "Fim"), option("stretch", "Esticar"), option("baseline", "Linha base")] as const;
 const SELF_ALIGNS = [option("auto", "Auto"), option("start", "Início"), option("center", "Centro"), option("end", "Fim"), option("stretch", "Esticar")] as const;
 const JUSTIFIES = [option("start", "Início"), option("center", "Centro"), option("end", "Fim"), option("between", "Entre"), option("around", "Ao redor"), option("evenly", "Igual")] as const;
-const FONT_FAMILIES = [option("sans", "Sem serifa"), option("serif", "Com serifa"), option("mono", "Monoespaçada")] as const;
+const FONT_FAMILIES = [option("sans", "Sem serifa"), option("serif", "Com serifa"), option("mono", "Monoespaçada"), option("display", "Título em destaque (condensada)")] as const;
 const FONT_WEIGHTS = [
   option(100, "Muito fina (100)"),
   option(200, "Extra leve (200)"),

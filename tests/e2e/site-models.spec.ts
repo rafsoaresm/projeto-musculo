@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { createProfessional, localIP, newActor } from "./helpers";
-import { closeEditor, editor, inspector, library, openEditor, panel, stage, state } from "./site-helpers";
+import { addAtEnd, closeEditor, editor, inspector, layerNames, library, openEditor, panel, stage, state } from "./site-helpers";
 
 const list = (page: Page) => library(page).getByRole("list", { name: "Páginas do site" });
 const rowNames = (page: Page) => list(page).locator(".ve-layer strong").allInnerTexts();
@@ -118,4 +118,120 @@ test("models: the default is still a single page, and a model of a page can be a
   expect(await rowNames(page)).toEqual(["Início", "Perguntas frequentes"]);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBeLessThanOrEqual(1);
+});
+
+test("layout models: four models as cards with a drawing; a site of layouts starts with its pages, its look and empty image frames whose shape can be changed, and is published with no empty frame and nothing to the side", async ({
+  page,
+  browser,
+  baseURL,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "The phone has its own scenario below.");
+  test.setTimeout(300_000);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
+  const unique = crypto.randomUUID().slice(0, 8);
+  await createProfessional(page, `Estúdio ${unique}`, "Marina Atleta");
+  await page.goto("./profissional/meu-site");
+  const form = page.getByRole("form", { name: "Criar o meu site" });
+
+  // ---- the first step: a card for each model, with a drawing that reading aids skip, and the chosen one outlined ----
+  await expect(form.getByRole("radio")).toHaveCount(4);
+  await expect(form.locator(".model-card svg.model-thumb[aria-hidden='true']")).toHaveCount(4);
+  expect(await form.getByRole("radio").evaluateAll((nodes) => nodes.map((node) => (node as HTMLInputElement).checked))).toEqual([true, false, false, false]);
+  const athlete = form.getByRole("radio", { name: /^Atleta e instrutor/ });
+  await athlete.check();
+  await expect(form.getByRole("radio", { name: /^Uma página só/ })).not.toBeChecked();
+  const card = form.locator(".model-card", { hasText: "Atleta e instrutor" });
+  expect(await card.evaluate((node) => getComputedStyle(node).boxShadow)).not.toBe("none");
+  await form.getByLabel("Título do site").fill("Marina Atleta");
+  await form.getByRole("button", { name: "Criar meu site" }).click();
+  await expect(state(page).getByText("Fora do ar")).toBeVisible();
+  await openEditor(page);
+  const slug = `estudio-${unique}`;
+
+  // ---- the pages and the look of the model, the name of the site as the big title, and the pictures as empty frames of a shape ----
+  await openPages(page);
+  expect(await rowNames(page)).toEqual(["Início", "Sobre mim", "Serviços", "Contato"]);
+  const desktop = stage(page).locator('[data-frame="desktop"]');
+  await expect(desktop.locator('[data-site-accent="green"]').first()).toBeAttached();
+  await expect(desktop.getByRole("heading", { name: "Marina Atleta", level: 2 })).toBeVisible();
+  await expect(desktop.locator("figure.site-image .site-image-empty")).toHaveCount(3);
+  await expect(desktop.locator("figure.site-image[data-ratio]")).toHaveCount(3);
+
+  // ---- the shape of a frame is chosen in the panel and is the shape that is drawn ----
+  const first = desktop.locator("figure.site-image").first();
+  // The frame itself, not the figure (which also holds the line of the caption).
+  const shape = async () => {
+    const box = (await first.locator(".site-image-empty").boundingBox())!;
+    return box.width / box.height;
+  };
+  expect(await shape()).toBeCloseTo(4 / 5, 1);
+  await first.locator(".site-image-empty").click();
+  await panel(page, "Propriedades");
+  const ratio = inspector(page).locator("label", { hasText: /^Proporção/ }).locator("select");
+  await expect(ratio).toHaveValue("4:5");
+  await ratio.selectOption("1:1");
+  expect(await shape()).toBeCloseTo(1, 1);
+  await ratio.selectOption("16:9");
+  expect(await shape()).toBeCloseTo(16 / 9, 1);
+  await ratio.selectOption("4:5");
+  // The corners of the frame are the radius written in its style (24px here), and a stand-in text takes the color of the text it stands for, so it
+  // can be read on the band or the card that has a color of its own (white on the green band).
+  expect(await first.locator(".site-image-empty").evaluate((node) => getComputedStyle(node).borderRadius)).toBe("24px");
+  const standIn = await desktop.locator(".site-editable:empty").last().evaluate((node) => ({ own: getComputedStyle(node).color, before: getComputedStyle(node, "::before").color }));
+  expect(standIn.before).toBe(standIn.own);
+  expect(standIn.own).toBe("rgb(255, 255, 255)");
+
+  // ---- the layouts are in the library, in a group of their own, and one added to the page is a section of containers and elements ----
+  await panel(page, "Blocos");
+  await library(page).getByRole("button", { name: "Blocos", exact: true }).click();
+  await expect(library(page).getByRole("heading", { name: "Layouts" })).toBeVisible();
+  for (const label of ["Destaque dividido", "Destaque com imagem à esquerda", "Faixa de números", "Faixa de links", "Cartões coloridos", "Sobre em painéis", "Chamada final em faixa"]) {
+    await expect(library(page).getByRole("button", { name: `Acrescentar ${label}`, exact: true }), label).toBeVisible();
+  }
+  await addAtEnd(page, "Faixa de links");
+  expect(await layerNames(page)).toContain("Faixa de links");
+
+  // ---- published with the warnings: the empty frames are not on the page, and the page does not go to the side at any width ----
+  await save(page);
+  await editor(page).getByRole("button", { name: "Publicar", exact: true }).click();
+  await expect(editor(page).getByRole("list", { name: "O que falta para publicar" })).toHaveCount(0);
+  await editor(page).getByRole("button", { name: "Publicar mesmo assim" }).click();
+  await expect(editor(page).getByText("Publicado: o site está no ar na versão 1.")).toBeVisible();
+  await closeEditor(page);
+  const visit = await newActor(browser, baseURL);
+  const visitor = visit.page;
+  for (const width of [1280, 768, 360]) {
+    await visitor.setViewportSize({ width, height: 900 });
+    await visitor.goto(`./s/${slug}`);
+    await expect(visitor.getByRole("heading", { name: "Marina Atleta", level: 2 })).toBeVisible();
+    await expect(visitor.locator(".site-image")).toHaveCount(0);
+    expect(await visitor.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), `${width}px`).toBeLessThanOrEqual(1);
+  }
+  // On the phone the menu is the button, and it holds the four pages.
+  await visitor.getByText("Menu", { exact: true }).click();
+  await expect(visitor.getByRole("navigation", { name: "Páginas do site" }).getByRole("link")).toHaveText(["Início", "Sobre mim", "Serviços", "Contato"]);
+  await visit.context.close();
+});
+
+test("layout models: the personal trainer model on a phone, with the cards one under the other and the pages in order", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile", "The computer has its own scenario above.");
+  test.setTimeout(240_000);
+  await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
+  const unique = crypto.randomUUID().slice(0, 8);
+  await createProfessional(page, `Estúdio ${unique}`, "Luna Personal");
+  await page.goto("./profissional/meu-site");
+  const form = page.getByRole("form", { name: "Criar o meu site" });
+  await expect(form.getByRole("radio")).toHaveCount(4);
+  const cards = await form.locator(".model-card").evaluateAll((nodes) => nodes.map((node) => Math.round(node.getBoundingClientRect().left)));
+  expect(new Set(cards).size, "one column on a phone").toBe(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
+  await form.getByRole("radio", { name: /^Personal trainer/ }).check();
+  await form.getByLabel("Título do site").fill("Luna Personal");
+  await form.getByRole("button", { name: "Criar meu site" }).click();
+  await expect(state(page).getByText("Fora do ar")).toBeVisible();
+  await openEditor(page);
+  await openPages(page);
+  expect(await rowNames(page)).toEqual(["Início", "Sobre mim", "Serviços", "Perguntas frequentes", "Contato"]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
 });

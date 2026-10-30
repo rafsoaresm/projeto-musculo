@@ -67,6 +67,7 @@ const FIELD_LABEL: Record<string, string> = {
   alt: "a descrição da imagem",
   caption: "a legenda",
   size: "o tamanho da imagem",
+  ratio: "a proporção da imagem",
   level: "o nível do título",
   tag: "o tipo do contêiner",
   name: "o nome da camada",
