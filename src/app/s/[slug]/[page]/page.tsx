@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { publishedSiteBySlug } from "@/db/sites";
+import { publishedSiteBySlug, siteEngineBySlug } from "@/db/sites";
 import { pagesOf } from "@/modules/meu-site/contracts";
 import { PublicSitePage, formsGate, publicMetadata } from "@/modules/meu-site/public-site";
 
@@ -26,8 +26,11 @@ export async function generateMetadata(props: Params): Promise<Metadata> {
 }
 
 export default async function PublicSubpage(props: Params) {
+  const { slug, page } = await props.params;
+  const { env } = await getCloudflareContext({ async: true });
+  // The site was put in the new editor: the page of the same route there answers (or a 404 of its own).
+  if ((await siteEngineBySlug(env.DB, slug)) === "frappe") redirect(`/site/${slug}/${encodeURIComponent(page)}`);
   const { site, found } = await load(props);
   if (!site || !found) notFound();
-  const { env } = await getCloudflareContext({ async: true });
   return <PublicSitePage site={site} pageId={found.id} gate={formsGate(env, process.env)} />;
 }

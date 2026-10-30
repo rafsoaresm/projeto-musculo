@@ -33,6 +33,11 @@ export const SITE_UNPUBLISHED = "SITE_UNPUBLISHED";
 export const SITE_ADDRESS_CHANGED = "SITE_ADDRESS_CHANGED";
 export const SITE_INQUIRIES_OPENED = "SITE_INQUIRIES_OPENED";
 export const SITE_INQUIRIES_CLOSED = "SITE_INQUIRIES_CLOSED";
+export const SITE_ENGINE_CHANGED = "SITE_ENGINE_CHANGED";
+export const SITE_DELETED = "SITE_DELETED";
+
+/** Which editor made the page at `/s/<address>`: the first one (`native`), or the new one (`frappe`, whose pages are at `/site/<address>`). */
+export type SiteEngine = "native" | "frappe";
 
 export interface ServiceChoice {
   id: string;
@@ -49,7 +54,9 @@ export interface ReleaseRow {
   live: boolean;
 }
 export interface SiteOverview {
-  site: { id: string; slug: string };
+  site: { id: string; slug: string; engine: SiteEngine };
+  /** The pages published from the new editor (route and title), and how many files it holds. */
+  newEditor: { published: Array<{ route: string; title: string }>; pages: number };
   draft: { content: SiteContent; revision: number; updatedAt: string };
   live: { number: number; publishedAt: string; draftRevision: number } | null;
   releases: ReleaseRow[];
@@ -77,6 +84,13 @@ export type PublishOutcome =
   /** Only warnings, and the person has not said to publish with them: nothing was published; asking again with `withWarnings` does. */
   | { status: "warnings"; issues: PublishIssue[] }
   | { status: "conflict" }
+  | { status: "not_found" };
+export type EngineOutcome = { status: "changed"; engine: SiteEngine } | { status: "nothing_published" } | { status: "not_found" };
+export type DeleteSiteOutcome =
+  | { status: "deleted"; objectKeys: string[] }
+  | { status: "confirmation_differs" }
+  /** Messages from the form wait in the inbox: they are people's data, and are dealt with (a lead or discarded) before the site goes. */
+  | { status: "inquiries_waiting"; count: number }
   | { status: "not_found" };
 export type InquiriesSwitchOutcome = { status: "saved"; open: boolean } | { status: "not_found" };
 export type AddressOutcome = { status: "changed" } | { status: "slug_taken" } | { status: "public" } | { status: "not_found" };
@@ -128,10 +142,19 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
   }
 
   return {
+    /** The address of the site, for whoever may read it; null while the organization has none. */
+    async slug(): Promise<string | null> {
+      const row = await db
+        .prepare(`SELECT s.slug FROM sites s WHERE s.organization_id = ?1 AND ${reads}`)
+        .bind(organizationId, userId)
+        .first<{ slug: string }>();
+      return row?.slug ?? null;
+    },
+
     async overview(): Promise<SiteOverview | null> {
       const draft = await draftRow();
       if (!draft) return null;
-      const [liveRow, releases, services, inquiries] = await Promise.all([
+      const [liveRow, releases, services, inquiries, editorPages] = await Promise.all([
         db
           .prepare(
             `SELECT r.number, p.published_at AS publishedAt, r.draft_revision AS draftRevision
@@ -152,14 +175,28 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
         liveServices(),
         db
           .prepare(
-            `SELECT s.inquiries_open AS open, (SELECT COUNT(*) FROM site_inquiries q WHERE q.site_id = s.id) AS waiting
+            `SELECT s.inquiries_open AS open, s.engine, (SELECT COUNT(*) FROM site_inquiries q WHERE q.site_id = s.id) AS waiting
              FROM sites s WHERE s.id = ?3 AND s.organization_id = ?1 AND ${reads}`,
           )
           .bind(organizationId, userId, draft.siteId)
-          .first<{ open: number; waiting: number }>(),
+          .first<{ open: number; engine: SiteEngine; waiting: number }>(),
+        db
+          .prepare(
+            `SELECT json_extract(d.data, '$.route') AS route, COALESCE(json_extract(d.data, '$.page_title'), d.name) AS title,
+                    COALESCE(json_extract(d.data, '$.published'), 0) AS published
+             FROM builder_docs d WHERE d.organization_id = ?1 AND d.doctype = 'Builder Page' AND ${reads}
+               AND COALESCE(json_extract(d.data, '$.is_template'), 0) = 0
+             ORDER BY json_extract(d.data, '$.published_at'), d.name LIMIT 200`,
+          )
+          .bind(organizationId, userId)
+          .all<{ route: string | null; title: string; published: number }>(),
       ]);
       return {
-        site: { id: draft.siteId, slug: draft.slug },
+        site: { id: draft.siteId, slug: draft.slug, engine: inquiries?.engine ?? "native" },
+        newEditor: {
+          published: editorPages.results.filter((page) => page.published === 1).map((page) => ({ route: (page.route ?? "").replace(/^\/+|\/+$/g, ""), title: page.title })),
+          pages: editorPages.results.length,
+        },
         inquiries: { open: inquiries?.open === 1, waiting: inquiries?.waiting ?? 0 },
         draft: { content: parseContent(JSON.parse(draft.content)), revision: draft.revision, updatedAt: draft.updatedAt },
         live: liveRow ?? null,
@@ -195,6 +232,66 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
       return { number: row.number, createdAt: row.createdAt, createdByName: row.createdByName, live: row.live === 1, content: parsed.data };
     },
 
+    /**
+     * Chooses the editor that makes the page at `/s/<address>`. The new editor takes the address only while at least one of its pages is
+     * published (otherwise the address would answer nothing); going back to the first one needs nothing. Nothing of either is deleted.
+     */
+    async setEngine(engine: SiteEngine, now = new Date()): Promise<EngineOutcome> {
+      const stamp = now.toISOString();
+      const row = await db.prepare(`SELECT s.id FROM sites s WHERE s.organization_id = ?1 AND ${writes}`).bind(organizationId, userId).first<{ id: string }>();
+      if (!row) return { status: "not_found" };
+      const results = await db.batch([
+        db
+          .prepare(
+            `UPDATE sites SET engine = ?3, updated_at = ?4 WHERE organization_id = ?1 AND ${writes}
+               AND (?3 = 'native' OR EXISTS (SELECT 1 FROM builder_docs d WHERE d.organization_id = ?1 AND d.doctype = 'Builder Page'
+                    AND json_extract(d.data, '$.published') = 1 AND COALESCE(json_extract(d.data, '$.dynamic_route'), 0) = 0))`,
+          )
+          .bind(organizationId, userId, engine, stamp),
+        audit(SITE_ENGINE_CHANGED, row.id, stamp),
+      ]);
+      return results[0]!.meta.changes > 0 ? { status: "changed", engine } : { status: "nothing_published" };
+    },
+
+    /**
+     * Deletes the whole site: the address, the draft, every version of the first editor with its images, and everything of the new editor
+     * (its pages, components, settings and files). Only for the owner and the managers, only with the address typed again, and not while
+     * messages from the form wait in the inbox (they are people's data: a lead or discarded first). The statements run in one batch that is
+     * all or nothing, announced by a row in `site_deletions` that the triggers of the versions let pass. The caller removes the objects of
+     * the storage afterwards (`objectKeys`); an object that stays behind belongs to no row and is reachable by nobody.
+     */
+    async deleteSite(confirmation: string, now = new Date()): Promise<DeleteSiteOutcome> {
+      const site = await db.prepare(`SELECT s.id, s.slug FROM sites s WHERE s.organization_id = ?1 AND ${writes}`).bind(organizationId, userId).first<{ id: string; slug: string }>();
+      if (!site) return { status: "not_found" };
+      if (confirmation.trim().toLowerCase() !== site.slug) return { status: "confirmation_differs" };
+      const waiting = await db.prepare("SELECT COUNT(*) AS c FROM site_inquiries WHERE site_id = ?").bind(site.id).first<{ c: number }>();
+      if ((waiting?.c ?? 0) > 0) return { status: "inquiries_waiting", count: waiting!.c };
+      const [images, files] = await Promise.all([
+        db.prepare("SELECT object_key AS key FROM site_assets WHERE site_id = ?").bind(site.id).all<{ key: string }>(),
+        db.prepare("SELECT object_key AS key FROM builder_files WHERE organization_id = ?").bind(organizationId).all<{ key: string }>(),
+      ]);
+      const stamp = now.toISOString();
+      const marked = `site_id IN (SELECT d.site_id FROM site_deletions d)`;
+      const results = await db.batch([
+        db
+          .prepare(`INSERT INTO site_deletions (site_id) SELECT s.id FROM sites s WHERE s.id = ?3 AND s.organization_id = ?1 AND s.slug = ?4 AND ${writes}`)
+          .bind(organizationId, userId, site.id, site.slug),
+        db.prepare(`INSERT INTO access_audit_events (id, organization_id, actor_user_id, action, subject_id, created_at) SELECT ?1, ?2, ?3, ?4, ?5, ?6 WHERE EXISTS (SELECT 1 FROM site_deletions)`)
+          .bind(crypto.randomUUID(), organizationId, userId, SITE_DELETED, site.id, stamp),
+        db.prepare(`DELETE FROM site_published WHERE ${marked}`),
+        db.prepare(`DELETE FROM site_release_assets WHERE ${marked}`),
+        db.prepare(`DELETE FROM site_releases WHERE ${marked}`),
+        db.prepare(`DELETE FROM site_assets WHERE ${marked}`),
+        db.prepare(`DELETE FROM site_drafts WHERE ${marked}`),
+        db.prepare(`DELETE FROM builder_docs WHERE organization_id = ?1 AND EXISTS (SELECT 1 FROM site_deletions d WHERE d.site_id = ?2)`).bind(organizationId, site.id),
+        db.prepare(`DELETE FROM builder_files WHERE organization_id = ?1 AND EXISTS (SELECT 1 FROM site_deletions d WHERE d.site_id = ?2)`).bind(organizationId, site.id),
+        db.prepare(`DELETE FROM sites WHERE id IN (SELECT d.site_id FROM site_deletions d)`),
+        db.prepare(`DELETE FROM site_deletions WHERE site_id = ?1`).bind(site.id),
+      ]);
+      if (results[0]!.meta.changes === 0) return { status: "not_found" };
+      return { status: "deleted", objectKeys: [...images.results, ...files.results].map((row) => row.key) };
+    },
+
     /** The draft as the public page would show it, with the services resolved now. For the preview. */
     async preview(): Promise<{ slug: string; content: SiteContent } | null> {
       const draft = await draftRow();
@@ -204,8 +301,10 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
       return { slug: draft.slug, content: resolveServices(content, new Map(services.map((s) => [s.id, s]))) };
     },
 
-    async create(raw: { slug: unknown; title: unknown; model?: unknown }, now = new Date()): Promise<CreateSiteOutcome> {
+    async create(raw: { slug: unknown; title: unknown; model?: unknown; engine?: unknown }, now = new Date()): Promise<CreateSiteOutcome> {
       const slug = slugSchema.parse(raw.slug);
+      // Which editor the site starts in. A site of the new editor still has the first one's draft behind it, so the person can go back.
+      const engine = z.enum(["native", "frappe"]).default("native").parse(raw.engine ?? undefined);
       const title = titleSchema.parse(raw.title);
       // What the site starts with: one page, or a site with its pages (page-model.ts). An unknown model is refused, not guessed.
       const model = z.enum(SITE_MODELS).default("single").parse(raw.model ?? undefined);
@@ -220,11 +319,11 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
         const results = await db.batch([
           db
             .prepare(
-              `INSERT INTO sites (id, organization_id, slug, created_by, created_at, updated_at)
-               SELECT ?3, ?1, ?4, ?2, ?5, ?5 WHERE ${writes}
+              `INSERT INTO sites (id, organization_id, slug, engine, created_by, created_at, updated_at)
+               SELECT ?3, ?1, ?4, ?6, ?2, ?5, ?5 WHERE ${writes}
                  AND NOT EXISTS (SELECT 1 FROM sites o WHERE o.organization_id = ?1)`,
             )
-            .bind(organizationId, userId, siteId, slug, stamp),
+            .bind(organizationId, userId, siteId, slug, stamp, engine),
           db
             .prepare(
               `INSERT INTO site_drafts (site_id, content, revision, updated_by, updated_at)
@@ -418,6 +517,17 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
       return result.meta.changes > 0 ? { status: "restored", revision: expectedRevision + 1 } : { status: "conflict" };
     },
   };
+}
+
+/**
+ * Which editor makes the page at `/s/<address>`, for the route that sends visitors on to the new editor's pages. No session; it says nothing but
+ * the name of the engine of an address that exists (null for any other).
+ */
+export async function siteEngineBySlug(db: D1Database, rawSlug: string): Promise<SiteEngine | null> {
+  const slug = slugSchema.safeParse(rawSlug);
+  if (!slug.success) return null;
+  const row = await db.prepare("SELECT engine FROM sites WHERE slug = ?").bind(slug.data).first<{ engine: SiteEngine }>();
+  return row?.engine ?? null;
 }
 
 /**

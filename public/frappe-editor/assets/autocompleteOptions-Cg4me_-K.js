@@ -1,0 +1,1 @@
+function e(e,t,n=20){let r=t.trim().toLowerCase();if(!r)return e.slice(0,n);let i=e.findIndex(e=>e.label.toLowerCase()===r);if(i===-1)return e.filter(e=>e.label.toLowerCase().includes(r)).slice(0,n);let a=Math.max(e.length-n,0),o=Math.min(Math.max(i-Math.floor(n/3),0),a);return e.slice(o,o+n)}export{e as t};

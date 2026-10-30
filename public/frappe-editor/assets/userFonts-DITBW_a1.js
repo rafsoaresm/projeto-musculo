@@ -1,0 +1,1 @@
+import{l as e}from"./objectSpread2-D1AHXvm0.js";import{t}from"./listResource-BDfk5FOO.js";var n=e({default:()=>r}),r=t({method:`GET`,doctype:`User Font`,fields:[`font_name`,`font_file`],cache:`userFonts`,start:0,pageLength:50,auto:!0});export{n,r as t};

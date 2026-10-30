@@ -1,0 +1,14 @@
+diff --git a/frontend/src/stores/pageStore.ts b/frontend/src/stores/pageStore.ts
+index 2c66899..40a6bbd 100644
+--- a/frontend/src/stores/pageStore.ts
++++ b/frontend/src/stores/pageStore.ts
+@@ -550,6 +550,9 @@ const usePageStore = defineStore("pageStore", {
+ 					}
+ 				});
+ 			}
++			// Embedded in another app, the published page is not at the root of the host: the app says where it is.
++			const site = (window as unknown as { __EDITOR_SITE_URL__?: string }).__EDITOR_SITE_URL__;
++			if (site && prependSlash) return route && route !== "/" ? `${site}/${String(route).replace(/^\/+/, "")}` : site;
+ 			return `${prependSlash ? "/" : ""}${route}`;
+ 		},
+ 

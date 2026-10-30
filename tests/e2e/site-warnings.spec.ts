@@ -9,6 +9,7 @@ test("warnings do not stop a publication: the page goes live with 'Publicar mesm
   const slug = `estudio-${unique}`;
 
   await page.goto("./profissional/meu-site");
+  await page.getByRole("form", { name: "Criar o meu site" }).getByRole("radio", { name: /Editor anterior/ }).check();
   await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Criar meu site" }).click();
   await expect(state(page).getByText("Fora do ar")).toBeVisible();
 

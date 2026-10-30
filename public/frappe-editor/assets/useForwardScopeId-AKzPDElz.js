@@ -1,0 +1,1 @@
+import{N as e,k as t}from"./objectWithoutProperties-C09eTCnD.js";e();function n(){var e;let n=(e=t())==null||(e=e.vnode)==null?void 0:e.scopeId;return n?{[n]:``}:{}}export{n as t};

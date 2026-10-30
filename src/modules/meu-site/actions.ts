@@ -2,7 +2,8 @@
 import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
 import { requireWorkspace } from "@/modules/auth/server";
-import { sitesFor } from "@/db/sites";
+import { getSiteMediaBucket } from "@/db/binding";
+import { sitesFor, type SiteEngine } from "@/db/sites";
 import type { PublishIssue, SiteContent } from "./contracts";
 
 /**
@@ -24,10 +25,10 @@ const CONFLICT = "Outra pessoa salvou o site depois de você abri-lo. Copie o qu
 const FORBIDDEN = "Só o proprietário ou a gestão editam e publicam o site.";
 const refresh = () => revalidatePath("/profissional", "layout");
 
-export async function createSite(slug: string, title: string, model: string = "single"): Promise<SimpleResult> {
+export async function createSite(slug: string, title: string, model: string = "single", engine: string = "native"): Promise<SimpleResult> {
   const { db, context } = await requireWorkspace();
   try {
-    const outcome = await sitesFor(db, context).create({ slug, title, model });
+    const outcome = await sitesFor(db, context).create({ slug, title, model, engine });
     if (outcome.status === "created") {
       refresh();
       return { ok: true, message: "Site criado." };
@@ -143,5 +144,50 @@ export async function changeSiteAddress(slug: string): Promise<SimpleResult> {
     return { ok: false, message };
   } catch (error) {
     return { ok: false, message: error instanceof ZodError ? "O endereço precisa ter de 3 a 40 letras minúsculas, números ou hífens (não pode ser um nome reservado)." : FAILED };
+  }
+}
+
+/** Which editor makes the page at the main address. The new one only takes it once one of its pages is published. */
+export async function setSiteEngine(engine: SiteEngine): Promise<SimpleResult> {
+  const { db, context } = await requireWorkspace();
+  if (engine !== "native" && engine !== "frappe") return { ok: false, message: FAILED };
+  try {
+    const outcome = await sitesFor(db, context).setEngine(engine);
+    if (outcome.status === "changed") {
+      refresh();
+      return { ok: true, message: engine === "frappe" ? "O endereço principal agora mostra o site do editor novo." : "O endereço principal voltou a mostrar o site do editor anterior." };
+    }
+    return {
+      ok: false,
+      message: outcome.status === "nothing_published" ? "Publique antes ao menos uma página no editor novo: sem isso o endereço não mostraria nada." : FORBIDDEN,
+    };
+  } catch {
+    return { ok: false, message: FAILED };
+  }
+}
+
+/**
+ * Deletes the whole site, so the person can start from nothing. The address is typed again to confirm, and the deletion is refused while
+ * messages from the contact form wait in the inbox (they are people's data and are dealt with first).
+ */
+export async function deleteSite(confirmation: string): Promise<SimpleResult> {
+  const { db, context } = await requireWorkspace();
+  try {
+    const outcome = await sitesFor(db, context).deleteSite(String(confirmation ?? ""));
+    if (outcome.status === "deleted") {
+      // The files go after the rows; one that stays behind belongs to no row and is reachable by nobody.
+      const bucket = await getSiteMediaBucket();
+      if (bucket) await Promise.all(outcome.objectKeys.map((key) => bucket.delete(key).catch(() => undefined)));
+      refresh();
+      return { ok: true, message: "O site foi excluído. Você pode criar outro do zero." };
+    }
+    const message = {
+      confirmation_differs: "O endereço digitado não é o do site. Nada foi excluído.",
+      inquiries_waiting: `Há ${outcome.status === "inquiries_waiting" ? outcome.count : 0} mensagem(ns) esperando na caixa de entrada de Leads. Transforme em lead ou descarte antes de excluir o site.`,
+      not_found: FORBIDDEN,
+    }[outcome.status];
+    return { ok: false, message };
+  } catch {
+    return { ok: false, message: FAILED };
   }
 }
