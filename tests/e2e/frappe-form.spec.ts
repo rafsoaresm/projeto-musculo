@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { createProfessional, localIP, newActor } from "./helpers";
+import { createProfessional, localIP, newActor, policyRefusals, trackPolicy } from "./helpers";
 
 /** What the editor asks of its server, asked the way the editor asks (same origin, with the header that marks its calls). */
 const asEditor = async (page: Page, method: string, params: Record<string, unknown>) => {
@@ -155,6 +155,7 @@ test("frappe form, from the editor itself: the form of the editor's own library,
   await expect(panel(page)).toContainText("Recebimento ligado");
 
   // ---- a page from scratch; the library ("+") has the three forms of the editor; one is dragged onto the page ----
+  await trackPolicy(page);
   await page.goto("./profissional/meu-site/editor");
   await page.getByRole("button", { name: "New", exact: true }).click();
   await page.getByText("Start from scratch").click();
@@ -179,6 +180,8 @@ test("frappe form, from the editor itself: the form of the editor's own library,
   }).toPass({ timeout: 40_000 });
   await page.getByRole("button", { name: "Publish", exact: true }).click();
   await expect.poll(async () => Number((await read()).published), { timeout: 30_000 }).toBe(1);
+  // Dragging from the library and publishing is a normal use of the editor: its content policy refused nothing.
+  expect(await policyRefusals(page)).toEqual([]);
 
   // ---- the panel reads the form of the editor's library as a working form ----
   await page.goto("./profissional/meu-site");

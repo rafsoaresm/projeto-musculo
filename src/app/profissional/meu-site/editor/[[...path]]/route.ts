@@ -3,6 +3,7 @@ import { getURLFromRedirectError } from "next/dist/client/components/redirect";
 import { requireWorkspace } from "@/modules/auth/server";
 import { sitesFor } from "@/db/sites";
 import { canEditSite } from "@/modules/meu-site/access";
+import { editorPolicy, withNonce } from "@/modules/frappe-editor/policy";
 import { EDITOR_SHELL } from "@/modules/frappe-editor/shell.generated";
 
 export const dynamic = "force-dynamic";
@@ -45,6 +46,8 @@ export async function GET() {
   }
   if (!canEditSite(role)) return new Response("Só o proprietário ou a gestão editam o site.", { status: 403, headers: { ...HEADERS, "Content-Type": "text/plain; charset=utf-8" } });
   // The address of the site (letters, digits and hyphens: it is checked when it is made) lets the editor open the published page at `/site/<address>`.
+  const nonce = crypto.randomUUID().replace(/-/g, "");
   const shell = slug ? EDITOR_SHELL.replace("<head>", `<head>\n<script>window.__EDITOR_SITE__ = ${JSON.stringify(slug)};</script>`) : EDITOR_SHELL;
-  return new Response(shell, { headers: HEADERS });
+  // Every inline script of the page (the one above and the shell's own) carries the nonce of this answer; nothing else inline runs.
+  return new Response(withNonce(shell, nonce), { headers: { ...HEADERS, "Content-Security-Policy": editorPolicy(nonce) } });
 }

@@ -1,0 +1,106 @@
+diff --git a/frontend/src/components/BlockHTML.vue b/frontend/src/components/BlockHTML.vue
+index c456cd5..9a550f9 100644
+--- a/frontend/src/components/BlockHTML.vue
++++ b/frontend/src/components/BlockHTML.vue
+@@ -1,15 +1,30 @@
+ <template>
+ 	<div
++		v-if="framed"
+ 		ref="component"
+ 		:class="{
+ 			'!relative': !block.getStyle('position') || block.getStyle('position') === 'static',
+-		}"
+-		v-html="html"></div>
++		}">
++		<div class="absolute top-0 bottom-0 right-0 left-0"></div>
++		<!-- Free HTML is never put into the page of the editor: it is shown in a frame that runs nothing and has no way back to the app. -->
++		<iframe
++			sandbox=""
++			referrerpolicy="no-referrer"
++			title="HTML"
++			:srcdoc="framed"
++			style="border: 0; display: block; width: 100%; height: 100%; background: transparent; pointer-events: none"></iframe>
++	</div>
++	<div
++		v-else
++		ref="component"
++		:class="{
++			'!relative': !block.getStyle('position') || block.getStyle('position') === 'static',
++		}"></div>
+ </template>
+ <script setup lang="ts">
+ import type Block from "@/block";
+ import { BlockValueResolver } from "@/utils/blockValueResolver";
+-import { computed, ref } from "vue";
++import { computed, onMounted, ref, watch } from "vue";
+ 
+ const component = ref<HTMLElement | null>(null);
+ const props = defineProps<{
+@@ -26,18 +41,60 @@ const valueResolver = new BlockValueResolver({
+ 	defaultProps: () => props.defaultProps ?? null,
+ });
+ 
+-const html = computed(() => {
+-	let content = props.block.getInnerHTML();
++const content = computed(() => {
++	let html = props.block.getInnerHTML();
+ 	const dynamicContent = valueResolver.applyDynamicValues("key", { innerHTML: null }).innerHTML;
+ 	if (dynamicContent) {
+-		content = dynamicContent;
++		html = dynamicContent;
+ 	}
+-	return `
+-		<div class="absolute top-0 bottom-0 right-0 left-0"></div>
+-		${content}
+-	`;
++	return html || "";
+ });
+ 
++// A drawing (logo, icon) is the only HTML that goes into the page itself, and only after what could run or load from outside is taken out.
++// Anything else is shown in a frame with `sandbox=""`: no script, no forms, and an origin of its own that is not the app's.
++const drawing = computed(() => props.block.isInlineSVG());
++const framed = computed(() =>
++	drawing.value
++		? ""
++		: `<!DOCTYPE html><html><head><meta charset="utf-8"><style>html,body{margin:0}</style></head><body>${content.value}</body></html>`,
++);
++
++const REMOVED = new Set(["script", "foreignobject", "iframe", "frame", "object", "embed", "style", "link", "meta", "base", "animate", "animatetransform", "animatemotion", "set"]);
++const IMAGE_DATA = /^data:image\/(png|jpe?g|gif|webp|avif);/;
++
++/** The nodes of a drawing, parsed where nothing runs, with the elements and attributes that could run or load from outside left out. */
++function drawingNodes(markup: string): Node[] {
++	const template = document.createElement("template");
++	template.innerHTML = markup;
++	template.content.querySelectorAll("*").forEach((element) => {
++		if (REMOVED.has(element.localName.toLowerCase())) {
++			element.remove();
++			return;
++		}
++		for (const attribute of Array.from(element.attributes)) {
++			const name = attribute.name.toLowerCase();
++			const value = attribute.value.trim().toLowerCase();
++			const link = name === "href" || name === "xlink:href";
++			if (name.startsWith("on") || name === "src" || name === "srcdoc" || name === "formaction" || (link && !(value.startsWith("#") || IMAGE_DATA.test(value)))) {
++				element.removeAttribute(attribute.name);
++			}
++		}
++	});
++	return Array.from(template.content.childNodes);
++}
++
++function fill() {
++	const element = component.value;
++	if (!element || framed.value) return;
++	const overlay = document.createElement("div");
++	overlay.className = "absolute top-0 bottom-0 right-0 left-0";
++	// The nodes themselves are moved in (never written out as text and parsed again), so what was checked is what is shown.
++	element.replaceChildren(overlay, ...drawingNodes(content.value));
++}
++
++onMounted(fill);
++watch([content, framed], fill, { flush: "post" });
++
+ defineExpose({
+ 	component,
+ });
