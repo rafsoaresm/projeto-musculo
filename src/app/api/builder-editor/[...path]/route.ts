@@ -58,7 +58,7 @@ async function answer(request: Request, { params }: { params: Promise<{ path: st
     const result = await handleUpload(request, {
       add: async (bytes, name) => builderFilesFor(session.db, await getSiteMediaBucket(), session.context).add(bytes, name),
       slug: await sitesFor(session.db, session.context).slug(),
-      mount: mountOf(request.url),
+      mount: mountOf(request),
     });
     return result.ok ? Response.json({ message: result.message }, { headers: NO_STORE }) : failure(result.status, result.excType, result.message);
   }
@@ -83,7 +83,7 @@ async function answer(request: Request, { params }: { params: Promise<{ path: st
       now: () => new Date(),
       hash,
       siteReady: async () => (await sitesFor(session.db, session.context).slug()) !== null,
-      builtin: (doctype: string) => (doctype === "Block Template" ? standardTemplates(`${mountOf(request.url)}/frappe-editor/`) : []),
+      builtin: (doctype: string) => (doctype === "Block Template" ? standardTemplates(`${mountOf(request)}/frappe-editor/`) : []),
     };
     return Response.json(await call(env, method, params_), { headers: NO_STORE });
   } catch (error) {

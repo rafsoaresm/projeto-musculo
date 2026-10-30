@@ -23,9 +23,19 @@ export type UploadResult =
 
 const refuse = (status: number, excType: string, message: string): UploadResult => ({ ok: false, status, excType, message });
 
-/** The mount path an address of this app was asked under: everything before the editor's own address. */
-export function mountOf(url: string): string {
-  const path = new URL(url).pathname;
+/** What a mount path looks like: nothing (the root), or a few segments of letters, digits, hyphens and underscores. */
+const MOUNT = /^(?:\/[A-Za-z0-9_-]{1,40}){0,4}$/;
+
+/**
+ * The mount path of the app (`/app`, `/treinador` or nothing), to write the addresses of its own files for the editor. The editor says it itself
+ * (`X-Editor-Mount`, from the address it was loaded at): the platform may hand the app a request without the mount path, so the address of the
+ * request cannot be trusted to have it. What the header says must look like a mount path and is only ever used to write addresses back to the
+ * same editor; without it, the part of the address before the editor's own is used.
+ */
+export function mountOf(request: Request): string {
+  const said = request.headers.get("x-editor-mount");
+  if (said !== null && MOUNT.test(said)) return said;
+  const path = new URL(request.url).pathname;
   const at = path.indexOf("/api/builder-editor/");
   return at > 0 ? path.slice(0, at) : "";
 }

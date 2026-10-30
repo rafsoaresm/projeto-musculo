@@ -158,10 +158,17 @@ describe("the upload of the editor's file picker", () => {
     const result = await handleUpload(post(form({ file: new Blob([png()]), is_private: "0", folder: "Home/Builder Uploads" })), deps());
     expect(result).toEqual({ ok: true, message: { name: "0b9f2f7a-3c1e-4d55-9a7e-6f5d4c3b2a10", file_name: "foto.png", file_url: "/treinador/s/studio-a/m/0b9f2f7a-3c1e-4d55-9a7e-6f5d4c3b2a10", file_size: 77, is_private: 0, folder: "Home/Builder Uploads" } });
   });
-  it("knows the mount path from the address it was asked at", () => {
-    expect(mountOf("https://h.test/treinador/api/builder-editor/api/method/x")).toBe("/treinador");
-    expect(mountOf("https://h.test/app/api/builder-editor/api/method/x")).toBe("/app");
-    expect(mountOf("https://h.test/api/builder-editor/api/method/x")).toBe("");
+  it("knows the mount path from what the editor says, and otherwise from the address it was asked at", () => {
+    const asked = (path: string, headers: Record<string, string> = {}) => new Request(`https://h.test${path}/api/builder-editor/api/method/x`, { headers });
+    expect(mountOf(asked("/treinador"))).toBe("/treinador");
+    expect(mountOf(asked("/app"))).toBe("/app");
+    expect(mountOf(asked(""))).toBe("");
+    // the platform may take the mount path off the address the app sees: the editor says where it is
+    expect(mountOf(asked("", { "x-editor-mount": "/treinador" }))).toBe("/treinador");
+    expect(mountOf(asked("", { "x-editor-mount": "" }))).toBe("");
+    expect(mountOf(asked("/treinador", { "x-editor-mount": "/app" }))).toBe("/app");
+    // what is not a mount path is not used
+    for (const bad of ["javascript:alert(1)", "//evil.test", "/a/../b", '/"x', "/a b", "x", "/".repeat(3), "/a/b/c/d/e", `/${"x".repeat(41)}`]) expect(mountOf(asked("/treinador", { "x-editor-mount": bad })), bad).toBe("/treinador");
     expect([...UPLOAD_METHODS].sort()).toEqual(["builder.api.upload_builder_asset", "upload_file"]);
   });
   it("says in words what is wrong: not a form, no file, too large, no address for the site, a file that cannot be drawn, the limit, no storage, no right", async () => {

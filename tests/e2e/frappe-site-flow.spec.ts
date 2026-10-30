@@ -36,10 +36,10 @@ test("meu site, new editor: a site born in it, an image sent from the editor, th
   const endpoint = "./api/builder-editor/api/method/builder.api.upload_builder_asset";
   const rejected = await page.request.post(endpoint, { multipart: { file: { name: "x.png", mimeType: "image/png", buffer: png() } } });
   expect(rejected.status(), "without the mark of the editor").toBe(400);
-  const text = await page.request.post(endpoint, { headers: { "x-site-request": "1" }, multipart: { file: { name: "nota.png", mimeType: "image/png", buffer: Buffer.from("<svg onload=alert(1)>") } } });
+  const text = await page.request.post(endpoint, { headers: { "x-site-request": "1", "x-editor-mount": mount }, multipart: { file: { name: "nota.png", mimeType: "image/png", buffer: Buffer.from("<svg onload=alert(1)>") } } });
   expect(text.status()).toBe(417);
   expect(JSON.stringify(await text.json())).toContain("JPEG ou PNG");
-  const sent = await page.request.post(endpoint, { headers: { "x-site-request": "1" }, multipart: { file: { name: "Treino da Marina.png", mimeType: "image/png", buffer: png(80, 60) }, is_private: "0", folder: "Home/Builder Uploads" } });
+  const sent = await page.request.post(endpoint, { headers: { "x-site-request": "1", "x-editor-mount": mount }, multipart: { file: { name: "Treino da Marina.png", mimeType: "image/png", buffer: png(80, 60) }, is_private: "0", folder: "Home/Builder Uploads" } });
   expect(sent.status()).toBe(200);
   const file = ((await sent.json()) as { message: { name: string; file_url: string; file_name: string } }).message;
   expect(file.file_url).toBe(`${mount}/s/${slug}/m/${file.name}`);

@@ -1,16 +1,23 @@
 --- a/frontend/src/setupFrappeUIResource.ts
 +++ b/frontend/src/setupFrappeUIResource.ts
-@@ -7,6 +7,14 @@
+@@ -5,8 +5,19 @@
+ const embeddedApi = (window as unknown as { __EDITOR_API__?: string }).__EDITOR_API__;
+ if (embeddedApi) {
  	setConfig("requestBaseUrl", embeddedApi);
- 	// the host app only accepts calls that carry this header: a form on another site cannot send it
- 	setConfig("requestHeaders", { "X-Site-Request": "1" });
-+	// the file uploader of frappe-ui posts to a root-relative address and sets no header of its own: its calls go to the app's address, with the mark
+-	// the host app only accepts calls that carry this header: a form on another site cannot send it
+-	setConfig("requestHeaders", { "X-Site-Request": "1" });
++	// where the host app is mounted (the part of its address before /api/builder-editor), so that it can write addresses of its own files
++	const mount = embeddedApi.replace(/\/api\/builder-editor$/, "");
++	// the host app only accepts calls that carry the first header: a form on another site cannot send it
++	setConfig("requestHeaders", { "X-Site-Request": "1", "X-Editor-Mount": mount });
++	// the file uploader of frappe-ui posts to a root-relative address and sets no header of its own: its calls go to the app's address, with the marks
 +	const open = XMLHttpRequest.prototype.open;
 +	XMLHttpRequest.prototype.open = function (this: XMLHttpRequest, method: string, url: string | URL, ...rest: unknown[]) {
 +		const address = String(url);
 +		if (!address.startsWith("/api/method/")) return (open as (...args: unknown[]) => void).call(this, method, url, ...rest);
 +		(open as (...args: unknown[]) => void).call(this, method, embeddedApi + address, ...rest);
 +		this.setRequestHeader("X-Site-Request", "1");
++		this.setRequestHeader("X-Editor-Mount", mount);
 +	} as typeof XMLHttpRequest.prototype.open;
  }
  import { editorDemo } from "@/utils/editorDemo";
