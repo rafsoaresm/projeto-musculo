@@ -54,6 +54,7 @@ export async function startEditor(page: Page, name = "Marina Editor") {
   const unique = crypto.randomUUID().slice(0, 8);
   await createProfessional(page, `Estúdio ${unique}`, name);
   await page.goto("./profissional/meu-site");
+  await page.getByRole("form", { name: "Criar o meu site" }).getByRole("radio", { name: /Editor anterior/ }).check();
   await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Criar meu site" }).click();
   await expect(state(page).getByText("Fora do ar")).toBeVisible();
   await openEditor(page);

@@ -47,6 +47,7 @@ test("images: sent in the editor, shown on the page, public only through the pub
   await createProfessional(page, `Imagens ${unique}`, "Marina Imagens");
   const slug = `imagens-${unique}`;
   await page.goto("./profissional/meu-site");
+  await page.getByRole("form", { name: "Criar o meu site" }).getByRole("radio", { name: /Editor anterior/ }).check();
   await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Criar meu site" }).click();
   await expect(state(page).getByText("Fora do ar")).toBeVisible();
   await state(page).getByRole("button", { name: "Abrir o editor visual" }).click();
