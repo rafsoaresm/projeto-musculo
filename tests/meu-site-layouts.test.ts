@@ -58,6 +58,11 @@ describe("the layouts of the library", () => {
       }
     }
   });
+  it("keep a little air above and below the bands that have a color of their own, so two of them (or a band and a card) do not touch", () => {
+    for (const key of ["layout-numbers", "layout-link-band", "layout-final-band"]) {
+      expect(ownStyle(make(key), "desktop")?.margin, key).toEqual({ top: "24px", right: "0px", bottom: "24px", left: "0px" });
+    }
+  });
   it("invent no text: the only words in them are the text of the contact buttons and of the link that reads on", () => {
     const allowed = new Set(["Falar comigo", "Saiba mais", "Ler mais"]);
     for (const key of LAYOUTS) for (const text of texts(make(key))) expect(allowed.has(text), `${key}: ${text}`).toBe(true);
