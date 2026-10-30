@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { createProfessional, localIP, newActor } from "./helpers";
-import { closeEditor, editor, inspector, library, openEditor, panel, stage, state } from "./site-helpers";
+import { addAtEnd, closeEditor, editor, inspector, layerNames, library, openEditor, panel, stage, state } from "./site-helpers";
 
 const list = (page: Page) => library(page).getByRole("list", { name: "Páginas do site" });
 const rowNames = (page: Page) => list(page).locator(".ve-layer strong").allInnerTexts();
@@ -160,20 +160,37 @@ test("layout models: four models as cards with a drawing; a site of layouts star
 
   // ---- the shape of a frame is chosen in the panel and is the shape that is drawn ----
   const first = desktop.locator("figure.site-image").first();
+  // The frame itself, not the figure (which also holds the line of the caption).
   const shape = async () => {
-    const box = (await first.boundingBox())!;
+    const box = (await first.locator(".site-image-empty").boundingBox())!;
     return box.width / box.height;
   };
   expect(await shape()).toBeCloseTo(4 / 5, 1);
   await first.locator(".site-image-empty").click();
   await panel(page, "Propriedades");
-  const ratio = inspector(page).getByLabel("Proporção", { exact: true });
+  const ratio = inspector(page).locator("label", { hasText: /^Proporção/ }).locator("select");
   await expect(ratio).toHaveValue("4:5");
   await ratio.selectOption("1:1");
   expect(await shape()).toBeCloseTo(1, 1);
   await ratio.selectOption("16:9");
   expect(await shape()).toBeCloseTo(16 / 9, 1);
   await ratio.selectOption("4:5");
+  // The corners of the frame are the radius written in its style (24px here), and a stand-in text takes the color of the text it stands for, so it
+  // can be read on the band or the card that has a color of its own (white on the green band).
+  expect(await first.locator(".site-image-empty").evaluate((node) => getComputedStyle(node).borderRadius)).toBe("24px");
+  const standIn = await desktop.locator(".site-editable:empty").last().evaluate((node) => ({ own: getComputedStyle(node).color, before: getComputedStyle(node, "::before").color }));
+  expect(standIn.before).toBe(standIn.own);
+  expect(standIn.own).toBe("rgb(255, 255, 255)");
+
+  // ---- the layouts are in the library, in a group of their own, and one added to the page is a section of containers and elements ----
+  await panel(page, "Blocos");
+  await library(page).getByRole("button", { name: "Blocos", exact: true }).click();
+  await expect(library(page).getByRole("heading", { name: "Layouts" })).toBeVisible();
+  for (const label of ["Destaque dividido", "Destaque com imagem à esquerda", "Faixa de números", "Faixa de links", "Cartões coloridos", "Sobre em painéis", "Chamada final em faixa"]) {
+    await expect(library(page).getByRole("button", { name: `Acrescentar ${label}`, exact: true }), label).toBeVisible();
+  }
+  await addAtEnd(page, "Faixa de links");
+  expect(await layerNames(page)).toContain("Faixa de links");
 
   // ---- published with the warnings: the empty frames are not on the page, and the page does not go to the side at any width ----
   await save(page);

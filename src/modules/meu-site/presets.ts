@@ -110,7 +110,7 @@ const styled = <T extends SiteNode>(node: T, style: Style, sizes: { tablet?: Sty
   ...(sizes.mobile ? { styleMobile: sizes.mobile } : null),
 });
 /** A picture in a frame of a shape, cropped at the centre to fill it. */
-const framed = (ratio: "1:1" | "4:5" | "3:4" | "4:3" | "3:2" | "16:9", style: Style = {}): SiteNode => ({ ...image("full", { radius: "24px", overflow: "hidden", ...style }), ratio }) as SiteNode;
+const framed = (ratio: "1:1" | "4:5" | "3:4" | "4:3" | "3:2" | "16:9", style: Style = {}): SiteNode => ({ ...image("full", { radius: "24px", ...style }), ratio }) as SiteNode;
 /** A small line above a title: capital letters, spaced, in the color of the accent. */
 const KICKER: Style = { fontSize: "13px", fontWeight: 700, letterSpacing: "2px", textTransform: "uppercase", color: "accent" };
 const bigTitle = (size: string, sizes: { tablet?: string; mobile?: string } = {}): SiteNode =>
