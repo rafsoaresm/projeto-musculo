@@ -111,7 +111,11 @@ A V4 diz que substitui as versões anteriores, mas estes pontos desfazem decisõ
   - A13: entrada de datas depende do navegador.
 - **P3:** T10 sem filtro de período; T15 sem Limpar filtros; T16 sem o ID de origem na cópia; T21 sem atalho "Cadastrar serviço" com retorno ao lead.
 
-## 6. Ordem sugerida
+## 6. Andamento
+
+- **0.53 — Entrega 0** (navegação e tokens): feita localmente. NAV-01 a NAV-05 e NAV-07 cobertos, NAV-03 com teste unitário e de navegador, DS-01/02 com o kit oficial. Faltam o estado "carregando" dos botões (DS-05), o zoom de 200%, o leitor de tela e a comparação com o Figma.
+
+## 7. Ordem sugerida
 
 1. **Já, sem depender de decisão:**
    - Defeitos 1 a 4 de Meu Site: prévia do Frappe, status público comum, confirmação de "Tirar do ar", um controle de mensagens só.

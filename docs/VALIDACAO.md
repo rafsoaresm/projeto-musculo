@@ -2,6 +2,25 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.53: Entrega 0 do handoff V4 (navegação e design system)
+
+**Sem migration.** O que o handoff V4 manda fazer antes de mexer nas telas.
+
+- **Menu do profissional** (V4 seção 5, NAV-01 a NAV-05): três grupos, PRINCIPAL (Visão geral, Alunos, Avaliações, Planos e treinos, Biblioteca de exercícios), COMERCIAL (Meu Site, Leads, Serviços) e CONTA E EQUIPE (Configurações, Minha conta), nessa ordem e com esses nomes, num mapa único (`src/modules/platform/surfaces.ts`). "Prescrição" virou **Planos e treinos**, com `/profissional/planos` levando ao mesmo lugar. "Periodização" virou **Simulador de ciclos**, aberto por um botão dentro de Planos e treinos. **Fontes técnicas** saiu do menu e continua no mesmo endereço, como "ainda não disponível". Cabeçalho `TRAINER / RX · WORKSPACE PROFISSIONAL`, com o nome do espaço na barra superior.
+- **Item ativo pela rota** (NAV-03): função pura `activeSlug`, em que vence a correspondência mais específica. O plano de um aluno acende Planos e treinos, o resto do aluno acende Alunos (a avaliação aberta dentro do aluno também, escolha registrada em `docs/DESIGN-SYSTEM.md`), e o simulador acende Planos e treinos. Continua certo depois de recarregar e de voltar.
+- **Celular** (5.1, NAV-07): o profissional não tem mais barra inferior; o menu abre pelo botão **Menu** da barra superior, numa gaveta lateral com fundo escurecido, **Fechar**, foco preso dentro, Escape e toque fora, e o foco volta ao botão. Gestor e aluno mantêm a barra inferior, com a mesma gaveta.
+- **Tokens** (seção 6, DS-01/02): o kit do DesignSystems.one (`designsystems-tokens.zip`) entrou **sem edição** em `src/styles/designsystems-tokens.css`, e `src/styles/tokens.css` só aponta para ele. Exceções nomeadas:
+  - botão principal em `primary-700` `#0078B8` (4,80:1 com branco; o `#0093E0` do kit dá 3,36:1);
+  - texto de situação no degrau `-800`;
+  - item ativo em `brand-subtle` com texto `primary-800` e barra lateral.
+
+  Figtree no corpo e Roboto nos títulos, servidas pelo app. Base de 16 px; os tamanhos de letra do CSS da aplicação passaram a ser degraus da escala do kit. A página pública dos sites e o editor visual mantêm a tipografia escolhida pelo profissional. O modo escuro do kit não foi ligado (DS-07).
+- **Verificado localmente:**
+  - `npm run check`: 1455 testes em 87 arquivos.
+  - Navegador na montagem raiz: `navigation-v4` (os 10 destinos, os grupos que não são links, o item ativo em 13 endereços, recarregar e voltar, `/planos`, o simulador; a gaveta em 360, 390, 430 e 768 px com foco, Escape, Fechar, toque fora e navegação), `responsive`, `planner`, `demo` e `leads`. 15 passaram e 2 foram pulados de propósito. O `planner` no celular falhou uma vez porque procurava o link na barra inferior que saiu; foi corrigido e passou.
+  - Capturas em 1280 e 390 px (painel, aluno, planos, Meu Site, gaveta aberta) conferidas.
+- **Não verificado:** comparação lado a lado com o Figma (o arquivo não está acessível daqui); zoom de 200% e leitor de tela; 1440 px só sem rolagem horizontal, sem captura conferida; a montagem `/treinador` e a suíte completa ficam para o CI. **Fica para depois:** o estado "carregando" padronizado dos botões (DS-05), cabeçalho de contexto, breadcrumb e etapas (Entregas 2 e 3).
+
 ## Fatia 0.52: o código livre do editor novo, isolado
 
 **Migration 0029** (`sites.code_external_open`, 0 por padrão; aditiva). O bloco "HTML" do editor (e os de incorporar, como um `iframe`) é o único lugar onde se escreve HTML, estilo e JavaScript livres, e na página pública ele **não faz parte da página**: vira um `<iframe sandbox="allow-scripts">` (nunca `allow-same-origin`) que mostra um documento servido por `/site/<endereço>/m/codigo/<página>/<n>`. O que foi decidido com o usuário: o CSS e as cores são livres, e HTML e JavaScript livres só dentro de um bloco isolado.
