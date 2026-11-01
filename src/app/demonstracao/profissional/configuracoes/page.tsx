@@ -9,7 +9,7 @@ export default async function DemoSettings() {
   return (
     <>
       <PageHeading
-        eyebrow="ESPAÇO"
+        eyebrow="CONTA E EQUIPE"
         title="Configurações"
         description="Os nomes que os seus alunos veem e quem tem acesso ao espaço."
         aside={<Pill tone="warning">Prévia · sem espaço real</Pill>}

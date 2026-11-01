@@ -89,12 +89,21 @@ export async function noHorizontalOverflow(page: Page) {
   expect(offenders).toEqual([]);
 }
 
-/** Desktop has "Sair" in the top bar; on a phone it lives in the menu sheet. */
+/**
+ * Desktop has "Sair" in the top bar; on a phone it lives in the menu drawer. The drawer closes when the address changes (a navigation that
+ * was still finishing when it opened closes it again), so it is opened again until "Sair" is clicked inside it.
+ */
 export async function signOut(page: Page) {
   const button = page.getByRole("button", { name: "Sair", exact: true });
-  if (!(await button.first().isVisible()))
-    await page.getByRole("button", { name: "Menu" }).click();
-  await button.first().click();
+  if (await button.first().isVisible()) {
+    await button.first().click();
+    return;
+  }
+  await expect(async () => {
+    const drawer = page.getByRole("dialog");
+    if (!(await drawer.isVisible())) await page.getByRole("button", { name: "Menu" }).click();
+    await drawer.getByRole("button", { name: "Sair", exact: true }).click({ timeout: 2_000 });
+  }).toPass({ timeout: 20_000 });
 }
 
 /** Joining the tool is where the terms are accepted, once: the professional when creating the space. */

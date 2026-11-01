@@ -30,12 +30,16 @@ test("entry page, navigation and responsive layout render without application er
   ).toBeVisible();
 
   await createProfessional(page, "Estúdio navegação");
+  // On a phone the menu is in the drawer of the top bar (handoff V4, 5.1).
+  const menuButton = page.getByRole("button", { name: "Menu" });
+  if (await menuButton.isVisible()) await menuButton.click();
   await expect(
     page.getByRole("link", { name: "Visão geral", exact: true }),
   ).toHaveAttribute("aria-current", "page");
+  if (await menuButton.isVisible()) await page.keyboard.press("Escape");
   await noHorizontalOverflow(page);
   await page.goto("./profissional/periodizacao");
-  await expect(page.getByRole("heading", { name: "Periodização" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Simulador de ciclos" })).toBeVisible();
   // A module that is in the structure but not built says so, honestly.
   await page.goto("./profissional/fontes");
   await expect(page.getByRole("heading", { name: "Fontes técnicas" })).toBeVisible();

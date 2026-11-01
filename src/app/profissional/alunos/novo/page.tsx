@@ -10,7 +10,7 @@ export default async function NewStudent() {
   await requireWorkspace();
   return (
     <section className="account-card">
-      <p className="eyebrow">ATENDIMENTO</p>
+      <p className="eyebrow">ALUNOS</p>
       <h1>Conheça seu próximo aluno.</h1>
       <StudentForm />
       <Link className="account-link" href="/profissional/alunos">

@@ -1,8 +1,8 @@
 import { test, expect } from "@playwright/test";
 import { addStudent, createProfessional, localIP, noHorizontalOverflow } from "./helpers";
 
-// The screens of the app on a narrow phone (360), a wide phone (390) and a tablet (768): nothing sticks out to the side, and the five tabs of the bottom bar
-// show their names whole. The scenarios of each module look at their own screens in detail; this one only watches that none of them stops fitting.
+// The screens of the app on a narrow phone (360), a wide phone (390) and a tablet (768): nothing sticks out to the side, and the menu opens from the top
+// bar (handoff V4, section 5.1: no bottom bar for the professional). The scenarios of each module look at their own screens in detail.
 const SCREENS = [
   "./profissional",
   "./profissional/alunos",
@@ -16,7 +16,7 @@ const SCREENS = [
   "./profissional/configuracoes",
 ];
 
-test("the screens of the professional fit narrow windows, and the bottom bar names its tabs whole", async ({ page }, testInfo) => {
+test("the screens of the professional fit narrow windows, and the menu opens from the top bar", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "The window is set by the scenario itself.");
   test.setTimeout(240_000);
   await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
@@ -30,8 +30,7 @@ test("the screens of the professional fit narrow windows, and the bottom bar nam
       await noHorizontalOverflow(page);
     }
     await page.goto("./profissional");
-    await expect(page.locator(".mobile-nav")).toBeVisible();
-    const clipped = await page.evaluate(() => [...document.querySelectorAll(".mobile-nav span")].filter((el) => el.scrollWidth > el.clientWidth).map((el) => el.textContent));
-    expect(clipped, `the tabs at ${width}px`).toEqual([]);
+    await expect(page.locator(".mobile-nav")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Menu" })).toBeVisible();
   }
 });

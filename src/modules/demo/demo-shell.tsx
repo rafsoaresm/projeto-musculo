@@ -33,6 +33,7 @@ export async function DemoShell({
       groups={demoNavigation(surface)}
       areas={demoAreas(surface)}
       userLabel="Demonstração"
+      workspace={surface === "profissional"}
     >
       {children}
     </RoleShell>

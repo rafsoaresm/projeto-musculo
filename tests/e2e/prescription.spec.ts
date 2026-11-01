@@ -127,9 +127,9 @@ test("a professional prescribes by hand, reorders, copies and revises without lo
   await page.goto(revisionURL);
   await expect(workout(page, "A").getByText("Meu exercício")).toBeVisible();
 
-  // The Prescrição screen lists the newest revision of the plan and what is still pending.
+  // The "Planos e treinos" screen lists the newest revision of the plan and what is still pending.
   await page.goto("./profissional/prescricao");
-  await expect(page.getByRole("heading", { name: "Prescrição", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Planos e treinos", level: 1 })).toBeVisible();
   const row = page.locator("tbody tr", { hasText: "Ciclo com exercícios" });
   await expect(row).toContainText("Aluno da prescrição");
   await expect(row.getByText("Rascunho", { exact: true })).toBeVisible();

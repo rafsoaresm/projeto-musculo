@@ -9,7 +9,7 @@ export default async function DemoLeads() {
   return (
     <>
       <PageHeading
-        eyebrow="MARKETING E CAPTAÇÃO"
+        eyebrow="COMERCIAL"
         title="Leads"
         description="Quem se interessou pelo seu trabalho e ainda não é aluno."
         aside={<Pill tone="warning">Prévia · sem espaço real</Pill>}

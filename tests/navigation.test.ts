@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   SURFACE_ORDER,
   SURFACES,
+  activeSlug,
   findPlanned,
   navigationFor,
 } from "@/modules/platform/surfaces";
@@ -42,23 +43,52 @@ describe("navigation by area (handoff V2, section 3)", () => {
       }
     },
   );
-  it("lists the V2 menu for the professional area", () => {
-    const labels = navigationFor("profissional")
-      .flatMap((g) => g.items)
-      .map((i) => i.label);
-    expect(labels).toEqual(
-      expect.arrayContaining([
-        "Alunos",
-        "Avaliações",
-        "Periodização",
-        "Prescrição",
-        "Biblioteca de exercícios",
-        "Fontes técnicas",
-        "Meu Site",
-        "Leads",
-        "Configurações",
-      ]),
-    );
+  it("gives the professional the V4 menu: three groups, ten destinations, in that order and with those names", () => {
+    expect(navigationFor("profissional").map((group) => [group.label, group.items.map((item) => item.label)])).toEqual([
+      ["PRINCIPAL", ["Visão geral", "Alunos", "Avaliações", "Planos e treinos", "Biblioteca de exercícios"]],
+      ["COMERCIAL", ["Meu Site", "Leads", "Serviços"]],
+      ["CONTA E EQUIPE", ["Configurações", "Minha conta"]],
+    ]);
+    // Never main items (V4 NAV-04); the simulator and the technical sources stay reachable by their addresses.
+    const labels = navigationFor("profissional").flatMap((g) => g.items).map((i) => i.label);
+    for (const gone of ["Periodização", "Prescrição", "Fontes técnicas", "Ferramentas", "Acompanhamento", "Serviços / Site"]) expect(labels).not.toContain(gone);
+    expect(findPlanned("profissional", "fontes")?.label).toBe("Fontes técnicas");
+  });
+  it("lights the one item a page belongs to, from its address alone (V4 NAV-03 and the table of section 5)", () => {
+    const groups = navigationFor("profissional");
+    const cases: Array<[string, string | null]> = [
+      ["", ""],
+      ["alunos", "alunos"],
+      ["alunos/novo", "alunos"],
+      ["alunos/7", "alunos"],
+      ["alunos/7/ficha", "alunos"],
+      ["alunos/7/evolucao", "alunos"],
+      ["alunos/7/avaliacoes", "alunos"], // inside a student, the student is the ancestor (the choice the V4 asks to document)
+      ["alunos/7/avaliacoes/3", "alunos"],
+      ["alunos/7/planos/novo", "prescricao"],
+      ["alunos/7/planos/2/5", "prescricao"],
+      ["avaliacoes", "avaliacoes"],
+      ["prescricao", "prescricao"],
+      ["planos", "prescricao"],
+      ["periodizacao", "prescricao"],
+      ["biblioteca", "biblioteca"],
+      ["biblioteca/abc", "biblioteca"],
+      ["meu-site", "meu-site"],
+      ["meu-site/editor/page/x", "meu-site"],
+      ["leads", "leads"],
+      ["leads/mensagens", "leads"],
+      ["leads/novo", "leads"],
+      ["servicos", "servicos"],
+      ["configuracoes", "configuracoes"],
+      ["conta", "conta"],
+      ["fontes", null],
+      ["alunosx", null],
+      ["nao-existe", null],
+    ];
+    for (const [path, slug] of cases) expect(activeSlug(groups, path), path).toBe(slug);
+    // The manager's and the student's homes match only themselves.
+    expect(activeSlug(navigationFor("aluno"), "treino/1")).toBe("treino");
+    expect(activeSlug(navigationFor("gestor"), "")).toBe("");
   });
   it("only offers a switcher to people with more than one area", () => {
     expect(areaLinks(["aluno"], "aluno")).toEqual([]);

@@ -9,7 +9,7 @@ export default async function DemoSite() {
   return (
     <>
       <PageHeading
-        eyebrow="MARKETING E CAPTAÇÃO"
+        eyebrow="COMERCIAL"
         title="Meu Site"
         description="A página pública do seu trabalho."
         aside={<Pill tone="warning">Prévia · sem espaço real</Pill>}

@@ -56,6 +56,7 @@ test("account, organization and first student persist across logout with tenant 
   await other.context.close();
 
   await page.getByRole("link", { name: "Voltar aos alunos" }).click();
+  await expect(page).toHaveURL(/\/profissional\/alunos$/);
   await signOut(page);
   await expect(
     page.getByRole("heading", { name: "Bom ter você de volta." }),

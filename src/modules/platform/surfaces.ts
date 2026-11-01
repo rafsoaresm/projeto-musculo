@@ -1,7 +1,8 @@
 /**
- * The three areas of the product and their navigation (handoff V2, section 3).
- * Pure data: no React, no database. A navigation entry marked "planned" is
- * rendered as an honest placeholder; it never pretends to work.
+ * The three areas of the product and their navigation. The professional's menu is the contract of the V4 handoff (section 5): three groups
+ * (PRINCIPAL, COMERCIAL, CONTA E EQUIPE), ten destinations, in that order and with those names; the active item comes from the route (see
+ * `activeSlug`), never from the last click. The manager and the student keep their own menus.
+ * Pure data: no React, no database. A navigation entry marked "planned" is rendered as an honest placeholder; it never pretends to work.
  */
 export type SurfaceId = "gestor" | "profissional" | "aluno";
 
@@ -49,6 +50,11 @@ export interface NavItem {
   planned?: PlannedInfo;
   /** Replaces the default "Em breve" tag, e.g. "Prévia" in the demonstration. */
   tag?: string;
+  /**
+   * Other places in the area that belong to this item, relative to the area (a segment `*` is any one segment): e.g. the plan of a student,
+   * `alunos/*\/planos`, belongs to "Planos e treinos" even though its address starts with `alunos`. The most specific match wins.
+   */
+  also?: string[];
 }
 export interface NavGroup {
   label: string;
@@ -186,66 +192,25 @@ const gestor: NavGroup[] = [
 
 const profissional: NavGroup[] = [
   {
-    label: "ATENDIMENTO",
+    label: "PRINCIPAL",
     items: [
-      {
-        slug: "",
-        label: "Visão geral",
-        icon: "dashboard",
-        status: "available",
-        primary: true,
-      },
-      {
-        slug: "alunos",
-        label: "Alunos",
-        icon: "users",
-        status: "available",
-        primary: true,
-      },
-      {
-        slug: "avaliacoes",
-        label: "Avaliações",
-        icon: "clipboard",
-        status: "available",
-        primary: true,
-      },
-      {
-        slug: "periodizacao",
-        label: "Periodização",
-        icon: "calendar",
-        status: "available",
-        primary: true,
-      },
+      { slug: "", label: "Visão geral", icon: "dashboard", status: "available", primary: true },
+      { slug: "alunos", label: "Alunos", icon: "users", status: "available", primary: true },
+      { slug: "avaliacoes", label: "Avaliações", icon: "clipboard", status: "available", primary: true },
       {
         slug: "prescricao",
-        label: "Prescrição",
+        label: "Planos e treinos",
         icon: "dumbbell",
         status: "available",
         primary: true,
+        // The plans of each student, the address the V4 names, and the cycle simulator (a secondary entry of this module, not a menu item).
+        also: ["planos", "periodizacao", "alunos/*/planos"],
       },
+      { slug: "biblioteca", label: "Biblioteca de exercícios", icon: "book", status: "available" },
     ],
   },
   {
-    label: "CONHECIMENTO",
-    items: [
-      {
-        slug: "biblioteca",
-        label: "Biblioteca de exercícios",
-        icon: "book",
-        status: "available",
-      },
-      planned("fontes", "Fontes técnicas", "library", {
-        epic: "E7",
-        reference: "Handoff V2, seção 7",
-        summary:
-          "Acervo autorizado com evidências verificáveis. Sem fonte conferida, a resposta é evidência insuficiente; nada é inventado.",
-        needs:
-          "Acervo com direitos verificados e armazenamento de busca compatível com SQLite. O pgvector deixou de ser pressuposto.",
-      }),
-    ],
-  },
-  {
-    label: "MARKETING E CAPTAÇÃO",
+    label: "COMERCIAL",
     items: [
       { slug: "meu-site", label: "Meu Site", icon: "globe", status: "available" },
       { slug: "leads", label: "Leads", icon: "inbox", status: "available" },
@@ -253,12 +218,27 @@ const profissional: NavGroup[] = [
     ],
   },
   {
-    label: "ESPAÇO",
+    label: "CONTA E EQUIPE",
     items: [
-      { slug: "conta", label: "Minha conta", icon: "user", status: "available" },
       { slug: "configuracoes", label: "Configurações", icon: "settings", status: "available" },
+      { slug: "conta", label: "Minha conta", icon: "user", status: "available" },
     ],
   },
+];
+
+/**
+ * Modules of the professional that exist as an honest "not yet" page but are not in the menu (V4 section 5: "Fontes técnicas" stays out of the
+ * main menu while it does not work). Reached by their address and by the help of the module they belong to.
+ */
+const profissionalOffMenu: NavItem[] = [
+  planned("fontes", "Fontes técnicas", "library", {
+    epic: "E7",
+    reference: "Handoff V2, seção 7",
+    summary:
+      "Acervo autorizado com evidências verificáveis. Sem fonte conferida, a resposta é evidência insuficiente; nada é inventado.",
+    needs:
+      "Acervo com direitos verificados e armazenamento de busca compatível com SQLite.",
+  }),
 ];
 
 const aluno: NavGroup[] = [
@@ -320,9 +300,37 @@ const NAVIGATION: Record<SurfaceId, NavGroup[]> = {
 export const navigationFor = (surface: SurfaceId): NavGroup[] =>
   NAVIGATION[surface];
 
+const OFF_MENU: Record<SurfaceId, NavItem[]> = { gestor: [], profissional: profissionalOffMenu, aluno: [] };
+
 export function findPlanned(surface: SurfaceId, slug: string): NavItem | null {
-  for (const group of NAVIGATION[surface])
-    for (const item of group.items)
-      if (item.slug === slug && item.status === "planned") return item;
+  for (const item of [...NAVIGATION[surface].flatMap((group) => group.items), ...OFF_MENU[surface]])
+    if (item.slug === slug && item.status === "planned") return item;
   return null;
+}
+
+const segments = (path: string) => path.split("/").filter(Boolean);
+/** How many segments a pattern takes from the start of the path when it matches (`*` is any one segment), or -1. */
+function matchLength(pattern: string, path: string[]): number {
+  const wanted = segments(pattern);
+  if (wanted.length > path.length) return -1;
+  return wanted.every((part, index) => part === "*" || part === path[index]) ? wanted.length : -1;
+}
+
+/**
+ * The slug of the one menu item a page belongs to, from its address relative to the area (e.g. "alunos/7/planos/3/4"); null when none does.
+ * The most specific match wins: the plans of a student light "Planos e treinos", the rest of the student lights "Alunos". The area home matches
+ * only itself.
+ */
+export function activeSlug(groups: NavGroup[], relativePath: string): string | null {
+  const path = segments(relativePath);
+  if (path.length === 0) return groups.some((group) => group.items.some((item) => item.slug === "")) ? "" : null;
+  let best: { slug: string; length: number } | null = null;
+  for (const item of groups.flatMap((group) => group.items)) {
+    if (item.slug === "") continue;
+    for (const pattern of [item.slug, ...(item.also ?? [])]) {
+      const length = matchLength(pattern, path);
+      if (length > 0 && (!best || length > best.length)) best = { slug: item.slug, length };
+    }
+  }
+  return best?.slug ?? null;
 }

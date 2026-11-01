@@ -1,62 +1,68 @@
 /*
- * Visual tokens: flat blue, no gradients.
- * Origin: docs/referencias/04-TOKENS-VISUAIS.md (App Personal). The original
- * brand blue #009EE2 and the cyan/gradient pair were replaced on 2026-10-23 by
- * a single solid blue. Radii and Inter come from the original reference.
- * Every color below was checked for WCAG AA contrast (docs/DESIGN-SYSTEM.md
- * lists the pairs). Change the brand blue in ONE place: --color-primary and
- * its two companions.
+ * The tokens the app's CSS uses, every one taken from the official kit (src/styles/designsystems-tokens.css, DesignSystems.one,
+ * handoff V4 section 6). No colour, size or radius is chosen here: each name below points to a kit value. Exceptions are named:
+ *  - Button/Primary and the brand fill use primary-700 (#0078B8), not --color-brand (primary-600, #0093E0): white text on #0093E0 is 3.36:1,
+ *    on #0078B8 it is 4.80:1 (the V4 composition makes the same choice). --color-brand of the kit is left as exported.
+ *  - Status text uses the -800 step of each scale on its -50 background (5.2:1 or more); the kit's --color-success/-warning/-danger are the
+ *    vivid -600 steps, meant for fills, not for text.
+ *  - The active menu item uses --color-brand-subtle with primary-800 text (6.8:1).
+ * Contrast pairs are listed in docs/DESIGN-SYSTEM.md. Dark mode tokens exist in the kit but are not turned on (V4 DS-07).
  */
+@import "./designsystems-tokens.css";
+
 :root {
-  /* Brand: one solid blue. White text on --color-primary is 4.87:1. */
-  --color-primary: #0077b6;
-  --color-primary-strong: #005f92;
-  --color-primary-soft: #e8f3fa;
-  --color-primary-line: #b5d6ea;
+  /* Brand */
+  --color-primary: var(--color-primary-700);
+  --color-primary-strong: var(--color-primary-800);
+  --color-primary-soft: var(--color-primary-50);
+  --color-primary-line: var(--color-primary-200);
 
-  /* Neutrals */
-  --color-background: #f5f7f9;
-  --color-surface: #fff;
-  --color-ink: #1f2933;
-  --color-text: #4a5560;
-  --color-muted: #5a6470;
-  --color-line: #d7dde3;
-  --color-line-strong: #b8c1ca;
+  /* Neutrals (kit: bg neutral-50, surface white, fg neutral-900, fg-muted neutral-600, border neutral-200) */
+  --color-background: var(--color-bg);
+  --color-ink: var(--color-fg);
+  --color-text: var(--color-neutral-800);
+  --color-muted: var(--color-fg-muted);
+  --color-line: var(--color-border);
+  --color-line-strong: var(--color-border-strong);
 
-  /* Semantic states (text/background pairs are AA) */
-  --color-success: #1b6e3c;
-  --color-success-soft: #e6f4ea;
-  --color-warning: #8a5a00;
-  --color-warning-soft: #fff4d6;
-  --color-warning-line: #e8c36a;
-  --color-error: #a52434;
-  --color-error-soft: #fff2f3;
+  /* Status: text on its soft background */
+  --color-success-text: var(--color-success-800);
+  --color-success-soft: var(--color-success-50);
+  --color-warning-text: var(--color-warning-800);
+  --color-warning-soft: var(--color-warning-50);
+  --color-warning-line: var(--color-warning-300);
+  --color-error: var(--color-danger-800);
+  --color-error-soft: var(--color-danger-50);
 
-  --color-on-primary: #fff;
-  --color-focus: #005f92;
+  --color-on-primary: var(--color-brand-fg);
+  --color-focus: var(--color-primary-700);
 
-  /* Demonstration banner: neutral dark, never a role color. */
-  --color-demo: #1f2933;
+  /* Demonstration banner: neutral dark, never a role colour. */
+  --color-demo: var(--color-neutral-900);
   --color-on-demo: #fff;
 
-  --font-family: "Inter", system-ui, sans-serif;
+  /* Type: Figtree for text, Roboto for headings, base 16px, minor-third scale */
+  --font-family: var(--font-family-body);
 
-  --radius-xs: 5px;
-  --radius-card: 15px;
-  --radius-md: 20px;
-  --radius-input: 30px;
-  --radius-button: 50px;
+  /* Radius (kit "pill": buttons and fields round, cards small) */
+  --radius-xs: var(--radius-sm);
+  --radius-card: var(--radius-md);
+  --radius-panel: var(--radius-lg);
+  --radius-input: var(--radius-xl);
+  --radius-button: var(--radius-full);
 
-  /* Flat: no colored glow. Cards rely on a border plus a hairline shadow. */
-  --shadow-card: 0 1px 2px rgba(31, 41, 51, 0.05);
+  /* Shadows: the kit's sharp, subtle ones */
+  --shadow-card: var(--shadow-sm);
   --shadow-nav: 0 -1px 0 var(--color-line);
 
-  --space-xs: 6px;
-  --space-sm: 10px;
-  --space-md: 16px;
-  --space-lg: 24px;
-  --space-xl: 32px;
+  /* Spacing: the kit's compact scale */
+  --space-xs: var(--spacing-2);
+  --space-sm: var(--spacing-3);
+  --space-md: var(--spacing-4);
+  --space-lg: var(--spacing-6);
+  --space-xl: var(--spacing-8);
 
-  --sidebar-width: 264px;
+  /* Layout: the V4 desktop frames draw the sidebar at 222px; a little more so the longest label fits on one line at 16px. */
+  --sidebar-width: 236px;
   --content-max: 1280px;
 }
