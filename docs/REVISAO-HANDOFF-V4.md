@@ -16,6 +16,8 @@ Status usados: **atende**, **parcial**, **não atende**, **conflito com decisão
 
 A V4 diz que substitui as versões anteriores, mas estes pontos desfazem decisões registradas no projeto. Nenhum foi alterado no código até a confirmação.
 
+**Decidido pelo usuário em 01/11/2026:** D1 adota a V4 (editor fixo por site, sem troca; para mudar de editor, excluir e recomeçar) e D3 adota a V4 (abaixo do alvo vira aviso). D2 espera o `designsystems-tokens.zip`; D4 continua em aberto.
+
 | # | V4 | Hoje (decisão registrada) | Efeito de adotar a V4 |
 |---|---|---|---|
 | D1 | Editor **fixo por site**, escolhido uma vez com aviso e confirmação. Backend recusa edição cruzada. Sem troca. Nomes `Editor Guiado` e `Editor Avançado` (T18, T19B, T19C, seção 9.10, NAV-06, 16.1). | F8: `sites.engine` (`native`/`frappe`, migration 0028) diz qual editor responde em `/s/<endereço>` e **pode ser trocado nos dois sentidos** ("Colocar o site novo no endereço principal" / "Voltar ao editor anterior"). Os dois editores gravam e publicam no mesmo site. PLANO-FRAPPE-BUILDER:24 e :46, ROADMAP:42, migration 0028. | 1. Remover a troca de editor.<br>2. Fazer `engine` valer como dono do formato.<br>3. Recusar no servidor o editor oposto (ações do guiado e adaptador do Frappe).<br>4. Refazer a criação com cards, aviso e confirmação.<br>5. Decidir o que fazer com sites que já têm conteúdo nos dois editores. |
