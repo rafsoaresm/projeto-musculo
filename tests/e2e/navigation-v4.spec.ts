@@ -20,7 +20,9 @@ test("navigation V4 on a computer: the ten destinations in three groups, one ite
   for (const [group] of GROUPS) await expect(nav.getByRole("link", { name: group })).toHaveCount(0);
   await expect(page.getByText("TRAINER / RX")).toBeVisible();
   await expect(page.getByText("ÁREA PROFISSIONAL", { exact: true })).toBeVisible();
-  await expect(page.getByText("TRAINER PRESCRIPTION", { exact: true })).toBeVisible();
+  await expect(page.locator(".sidebar").getByText("TRAINER PRESCRIPTION", { exact: true })).toBeVisible();
+  // The menu is text only (Figma 28:342).
+  await expect(nav.locator("svg")).toHaveCount(0);
 
   const lit = () => nav.locator('[aria-current="page"]');
   const student = await addStudent(page, "Ana Navegação");

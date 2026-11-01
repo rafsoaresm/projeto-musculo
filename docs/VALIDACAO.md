@@ -2,6 +2,26 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.54: Entrega 1 do handoff V4 (clareza) e a sidebar do Figma
+
+**Sem migration.**
+
+- **A01, texto do plano:** o aviso "não prescreve exercícios" saiu. O plano diz "Rascunho visível apenas para você. Configure o ciclo e os exercícios; o aluno verá somente a revisão entregue." O simulador diz que nada é salvo.
+- **A08 e AC02.1/AC02.2, passos da visão geral:**
+  - O convite só conta como concluído quando um aluno está no portal; antes disso aparece "Convite gerado, aguardando aceite".
+  - O passo do plano mostra "Plano em rascunho" e "Continuar plano", que leva à revisão exata.
+  - Entregue, mostra "Ver entrega".
+  - Passos concluídos levam a consultar, não a repetir ("Ver alunos", "Ver situação do acesso").
+- **A12 (decisão D3 do usuário):** abaixo do alvo virou **aviso** e não impede mais a aprovação (`src/db/plans.ts`, `approval-panel.tsx`). A triagem continua exigida, e um alerta sem revisão continua bloqueando aprovar e entregar.
+- **A14 e AC17.3:** "documento mestre" saiu das telas. A página de módulo ainda não disponível diz "EM DESENVOLVIMENTO", sem códigos de roadmap, documentos ou nomes de banco (Fontes técnicas mencionava SQLite e pgvector).
+- **A16:** o botão de ação da página não quebra em duas linhas.
+- **Sidebar alinhada ao Figma** (componente `28:342`, drawer `29:543`): "ÁREA PROFISSIONAL", itens sem ícones, linha entre os grupos, rodapé "TRAINER PRESCRIPTION · Área profissional", ativo sem barra lateral. A conferência dos 21 frames está em `docs/REVISAO-HANDOFF-V4.md`, seção 5A.
+- **Verificado localmente:**
+  - `npm run check`: 1455 testes; o teste de aprovação mudou para a regra nova.
+  - Navegador na montagem raiz, 30 testes passaram: `navigation-v4` (agora conferindo que o menu não tem ícones), `prescription`, `delivery`, `assessments`, `planner`, `demo`, `onboarding` e `execution`. A falha da primeira rodada era do teste (texto repetido no rodapé da página).
+- **Não feito nesta fatia:** A13 (entrada de datas no formato brasileiro: o campo de data é o do navegador, e trocar exige um componente próprio, que fica para a Entrega 3 junto do simulador).
+- **Não verificado:** a montagem `/treinador` e a suíte completa ficam para o CI; nada no ar.
+
 ## Fatia 0.53: Entrega 0 do handoff V4 (navegação e design system)
 
 **Sem migration.** O que o handoff V4 manda fazer antes de mexer nas telas.
