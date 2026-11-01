@@ -134,6 +134,20 @@ Arquivo `RRHeYHC01jSd0hnrRzzBxP`, página única, lido pelo conector do Figma: 2
 
 ## 7. Ordem sugerida
 
+**Plano combinado com o usuário em 01/11/2026 (substitui a lista abaixo, que fica como histórico):**
+
+- **Decisão sobre o Editor Guiado (01/11/2026):** o Editor Guiado é o editor **simples** do começo (0.34: seções com formulário, rascunho, prévia, publicação), como no quadro `10:162` (lista de seções, prévia da página, formulário da seção com título, descrição, imagem, botão principal e SEO; "Pré-visualizar" e "Salvar rascunho"). O editor complexo é o Frappe (Editor Avançado). O construtor visual que cresceu de 0.35 a 0.49 (árvore livre, estilos, alças, tamanhos de tela, componentes) deixa de ser o Guiado; o destino dos sites já feitos nele é levantado antes de qualquer mudança (nada é convertido sem aviso).
+
+| Fatia | Conteúdo | Quadros |
+|---|---|---|
+| 0.55 | Visão geral nova (fila "Demandam atenção", contadores, atalhos, resumo) | `1:2` |
+| 0.56 | Meu Site: levantamento dos sites com conteúdo nos dois editores e no construtor; criação em dois passos com cartões e confirmação; abrir o editor atribuído; editor fixo por site com recusa no servidor (sai a troca da F8); gestão com etiquetas, cartão "Editor fixo" e abas Páginas / Publicação / Formulários e mensagens / Configurações; regra única do estado público e dos formulários (defeitos 2 e 4); "Tirar do ar" com confirmação, também no Frappe (defeito 3) | `10:2`, `10:46`, `10:76`, `10:119`, `11:3`, `11:23` |
+| 0.57 | Editor Avançado: barra com título, trilha e "Voltar ao Meu Site"; prévia do Frappe sob o subcaminho (defeito 1); pt-BR dos fluxos essenciais pelo mecanismo nativo | `10:218` |
+| 0.58 | Editor Guiado simples sobre o mesmo documento e a mesma publicação | `10:162` |
+| depois | Entrega 2 (ficha `1:111`, listas com busca e filtros), Entrega 3 (editor de prescrição `1:261`, triagem Sim/Não obrigatória da D4, datas A13), Entrega 5 (acesso e configurações) | `1:63`, `1:111`, `1:155`, `1:261` |
+
+**Lista anterior:**
+
 1. **Já, sem depender de decisão:**
    - Defeitos 1 a 4 de Meu Site: prévia do Frappe, status público comum, confirmação de "Tirar do ar", um controle de mensagens só.
    - "Voltar ao Meu Site" e identificação do site no Frappe.
