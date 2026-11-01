@@ -174,7 +174,12 @@ export async function setSiteEngine(engine: SiteEngine): Promise<SimpleResult> {
     }
     return {
       ok: false,
-      message: outcome.status === "nothing_published" ? "Publique antes ao menos uma página no editor novo: sem isso o endereço não mostraria nada." : FORBIDDEN,
+      message:
+        outcome.status === "nothing_published"
+          ? "Publique antes ao menos uma página no editor novo: sem isso o endereço não mostraria nada."
+          : outcome.status === "fixed"
+            ? "O editor deste site foi escolhido na criação e não muda. Para usar o outro editor, exclua o site e comece de novo."
+            : FORBIDDEN,
     };
   } catch {
     return { ok: false, message: FAILED };

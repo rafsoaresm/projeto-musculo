@@ -45,7 +45,10 @@ test("frappe form: a form drawn with the editor's blocks is on the page only whe
   await createProfessional(page, `Estúdio ${unique}`, "Marina Formulário");
   const slug = `estudio-${unique}`;
   await page.goto("./profissional/meu-site");
-  await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Criar meu site" }).click();
+  await page.getByRole("button", { name: "Escolher Editor Avançado" }).click();
+  await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Confirmar e criar site" }).click();
+  await expect(page).toHaveURL(/\/profissional\/meu-site\/editor/);
+  await page.goto("./profissional/meu-site");
   await expect(panel(page)).toBeVisible();
   await expect(panel(page).getByText("Nenhum formulário nas páginas que estão no ar.")).toBeVisible();
 
@@ -149,7 +152,10 @@ test("frappe form, from the editor itself: the form of the editor's own library,
   await createProfessional(page, `Estúdio ${unique}`, "Marina Biblioteca");
   const slug = `estudio-${unique}`;
   await page.goto("./profissional/meu-site");
-  await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Criar meu site" }).click();
+  await page.getByRole("button", { name: "Escolher Editor Avançado" }).click();
+  await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Confirmar e criar site" }).click();
+  await expect(page).toHaveURL(/\/profissional\/meu-site\/editor/);
+  await page.goto("./profissional/meu-site");
   await expect(panel(page)).toBeVisible();
   await panel(page).getByRole("button", { name: "Ligar o recebimento de mensagens" }).click();
   await expect(panel(page)).toContainText("Recebimento ligado");

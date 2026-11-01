@@ -29,18 +29,19 @@ beforeAll(async () => {
   );
   db = await mf.getD1Database("DB");
   await migrate(db, ALL_MIGRATIONS);
-  const people = ["owner-a", "commercial-a", "owner-b", "owner-c", "revoked-a"];
+  const people = ["owner-a", "commercial-a", "owner-b", "owner-c", "owner-d", "revoked-a"];
   await db.batch([
     ...people.map((id) => db.prepare("INSERT INTO auth_user(id,name,email,created_at,updated_at) VALUES (?1,?1,?2,0,0)").bind(id, `${id}@example.test`)),
     db.prepare(`INSERT INTO users(id) VALUES ${people.map((p) => `('${p}')`).join(",")}`),
-    db.prepare("INSERT INTO organizations(id,name) VALUES ('org-a','Studio A'),('org-b','Studio B'),('org-c','Studio C')"),
+    db.prepare("INSERT INTO organizations(id,name) VALUES ('org-a','Studio A'),('org-b','Studio B'),('org-c','Studio C'),('org-d','Studio D')"),
     db.prepare(
       `INSERT INTO memberships(organization_id,user_id,role,revoked_at) VALUES
-       ('org-a','owner-a','OWNER',NULL),('org-a','commercial-a','COMMERCIAL',NULL),('org-b','owner-b','OWNER',NULL),('org-c','owner-c','OWNER',NULL),('org-a','revoked-a','MANAGER','2026-10-02T00:00:00.000Z')`,
+       ('org-a','owner-a','OWNER',NULL),('org-a','commercial-a','COMMERCIAL',NULL),('org-b','owner-b','OWNER',NULL),('org-c','owner-c','OWNER',NULL),('org-d','owner-d','OWNER',NULL),('org-a','revoked-a','MANAGER','2026-10-02T00:00:00.000Z')`,
     ),
   ]);
   expect(await sites("owner-b", "org-b").create({ slug: "studio-b", title: "Studio B" })).toEqual({ status: "created" });
-  await db.batch([publishedPage("org-b", "home")]);
+  // studio-b stands for a site made before migration 0030: its editor was not chosen in the two-step creation, so it is not fixed.
+  await db.batch([publishedPage("org-b", "home"), db.prepare("UPDATE sites SET engine_fixed = 0 WHERE organization_id = 'org-b'")]);
 });
 afterAll(async () => {
   await mf.dispose();
@@ -60,7 +61,7 @@ describe("which editor a site is made in", () => {
     expect((await sites("owner-b", "org-b").overview())?.site.engine).toBe("frappe");
     expect(await sites("owner-b", "org-b").setEngine("native")).toEqual({ status: "changed", engine: "native" });
     // org-a (born in the new editor) has no published page of it yet: the address would answer nothing, so the choice is refused, even when repeated
-    await db.prepare("UPDATE sites SET engine = 'native' WHERE organization_id = 'org-a'").run();
+    await db.prepare("UPDATE sites SET engine = 'native', engine_fixed = 0 WHERE organization_id = 'org-a'").run();
     expect(await sites().setEngine("frappe")).toEqual({ status: "nothing_published" });
     await db.batch([publishedPage("org-a", "draft-page", 0)]);
     expect(await sites().setEngine("frappe")).toEqual({ status: "nothing_published" });
@@ -74,7 +75,17 @@ describe("which editor a site is made in", () => {
     expect((await sites().overview())?.site.engine).toBe("frappe");
     // org-c has a site made later and a published page only in org-b
     expect(await sites("owner-c", "org-c").create({ slug: "studio-c", title: "Studio C" })).toEqual({ status: "created" });
+    await db.prepare("UPDATE sites SET engine_fixed = 0 WHERE organization_id = 'org-c'").run();
     expect(await sites("owner-c", "org-c").setEngine("frappe")).toEqual({ status: "nothing_published" });
+  });
+
+  it("never changes once it was chosen in the two-step creation (decision D1 of the handoff V4), and says so", async () => {
+    expect(await sites("owner-d", "org-d").create({ slug: "studio-d", title: "Studio D", engine: "frappe" })).toEqual({ status: "created" });
+    expect((await sites("owner-d", "org-d").overview())?.site).toMatchObject({ engine: "frappe", engineFixed: true });
+    expect(await sites("owner-d", "org-d").setEngine("native")).toEqual({ status: "fixed" });
+    expect(await sites("owner-d", "org-d").setEngine("frappe")).toEqual({ status: "fixed" });
+    expect((await sites("owner-d", "org-d").overview())?.site.engine).toBe("frappe");
+    expect(await count("SELECT 1 FROM access_audit_events WHERE action = 'SITE_ENGINE_CHANGED' AND organization_id = 'org-d'")).toBe(0);
   });
 
   it("is listed with the pages of the new editor: which are published and at what route", async () => {

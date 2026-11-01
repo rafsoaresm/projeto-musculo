@@ -22,16 +22,15 @@ test("a professional builds a page in the visual editor, previews it, publishes 
 
   // Nothing exists yet: the address is suggested from the name of the space, and a reserved one is refused.
   await page.goto("./profissional/meu-site");
-  await expect(page.getByRole("heading", { name: "Meu Site", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Crie seu site profissional", level: 1 })).toBeVisible();
+  await page.getByRole("button", { name: "Escolher Editor Guiado" }).click();
   const create = page.getByRole("form", { name: "Criar o meu site" });
   await expect(create.getByLabel("Endereço (letras minúsculas, números e hífens)")).toHaveValue(slug);
   await create.getByLabel("Endereço (letras minúsculas, números e hífens)").fill("gestor");
-  await create.getByRole("radio", { name: /Editor anterior/ }).check();
-  await create.getByRole("button", { name: "Criar meu site" }).click();
+  await create.getByRole("button", { name: "Confirmar e criar site" }).click();
   await expect(create.getByRole("alert")).toContainText("não pode ser um nome reservado");
   await create.getByLabel("Endereço (letras minúsculas, números e hífens)").fill(slug);
-  await create.getByRole("radio", { name: /Editor anterior/ }).check();
-  await create.getByRole("button", { name: "Criar meu site" }).click();
+  await create.getByRole("button", { name: "Confirmar e criar site" }).click();
   await expect(state(page).getByText("Fora do ar")).toBeVisible();
   await noHorizontalOverflow(page);
 
@@ -307,6 +306,11 @@ test("a professional builds a page in the visual editor, previews it, publishes 
   // Offline: the page answers 404 at once, the releases stay, and only now can the address change.
   await expect(page.getByRole("heading", { name: "Endereço do site" })).toHaveCount(0);
   await state(page).getByRole("button", { name: "Tirar do ar" }).click();
+  // Taking it offline asks first (handoff V4, defect 3): cancelling leaves it on the air.
+  await state(page).getByRole("group", { name: "Tirar o site do ar?" }).getByRole("button", { name: "Cancelar" }).click();
+  await expect(state(page).getByText("No ar").first()).toBeVisible();
+  await state(page).getByRole("button", { name: "Tirar do ar" }).click();
+  await state(page).getByRole("group", { name: "Tirar o site do ar?" }).getByRole("button", { name: "Confirmar e tirar do ar" }).click();
   await expect(state(page).getByText("O site saiu do ar.")).toBeVisible();
   expect((await anonymous.page.request.get(`./s/${slug}`)).status()).toBe(404);
   expect((await anonymous.page.request.get(sheetUrl)).status()).toBe(404);
@@ -336,8 +340,8 @@ test("blocks go from the library into the tree: between blocks, into containers 
   const unique = crypto.randomUUID().slice(0, 8);
   await createProfessional(page, `Arrasto ${unique}`, "Marina Arrasto");
   await page.goto("./profissional/meu-site");
-  await page.getByRole("form", { name: "Criar o meu site" }).getByRole("radio", { name: /Editor anterior/ }).check();
-  await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Criar meu site" }).click();
+  await page.getByRole("button", { name: "Escolher Editor Guiado" }).click();
+  await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Confirmar e criar site" }).click();
   await expect(state(page).getByText("Fora do ar")).toBeVisible();
   await openEditor(page);
 

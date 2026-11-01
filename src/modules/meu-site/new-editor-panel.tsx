@@ -11,6 +11,8 @@ import type { PanelCode, PanelForm } from "./new-editor-forms";
 export interface NewEditorState {
   slug: string;
   engine: "native" | "frappe";
+  /** The editor was chosen in the two-step creation and does not change (decision D1). */
+  engineFixed: boolean;
   /** The pages of the new editor that are published, by route and title, and how many pages it holds in all. */
   published: Array<{ route: string; title: string }>;
   pages: number;
@@ -29,7 +31,7 @@ export interface NewEditorState {
  * The new editor (Frappe Builder) in Meu Site: where to open it, which of its pages are on the air and at what address, which editor makes the
  * main address of the site, and the way out: deleting the whole site to start again from nothing.
  */
-export function NewEditorPanel({ slug, engine, published, pages, waiting, forms, inquiries, code, canEdit }: NewEditorState) {
+export function NewEditorPanel({ slug, engine, engineFixed, published, pages, waiting, forms, inquiries, code, canEdit }: NewEditorState) {
   const router = useRouter();
   const mountPath = useMountPath();
   const [message, setMessage] = useState("");
@@ -125,7 +127,11 @@ export function NewEditorPanel({ slug, engine, published, pages, waiting, forms,
           </ul>
         )}
         {forms.skipped > 0 && <p className="small muted">Só as primeiras 20 páginas no ar foram lidas aqui; há mais {forms.skipped}.</p>}
-        {canEdit && (
+        {/* One control for the one switch (handoff V4, defect 4): on a site of the guided editor it stays in that editor's panel below. */}
+        {canEdit && engine === "native" && (
+          <p className="small muted">O recebimento de mensagens vale para o site todo e se liga ou desliga no painel do Editor Guiado, mais abaixo.</p>
+        )}
+        {canEdit && engine === "frappe" && (
           <div className="persist-actions">
             {inquiries.open ? (
               <button type="button" className="button secondary" disabled={pending} onClick={() => switchInquiries(false)}>
@@ -197,7 +203,12 @@ export function NewEditorPanel({ slug, engine, published, pages, waiting, forms,
           </>
         )}
         <h3>Endereço principal</h3>
-        {engine === "frappe" ? (
+        {engineFixed ? (
+          <p>
+            O endereço <PublicAddress slug={slug} /> mostra o site do <strong>{engine === "frappe" ? "Editor Avançado" : "Editor Guiado"}</strong>. O editor
+            deste site foi escolhido na criação e não muda; para usar o outro, exclua o site e comece de novo.
+          </p>
+        ) : engine === "frappe" ? (
           <p>
             O endereço <PublicAddress slug={slug} /> leva ao site do <strong>editor novo</strong>. O site do editor anterior continua guardado.
           </p>
@@ -207,7 +218,7 @@ export function NewEditorPanel({ slug, engine, published, pages, waiting, forms,
             quiser, nada é apagado.
           </p>
         )}
-        {canEdit && (
+        {canEdit && !engineFixed && (
           <div className="persist-actions">
             {engine === "frappe" ? (
               <button className="button secondary" disabled={pending} onClick={() => change("native")}>

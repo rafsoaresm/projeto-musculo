@@ -265,6 +265,28 @@ const organizationColumns = `
      WHERE r.organization_id = o.id AND r.due_at < ?3
        AND NOT EXISTS (SELECT 1 FROM data_subject_request_outcomes x WHERE x.request_id = r.id)) AS requestsOverdue`;
 
+/**
+ * One site of the platform as the survey of the editors reads it (handoff V4, decision D1: before the editor of a site becomes fixed, the
+ * sites that hold content in both editors are listed). Counts only: no content is read. "Guided" is the editor made in the app (the drafts
+ * and releases of `sites`); "Advanced" is the embedded Frappe Builder (its pages in `builder_docs`, kept per organization).
+ */
+export interface SiteEditorsRow {
+  organizationName: string;
+  slug: string;
+  /** The editor the main address shows today. */
+  engine: "native" | "frappe";
+  guidedSaves: number;
+  guidedReleases: number;
+  guidedLive: boolean;
+  advancedPages: number;
+  advancedPublished: number;
+}
+
+/** Whether a site holds work in both editors: the guided one was saved or published, and the advanced one has a page. */
+export function hasContentInBoth(row: SiteEditorsRow): boolean {
+  return (row.guidedSaves > 1 || row.guidedReleases > 0) && row.advancedPages > 0;
+}
+
 export function platformFor(db: D1Database, context: PlatformContext | null) {
   if (!context?.userId?.trim()) throw new Error("AUTHENTICATION_REQUIRED");
   const { userId } = context;
@@ -544,6 +566,25 @@ export function platformFor(db: D1Database, context: PlatformContext | null) {
         db.prepare(`DELETE FROM auth_session WHERE user_id = ?2 AND ${done}`).bind(userId, targetUserId, event),
       ]);
       return results[1].meta.changes > 0;
+    },
+
+    async listSiteEditors(): Promise<SiteEditorsRow[]> {
+      const result = await db
+        .prepare(
+          `SELECT o.name AS organizationName, s.slug, s.engine,
+                  COALESCE((SELECT d.revision FROM site_drafts d WHERE d.site_id = s.id), 0) AS guidedSaves,
+                  (SELECT COUNT(*) FROM site_releases r WHERE r.site_id = s.id) AS guidedReleases,
+                  EXISTS (SELECT 1 FROM site_published p WHERE p.site_id = s.id) AS guidedLive,
+                  (SELECT COUNT(*) FROM builder_docs b WHERE b.organization_id = s.organization_id AND b.doctype = 'Builder Page') AS advancedPages,
+                  (SELECT COUNT(*) FROM builder_docs b WHERE b.organization_id = s.organization_id AND b.doctype = 'Builder Page'
+                     AND json_extract(b.data, '$.published') = 1) AS advancedPublished
+           FROM sites s JOIN organizations o ON o.id = s.organization_id
+           WHERE ${adminGuard("?1")}
+           ORDER BY o.name, s.slug`,
+        )
+        .bind(userId)
+        .all<Omit<SiteEditorsRow, "guidedLive"> & { guidedLive: number }>();
+      return result.results.map((row) => ({ ...row, guidedLive: Number(row.guidedLive) === 1 }));
     },
 
     async listAudit(limit = 50): Promise<PlatformAuditRow[]> {

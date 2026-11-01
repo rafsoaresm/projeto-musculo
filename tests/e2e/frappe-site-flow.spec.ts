@@ -21,11 +21,21 @@ test("meu site, new editor: a site born in it, an image sent from the editor, th
 
   // ---- the first step offers the new editor first, and a site born in it has no models to choose from ----
   await page.goto("./profissional/meu-site");
+  await expect(page.getByRole("heading", { name: "Editor Guiado", level: 3 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Editor Avançado", level: 3 })).toBeVisible();
+  await expect(page.getByText("Importante: escolha definitiva para este site")).toBeVisible();
+  await expect(page.getByRole("form", { name: "Criar o meu site" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Escolher Editor Avançado" }).click();
   const create = page.getByRole("form", { name: "Criar o meu site" });
-  await expect(create.getByRole("radio", { name: /Editor novo/ })).toBeChecked();
+  await expect(create.getByRole("heading", { name: "Criar site com o Editor Avançado?" })).toBeVisible();
+  await expect(create.getByText("Sua escolha não poderá ser alterada")).toBeVisible();
+  await create.getByRole("button", { name: "Voltar e escolher" }).click();
+  await page.getByRole("button", { name: "Escolher Editor Avançado" }).click();
   await expect(create.getByText("Começar com")).toHaveCount(0);
   await expect(create.getByText(`/site/${slug}`)).toBeVisible();
-  await create.getByRole("button", { name: "Criar meu site" }).click();
+  await create.getByRole("button", { name: "Confirmar e criar site" }).click();
+  await expect(page).toHaveURL(/\/profissional\/meu-site\/editor/);
+  await page.goto("./profissional/meu-site");
   const panel = page.getByRole("region", { name: "Editor novo (Frappe Builder)" });
   await expect(panel).toBeVisible();
   await expect(panel.getByText("Nenhuma ainda.")).toBeVisible();
@@ -92,15 +102,10 @@ test("meu site, new editor: a site born in it, an image sent from the editor, th
   await expect(seen).toHaveURL(new RegExp(`${mount}/site/${slug}$`));
   await expect(seen.getByText("Olá, mundo")).toBeVisible();
 
-  // ---- back to the first editor and again to the new one, nothing deleted in either direction ----
-  await panel.getByRole("button", { name: "Voltar ao editor anterior" }).click();
-  await expect(panel.getByRole("status")).toContainText("voltou a mostrar o site do editor anterior");
-  await expect(page.getByText("Fora do ar").first()).toBeVisible();
-  expect((await stranger.request.get(`./s/${slug}`, noFollow)).status(), "the first editor was never published: nothing at its address").toBe(404);
-  expect((await stranger.request.get(`./site/${slug}`)).status(), "the page of the new editor is still where it was").toBe(200);
-  await panel.getByRole("button", { name: "Colocar o site novo no endereço principal" }).click();
-  await expect(panel.getByRole("status")).toContainText("agora mostra o site do editor novo");
-  expect((await stranger.request.get(`./s/${slug}`, noFollow)).status()).toBe(307);
+  // ---- the editor chosen in the creation is fixed (decision D1): nothing offers the other one ----
+  await expect(panel.getByText("foi escolhido na criação e não muda")).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Voltar ao editor anterior" })).toHaveCount(0);
+  await expect(panel.getByRole("button", { name: "Colocar o site novo no endereço principal" })).toHaveCount(0);
 
   // ---- delete everything: the address typed again, and then it is nothing, for visitors and for the editor, and can be started again ----
   await page.getByRole("button", { name: "Excluir o site…" }).click();
@@ -109,14 +114,14 @@ test("meu site, new editor: a site born in it, an image sent from the editor, th
   await expect(deleting.getByRole("button", { name: "Excluir o site para sempre" })).toBeDisabled();
   await deleting.getByLabel(/Para confirmar, digite o endereço/).fill(slug);
   await deleting.getByRole("button", { name: "Excluir o site para sempre" }).click();
-  await expect(page.getByRole("form", { name: "Criar o meu site" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Escolher Editor Guiado" })).toBeVisible();
   expect((await stranger.request.get(`./site/${slug}`)).status()).toBe(404);
   expect((await stranger.request.get(`./s/${slug}`, noFollow)).status()).toBe(404);
   expect((await stranger.request.get(file.file_url)).status(), "the image goes with the site").toBe(404);
   expect((await asEditor(page, "frappe.client.get_list", { doctype: "Builder Page" })).body.message).toEqual([]);
   // the same address is free again, and the first editor can be chosen this time
-  await page.getByRole("form", { name: "Criar o meu site" }).getByRole("radio", { name: /Editor anterior/ }).check();
-  await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Criar meu site" }).click();
+  await page.getByRole("button", { name: "Escolher Editor Guiado" }).click();
+  await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Confirmar e criar site" }).click();
   await expect(page.getByText("Fora do ar").first()).toBeVisible();
   await stranger.close();
 });

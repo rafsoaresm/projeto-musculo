@@ -5062,3 +5062,91 @@ button.ve-layer-toggle {
     height: 36px;
   }
 }
+
+/* ---------- Meu Site: creating the site in two steps (handoff V4, Figma 10:2 and 10:46) ---------- */
+.create-steps {
+  display: flex;
+  gap: 8px;
+  list-style: none;
+  margin: 0 0 20px;
+  padding: 0;
+}
+.create-steps li {
+  border-radius: var(--radius-button);
+  padding: 4px 14px;
+  font-size: var(--font-size-sm);
+  background: var(--color-neutral-100);
+  color: var(--color-muted);
+}
+.create-steps li[aria-current="step"] {
+  background: var(--color-brand-subtle);
+  color: var(--color-primary-strong);
+  font-weight: 700;
+}
+.editor-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  margin-bottom: 20px;
+}
+.editor-card,
+.confirm-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: 24px;
+}
+.editor-card ul {
+  margin: 0;
+  padding-left: 20px;
+  flex: 1;
+}
+.editor-card li + li {
+  margin-top: 6px;
+}
+.editor-card .button {
+  align-self: stretch;
+}
+.editor-tag {
+  align-self: flex-start;
+  background: var(--color-brand-subtle);
+  color: var(--color-primary-strong);
+  border-radius: var(--radius-button);
+  padding: 2px 12px;
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+.callout-warning {
+  background: var(--color-warning-soft);
+  border: 1px solid var(--color-warning-line);
+  border-radius: var(--radius-card);
+  padding: 16px 20px;
+  color: var(--color-text);
+}
+.callout-warning p {
+  margin: 4px 0 0;
+}
+.confirm-card {
+  max-width: 640px;
+  margin: 0 auto;
+}
+@media (max-width: 760px) {
+  .editor-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.site-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.site-head .count-chips {
+  margin: 0;
+}

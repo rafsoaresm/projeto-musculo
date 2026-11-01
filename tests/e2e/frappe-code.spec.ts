@@ -48,7 +48,10 @@ test("frappe code: free code on a published page is a frame that runs it and rea
   await createProfessional(page, `Estúdio ${unique}`, "Marina Código");
   const slug = `estudio-${unique}`;
   await page.goto("./profissional/meu-site");
-  await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Criar meu site" }).click();
+  await page.getByRole("button", { name: "Escolher Editor Avançado" }).click();
+  await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Confirmar e criar site" }).click();
+  await expect(page).toHaveURL(/\/profissional\/meu-site\/editor/);
+  await page.goto("./profissional/meu-site");
   await expect(panel(page)).toBeVisible();
   await expect(panel(page).getByText("Nenhuma página no ar tem código livre.")).toBeVisible();
   await expect(panel(page)).toContainText("O código não carrega nada de fora");
@@ -167,7 +170,10 @@ test("frappe code, from the editor itself: the Embed template of the library is 
   await createProfessional(page, `Estúdio ${unique}`, "Marina Embed");
   const slug = `estudio-${unique}`;
   await page.goto("./profissional/meu-site");
-  await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Criar meu site" }).click();
+  await page.getByRole("button", { name: "Escolher Editor Avançado" }).click();
+  await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Confirmar e criar site" }).click();
+  await expect(page).toHaveURL(/\/profissional\/meu-site\/editor/);
+  await page.goto("./profissional/meu-site");
   await expect(panel(page)).toBeVisible();
 
   await trackPolicy(page);

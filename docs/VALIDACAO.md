@@ -2,6 +2,19 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.56: Meu Site — levantamento, criação em dois passos, editor fixo, cabeçalho da gestão e três correções (Figma `10:2`, `10:46`, `10:76`, `10:119`)
+
+**Migration 0030, aditiva** (`sites.engine_fixed`, padrão 0).
+
+- **Levantamento da decisão D1** (gestor, "Sites e editores", `platformFor().listSiteEditors()`): para cada site, o espaço, o endereço, o editor que o endereço principal mostra, as gravações e versões do Editor Guiado, as páginas (e quantas publicadas) do Editor Avançado, e a marca "Conteúdo nos dois". Só contagens, só para o gestor da plataforma (outra pessoa recebe lista vazia). Teste D1 com quatro sites.
+- **Editor fixo**: o site criado a partir desta versão grava `engine_fixed = 1`; o servidor recusa a troca (`setEngine` → `fixed`, sem linha de auditoria) e a tela esconde os botões de troca e diz "exclua o site e comece de novo". Os sites criados antes ficam com 0 e continuam como estavam, até o usuário ver o levantamento.
+- **Criação em dois passos**: "1. Escolha" com dois cartões de igual peso, sem pré-seleção (Editor Guiado, "Mais simples para começar"; Editor Avançado, "Mais liberdade de criação"), cada um com três capacidades e botão, e o aviso "Importante: escolha definitiva para este site"; "2. Confirme" com "Criar site com o Editor …?", título, endereço, modelos (só no Guiado), "Sua escolha não poderá ser alterada", "Voltar e escolher" e "Confirmar e criar site". Depois de criar, o Avançado abre o Frappe; o Guiado volta à gestão.
+- **Cabeçalho da gestão**: título "Meu Site" com a frase do quadro, etiquetas do editor e da situação ("Publicado" ou "Site em rascunho"), um botão principal ("Editar site", que abre o editor visual, ou "Abrir Frappe Builder") e o cartão "Site profissional" com "Editor fixo" (ou "Criado antes da escolha fixa"), a frase da situação e o endereço.
+- **Correções da revisão V4**: (2) uma regra única do estado público (`public-status.ts`, com testes): uma página do Editor Avançado publicada conta como "no ar" mesmo com o endereço principal fora do ar, e a frase diz qual endereço responde; (3) "Tirar do ar" pede confirmação com as consequências, e "Cancelar" deixa como está; (4) o recebimento de mensagens tem um controle só, no painel do editor do site.
+- **Verificado localmente:** `npm run check` com 1464 testes; navegador na montagem raiz, 27 + 17 testes do Meu Site (criação nos dois editores, editor fixo, tirar do ar com cancelar e confirmar, formulários, modelos, imagens).
+- **Não feito nesta fatia:** as abas Páginas / Publicação / Formulários e mensagens / Configurações (próxima fatia, junto com a reorganização dos painéis); "Tirar do ar" para as páginas do Editor Avançado (hoje cada página é despublicada no próprio Frappe); a tirada da troca de editor dos sites antigos, que espera o usuário ver o levantamento no ar.
+- **Não verificado:** a montagem `/treinador` fica para o CI; o levantamento com os dados reais só pode ser lido no ar, pelo gestor.
+
 ## Fatia 0.55: Visão geral nova (Entrega 2 do handoff V4, T02; quadro `1:2` do Figma)
 
 **Sem migration.**
@@ -12,7 +25,8 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Próximos passos** compactos e recolhíveis: abertos enquanto há passo a dar, fechados quando todos estão feitos.
 - **Diferença do Figma:** os itens de exemplo do quadro trazem "convite expirado", "avaliação incompleta" e "reavaliação prevista". O app não registra esses fatos hoje, então eles não aparecem; nada foi inventado. A barra superior do app continua (o quadro não a mostra).
 - **Verificado localmente:** `npm run check` com 1458 testes (3 novos da ordem da fila); suíte completa do navegador na montagem raiz, 124 testes passaram, com as verificações de pedidos, check-in, execução, triagem e prescrição apontando para a fila; capturas a 1280 px comparadas com o quadro `1:2`.
-- **Não verificado:** a montagem `/treinador` fica para o CI; nada foi lido no ar.
+- **Não verificado:** nada foi lido no ar.
+- **CI e deploy:** o CI da PR #56 passou nas duas montagens no commit `809df05`. Merge `ef87361`. Implantada: deploy `3bd11d60`, build de 21:54 a 21:55 e deploy até 21:56 de 01/11/2026, status `success`.
 
 ## Fatia 0.54: Entrega 1 do handoff V4 (clareza) e a sidebar do Figma
 

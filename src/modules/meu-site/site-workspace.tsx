@@ -29,6 +29,8 @@ interface Props {
   /** The site's own switch for the contact form, how many messages wait for the professional, and whether the environment has opened the public forms at all. */
   inquiries: { open: boolean; waiting: number; platformOpen: boolean; canWork: boolean };
   canEdit: boolean;
+  /** Open the editor right away ("Editar site" in the header of the page). */
+  startEditing?: boolean;
 }
 
 /** One answer per place: next to the button that was pressed, so two buttons never share (or repeat) a message. */
@@ -53,7 +55,7 @@ type Note = ReturnType<typeof useNote>;
  * draft saved, and what is public changes only on "Publicar". The editor is a window over this state: the
  * answers to what is pressed inside it are shown inside it, and the ones of this screen stay here.
  */
-export function SiteWorkspace({ slug, initial, live, releases, services, images, inquiries, canEdit }: Props) {
+export function SiteWorkspace({ slug, initial, live, releases, services, images, inquiries, canEdit, startEditing = false }: Props) {
   const router = useRouter();
   const mountPath = useMountPath();
   const [library, setLibrary] = useState<AssetRow[]>(images.library);
@@ -61,7 +63,8 @@ export function SiteWorkspace({ slug, initial, live, releases, services, images,
   const content = history.present;
   const [saved, setSaved] = useState(() => JSON.stringify(initial.content));
   const [revision, setRevision] = useState(initial.revision);
-  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(startEditing && canEdit);
+  const [confirmingUnpublish, setConfirmingUnpublish] = useState(false);
   const stateNote = useNote();
   const saveNote = useNote();
   const editorNote = useNote();
@@ -251,12 +254,37 @@ export function SiteWorkspace({ slug, initial, live, releases, services, images,
               {pending ? "Aguarde…" : live ? "Publicar uma nova versão" : "Publicar"}
             </button>
           )}
-          {canEdit && live && (
-            <button type="button" className="button danger-outline" disabled={pending} onClick={unpublish}>
+          {canEdit && live && !confirmingUnpublish && (
+            <button type="button" className="button danger-outline" disabled={pending} onClick={() => setConfirmingUnpublish(true)}>
               Tirar do ar
             </button>
           )}
         </div>
+        {canEdit && live && confirmingUnpublish && (
+          <div className="callout-warning" role="group" aria-labelledby="tirar-do-ar">
+            <strong id="tirar-do-ar">Tirar o site do ar?</strong>
+            <p>
+              Quem abrir <PublicAddress slug={slug} /> deixa de ver a página, e o formulário de contato para de receber mensagens. As versões continuam
+              guardadas, e você pode publicar de novo quando quiser.
+            </p>
+            <div className="persist-actions">
+              <button type="button" className="button muted-fill" disabled={pending} onClick={() => setConfirmingUnpublish(false)}>
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="button danger-outline"
+                disabled={pending}
+                onClick={() => {
+                  setConfirmingUnpublish(false);
+                  unpublish();
+                }}
+              >
+                Confirmar e tirar do ar
+              </button>
+            </div>
+          </div>
+        )}
         {canEdit && dirty && (
           <div className="stack-form">
             <p className="small">Há alterações no editor que ainda não foram salvas.</p>

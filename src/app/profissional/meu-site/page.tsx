@@ -13,11 +13,13 @@ import { CreateSite } from "@/modules/meu-site/create-site";
 import { SiteWorkspace } from "@/modules/meu-site/site-workspace";
 import { NewEditorPanel } from "@/modules/meu-site/new-editor-panel";
 import { contentOnTheAir } from "@/modules/meu-site/new-editor-forms";
+import { SiteHeader } from "@/modules/meu-site/site-header";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Meu Site" };
 
-export default async function MySite() {
+export default async function MySite({ searchParams }: { searchParams: Promise<{ editar?: string }> }) {
+  const startEditing = (await searchParams).editar === "1";
   const { db, context, workspace } = await requireWorkspace();
   if (!canSeeSite(workspace.role))
     return (
@@ -37,15 +39,20 @@ export default async function MySite() {
   const onTheAir = overview ? await contentOnTheAir(env.DB, overview.site.slug, overview.newEditor.published) : { forms: [], code: [], skipped: 0 };
   return (
     <>
-      <PageHeading
-        eyebrow={workspace.name}
-        title="Meu Site"
-        description="A página pública do seu trabalho: você arrasta os blocos no editor visual, confere na prévia e publica quando quiser."
-      />
+      {!overview && canEdit ? (
+        <PageHeading title="Crie seu site profissional" description="Escolha a forma de criação que melhor combina com seu trabalho." />
+      ) : (
+        <PageHeading
+          title="Meu Site"
+          description={overview?.site.engine === "frappe" ? "Gerencie o site criado com o Frappe Builder." : "Gerencie seu site e seu conteúdo a partir de um único lugar."}
+        />
+      )}
+      {overview && <SiteHeader overview={overview} canEdit={canEdit} />}
       {overview && (
         <NewEditorPanel
           slug={overview.site.slug}
           engine={overview.site.engine}
+          engineFixed={overview.site.engineFixed}
           published={overview.newEditor.published}
           pages={overview.newEditor.pages}
           waiting={overview.inquiries.waiting}
@@ -56,9 +63,11 @@ export default async function MySite() {
         />
       )}
       {overview && overview.site.engine === "frappe" ? (
-        <Notice>
-          <p>O site do editor anterior continua guardado. Use “Voltar ao editor anterior” acima para editá-lo ou publicá-lo de novo.</p>
-        </Notice>
+        overview.site.engineFixed ? null : (
+          <Notice>
+            <p>O site do editor anterior continua guardado. Use “Voltar ao editor anterior” acima para editá-lo ou publicá-lo de novo.</p>
+          </Notice>
+        )
       ) : overview ? (
         <SiteWorkspace
           slug={overview.site.slug}
@@ -69,15 +78,10 @@ export default async function MySite() {
           images={{ available: bucket !== null, library }}
           inquiries={{ ...overview.inquiries, platformOpen, canWork: canWorkLeads(workspace.role) }}
           canEdit={canEdit}
+          startEditing={startEditing}
         />
       ) : canEdit ? (
-        <section className="panel" aria-labelledby="criar-site">
-          <h2 id="criar-site">Crie a sua página</h2>
-          <p className="muted">
-            Comece com um título e um endereço. O site nasce como rascunho: ninguém o vê até você publicar, e só entra o que você escrever.
-          </p>
-          <CreateSite suggestedSlug={slugFromName(workspace.name)} suggestedTitle={workspace.name} />
-        </section>
+        <CreateSite suggestedSlug={slugFromName(workspace.name)} suggestedTitle={workspace.name} />
       ) : (
         <Notice>
           <p>O espaço ainda não tem um site. Só o proprietário ou a gestão criam.</p>
