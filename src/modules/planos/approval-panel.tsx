@@ -80,38 +80,37 @@ export function ApprovalPanel({
             Aprovar é um ato seu: você confirma que revisou este plano. O aluno
             só recebe depois da entrega, que é um passo separado.
           </p>
+          {/* Below the target is a warning, never an impediment (handoff V4, A12 and AC13.9). */}
           {below > 0 ? (
             <p role="status">
               <Pill tone="warning">
-                {below} de {workouts} treinos abaixo do alvo
+                Aviso: {below} de {workouts} treinos abaixo do alvo
               </Pill>{" "}
-              Para aprovar, todos os treinos precisam chegar ao alvo. Crie uma
-              nova revisão e complete os exercícios ou ajuste o alvo.
+              O alvo é uma referência de quantidade e não impede a aprovação. Se
+              quiser completar, crie uma nova revisão.
             </p>
           ) : (
-            <>
-              <p role="status">
-                <Pill tone="success">Alvo atendido em todos os treinos</Pill>
-              </p>
-              <ScreeningNote screening={screening} assessmentsHref={`${studentHref}/avaliacoes`} />
-              {needsAck && (
-                <label className="check-row">
-                  <input
-                    type="checkbox"
-                    checked={ack}
-                    onChange={(event) => setAck(event.target.checked)}
-                  />
-                  Confirmo que não há triagem registrada e que verifiquei o
-                  histórico e as limitações deste aluno por conta própria antes
-                  de aprovar.
-                </label>
-              )}
-            </>
+            <p role="status">
+              <Pill tone="success">Alvo atendido em todos os treinos</Pill>
+            </p>
+          )}
+          <ScreeningNote screening={screening} assessmentsHref={`${studentHref}/avaliacoes`} />
+          {needsAck && (
+            <label className="check-row">
+              <input
+                type="checkbox"
+                checked={ack}
+                onChange={(event) => setAck(event.target.checked)}
+              />
+              Confirmo que não há triagem registrada e que verifiquei o
+              histórico e as limitações deste aluno por conta própria antes
+              de aprovar.
+            </label>
           )}
           <button
             type="button"
             className="button primary"
-            disabled={pending || below > 0 || blocked || (needsAck && !ack)}
+            disabled={pending || blocked || (needsAck && !ack)}
             onClick={() => run(() => approveRevision(planId, revisionId, needsAck && ack))}
           >
             {pending ? "Aprovando…" : "Aprovar revisão"}

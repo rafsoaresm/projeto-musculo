@@ -149,11 +149,10 @@ export function Planner({
       <div className="notice">
         <Info size={19} />
         <p>
-          Este espaço calcula a estrutura do planejamento. Não prescreve
-          exercícios nem libera treinos.{" "}
+          {/* Handoff V4, A01: the plan does hold the prescription; the simulator saves nothing. */}
           {persist
-            ? "O rascunho fica salvo no cadastro do aluno e só você, com vínculo técnico, o vê. O aluno não o recebe."
-            : "As alterações ficam nesta página; exporte o rascunho para guardar o resultado."}
+            ? "Rascunho visível apenas para você. Configure o ciclo e os exercícios; o aluno verá somente a revisão entregue."
+            : "Simulação: nada aqui é salvo. Exporte para guardar o resultado; para guardar no cadastro de um aluno, abra o aluno e escolha Novo plano."}
         </p>
       </div>
       <div className="planner-layout">

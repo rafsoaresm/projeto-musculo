@@ -116,10 +116,6 @@ export async function approveRevision(
     const result = await plansFor(db, context).approve(planId, revisionId, {
       screeningNotRecorded,
     });
-    if (result.status === "below_target")
-      return {
-        error: `Há ${result.below} ${result.below === 1 ? "treino abaixo do alvo" : "treinos abaixo do alvo"}. Crie uma nova revisão para completar os exercícios ou ajustar o alvo.`,
-      };
     if (result.status === "screening_acknowledgement_required")
       return { error: "Confirme o aviso sobre a triagem para aprovar." };
     if (result.status === "review_required")

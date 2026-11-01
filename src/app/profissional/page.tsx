@@ -35,31 +35,40 @@ export default async function ProfessionalHome() {
   const invited = access.filter((s) => s.access === "INVITED").length;
   const firstStudent = students[0];
   const delivered = plans.some((plan) => plan.state === "DELIVERED");
-  const steps = [
+  // A draft to go back to, and a delivered revision to look at (handoff V4, AC02.2): the step points to the work itself, not to doing it again.
+  const draft = drafts[0];
+  const deliveredPlan = plans.find((plan) => plan.state === "DELIVERED");
+  const planHref = (plan: (typeof plans)[number]) => `/profissional/alunos/${plan.studentId}/planos/${plan.planId}/${plan.revisionId}`;
+  const steps: Array<{ done: boolean; status?: string; title: string; text: string; href: string; cta: string }> = [
     {
       done: students.length > 0,
       title: "Cadastrar o primeiro aluno",
       text: "O cadastro fica vinculado a você como profissional responsável.",
-      href: "/profissional/alunos/novo",
-      cta: "Cadastrar aluno",
+      href: students.length > 0 ? "/profissional/alunos" : "/profissional/alunos/novo",
+      cta: students.length > 0 ? "Ver alunos" : "Cadastrar aluno",
     },
     {
-      done: active + invited > 0,
+      // Done only when a student is in the portal: a link that was generated is not an access (V4, A08 and AC02.1).
+      done: active > 0,
+      status: active === 0 && invited > 0 ? "Convite gerado, aguardando aceite" : undefined,
       title: "Convidar o aluno para a área do aluno",
       text: "Gere um link de uso único. Só quem recebe o link se vincula ao cadastro.",
       href: firstStudent
         ? `/profissional/alunos/${firstStudent.id}`
         : "/profissional/alunos",
-      cta: "Gerar convite",
+      cta: active > 0 || invited > 0 ? "Ver situação do acesso" : "Gerar convite",
     },
     {
       done: plans.length > 0,
+      status: draft && !deliveredPlan ? "Plano em rascunho" : undefined,
       title: "Planejar o ciclo e prescrever os exercícios",
       text: "Defina fases, divisão dos treinos e a duração real do calendário, e depois escolha os exercícios de cada treino.",
-      href: firstStudent
-        ? `/profissional/alunos/${firstStudent.id}/planos/novo`
-        : "/profissional/periodizacao",
-      cta: firstStudent ? "Criar um plano" : "Abrir periodização",
+      href: draft
+        ? planHref(draft)
+        : firstStudent
+          ? `/profissional/alunos/${firstStudent.id}/planos/novo`
+          : "/profissional/alunos",
+      cta: draft ? "Continuar plano" : firstStudent ? "Criar um plano" : "Ver alunos",
     },
     {
       done: assessed,
@@ -74,8 +83,8 @@ export default async function ProfessionalHome() {
       done: delivered,
       title: "Aprovar e entregar o plano",
       text: "Aprovar e entregar são dois atos seus. O aluno só vê a revisão entregue, e ela não muda mais.",
-      href: "/profissional/prescricao",
-      cta: "Ver os planos",
+      href: deliveredPlan ? planHref(deliveredPlan) : "/profissional/prescricao",
+      cta: deliveredPlan ? "Ver entrega" : "Ver os planos",
     },
   ];
   return (
@@ -186,7 +195,11 @@ export default async function ProfessionalHome() {
               <div>
                 <h3>
                   {step.title}{" "}
-                  {step.done && <Pill tone="success">Concluído</Pill>}
+                  {step.done ? (
+                    <Pill tone="success">Concluído</Pill>
+                  ) : (
+                    step.status && <Pill tone="warning">{step.status}</Pill>
+                  )}
                 </h3>
                 <p>{step.text}</p>
               </div>
