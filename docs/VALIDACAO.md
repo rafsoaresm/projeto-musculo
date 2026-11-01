@@ -20,6 +20,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
   - `npm run check`: 1455 testes; o teste de aprovação mudou para a regra nova.
   - Navegador na montagem raiz, 30 testes passaram: `navigation-v4` (agora conferindo que o menu não tem ícones), `prescription`, `delivery`, `assessments`, `planner`, `demo`, `onboarding` e `execution`. A falha da primeira rodada era do teste (texto repetido no rodapé da página).
 - **Não feito nesta fatia:** A13 (entrada de datas no formato brasileiro: o campo de data é o do navegador, e trocar exige um componente próprio, que fica para a Entrega 3 junto do simulador).
+- **CI e deploy:** o CI da PR #55 passou nas duas montagens (raiz e `/treinador`) no commit `06f52ea`; a falha anterior era do commit `d4b6cb5` (texto do rodapé repetido no teste, já corrigido). Merge `400d775`. Implantada: deploy `12308045`, build de 21:00 a 21:02 e deploy até 21:03 de 01/11/2026, status `success`. Nada foi lido ao vivo.
 - **Não verificado:** a montagem `/treinador` e a suíte completa ficam para o CI; nada no ar.
 
 ## Fatia 0.53: Entrega 0 do handoff V4 (navegação e design system)
