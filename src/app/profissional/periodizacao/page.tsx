@@ -4,16 +4,16 @@ import { Planner } from "@/modules/training/components/planner";
 import { PageHeading, Pill } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "Periodização" };
+export const metadata: Metadata = { title: "Simulador de ciclos" };
 
 export default async function PeriodizationPage() {
   await requireWorkspace();
   return (
     <>
       <PageHeading
-        eyebrow="NÚCLEO DE TREINAMENTO"
-        title="Periodização"
-        description="Configure as fases e veja a duração e a sequência reais. Para guardar um plano no cadastro de um aluno, abra o aluno e escolha Novo plano."
+        eyebrow="PLANOS E TREINOS"
+        title="Simulador de ciclos"
+        description="Simule as fases e veja a duração e a sequência reais. Nada aqui é salvo: para guardar um plano, abra o aluno e escolha Novo plano."
         aside={<Pill tone="brand">Rascunho estrutural</Pill>}
       />
       <Planner />

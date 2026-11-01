@@ -7,7 +7,7 @@ export default async function DemoLibrary() {
   await requireDemo();
   return (
     <ModulePreview
-      eyebrow="CONHECIMENTO"
+      eyebrow="PRINCIPAL"
       title="Biblioteca de exercícios"
       description="Os exercícios do documento mestre e os do seu espaço."
     >

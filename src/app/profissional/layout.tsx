@@ -24,6 +24,7 @@ export default async function ProfessionalLayout({
       areas={areaLinks(surfaces, "profissional")}
       userLabel={user.name}
       canSignOut
+      workspace
     >
       {children}
     </RoleShell>

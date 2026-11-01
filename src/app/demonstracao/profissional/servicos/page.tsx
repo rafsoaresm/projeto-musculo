@@ -8,7 +8,7 @@ export default async function DemoServices() {
   return (
     <>
       <PageHeading
-        eyebrow="MARKETING E CAPTAÇÃO"
+        eyebrow="COMERCIAL"
         title="Serviços"
         description="O que você oferece aos seus leads."
         aside={<Pill tone="warning">Prévia · sem espaço real</Pill>}

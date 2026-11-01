@@ -7,7 +7,7 @@ export default async function DemoAssessments() {
   await requireDemo();
   return (
     <ModulePreview
-      eyebrow="ATENDIMENTO"
+      eyebrow="PRINCIPAL"
       title="Avaliações"
       description="Triagem, indicadores, postura e movimento de cada aluno."
     >

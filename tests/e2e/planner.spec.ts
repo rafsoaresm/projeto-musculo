@@ -35,7 +35,7 @@ test("entry page, navigation and responsive layout render without application er
   ).toHaveAttribute("aria-current", "page");
   await noHorizontalOverflow(page);
   await page.goto("./profissional/periodizacao");
-  await expect(page.getByRole("heading", { name: "Periodização" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Simulador de ciclos" })).toBeVisible();
   // A module that is in the structure but not built says so, honestly.
   await page.goto("./profissional/fontes");
   await expect(page.getByRole("heading", { name: "Fontes técnicas" })).toBeVisible();

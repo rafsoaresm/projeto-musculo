@@ -1,48 +1,52 @@
-# Design system — azul sólido
+# Design system — kit DesignSystems.one (handoff V4)
 
-Revisado em 23/10/2026. A versão anterior aplicava o gradiente ciano→azul da referência App Personal em botões, navegação ativa e marca. Ele foi **removido por completo**: a interface usa um único azul chapado. A referência original continua preservada em [`referencias/04-TOKENS-VISUAIS.md`](referencias/04-TOKENS-VISUAIS.md); as instruções do anexo não foram tratadas como pedidos de execução.
-
-Tudo está em `src/styles/tokens.css` (tokens) e `src/app/globals.css` (componentes). Para trocar o azul da marca, altere apenas `--color-primary`, `--color-primary-strong` e `--color-primary-soft`.
+Revisado em 01/11/2026 (0.53, Entrega 0 do handoff V4). Os valores vêm do kit exportado do DesignSystems.one (`designsystems-tokens.zip`, kit `p=0077b6`, Figtree/Roboto, razão 1,2, densidade compacta), copiado **sem edição** em `src/styles/designsystems-tokens.css`. `src/styles/tokens.css` só dá aos nomes que o CSS do app usa um valor do kit; nenhuma cor, tamanho ou raio é escolhido ali. Para mudar a identidade, exportar o kit de novo e substituir o arquivo. A versão anterior (Inter, `#0077B6`, base 15 px) foi substituída por decisão do handoff V4 (seção 6).
 
 ## Cores
 
-| Token | Valor | Uso |
+| Uso | Token do app | Valor do kit |
 |---|---|---|
-| `--color-primary` | `#0077B6` | Botões principais, item de menu ativo, marca, hero |
-| `--color-primary-strong` | `#005F92` | Hover, links, textos pequenos sobre fundo claro, foco |
-| `--color-primary-soft` | `#E8F3FA` | Avisos, ícones, fundos de destaque |
-| `--color-ink` | `#1F2933` | Títulos e valores |
-| `--color-text` / `--color-muted` | `#4A5560` / `#5A6470` | Texto corrido e secundário |
-| `--color-background` / `--color-surface` | `#F5F7F9` / `#FFFFFF` | Fundo da página e dos cartões |
-| `--color-line` | `#D7DDE3` | Bordas (nunca como texto) |
-| `--color-success`, `-warning`, `-error` | `#1B6E3C`, `#8A5A00`, `#A52434` | Situações, sobre fundos `-soft` |
+| Botão principal, marca, preenchimento de destaque | `--color-primary` | `primary-700` `#0078B8` (**exceção nomeada**: o `--color-brand` do kit é `primary-600` `#0093E0`, que dá só 3,36:1 com texto branco; o handoff V4 faz a mesma escolha para o Button/Primary) |
+| Hover, links, texto pequeno sobre claro | `--color-primary-strong` | `primary-800` `#065C89` |
+| Fundo de destaque, item ativo do menu | `--color-primary-soft` / `--color-brand-subtle` | `primary-50` `#F1F9FD` |
+| Fundo da página / cartões | `--color-background` / `--color-surface` | `neutral-50` `#F7F8F8` / `#FFFFFF` |
+| Títulos e valores / texto / secundário | `--color-ink` / `--color-text` / `--color-muted` | `neutral-900` `#2E3438` / `neutral-800` `#41494E` / `neutral-600` `#66737A` |
+| Bordas | `--color-line` / `--color-line-strong` | `neutral-200` / `neutral-300` (nunca como texto) |
+| Situações (texto sobre o fundo suave) | `--color-success-text`, `--color-warning-text`, `--color-error` | degrau `-800` de cada escala sobre o `-50` (**exceção nomeada**: `--color-success`, `--color-warning` e `--color-danger` do kit são os degraus vivos `-600`, para preenchimento, não para texto) |
 
-Mudanças em relação à referência: o ciano `#00FFFA` e o gradiente saíram; o azul `#009EE2` foi substituído por `#0077B6` porque o original dá 3,00:1 com texto branco (abaixo dos 4,5:1 da WCAG AA para texto normal) e obrigava a usar texto escuro no botão. Com `#0077B6` o texto branco tem 4,87:1.
+O item ativo do menu usa fundo `--color-brand-subtle`, texto `primary-800` e uma barra lateral, para não depender só da cor. O modo escuro existe no kit e **não está ligado** (V4, DS-07).
 
-Contrastes verificados (relação de luminância WCAG):
+Contrastes medidos (WCAG, relação de luminância):
 
 | Par | Razão |
 |---|---|
-| Branco sobre `#0077B6` | 4,87:1 |
-| Branco sobre `#005F92` | 6,88:1 |
-| `#005F92` sobre branco / sobre `#F5F7F9` | 6,88:1 / 6,41:1 |
-| `#4A5560` sobre branco | 7,61:1 |
-| `#5A6470` sobre branco / `#E8F3FA` | 6,01:1 / 5,34:1 |
-| `#1B6E3C` sobre `#E6F4EA` | 5,53:1 |
-| `#8A5A00` sobre `#FFF4D6` | 5,41:1 |
-| `#A52434` sobre `#FFF2F3` | 6,63:1 |
+| Branco sobre `#0078B8` (botão) | 4,80:1 |
+| Branco sobre `#065C89` | 7,24:1 |
+| `#065C89` sobre `#F1F9FD` (item ativo) | 6,80:1 |
+| `#0078B8` sobre branco / sobre `#F7F8F8` | 4,80:1 / 4,51:1 |
+| `#2E3438` sobre `#F7F8F8` | 11,86:1 |
+| `#41494E` sobre branco | 9,18:1 |
+| `#66737A` sobre branco / `#F7F8F8` / `#F1F9FD` | 4,89:1 / 4,59:1 / 4,59:1 |
+| `#15793F` sobre `#F3FCF7` | 5,23:1 |
+| `#7B5514` sobre `#FCF9F3` | 6,34:1 |
+| `#791515` sobre `#FCF3F3` | 9,97:1 |
+
+## Tipografia
+
+Figtree (400, 700) no corpo e Roboto (500, 700) nos títulos, servidas pelo próprio app (`@fontsource`, sem Google). Base de 16 px e a escala do kit (`--font-size-xs` a `--font-size-6xl`, razão 1,2). O CSS da aplicação usa só degraus da escala; a página pública dos sites e o editor visual têm tipografia própria, escolhida pelo profissional, e não foram tocados.
 
 ## Forma e superfícies
 
 - Plano: sem gradiente, sem brilho colorido, sem sombra em botões. Cartões usam borda e uma sombra mínima.
-- Mantidos da referência: Inter 400/700 distribuída com o app (`@fontsource/inter`), botões com raio de 50px, campos de 30px, cartões de 15px.
-- Botões principais com no mínimo 52px de altura; os pequenos, 40px. Foco visível de 3px em `#005F92`.
+- Raios do kit: botões `--radius-full`, campos `--radius-xl` (30 px), cartões `--radius-md` (12 px), painéis `--radius-lg` (18 px). Sombras do kit (`--shadow-sm` nos cartões), espaçamento pela escala compacta (`--spacing-N`).
+- Botões principais com no mínimo 52px de altura; os pequenos, 40px. Foco visível de 3px em `primary-700` (`#0078B8`).
 - Estados semânticos usam texto e fundo suaves da mesma família, nunca só cor: sempre há rótulo.
 
 ## Estrutura da interface
 
-- **Áreas com sidebar** (gestor, profissional, aluno): menu agrupado, cartão com o papel e o contexto, barra superior com troca de área e saída. O item ativo é azul sólido; módulos ainda inexistentes mostram a etiqueta **Em breve**.
-- **Celular** (até 860px): barra inferior com os atalhos principais e **Menu** com a navegação completa; tabelas viram cartões rotulados; sem rolagem horizontal da página.
+- **Profissional** (handoff V4, seção 5): sidebar com `TRAINER / RX · WORKSPACE PROFISSIONAL` e os 10 destinos em três grupos (PRINCIPAL, COMERCIAL, CONTA E EQUIPE); o nome do espaço fica na barra superior. O item ativo vem do mapa de rotas (`activeSlug` em `src/modules/platform/surfaces.ts`): o plano de um aluno acende Planos e treinos, o resto do aluno acende Alunos (avaliação aberta dentro do aluno também fica em Alunos), o Simulador de ciclos acende Planos e treinos.
+- **Gestor e aluno**: menu agrupado, cartão com o papel e o contexto, barra superior com troca de área e saída. Módulos ainda inexistentes mostram a etiqueta **Em breve**.
+- **Celular** (até 860px): o profissional abre o menu pelo botão **Menu** da barra superior, numa gaveta lateral com fundo escurecido, **Fechar**, foco preso dentro dela, Escape e toque fora para fechar e o foco devolvido ao botão; gestor e aluno mantêm a barra inferior de atalhos com a mesma gaveta. Tabelas viram cartões rotulados; sem rolagem horizontal da página.
 - **Demonstração**: faixa escura fixa no topo (neutra, não é cor de papel) avisando que os dados são fictícios.
 - Ícones: Lucide, como substitutos; não há equivalência declarada com os vetores do Figma.
 

@@ -6,7 +6,7 @@ import { PageHeading } from "@/components/ui";
 import { PlanTable } from "@/modules/planos/plan-table";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "Prescrição" };
+export const metadata: Metadata = { title: "Planos e treinos" };
 
 export default async function Prescription() {
   const { db, context, workspace } = await requireWorkspace();
@@ -16,8 +16,13 @@ export default async function Prescription() {
     <>
       <PageHeading
         eyebrow={workspace.name}
-        title="Prescrição"
-        description="A prescrição é feita dentro do plano de cada aluno. Aqui você vê a revisão mais recente de cada plano e onde ainda faltam exercícios em relação ao alvo. Esta lista não aprova nem libera nada ao aluno."
+        title="Planos e treinos"
+        description="A revisão mais recente do plano de cada aluno. A prescrição é feita dentro do plano; esta lista não aprova nem libera nada ao aluno."
+        aside={
+          <Link className="button secondary" href="/profissional/periodizacao">
+            Simulador de ciclos
+          </Link>
+        }
       />
       {rows.length === 0 ? (
         <section className="panel">
