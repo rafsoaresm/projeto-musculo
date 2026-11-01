@@ -12,7 +12,8 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Próximos passos** compactos e recolhíveis: abertos enquanto há passo a dar, fechados quando todos estão feitos.
 - **Diferença do Figma:** os itens de exemplo do quadro trazem "convite expirado", "avaliação incompleta" e "reavaliação prevista". O app não registra esses fatos hoje, então eles não aparecem; nada foi inventado. A barra superior do app continua (o quadro não a mostra).
 - **Verificado localmente:** `npm run check` com 1458 testes (3 novos da ordem da fila); suíte completa do navegador na montagem raiz, 124 testes passaram, com as verificações de pedidos, check-in, execução, triagem e prescrição apontando para a fila; capturas a 1280 px comparadas com o quadro `1:2`.
-- **Não verificado:** a montagem `/treinador` fica para o CI; nada foi lido no ar.
+- **Não verificado:** nada foi lido no ar.
+- **CI e deploy:** o CI da PR #56 passou nas duas montagens no commit `809df05`. Merge `ef87361`. Implantada: deploy `3bd11d60`, build de 21:54 a 21:55 e deploy até 21:56 de 01/11/2026, status `success`.
 
 ## Fatia 0.54: Entrega 1 do handoff V4 (clareza) e a sidebar do Figma
 
