@@ -32,7 +32,7 @@ test("a forgotten password is recovered with the link from the e-mail, once, and
   const other = await newActor(browser, baseURL);
   await signIn(other.page, email);
   await other.page.goto("./profissional");
-  await expect(other.page.getByRole("heading", { name: /^Olá, / })).toBeVisible();
+  await expect(other.page.getByRole("heading", { name: "Visão geral", level: 1 })).toBeVisible();
   await signOut(page);
 
   // The recovery exists here: the sign-in page offers it and the health says so, without saying how.
@@ -88,7 +88,7 @@ test("a forgotten password is recovered with the link from the e-mail, once, and
   await page.getByLabel("Senha", { exact: true }).fill(fresh);
   await page.getByRole("button", { name: "Entrar", exact: true }).click();
   await page.waitForURL((url) => !url.pathname.endsWith("/entrar"));
-  await expect(page.getByRole("heading", { name: /^Olá, / })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Visão geral", level: 1 })).toBeVisible();
 
   // The link works once; an invalid one is told apart from one that was used.
   await signOut(page);

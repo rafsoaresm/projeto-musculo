@@ -249,7 +249,7 @@ test("an alert without a review holds the approval and the delivery until the pr
   await expect(page.getByRole("heading", { name: `Avaliação de ${todayBR()}`, exact: true })).toBeVisible();
   const secondURL = page.url();
   await page.goto("./profissional");
-  await expect(page.getByText("Revisões obrigatórias pendentes")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Demandam atenção" }).getByText(/triagem pede a sua revisão/)).toBeVisible();
   await page.goto(revisionURL);
   await expect(page.getByText(REVIEW_REQUIRED, { exact: false })).toBeVisible();
   await expect(page.getByRole("button", { name: "Entregar ao aluno" })).toBeDisabled();

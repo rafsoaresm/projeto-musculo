@@ -87,7 +87,7 @@ test("the student's file is saved, kept after errors, flags minors and stays ins
   await other.page.getByLabel("Nome do espaço").fill("Outro estúdio da ficha");
   await acceptProfessionalTerms(other.page);
   await other.page.getByRole("button", { name: "Criar meu espaço" }).click();
-  await expect(other.page.getByRole("heading", { name: /^Olá, / })).toBeVisible();
+  await expect(other.page.getByRole("heading", { name: "Visão geral", level: 1 })).toBeVisible();
   await other.page.goto(fileURL);
   await expect(other.page.getByRole("heading", { name: "Página não encontrada." })).toBeVisible();
   await other.context.close();

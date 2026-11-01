@@ -41,7 +41,7 @@ test("a professional accepts the terms once, when creating the space, and cannot
 
   await acceptProfessionalTerms(page);
   await page.getByRole("button", { name: "Criar meu espaço" }).click();
-  await expect(page.getByRole("heading", { name: /^Olá, / })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Visão geral", level: 1 })).toBeVisible();
 });
 
 test("a student accepts once with the invitation, chooses the photos apart, and the professional sees both facts", async ({

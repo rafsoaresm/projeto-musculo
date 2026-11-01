@@ -32,7 +32,7 @@ test("a professional changes the password, ends the other devices and the old pa
   const device = await newActor(browser, baseURL);
   await signIn(device.page, email);
   await device.page.goto("./profissional");
-  await expect(device.page.getByRole("heading", { name: /^Olá, / })).toBeVisible();
+  await expect(device.page.getByRole("heading", { name: "Visão geral", level: 1 })).toBeVisible();
 
   await page.goto("./profissional/conta");
   await expect(page.getByRole("heading", { name: "Minha conta", level: 1 })).toBeVisible();
@@ -55,7 +55,7 @@ test("a professional changes the password, ends the other devices and the old pa
   await device.page.goto("./profissional");
   await expect(device.page).toHaveURL(/\/entrar/);
   await page.goto("./profissional");
-  await expect(page.getByRole("heading", { name: /^Olá, / })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Visão geral", level: 1 })).toBeVisible();
 
   // The old password is refused and the new one signs in.
   await signOut(page);
@@ -82,7 +82,7 @@ test("the other devices can be ended without changing the password, and a visito
   const device = await newActor(browser, baseURL);
   await signIn(device.page, email);
   await device.page.goto("./profissional");
-  await expect(device.page.getByRole("heading", { name: /^Olá, / })).toBeVisible();
+  await expect(device.page.getByRole("heading", { name: "Visão geral", level: 1 })).toBeVisible();
 
   await page.goto("./profissional/conta");
   await page.getByRole("button", { name: "Desconectar os outros aparelhos" }).click();
@@ -90,7 +90,7 @@ test("the other devices can be ended without changing the password, and a visito
   await device.page.goto("./profissional");
   await expect(device.page).toHaveURL(/\/entrar/);
   await page.goto("./profissional");
-  await expect(page.getByRole("heading", { name: /^Olá, / })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Visão geral", level: 1 })).toBeVisible();
 
   // Without a session the page is the sign-in page, never the account.
   const visitor = await newActor(browser, baseURL);

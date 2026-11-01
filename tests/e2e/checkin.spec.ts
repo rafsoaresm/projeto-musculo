@@ -74,11 +74,10 @@ test("a student checks in, can correct it the same day, a report of discomfort s
 
   // The professional finds it first in the overview, reads it as said, and registers the reading.
   await page.goto("./profissional");
-  await expect(page.locator(".kpi", { hasText: "Check-ins sem leitura" }).locator(".kpi-value")).toHaveText("1");
-  await expect(page.getByText("1 com relato de desconforto")).toBeVisible();
-  const queue = page.getByRole("region", { name: "Check-ins dos alunos sem leitura" });
-  await expect(queue.getByRole("link", { name: new RegExp(`Aluna do check-in · check-in de ${DATE.source} · relato de desconforto`) })).toBeVisible();
-  await queue.getByRole("link").first().click();
+  const queue = page.getByRole("region", { name: "Demandam atenção" });
+  const item = queue.getByRole("listitem").filter({ hasText: "Aluna do check-in — check-in com relato de desconforto" });
+  await expect(item).toContainText(new RegExp(`Check-in de ${DATE.source}`));
+  await item.getByRole("link", { name: "Ler check-in" }).click();
   await expect(page).toHaveURL(/\/profissional\/alunos\/[^/]+#checkins$/);
   const panel = page.getByRole("region", { name: "Check-ins do aluno" });
   await expect(panel.getByText("Esforço percebido: 4 de 10 · Recuperação: não informada")).toBeVisible();
@@ -94,8 +93,7 @@ test("a student checks in, can correct it the same day, a report of discomfort s
   await expect(page.getByRole("region", { name: "Check-ins do aluno" }).getByText(new RegExp(`Lido em ${DATE.source}`))).toBeVisible();
   await expect(page.getByRole("button", { name: "Registrar leitura" })).toHaveCount(0);
   await page.goto("./profissional");
-  await expect(page.locator(".kpi", { hasText: "Check-ins sem leitura" }).locator(".kpi-value")).toHaveText("0");
-  await expect(page.getByRole("region", { name: "Check-ins dos alunos sem leitura" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Demandam atenção" }).getByText(/— check-in/)).toHaveCount(0);
 
   // The student sees that it was read, and the professional's note is not shown to them.
   await me.goto("./aluno/check-in");
@@ -109,7 +107,7 @@ test("a student checks in, can correct it the same day, a report of discomfort s
   await expect(other.page.getByText("Joelho esquerdo")).toHaveCount(0);
   await expect(other.page.getByRole("heading", { name: "Check-ins do aluno" })).toHaveCount(0);
   await other.page.goto("./profissional");
-  await expect(other.page.locator(".kpi", { hasText: "Check-ins sem leitura" }).locator(".kpi-value")).toHaveText("0");
+  await expect(other.page.getByText("Nada pede a sua atenção agora.")).toBeVisible();
   await other.context.close();
   await client.context.close();
 });
