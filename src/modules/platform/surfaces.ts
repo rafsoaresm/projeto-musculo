@@ -186,66 +186,18 @@ const gestor: NavGroup[] = [
 
 const profissional: NavGroup[] = [
   {
-    label: "ATENDIMENTO",
+    label: "PRINCIPAL",
     items: [
-      {
-        slug: "",
-        label: "Visão geral",
-        icon: "dashboard",
-        status: "available",
-        primary: true,
-      },
-      {
-        slug: "alunos",
-        label: "Alunos",
-        icon: "users",
-        status: "available",
-        primary: true,
-      },
-      {
-        slug: "avaliacoes",
-        label: "Avaliações",
-        icon: "clipboard",
-        status: "available",
-        primary: true,
-      },
-      {
-        slug: "periodizacao",
-        label: "Periodização",
-        icon: "calendar",
-        status: "available",
-        primary: true,
-      },
-      {
-        slug: "prescricao",
-        label: "Prescrição",
-        icon: "dumbbell",
-        status: "available",
-        primary: true,
-      },
+      { slug: "", label: "Visão geral", icon: "dashboard", status: "available", primary: true },
+      { slug: "alunos", label: "Alunos", icon: "users", status: "available", primary: true },
+      { slug: "avaliacoes", label: "Avaliações", icon: "clipboard", status: "available", primary: true },
+      // The standalone /periodizacao route remains a secondary simulator inside this area.
+      { slug: "prescricao", label: "Planos e treinos", icon: "dumbbell", status: "available", primary: true },
+      { slug: "biblioteca", label: "Biblioteca de exercícios", icon: "book", status: "available" },
     ],
   },
   {
-    label: "CONHECIMENTO",
-    items: [
-      {
-        slug: "biblioteca",
-        label: "Biblioteca de exercícios",
-        icon: "book",
-        status: "available",
-      },
-      planned("fontes", "Fontes técnicas", "library", {
-        epic: "E7",
-        reference: "Handoff V2, seção 7",
-        summary:
-          "Acervo autorizado com evidências verificáveis. Sem fonte conferida, a resposta é evidência insuficiente; nada é inventado.",
-        needs:
-          "Acervo com direitos verificados e armazenamento de busca compatível com SQLite. O pgvector deixou de ser pressuposto.",
-      }),
-    ],
-  },
-  {
-    label: "MARKETING E CAPTAÇÃO",
+    label: "COMERCIAL",
     items: [
       { slug: "meu-site", label: "Meu Site", icon: "globe", status: "available" },
       { slug: "leads", label: "Leads", icon: "inbox", status: "available" },
@@ -253,10 +205,10 @@ const profissional: NavGroup[] = [
     ],
   },
   {
-    label: "ESPAÇO",
+    label: "CONTA E EQUIPE",
     items: [
-      { slug: "conta", label: "Minha conta", icon: "user", status: "available" },
       { slug: "configuracoes", label: "Configurações", icon: "settings", status: "available" },
+      { slug: "conta", label: "Minha conta", icon: "user", status: "available" },
     ],
   },
 ];
