@@ -19,6 +19,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
   - `npm run check`: 1455 testes em 87 arquivos.
   - Navegador na montagem raiz: `navigation-v4` (os 10 destinos, os grupos que não são links, o item ativo em 13 endereços, recarregar e voltar, `/planos`, o simulador; a gaveta em 360, 390, 430 e 768 px com foco, Escape, Fechar, toque fora e navegação), `responsive`, `planner`, `demo` e `leads`. 15 passaram e 2 foram pulados de propósito. O `planner` no celular falhou uma vez porque procurava o link na barra inferior que saiu; foi corrigido e passou.
   - Capturas em 1280 e 390 px (painel, aluno, planos, Meu Site, gaveta aberta) conferidas.
+- **CI e deploy:** o CI da PR #54 passou nas duas montagens depois de uma correção de teste (o menu do celular fecha quando o endereço muda, e o teste de sair abria o menu no meio de uma navegação). Implantada: deploy `46703d7a`, commit `258abd5`, status `success`. Nada foi lido ao vivo.
 - **Não verificado:** comparação lado a lado com o Figma (o arquivo não está acessível daqui); zoom de 200% e leitor de tela; 1440 px só sem rolagem horizontal, sem captura conferida; a montagem `/treinador` e a suíte completa ficam para o CI. **Fica para depois:** o estado "carregando" padronizado dos botões (DS-05), cabeçalho de contexto, breadcrumb e etapas (Entregas 2 e 3).
 
 ## Fatia 0.52: o código livre do editor novo, isolado
