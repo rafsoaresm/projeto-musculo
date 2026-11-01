@@ -13,8 +13,8 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Correções da revisão V4**: (2) uma regra única do estado público (`public-status.ts`, com testes): uma página do Editor Avançado publicada conta como "no ar" mesmo com o endereço principal fora do ar, e a frase diz qual endereço responde; (3) "Tirar do ar" pede confirmação com as consequências, e "Cancelar" deixa como está; (4) o recebimento de mensagens tem um controle só, no painel do editor do site.
 - **Verificado localmente:** `npm run check` com 1464 testes; navegador na montagem raiz, 27 + 17 testes do Meu Site (criação nos dois editores, editor fixo, tirar do ar com cancelar e confirmar, formulários, modelos, imagens).
 - **Não feito nesta fatia:** as abas Páginas / Publicação / Formulários e mensagens / Configurações (próxima fatia, junto com a reorganização dos painéis); "Tirar do ar" para as páginas do Editor Avançado (hoje cada página é despublicada no próprio Frappe); a tirada da troca de editor dos sites antigos, que espera o usuário ver o levantamento no ar.
-- **Não verificado:** o levantamento com os dados reais só pode ser lido no ar, pelo gestor; o log do deploy não foi relido para conferir a linha `0030_site_engine_fixed.sql ✅`.
-- **CI e deploy:** o CI da PR #57 passou nas duas montagens no commit `9eaf528`. Merge `66561bf`. Implantada: deploy `7a53da7d`, build de 22:22 a 22:23 e deploy até 22:24 de 01/11/2026, status `success`.
+- **Não verificado:** o levantamento com os dados reais só pode ser lido no ar, pelo gestor.
+- **CI e deploy:** o CI da PR #57 passou nas duas montagens no commit `9eaf528`. Merge `66561bf`. Implantada: deploy `7a53da7d`, build de 22:22 a 22:23 e deploy até 22:24 de 01/11/2026, status `success`; o log do deploy mostra `0030_site_engine_fixed.sql ✅`.
 
 ## Fatia 0.55: Visão geral nova (Entrega 2 do handoff V4, T02; quadro `1:2` do Figma)
 
