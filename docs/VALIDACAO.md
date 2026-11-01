@@ -2,6 +2,18 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.55: Visão geral nova (Entrega 2 do handoff V4, T02; quadro `1:2` do Figma)
+
+**Sem migration.**
+
+- **Fila "Demandam atenção"** (`src/modules/atendimento/attention.ts`, regra pura): um item por coisa que pede ação, com o aluno, o motivo, um detalhe e o botão que leva aonde se resolve. Ordem: pedido sobre os dados vencido; triagem que pede revisão; relato de dor no treino; check-in com desconforto; pedido dentro do prazo; check-in sem leitura; plano em rascunho; convite aguardando aceite. Até 8 itens na tela e "E mais N". Nada com contagem zero vira item; sem nada, "Nada pede a sua atenção agora."
+- **Cabeçalho como no Figma:** título "Visão geral" e "Fila de trabalho, prioridades e próxima melhor ação"; contadores em pílulas (pendências, alunos, planos em rascunho e, se houver, revisões de triagem). A saudação "Olá, …" saiu da área profissional (fica na demonstração).
+- **Atalhos** ("Novo aluno", "Criar plano", que leva à lista de alunos para escolher o aluno) e **Resumo da operação** com quatro indicadores, cada um com link para a lista. Os painéis separados de pedidos, check-ins e relatos de dor e os oito indicadores antigos saíram: o mesmo conteúdo está na fila.
+- **Próximos passos** compactos e recolhíveis: abertos enquanto há passo a dar, fechados quando todos estão feitos.
+- **Diferença do Figma:** os itens de exemplo do quadro trazem "convite expirado", "avaliação incompleta" e "reavaliação prevista". O app não registra esses fatos hoje, então eles não aparecem; nada foi inventado. A barra superior do app continua (o quadro não a mostra).
+- **Verificado localmente:** `npm run check` com 1458 testes (3 novos da ordem da fila); suíte completa do navegador na montagem raiz, 124 testes passaram, com as verificações de pedidos, check-in, execução, triagem e prescrição apontando para a fila; capturas a 1280 px comparadas com o quadro `1:2`.
+- **Não verificado:** a montagem `/treinador` fica para o CI; nada foi lido no ar.
+
 ## Fatia 0.54: Entrega 1 do handoff V4 (clareza) e a sidebar do Figma
 
 **Sem migration.**
