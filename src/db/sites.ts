@@ -56,7 +56,8 @@ export interface ReleaseRow {
   live: boolean;
 }
 export interface SiteOverview {
-  site: { id: string; slug: string; engine: SiteEngine };
+  /** `engineFixed`: the editor was chosen in the two-step creation and cannot change (decision D1). */
+  site: { id: string; slug: string; engine: SiteEngine; engineFixed: boolean };
   /** The pages published from the new editor (route and title), and how many files it holds. */
   newEditor: { published: Array<{ name: string; route: string; title: string }>; pages: number };
   draft: { content: SiteContent; revision: number; updatedAt: string };
@@ -89,7 +90,7 @@ export type PublishOutcome =
   | { status: "warnings"; issues: PublishIssue[] }
   | { status: "conflict" }
   | { status: "not_found" };
-export type EngineOutcome = { status: "changed"; engine: SiteEngine } | { status: "nothing_published" } | { status: "not_found" };
+export type EngineOutcome = { status: "changed"; engine: SiteEngine } | { status: "nothing_published" } | { status: "fixed" } | { status: "not_found" };
 export type DeleteSiteOutcome =
   | { status: "deleted"; objectKeys: string[] }
   | { status: "confirmation_differs" }
@@ -180,11 +181,11 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
         liveServices(),
         db
           .prepare(
-            `SELECT s.inquiries_open AS open, s.engine, s.code_external_open AS codeOpen, (SELECT COUNT(*) FROM site_inquiries q WHERE q.site_id = s.id) AS waiting
+            `SELECT s.inquiries_open AS open, s.engine, s.engine_fixed AS engineFixed, s.code_external_open AS codeOpen, (SELECT COUNT(*) FROM site_inquiries q WHERE q.site_id = s.id) AS waiting
              FROM sites s WHERE s.id = ?3 AND s.organization_id = ?1 AND ${reads}`,
           )
           .bind(organizationId, userId, draft.siteId)
-          .first<{ open: number; engine: SiteEngine; waiting: number; codeOpen: number }>(),
+          .first<{ open: number; engine: SiteEngine; engineFixed: number; waiting: number; codeOpen: number }>(),
         db
           .prepare(
             `SELECT d.name AS name, json_extract(d.data, '$.route') AS route, COALESCE(json_extract(d.data, '$.page_title'), d.name) AS title,
@@ -197,7 +198,7 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
           .all<{ name: string; route: string | null; title: string; published: number }>(),
       ]);
       return {
-        site: { id: draft.siteId, slug: draft.slug, engine: inquiries?.engine ?? "native" },
+        site: { id: draft.siteId, slug: draft.slug, engine: inquiries?.engine ?? "native", engineFixed: inquiries?.engineFixed === 1 },
         newEditor: {
           published: editorPages.results.filter((page) => page.published === 1).map((page) => ({ name: page.name, route: (page.route ?? "").replace(/^\/+|\/+$/g, ""), title: page.title })),
           pages: editorPages.results.length,
@@ -244,12 +245,17 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
      */
     async setEngine(engine: SiteEngine, now = new Date()): Promise<EngineOutcome> {
       const stamp = now.toISOString();
-      const row = await db.prepare(`SELECT s.id FROM sites s WHERE s.organization_id = ?1 AND ${writes}`).bind(organizationId, userId).first<{ id: string }>();
+      const row = await db
+        .prepare(`SELECT s.id, s.engine_fixed AS fixed FROM sites s WHERE s.organization_id = ?1 AND ${writes}`)
+        .bind(organizationId, userId)
+        .first<{ id: string; fixed: number }>();
       if (!row) return { status: "not_found" };
+      // A site whose editor was chosen in the two-step creation keeps it (decision D1): the other editor needs a new site.
+      if (row.fixed === 1) return { status: "fixed" };
       const results = await db.batch([
         db
           .prepare(
-            `UPDATE sites SET engine = ?3, updated_at = ?4 WHERE organization_id = ?1 AND ${writes}
+            `UPDATE sites SET engine = ?3, updated_at = ?4 WHERE organization_id = ?1 AND engine_fixed = 0 AND ${writes}
                AND (?3 = 'native' OR EXISTS (SELECT 1 FROM builder_docs d WHERE d.organization_id = ?1 AND d.doctype = 'Builder Page'
                     AND json_extract(d.data, '$.published') = 1 AND COALESCE(json_extract(d.data, '$.dynamic_route'), 0) = 0))`,
           )
@@ -325,8 +331,8 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
         const results = await db.batch([
           db
             .prepare(
-              `INSERT INTO sites (id, organization_id, slug, engine, created_by, created_at, updated_at)
-               SELECT ?3, ?1, ?4, ?6, ?2, ?5, ?5 WHERE ${writes}
+              `INSERT INTO sites (id, organization_id, slug, engine, engine_fixed, created_by, created_at, updated_at)
+               SELECT ?3, ?1, ?4, ?6, 1, ?2, ?5, ?5 WHERE ${writes}
                  AND NOT EXISTS (SELECT 1 FROM sites o WHERE o.organization_id = ?1)`,
             )
             .bind(organizationId, userId, siteId, slug, stamp, engine),
