@@ -21,7 +21,10 @@ test("frappe editor, hostile page: what a person writes into a block (free HTML,
   const unique = crypto.randomUUID().slice(0, 8);
   await createProfessional(page, `Estúdio ${unique}`, "Marina Hostil");
   await page.goto("./profissional/meu-site");
-  await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Criar meu site" }).click();
+  await page.getByRole("button", { name: "Escolher Editor Avançado" }).click();
+  await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Confirmar e criar site" }).click();
+  await expect(page).toHaveURL(/\/profissional\/meu-site\/editor/);
+  await page.goto("./profissional/meu-site");
 
   const mark = (what: string) => `window.__pwned = (window.__pwned || '') + '${what};'; window.parent.__pwned = (window.parent.__pwned || '') + '${what};'`;
   const blocks = JSON.stringify([

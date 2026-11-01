@@ -9,8 +9,8 @@ test("warnings do not stop a publication: the page goes live with 'Publicar mesm
   const slug = `estudio-${unique}`;
 
   await page.goto("./profissional/meu-site");
-  await page.getByRole("form", { name: "Criar o meu site" }).getByRole("radio", { name: /Editor anterior/ }).check();
-  await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Criar meu site" }).click();
+  await page.getByRole("button", { name: "Escolher Editor Guiado" }).click();
+  await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Confirmar e criar site" }).click();
   await expect(state(page).getByText("Fora do ar")).toBeVisible();
 
   // From the state of the site: the loose ends are warnings, with the way out beside them. Nothing is live until the choice is made.

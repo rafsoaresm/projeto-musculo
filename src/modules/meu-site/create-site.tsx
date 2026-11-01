@@ -1,90 +1,158 @@
 "use client";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createSite } from "./actions";
 import { SLUG_MAX, TITLE_MAX } from "./contracts";
 import { SITE_MODELS, SITE_MODEL_LABEL, type SiteModel } from "./page-models";
 import { SiteModelThumb } from "./site-model-thumb";
 
-/** The first step: an address, a title and what the site starts with. Everything else is edited afterwards, in the draft. */
+type Engine = "native" | "frappe";
+
+/** The two editors as the creation offers them (handoff V4, Figma `10:2`): the same weight, nothing chosen beforehand. */
+const EDITORS: Record<Engine, { name: string; tag: string; text: string; items: string[]; confirm: string; other: string }> = {
+  native: {
+    name: "Editor Guiado",
+    tag: "Mais simples para começar",
+    text: "Personalize por etapas, sem precisar construir cada elemento.",
+    items: ["Comece com um modelo pronto", "Ajuste textos, imagens e identidade", "Organize seções sem complexidade"],
+    confirm: "Você vai montar as páginas deste site por seções, com textos, imagens e identidade.",
+    other: "Editor Avançado",
+  },
+  frappe: {
+    name: "Editor Avançado",
+    tag: "Mais liberdade de criação",
+    text: "Crie páginas com maior controle visual utilizando o Frappe Builder.",
+    items: ["Edite blocos e estrutura do layout", "Personalize estilos e responsividade", "Mais opções de composição visual"],
+    confirm: "Você utilizará o Frappe Builder para construir e personalizar as páginas deste site.",
+    other: "Editor Guiado",
+  },
+};
+
+/**
+ * Creating the site in two steps: choose the editor, then confirm (Figma `10:2` and `10:46`). The choice is final for this site (decision D1):
+ * the server keeps it, and using the other editor means deleting the site and starting again. After creating, the chosen editor opens.
+ */
 export function CreateSite({ suggestedSlug, suggestedTitle }: { suggestedSlug: string; suggestedTitle: string }) {
   const router = useRouter();
+  const [engine, setEngine] = useState<Engine | null>(null);
   const [slug, setSlug] = useState(suggestedSlug);
   const [title, setTitle] = useState(suggestedTitle);
   const [model, setModel] = useState<SiteModel>("single");
-  // The new editor (Frappe Builder) is the one offered first; the first editor stays for whoever prefers its ready-made models.
-  const [engine, setEngine] = useState<"frappe" | "native">("frappe");
   const [message, setMessage] = useState("");
   const [pending, startTransition] = useTransition();
-  return (
-    <form
-      className="stack-form"
-      aria-label="Criar o meu site"
-      onSubmit={(event) => {
-        event.preventDefault();
-        startTransition(async () => {
-          const result = await createSite(slug, title, engine === "native" ? model : "single", engine);
-          setMessage(result.ok ? "" : result.message);
-          if (result.ok) router.refresh();
-        });
-      }}
-    >
-      <label>
-        Título do site
-        <input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={TITLE_MAX} autoComplete="off" required />
-      </label>
-      <label>
-        Endereço (letras minúsculas, números e hífens)
-        <input value={slug} onChange={(event) => setSlug(event.target.value)} maxLength={SLUG_MAX} autoComplete="off" required />
-      </label>
-      <fieldset className="ve-choice">
-        <legend>Editor</legend>
-        <label>
-          <input type="radio" name="site-engine" checked={engine === "frappe"} onChange={() => setEngine("frappe")} /> <strong>Editor novo (Frappe Builder).</strong> Blocos livres, roda de cores e hexadecimal, fontes, imagens, cabeçalho e logotipo
-          como blocos que você edita.
-        </label>
-        <label>
-          <input type="radio" name="site-engine" checked={engine === "native"} onChange={() => setEngine("native")} /> <strong>Editor anterior.</strong> Mais simples, com modelos de site prontos.
-        </label>
-      </fieldset>
-      {engine === "native" && (
-      <fieldset className="ve-choice">
-        <legend>Começar com</legend>
-        <div className="model-choice">
-          {SITE_MODELS.map((entry) => (
-            <label key={entry} className="model-card">
-              <SiteModelThumb model={entry} />
-              <span className="model-head">
-                <input type="radio" name="site-model" checked={model === entry} onChange={() => setModel(entry)} />
-                <strong>{SITE_MODEL_LABEL[entry].label}.</strong>
-              </span>
-              <span className="model-hint">{SITE_MODEL_LABEL[entry].hint}</span>
-            </label>
+  const heading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => heading.current?.focus(), [engine]);
+
+  if (!engine)
+    return (
+      <div className="create-site">
+        <ol className="create-steps" aria-label="Etapas">
+          <li aria-current="step">1. Escolha</li>
+          <li>2. Confirme</li>
+        </ol>
+        <h2 className="sr-only" tabIndex={-1} ref={heading}>
+          Escolha o editor do site
+        </h2>
+        <div className="editor-cards">
+          {(["native", "frappe"] as const).map((key) => (
+            <section key={key} className="editor-card" aria-labelledby={`editor-${key}`}>
+              <span className="editor-tag">{EDITORS[key].tag}</span>
+              <h3 id={`editor-${key}`}>{EDITORS[key].name}</h3>
+              <p className="muted">{EDITORS[key].text}</p>
+              <ul>
+                {EDITORS[key].items.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+              <button type="button" className="button primary" onClick={() => setEngine(key)}>
+                Escolher {EDITORS[key].name}
+              </button>
+            </section>
           ))}
         </div>
-      </fieldset>
-      )}
-      <p className="small muted">
-        {engine === "native" ? (
-          <>
-            O site fica em <code>/s/{slug || "seu-endereco"}</code> e só aparece para as pessoas depois que você publicar. Dá para mudar o endereço enquanto ele estiver fora do ar.
-          </>
-        ) : (
-          <>
-            O site fica em <code>/site/{slug || "seu-endereco"}</code> (e <code>/s/{slug || "seu-endereco"}</code> leva até ele). Só aparece para as pessoas depois que você publicar uma página no editor.
-          </>
-        )}
-      </p>
-      {message && (
-        <p role="alert" className="form-error">
-          {message}
-        </p>
-      )}
-      <div className="persist-actions">
-        <button className="button primary" disabled={pending}>
-          {pending ? "Criando…" : "Criar meu site"}
-        </button>
+        <div className="callout-warning" role="note">
+          <strong>Importante: escolha definitiva para este site</strong>
+          <p>
+            Depois de iniciar a criação, este site só poderá ser editado no editor escolhido. Não será possível alternar entre os dois editores no
+            mesmo site.
+          </p>
+        </div>
       </div>
-    </form>
+    );
+
+  const editor = EDITORS[engine];
+  return (
+    <div className="create-site">
+      <ol className="create-steps" aria-label="Etapas">
+        <li>1. Escolha</li>
+        <li aria-current="step">2. Confirme</li>
+      </ol>
+      <form
+        className="confirm-card stack-form"
+        aria-label="Criar o meu site"
+        onSubmit={(event) => {
+          event.preventDefault();
+          startTransition(async () => {
+            const result = await createSite(slug, title, engine === "native" ? model : "single", engine);
+            setMessage(result.ok ? "" : result.message);
+            if (!result.ok) return;
+            if (engine === "frappe") router.push("/profissional/meu-site/editor");
+            else router.refresh();
+          });
+        }}
+      >
+        <span className="editor-tag">{editor.name.toUpperCase()}</span>
+        <h2 id="confirmar-editor" tabIndex={-1} ref={heading}>
+          Criar site com o {editor.name}?
+        </h2>
+        <p className="muted">{editor.confirm}</p>
+        <label>
+          Título do site
+          <input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={TITLE_MAX} autoComplete="off" required />
+        </label>
+        <label>
+          Endereço (letras minúsculas, números e hífens)
+          <input value={slug} onChange={(event) => setSlug(event.target.value)} maxLength={SLUG_MAX} autoComplete="off" required />
+        </label>
+        {engine === "native" && (
+          <fieldset className="ve-choice">
+            <legend>Começar com</legend>
+            <div className="model-choice">
+              {SITE_MODELS.map((entry) => (
+                <label key={entry} className="model-card">
+                  <SiteModelThumb model={entry} />
+                  <span className="model-head">
+                    <input type="radio" name="site-model" checked={model === entry} onChange={() => setModel(entry)} />
+                    <strong>{SITE_MODEL_LABEL[entry].label}.</strong>
+                  </span>
+                  <span className="model-hint">{SITE_MODEL_LABEL[entry].hint}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )}
+        <p className="small muted">
+          O site fica em <code>/{engine === "native" ? "s" : "site"}/{slug || "seu-endereco"}</code> e só aparece para as pessoas depois que você
+          publicar.
+        </p>
+        <div className="callout-warning" role="note">
+          <strong>Sua escolha não poderá ser alterada</strong>
+          <p>Depois da criação, não será possível editar este mesmo site com o {editor.other}.</p>
+        </div>
+        {message && (
+          <p role="alert" className="form-error">
+            {message}
+          </p>
+        )}
+        <div className="persist-actions">
+          <button type="button" className="button muted-fill" onClick={() => setEngine(null)} disabled={pending}>
+            Voltar e escolher
+          </button>
+          <button className="button primary" disabled={pending}>
+            {pending ? "Criando…" : "Confirmar e criar site"}
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }

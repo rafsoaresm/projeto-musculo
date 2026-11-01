@@ -19,12 +19,11 @@ async function createWith(page: Page, model: RegExp | null, title: string) {
   const unique = crypto.randomUUID().slice(0, 8);
   await createProfessional(page, `Estúdio ${unique}`, "Marina Modelos");
   await page.goto("./profissional/meu-site");
+  await page.getByRole("button", { name: "Escolher Editor Guiado" }).click();
   const form = page.getByRole("form", { name: "Criar o meu site" });
-  await form.getByRole("radio", { name: /Editor anterior/ }).check();
   await form.getByLabel("Título do site").fill(title);
   if (model) await form.getByRole("radio", { name: model }).check();
-  await form.getByRole("radio", { name: /Editor anterior/ }).check();
-  await form.getByRole("button", { name: "Criar meu site" }).click();
+  await form.getByRole("button", { name: "Confirmar e criar site" }).click();
   await expect(state(page).getByText("Fora do ar")).toBeVisible();
   await openEditor(page);
   return `estudio-${unique}`;
@@ -134,8 +133,8 @@ test("layout models: four models as cards with a drawing; a site of layouts star
   const unique = crypto.randomUUID().slice(0, 8);
   await createProfessional(page, `Estúdio ${unique}`, "Marina Atleta");
   await page.goto("./profissional/meu-site");
+  await page.getByRole("button", { name: "Escolher Editor Guiado" }).click();
   const form = page.getByRole("form", { name: "Criar o meu site" });
-  await form.getByRole("radio", { name: /Editor anterior/ }).check();
 
   // ---- the first step: a card for each model, with a drawing that reading aids skip, and the chosen one outlined ----
   await expect(form.locator(".model-card").getByRole("radio")).toHaveCount(4);
@@ -147,8 +146,7 @@ test("layout models: four models as cards with a drawing; a site of layouts star
   const card = form.locator(".model-card", { hasText: "Atleta e instrutor" });
   expect(await card.evaluate((node) => getComputedStyle(node).boxShadow)).not.toBe("none");
   await form.getByLabel("Título do site").fill("Marina Atleta");
-  await form.getByRole("radio", { name: /Editor anterior/ }).check();
-  await form.getByRole("button", { name: "Criar meu site" }).click();
+  await form.getByRole("button", { name: "Confirmar e criar site" }).click();
   await expect(state(page).getByText("Fora do ar")).toBeVisible();
   await openEditor(page);
   const slug = `estudio-${unique}`;
@@ -225,16 +223,15 @@ test("layout models: the personal trainer model on a phone, with the cards one u
   const unique = crypto.randomUUID().slice(0, 8);
   await createProfessional(page, `Estúdio ${unique}`, "Luna Personal");
   await page.goto("./profissional/meu-site");
+  await page.getByRole("button", { name: "Escolher Editor Guiado" }).click();
   const form = page.getByRole("form", { name: "Criar o meu site" });
-  await form.getByRole("radio", { name: /Editor anterior/ }).check();
   await expect(form.locator(".model-card").getByRole("radio")).toHaveCount(4);
   const cards = await form.locator(".model-card").evaluateAll((nodes) => nodes.map((node) => Math.round(node.getBoundingClientRect().left)));
   expect(new Set(cards).size, "one column on a phone").toBe(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
   await form.getByRole("radio", { name: /^Personal trainer/ }).check();
   await form.getByLabel("Título do site").fill("Luna Personal");
-  await form.getByRole("radio", { name: /Editor anterior/ }).check();
-  await form.getByRole("button", { name: "Criar meu site" }).click();
+  await form.getByRole("button", { name: "Confirmar e criar site" }).click();
   await expect(state(page).getByText("Fora do ar")).toBeVisible();
   await openEditor(page);
   await openPages(page);
