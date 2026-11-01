@@ -19,7 +19,8 @@ test("navigation V4 on a computer: the ten destinations in three groups, one ite
   // Groups are labels, never links.
   for (const [group] of GROUPS) await expect(nav.getByRole("link", { name: group })).toHaveCount(0);
   await expect(page.getByText("TRAINER / RX")).toBeVisible();
-  await expect(page.getByText("WORKSPACE PROFISSIONAL")).toBeVisible();
+  await expect(page.getByText("ÁREA PROFISSIONAL", { exact: true })).toBeVisible();
+  await expect(page.getByText("TRAINER PRESCRIPTION", { exact: true })).toBeVisible();
 
   const lit = () => nav.locator('[aria-current="page"]');
   const student = await addStudent(page, "Ana Navegação");

@@ -20,8 +20,8 @@ export function AssessmentsPanel({
       <p className="eyebrow">AVALIAÇÕES</p>
       <h2 id="avaliacoes-aluno">Avaliações e triagem</h2>
       <p className="muted">
-        Cada avaliação é um registro com data: a triagem do documento mestre e
-        os indicadores que você escolher. Uma avaliação registrada não muda; a
+        Cada avaliação é um registro com data: a triagem e os indicadores
+        que você escolher. Uma avaliação registrada não muda; a
         reavaliação é um novo registro.
       </p>
       {assessments.length === 0 ? (

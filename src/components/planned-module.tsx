@@ -3,9 +3,9 @@ import type { NavItem } from "@/modules/platform/surfaces";
 import { PageHeading, Pill } from "./ui";
 
 /**
- * Honest placeholder for a module that is in the product structure but not
- * built yet. It shows where the module lives, what it will do and what blocks
- * it. It never simulates data or behavior.
+ * Honest placeholder for a module that is in the product structure but not built yet: it says, in the words of the product, what the module
+ * will do and that it is not available. No roadmap codes, documents or storage names reach the screen (handoff V4, T17 and A14); those live in
+ * `PlannedInfo` for the docs and the tests. It never simulates data or behavior.
  */
 export function PlannedModule({
   item,
@@ -19,9 +19,9 @@ export function PlannedModule({
   return (
     <>
       <PageHeading
-        eyebrow={`MÓDULO PLANEJADO · ${info.epic}`}
+        eyebrow="EM DESENVOLVIMENTO"
         title={item.label}
-        description={`Parte da área ${roleLabel}.`}
+        description={`Parte da área ${roleLabel}. Nenhuma função deste módulo está ativa ainda.`}
         aside={<Pill tone="warning">Ainda não disponível</Pill>}
       />
       <section className="panel planned-panel">
@@ -33,14 +33,7 @@ export function PlannedModule({
           <p>{info.summary}</p>
         </div>
       </section>
-      <section className="panel">
-        <h2>O que falta para ele existir</h2>
-        <p>{info.needs}</p>
-      </section>
-      <p className="small muted">
-        Referência: {info.reference}. Esta página mostra o lugar do módulo na
-        estrutura da ferramenta; nenhuma função dele está ativa.
-      </p>
+
     </>
   );
 }

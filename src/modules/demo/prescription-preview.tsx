@@ -95,7 +95,7 @@ export function PrescriptionPreview({ student }: { student: DemoStudent }) {
         aria-labelledby={`${id}-tab-${selected}`}
       >
         <p className="small muted preset-line">
-          Preset do foco {meso.focus} (documento mestre, editável): {" "}
+          Ponto de partida do foco {meso.focus} (editável): {" "}
           {meso.preset.sets} séries · {meso.preset.reps} repetições · descanso{" "}
           {meso.preset.rest} · cadência {meso.preset.cadence} · RIR{" "}
           {meso.preset.rir}. Carga: a definir por você.

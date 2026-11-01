@@ -181,7 +181,8 @@ export function RoleShell({
         aria-current={active ? "page" : undefined}
         className={`nav-link${active ? " active" : ""}`}
       >
-        <Icon size={19} />
+        {/* The professional's menu is text only, as in the Figma component (28:342). */}
+        {!workspace && <Icon size={19} />}
         <span>{item.label}</span>
         {item.status === "planned" && (
           <span className="nav-tag">{item.tag ?? "Em breve"}</span>
@@ -215,7 +216,7 @@ export function RoleShell({
             aria-label={`Trainer Prescription, início de ${roleLabel}`}
           >
             <strong>TRAINER / RX</strong>
-            <small>WORKSPACE PROFISSIONAL</small>
+            <small>ÁREA PROFISSIONAL</small>
           </Link>
         ) : (
           <>
@@ -238,7 +239,12 @@ export function RoleShell({
             </div>
           ))}
         </nav>
-        {!workspace && (
+        {workspace ? (
+          <div className="sidebar-footer workspace-footer">
+            <strong>TRAINER PRESCRIPTION</strong>
+            <small>Área profissional</small>
+          </div>
+        ) : (
           <div className="sidebar-footer">
             <Link className="nav-link subtle" href="/projeto">
               <Layers3 size={17} />
@@ -351,7 +357,7 @@ export function RoleShell({
               {workspace ? (
                 <span className="workspace-brand">
                   <strong>TRAINER / RX</strong>
-                  <small>WORKSPACE PROFISSIONAL</small>
+                  <small>ÁREA PROFISSIONAL</small>
                 </span>
               ) : (
                 <span className="role-badge">{roleLabel}</span>
