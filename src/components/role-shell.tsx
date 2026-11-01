@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   BookOpen,
   Building2,
@@ -104,13 +104,28 @@ export function RoleShell({
 }: RoleShellProps) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const hrefOf = (item: NavItem) =>
     item.slug ? `${prefix}/${item.slug}` : prefix;
+  // The V4 sidebar is route-driven. Child pages do not turn on a second item.
+  // Training plan children stay under "Planos e treinos"; the simulator is secondary.
   const isActive = (item: NavItem) => {
     const href = hrefOf(item);
-    return item.slug === ""
-      ? pathname === href
-      : pathname === href || pathname.startsWith(`${href}/`);
+    if (surface === "profissional") {
+      const relative = pathname === prefix ? "" : pathname.startsWith(`${prefix}/`)
+        ? pathname.slice(prefix.length + 1) : "";
+      if (relative === "") return item.slug === "";
+      if (relative === "periodizacao" || relative === "planos" ||
+          relative === "prescricao" || relative.startsWith("prescricao/") ||
+          relative.startsWith("planos/") || /^alunos\/[^/]+\/planos\//.test(relative)) {
+        return item.slug === "prescricao";
+      }
+      if (relative.startsWith("alunos/") || relative === "alunos") return item.slug === "alunos";
+      const section = relative.split("/")[0];
+      return item.slug === section;
+    }
+    return item.slug === "" ? pathname === href : pathname === href || pathname.startsWith(`${href}/`);
   };
   const primary = groups
     .flatMap((group) => group.items)
@@ -119,11 +134,34 @@ export function RoleShell({
 
   useEffect(() => {
     if (!menuOpen) return;
-    const close = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setMenuOpen(false);
+    const before = document.activeElement as HTMLElement | null;
+    const menu = mobileMenuRef.current;
+    const focusable = () => Array.from(
+      menu?.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex="0"]') ?? [],
+    );
+    focusable()[0]?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMenuOpen(false);
+      }
+      if (event.key !== "Tab") return;
+      const targets = focusable();
+      if (targets.length === 0) return;
+      const first = targets[0]!, last = targets[targets.length - 1]!;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
-    document.addEventListener("keydown", close);
-    return () => document.removeEventListener("keydown", close);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      (menuTriggerRef.current ?? before)?.focus();
+    };
   }, [menuOpen]);
 
   const renderLink = (item: NavItem, onNavigate?: () => void) => {
@@ -163,12 +201,17 @@ export function RoleShell({
         </div>
       )}
       <aside className="sidebar">
-        <Brand href={prefix} label={`Trainer Prescription, início de ${roleLabel}`} />
-        <div className="context-card">
+        {surface === "profissional" ? (
+          <Link href={prefix} className="professional-brand" aria-label="Trainer Prescription — Visão geral">
+            <strong>TRAINER / RX</strong>
+            <small>ÁREA PROFISSIONAL</small>
+          </Link>
+        ) : <Brand href={prefix} label={`Trainer Prescription, início de ${roleLabel}`} />}
+        {surface !== "profissional" && <div className="context-card">
           <span className="role-badge">{roleLabel}</span>
           <strong>{contextTitle}</strong>
           <small>{contextText}</small>
-        </div>
+        </div>}
         <nav aria-label={`Navegação de ${roleLabel}`}>
           {groups.map((group) => (
             <div className="nav-group" key={group.label}>
@@ -178,10 +221,15 @@ export function RoleShell({
           ))}
         </nav>
         <div className="sidebar-footer">
-          <Link className="nav-link subtle" href="/projeto">
+          {surface === "profissional" ? (
+            <div className="professional-footer">
+              <strong>TRAINER PRESCRIPTION</strong>
+              <small>Área profissional</small>
+            </div>
+          ) : <Link className="nav-link subtle" href="/projeto">
             <Layers3 size={17} />
             <span>Mapa do produto</span>
-          </Link>
+          </Link>}
         </div>
       </aside>
       <div className="main-column">
@@ -232,6 +280,7 @@ export function RoleShell({
         })}
         <button
           type="button"
+          ref={menuTriggerRef}
           aria-expanded={menuOpen}
           aria-controls="mobile-menu"
           onClick={() => setMenuOpen((open) => !open)}
@@ -241,12 +290,20 @@ export function RoleShell({
         </button>
       </nav>
       {menuOpen && (
+        <>
+          <button type="button" className="mobile-menu-backdrop" aria-label="Fechar menu" tabIndex={-1} onClick={() => setMenuOpen(false)} />
         <div
+          ref={mobileMenuRef}
           className="mobile-menu"
           id="mobile-menu"
           role="dialog"
+          aria-modal="true"
           aria-label={`Menu de ${roleLabel}`}
         >
+          <button type="button" className="mobile-menu-close" onClick={() => setMenuOpen(false)} aria-label="Fechar menu">
+            <X size={20} />
+          </button>
+          {surface === "profissional" && <div className="mobile-professional-brand">TRAINER / RX</div>}
           <div className="context-card">
             <span className="role-badge">{roleLabel}</span>
             <strong>{contextTitle}</strong>
@@ -287,6 +344,7 @@ export function RoleShell({
             {canSignOut && <SignOut variant="nav" />}
           </div>
         </div>
+        </>
       )}
     </div>
   );
