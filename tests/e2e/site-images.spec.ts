@@ -161,6 +161,7 @@ test("images: sent in the editor, shown on the page, public only through the pub
   // Taking the page offline takes its images with it, at once.
   await editor(page).getByRole("button", { name: "Fechar o editor" }).click();
   await state(page).getByRole("button", { name: "Tirar do ar" }).click();
+  await state(page).getByRole("group", { name: "Tirar o site do ar?" }).getByRole("button", { name: "Confirmar e tirar do ar" }).click();
   await expect(state(page).getByText("O site saiu do ar.")).toBeVisible();
   expect((await anonymous.page.request.get(`./s/${slug}/m/${used}`)).status()).toBe(404);
   expect((await anonymous.page.request.get(`./s/${slug}`)).status()).toBe(404);

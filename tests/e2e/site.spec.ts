@@ -306,6 +306,11 @@ test("a professional builds a page in the visual editor, previews it, publishes 
   // Offline: the page answers 404 at once, the releases stay, and only now can the address change.
   await expect(page.getByRole("heading", { name: "Endereço do site" })).toHaveCount(0);
   await state(page).getByRole("button", { name: "Tirar do ar" }).click();
+  // Taking it offline asks first (handoff V4, defect 3): cancelling leaves it on the air.
+  await state(page).getByRole("group", { name: "Tirar o site do ar?" }).getByRole("button", { name: "Cancelar" }).click();
+  await expect(state(page).getByText("No ar").first()).toBeVisible();
+  await state(page).getByRole("button", { name: "Tirar do ar" }).click();
+  await state(page).getByRole("group", { name: "Tirar o site do ar?" }).getByRole("button", { name: "Confirmar e tirar do ar" }).click();
   await expect(state(page).getByText("O site saiu do ar.")).toBeVisible();
   expect((await anonymous.page.request.get(`./s/${slug}`)).status()).toBe(404);
   expect((await anonymous.page.request.get(sheetUrl)).status()).toBe(404);

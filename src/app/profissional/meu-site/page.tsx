@@ -13,11 +13,13 @@ import { CreateSite } from "@/modules/meu-site/create-site";
 import { SiteWorkspace } from "@/modules/meu-site/site-workspace";
 import { NewEditorPanel } from "@/modules/meu-site/new-editor-panel";
 import { contentOnTheAir } from "@/modules/meu-site/new-editor-forms";
+import { SiteHeader } from "@/modules/meu-site/site-header";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Meu Site" };
 
-export default async function MySite() {
+export default async function MySite({ searchParams }: { searchParams: Promise<{ editar?: string }> }) {
+  const startEditing = (await searchParams).editar === "1";
   const { db, context, workspace } = await requireWorkspace();
   if (!canSeeSite(workspace.role))
     return (
@@ -41,11 +43,11 @@ export default async function MySite() {
         <PageHeading title="Crie seu site profissional" description="Escolha a forma de criação que melhor combina com seu trabalho." />
       ) : (
         <PageHeading
-          eyebrow={workspace.name}
           title="Meu Site"
-          description="A página pública do seu trabalho: você arrasta os blocos no editor visual, confere na prévia e publica quando quiser."
+          description={overview?.site.engine === "frappe" ? "Gerencie o site criado com o Frappe Builder." : "Gerencie seu site e seu conteúdo a partir de um único lugar."}
         />
       )}
+      {overview && <SiteHeader overview={overview} canEdit={canEdit} />}
       {overview && (
         <NewEditorPanel
           slug={overview.site.slug}
@@ -76,6 +78,7 @@ export default async function MySite() {
           images={{ available: bucket !== null, library }}
           inquiries={{ ...overview.inquiries, platformOpen, canWork: canWorkLeads(workspace.role) }}
           canEdit={canEdit}
+          startEditing={startEditing}
         />
       ) : canEdit ? (
         <CreateSite suggestedSlug={slugFromName(workspace.name)} suggestedTitle={workspace.name} />
