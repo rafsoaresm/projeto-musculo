@@ -392,6 +392,12 @@ label {
   margin: 6px 0 8px;
   overflow-wrap: anywhere;
 }
+/* The action of a page keeps its label on one line (handoff V4, A16: "Novo exercício" broke in two); on a narrow screen the heading wraps instead. */
+.page-heading > :last-child .button,
+.page-heading > .button {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
 .empty-inline {
   padding: 24px 8px;
   text-align: center;
@@ -625,12 +631,36 @@ tbody th {
   background: var(--color-primary-soft);
   color: var(--color-primary-strong);
 }
-/* Active item (V4 section 6.1): the kit's brand-subtle background, primary-800 text, and a bar so it is not told by colour alone. */
+/* Active item (V4 section 6.1 and the Figma component 28:342): the kit's brand-subtle background, primary-800 text in bold. */
 .nav-link.active {
   background: var(--color-brand-subtle);
   color: var(--color-primary-800);
   font-weight: 700;
-  box-shadow: inset 3px 0 0 var(--color-primary);
+}
+/* The professional's sidebar (Figma 28:342): text items, a line between the groups, the product's name at the foot. */
+.shell[data-workspace] .sidebar nav .nav-group + .nav-group,
+.mobile-overlay[data-workspace] .nav-group + .nav-group {
+  padding-top: 14px;
+  border-top: 1px solid var(--color-line);
+}
+.shell[data-workspace] .workspace-brand,
+.mobile-overlay[data-workspace] .mobile-menu-head {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--color-line);
+}
+.workspace-footer {
+  padding: 14px 12px 0;
+  gap: 4px;
+}
+.workspace-footer strong {
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.08em;
+  font-weight: 400;
+  color: var(--color-muted);
+}
+.workspace-footer small {
+  font-size: var(--font-size-xs);
+  color: var(--color-muted);
 }
 .nav-link.subtle {
   color: var(--color-muted);

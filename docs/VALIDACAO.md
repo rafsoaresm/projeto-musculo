@@ -2,11 +2,31 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.54: Entrega 1 do handoff V4 (clareza) e a sidebar do Figma
+
+**Sem migration.**
+
+- **A01, texto do plano:** o aviso "não prescreve exercícios" saiu. O plano diz "Rascunho visível apenas para você. Configure o ciclo e os exercícios; o aluno verá somente a revisão entregue." O simulador diz que nada é salvo.
+- **A08 e AC02.1/AC02.2, passos da visão geral:**
+  - O convite só conta como concluído quando um aluno está no portal; antes disso aparece "Convite gerado, aguardando aceite".
+  - O passo do plano mostra "Plano em rascunho" e "Continuar plano", que leva à revisão exata.
+  - Entregue, mostra "Ver entrega".
+  - Passos concluídos levam a consultar, não a repetir ("Ver alunos", "Ver situação do acesso").
+- **A12 (decisão D3 do usuário):** abaixo do alvo virou **aviso** e não impede mais a aprovação (`src/db/plans.ts`, `approval-panel.tsx`). A triagem continua exigida, e um alerta sem revisão continua bloqueando aprovar e entregar.
+- **A14 e AC17.3:** "documento mestre" saiu das telas. A página de módulo ainda não disponível diz "EM DESENVOLVIMENTO", sem códigos de roadmap, documentos ou nomes de banco (Fontes técnicas mencionava SQLite e pgvector).
+- **A16:** o botão de ação da página não quebra em duas linhas.
+- **Sidebar alinhada ao Figma** (componente `28:342`, drawer `29:543`): "ÁREA PROFISSIONAL", itens sem ícones, linha entre os grupos, rodapé "TRAINER PRESCRIPTION · Área profissional", ativo sem barra lateral. A conferência dos 21 frames está em `docs/REVISAO-HANDOFF-V4.md`, seção 5A.
+- **Verificado localmente:**
+  - `npm run check`: 1455 testes; o teste de aprovação mudou para a regra nova.
+  - Navegador na montagem raiz, 30 testes passaram: `navigation-v4` (agora conferindo que o menu não tem ícones), `prescription`, `delivery`, `assessments`, `planner`, `demo`, `onboarding` e `execution`. A falha da primeira rodada era do teste (texto repetido no rodapé da página).
+- **Não feito nesta fatia:** A13 (entrada de datas no formato brasileiro: o campo de data é o do navegador, e trocar exige um componente próprio, que fica para a Entrega 3 junto do simulador).
+- **Não verificado:** a montagem `/treinador` e a suíte completa ficam para o CI; nada no ar.
+
 ## Fatia 0.53: Entrega 0 do handoff V4 (navegação e design system)
 
 **Sem migration.** O que o handoff V4 manda fazer antes de mexer nas telas.
 
-- **Menu do profissional** (V4 seção 5, NAV-01 a NAV-05): três grupos, PRINCIPAL (Visão geral, Alunos, Avaliações, Planos e treinos, Biblioteca de exercícios), COMERCIAL (Meu Site, Leads, Serviços) e CONTA E EQUIPE (Configurações, Minha conta), nessa ordem e com esses nomes, num mapa único (`src/modules/platform/surfaces.ts`). "Prescrição" virou **Planos e treinos**, com `/profissional/planos` levando ao mesmo lugar. "Periodização" virou **Simulador de ciclos**, aberto por um botão dentro de Planos e treinos. **Fontes técnicas** saiu do menu e continua no mesmo endereço, como "ainda não disponível". Cabeçalho `TRAINER / RX · WORKSPACE PROFISSIONAL`, com o nome do espaço na barra superior.
+- **Menu do profissional** (V4 seção 5, NAV-01 a NAV-05): três grupos, PRINCIPAL (Visão geral, Alunos, Avaliações, Planos e treinos, Biblioteca de exercícios), COMERCIAL (Meu Site, Leads, Serviços) e CONTA E EQUIPE (Configurações, Minha conta), nessa ordem e com esses nomes, num mapa único (`src/modules/platform/surfaces.ts`). "Prescrição" virou **Planos e treinos**, com `/profissional/planos` levando ao mesmo lugar. "Periodização" virou **Simulador de ciclos**, aberto por um botão dentro de Planos e treinos. **Fontes técnicas** saiu do menu e continua no mesmo endereço, como "ainda não disponível". Cabeçalho `TRAINER / RX · ÁREA PROFISSIONAL`, com o nome do espaço na barra superior.
 - **Item ativo pela rota** (NAV-03): função pura `activeSlug`, em que vence a correspondência mais específica. O plano de um aluno acende Planos e treinos, o resto do aluno acende Alunos (a avaliação aberta dentro do aluno também, escolha registrada em `docs/DESIGN-SYSTEM.md`), e o simulador acende Planos e treinos. Continua certo depois de recarregar e de voltar.
 - **Celular** (5.1, NAV-07): o profissional não tem mais barra inferior; o menu abre pelo botão **Menu** da barra superior, numa gaveta lateral com fundo escurecido, **Fechar**, foco preso dentro, Escape e toque fora, e o foco volta ao botão. Gestor e aluno mantêm a barra inferior, com a mesma gaveta.
 - **Tokens** (seção 6, DS-01/02): o kit do DesignSystems.one (`designsystems-tokens.zip`) entrou **sem edição** em `src/styles/designsystems-tokens.css`, e `src/styles/tokens.css` só aponta para ele. Exceções nomeadas:
@@ -19,6 +39,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
   - `npm run check`: 1455 testes em 87 arquivos.
   - Navegador na montagem raiz: `navigation-v4` (os 10 destinos, os grupos que não são links, o item ativo em 13 endereços, recarregar e voltar, `/planos`, o simulador; a gaveta em 360, 390, 430 e 768 px com foco, Escape, Fechar, toque fora e navegação), `responsive`, `planner`, `demo` e `leads`. 15 passaram e 2 foram pulados de propósito. O `planner` no celular falhou uma vez porque procurava o link na barra inferior que saiu; foi corrigido e passou.
   - Capturas em 1280 e 390 px (painel, aluno, planos, Meu Site, gaveta aberta) conferidas.
+- **CI e deploy:** o CI da PR #54 passou nas duas montagens depois de uma correção de teste (o menu do celular fecha quando o endereço muda, e o teste de sair abria o menu no meio de uma navegação). Implantada: deploy `46703d7a`, commit `258abd5`, status `success`. Nada foi lido ao vivo.
 - **Não verificado:** comparação lado a lado com o Figma (o arquivo não está acessível daqui); zoom de 200% e leitor de tela; 1440 px só sem rolagem horizontal, sem captura conferida; a montagem `/treinador` e a suíte completa ficam para o CI. **Fica para depois:** o estado "carregando" padronizado dos botões (DS-05), cabeçalho de contexto, breadcrumb e etapas (Entregas 2 e 3).
 
 ## Fatia 0.52: o código livre do editor novo, isolado

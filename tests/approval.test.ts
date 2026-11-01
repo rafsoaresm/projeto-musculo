@@ -142,21 +142,23 @@ describe("the database itself refuses to change a revision that left DRAFT", () 
 });
 
 describe("approving and delivering", () => {
-  it("approves only a READY revision with every workout at its target and a recorded acknowledgement", async () => {
+  it("approves only a READY revision with a recorded acknowledgement; a workout below its target is a warning and does not stop it", async () => {
     const plans = plansFor(db, scope("tech-a"));
     const rx = prescriptionFor(db, scope("tech-a"));
     const plan = await newPlan("st-1", 2); // 2 of 3 in each of the three workouts
     // A draft is not approvable.
     expect((await plans.approve(plan.planId, plan.revisionId, { screeningNotRecorded: true })).status).toBe("not_found");
     await plans.markReady(plan.planId, plan.revisionId);
-    // Below the target: a pending item that is never filled in, and nothing is written.
-    expect(await plans.approve(plan.planId, plan.revisionId, { screeningNotRecorded: true })).toEqual({ status: "below_target", below: 3 });
-    expect((await stateOf(plan.revisionId)).state).toBe("READY");
+    // Below the target (2 of 3 in each workout): the acknowledgement about the missing screening is still asked, and the target does not block.
+    expect(await plans.approve(plan.planId, plan.revisionId, { screeningNotRecorded: false })).toEqual({ status: "screening_acknowledgement_required" });
+    expect(await plans.approve(plan.planId, plan.revisionId, { screeningNotRecorded: true })).toEqual({ status: "approved" });
+    expect((await stateOf(plan.revisionId)).state).toBe("APPROVED");
 
-    // The fix is a new revision where the professional completes the exercises.
+    // Completing the exercises is a new revision.
     const next = (await plans.newRevisionFrom(plan.planId, plan.revisionId)) as { revisionId: string };
     for (const phase of [1, 2, 3]) await rx.add(plan.planId, next.revisionId, slot(phase), { customName: `Extra ${phase}` });
     await plans.markReady(plan.planId, next.revisionId);
+    expect(await plans.deliver(plan.planId, next.revisionId, at(4))).toEqual({ status: "not_found" }); // a READY revision is not approved
     // The acknowledgement about the missing screening is required.
     expect(await plans.approve(plan.planId, next.revisionId, { screeningNotRecorded: false })).toEqual({ status: "screening_acknowledgement_required" });
     expect((await stateOf(next.revisionId)).state).toBe("READY");
@@ -167,7 +169,6 @@ describe("approving and delivering", () => {
     // Approving twice does nothing, and an approved revision is not yet delivered.
     expect((await plans.approve(plan.planId, next.revisionId, { screeningNotRecorded: true })).status).toBe("not_found");
     expect(await clientSees(plan.planId)).toBe(false);
-    expect(await plans.deliver(plan.planId, plan.revisionId, at(6))).toEqual({ status: "not_found" }); // the READY one is not approved
     expect(await plans.deliver(plan.planId, next.revisionId, at(6))).toEqual({ status: "delivered" });
     expect(await clientSees(plan.planId)).toBe(true);
     expect(await plans.deliver(plan.planId, next.revisionId, at(7))).toEqual({ status: "not_found" });

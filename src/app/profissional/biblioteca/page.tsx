@@ -41,7 +41,7 @@ export default async function Library({
       <PageHeading
         eyebrow={workspace.name}
         title="Biblioteca de exercícios"
-        description="A biblioteca do sistema traz os 64 exercícios do documento mestre. Os vídeos deles são links de busca, não vídeos revisados. Copie um exercício para a sua biblioteca para editá-lo."
+        description="A biblioteca do sistema traz 64 exercícios. Os vídeos deles são links de busca, não vídeos revisados. Copie um exercício para a sua biblioteca para editá-lo."
         aside={
           <Link className="button primary" href="/profissional/biblioteca/novo">
             <Plus size={20} /> Novo exercício

@@ -13,7 +13,7 @@ export default async function DemoPrescription() {
   return (
     <>
       <PageHeading
-        eyebrow="MÓDULO PLANEJADO · E2"
+        eyebrow="PRÉVIA"
         title="Planos e treinos"
         description={`Prévia com ${student.displayName}, um aluno fictício.`}
         aside={<Pill tone="warning">Prévia · não existe ainda</Pill>}

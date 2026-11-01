@@ -44,7 +44,7 @@ Figtree (400, 700) no corpo e Roboto (500, 700) nos títulos, servidas pelo pró
 
 ## Estrutura da interface
 
-- **Profissional** (handoff V4, seção 5): sidebar com `TRAINER / RX · WORKSPACE PROFISSIONAL` e os 10 destinos em três grupos (PRINCIPAL, COMERCIAL, CONTA E EQUIPE); o nome do espaço fica na barra superior. O item ativo vem do mapa de rotas (`activeSlug` em `src/modules/platform/surfaces.ts`): o plano de um aluno acende Planos e treinos, o resto do aluno acende Alunos (avaliação aberta dentro do aluno também fica em Alunos), o Simulador de ciclos acende Planos e treinos.
+- **Profissional** (handoff V4, seção 5): sidebar com `TRAINER / RX · ÁREA PROFISSIONAL` e os 10 destinos em três grupos (PRINCIPAL, COMERCIAL, CONTA E EQUIPE); o nome do espaço fica na barra superior. O item ativo vem do mapa de rotas (`activeSlug` em `src/modules/platform/surfaces.ts`): o plano de um aluno acende Planos e treinos, o resto do aluno acende Alunos (avaliação aberta dentro do aluno também fica em Alunos), o Simulador de ciclos acende Planos e treinos.
 - **Gestor e aluno**: menu agrupado, cartão com o papel e o contexto, barra superior com troca de área e saída. Módulos ainda inexistentes mostram a etiqueta **Em breve**.
 - **Celular** (até 860px): o profissional abre o menu pelo botão **Menu** da barra superior, numa gaveta lateral com fundo escurecido, **Fechar**, foco preso dentro dela, Escape e toque fora para fechar e o foco devolvido ao botão; gestor e aluno mantêm a barra inferior de atalhos com a mesma gaveta. Tabelas viram cartões rotulados; sem rolagem horizontal da página.
 - **Demonstração**: faixa escura fixa no topo (neutra, não é cor de papel) avisando que os dados são fictícios.

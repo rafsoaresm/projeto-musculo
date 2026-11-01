@@ -9,7 +9,7 @@ export default async function DemoWorkout() {
   return (
     <>
       <PageHeading
-        eyebrow="MÓDULO PLANEJADO · E4"
+        eyebrow="PRÉVIA"
         title="Treino atual"
         description="O treino que o seu profissional entregou."
         aside={<Pill tone="warning">Prévia · não existe ainda</Pill>}

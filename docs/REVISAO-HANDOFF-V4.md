@@ -111,6 +111,23 @@ A V4 diz que substitui as versões anteriores, mas estes pontos desfazem decisõ
   - A13: entrada de datas depende do navegador.
 - **P3:** T10 sem filtro de período; T15 sem Limpar filtros; T16 sem o ID de origem na cópia; T21 sem atalho "Cadastrar serviço" com retorno ao lead.
 
+## 5A. Conferência com o Figma (01/11/2026)
+
+Arquivo `RRHeYHC01jSd0hnrRzzBxP`, página única, lido pelo conector do Figma: 21 frames de tela (15 profissionais desktop de 1280 × 850, 3 do aluno e 2 profissionais de 390 × 844, mais o drawer aberto `29:543`), o componente da sidebar `28:342` (10 variantes `Ativo=…`) e os símbolos `29:497` (gatilho do menu) e `29:509` (drawer). Os frames têm dados ilustrativos; nada deles foi copiado para o produto.
+
+| Frame | O que o desenho pede | Estado |
+|---|---|---|
+| `28:342` Sidebar · `29:543` Drawer | `TRAINER / RX` com subtítulo **ÁREA PROFISSIONAL** (a V4, seção 5, escreve "WORKSPACE PROFISSIONAL"; vale o Figma, pela precedência visual da seção 1), itens **só texto, sem ícones**, linha entre os grupos, rodapé `TRAINER PRESCRIPTION · Área profissional`, ativo com fundo claro e texto azul em negrito, sem barra | **Alinhado na 0.54.** O drawer do Figma fecha com um ícone; o app mantém o rótulo "Fechar" (a V4 pede "opção Fechar" e o rótulo é mais acessível) |
+| Todos os frames desktop | Título da página, subtítulo e uma linha; **sem barra superior** | O app mantém a barra superior (nome do espaço, usuário, Sair, troca de área), que o desenho não mostra e o produto precisa; diferença registrada |
+| `1:2` Dashboard | Chips de contagem (pendências, alunos novos, revisões), fila **Demandam atenção** com aluno, motivo e CTA, **Atalhos** (Novo aluno, Criar plano), **Resumo da operação** | Entrega 2 (T02). Hoje: 8 indicadores e o checklist de próximos passos (que a 0.54 já corrige: convite gerado ≠ concluído, Continuar plano, Ver entrega) |
+| `1:111` Ficha do aluno | Cabeçalho "nome · situação" com **Próxima ação**, abas Resumo / Avaliações / Periodização / Treinos / Evolução, linha do tempo e informações relevantes | Entrega 2 (T05). Hoje: página vertical sem abas |
+| `1:261` Editor de prescrição | Contexto "aluno / semana / treino", **Revisar plano**, estrutura semanal, lista compacta com séries, repetições, descanso e carga numa linha, alça de reordenar, "Salvo automaticamente", **Adicionar exercício** | Entrega 3 (T13). O "salvo automaticamente" só entra se houver contrato de autosave (V4, contrato 9.3) |
+| `1:298` Revisão e entrega | CTA compacto "Aprovar e entregar" | **Não seguir**: a V4 (16.2) manda manter aprovar e entregar separados, como o app já faz |
+| `10:2` Escolha do editor | Passos 1. Escolha / 2. Confirme; dois cards iguais **Editor Guiado** ("Mais simples para começar") e **Editor Avançado** ("Mais liberdade de criação") com três capacidades e botão cada; aviso amarelo "Importante: escolha definitiva para este site" | Entrega 4 (decisão D1 já tomada). Hoje: rádios com o Frappe pré-marcado |
+| `10:46` Confirmação · `10:76`/`10:119` Gestão · `11:3`/`11:23` mobile | Confirmação da escolha irreversível; gestão com o editor fixo identificado | Entrega 4 |
+| `10:218` Editor Avançado | Título "Editor Avançado", trilha "Frappe Builder / Site profissional / Rascunho", **Voltar ao Meu Site**, a área nativa do Frappe sem redesenho | Entrega 4 (hoje o Frappe abre sem nada disso) |
+| `1:396`, `1:412`, `1:433` Aluno | Hoje, registrar série, check-in no celular | Sem auditoria do aluno; fora das entregas atuais |
+
 ## 6. Andamento
 
 - **0.53 — Entrega 0** (navegação e tokens): feita localmente. NAV-01 a NAV-05 e NAV-07 cobertos, NAV-03 com teste unitário e de navegador, DS-01/02 com o kit oficial. Faltam o estado "carregando" dos botões (DS-05), o zoom de 200%, o leitor de tela e a comparação com o Figma.

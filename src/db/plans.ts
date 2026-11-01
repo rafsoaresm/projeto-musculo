@@ -81,7 +81,6 @@ export interface PlanOverviewRow {
 }
 export type ApproveOutcome =
   | { status: "approved" }
-  | { status: "below_target"; below: number }
   | { status: "screening_acknowledgement_required" }
   /** The newest assessment is an alert with no recorded review: "Revisão obrigatória antes da entrega." */
   | { status: "review_required"; assessedOn: string }
@@ -432,9 +431,8 @@ export function plansFor(
     },
 
     /**
-     * READY to APPROVED, an act of the professional. It needs every workout at or above its
-     * target (the target can be changed in a draft, never filled in here) and a screening
-     * standing: a clear assessment, an alert with the professional's recorded review, or the
+     * READY to APPROVED, an act of the professional. A workout below its target is a warning the professional sees, not an impediment
+     * (handoff V4, A12, decided by the user on 01/11/2026): nothing is filled in to reach it. It needs a screening standing: a clear assessment, an alert with the professional's recorded review, or the
      * professional's acknowledgement that no assessment is registered for the student. An alert
      * without a review blocks approval. None of these is a clinical clearance: it is only
      * recorded, with the assessment behind it, as what was known at the time.
@@ -447,20 +445,6 @@ export function plansFor(
     ): Promise<ApproveOutcome> {
       const detail = await this.findRevision(planId, revisionId);
       if (!detail || detail.revision.state !== "READY") return { status: "not_found" };
-      // A READY revision is frozen, so these counts cannot change before the update below.
-      const counts = await db
-        .prepare(
-          `SELECT phase_index AS p, workout_label AS w, COUNT(*) AS n
-           FROM prescribed_exercises WHERE organization_id = ?1 AND revision_id = ?2
-           GROUP BY phase_index, workout_label`,
-        )
-        .bind(organizationId, revisionId)
-        .all<{ p: number; w: string; n: number }>();
-      const byWorkout = new Map(counts.results.map((c) => [`${c.p}|${c.w}`, c.n]));
-      const below = workoutSlots(detail.revision.schedule).filter(
-        (slot) => (byWorkout.get(`${slot.phaseIndex}|${slot.label}`) ?? 0) < slot.target,
-      ).length;
-      if (below > 0) return { status: "below_target", below };
       const standing = await screeningStanding(db, organizationId, detail.plan.studentId);
       if (standing?.risk === "REVIEW_REQUIRED" && !standing.reviewed)
         return { status: "review_required", assessedOn: standing.assessedOn };
