@@ -127,7 +127,11 @@ export function NewEditorPanel({ slug, engine, engineFixed, published, pages, wa
           </ul>
         )}
         {forms.skipped > 0 && <p className="small muted">Só as primeiras 20 páginas no ar foram lidas aqui; há mais {forms.skipped}.</p>}
-        {canEdit && (
+        {/* One control for the one switch (handoff V4, defect 4): on a site of the guided editor it stays in that editor's panel below. */}
+        {canEdit && engine === "native" && (
+          <p className="small muted">O recebimento de mensagens vale para o site todo e se liga ou desliga no painel do Editor Guiado, mais abaixo.</p>
+        )}
+        {canEdit && engine === "frappe" && (
           <div className="persist-actions">
             {inquiries.open ? (
               <button type="button" className="button secondary" disabled={pending} onClick={() => switchInquiries(false)}>
