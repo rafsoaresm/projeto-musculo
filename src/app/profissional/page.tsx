@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Visão geral" };
 
 export default async function ProfessionalHome() {
-  const { db, context, workspace, user } = await requireWorkspace();
+  const { db, context } = await requireWorkspace();
   const [students, access, plans, assessments, painPending, checkinsPending, requestsPending] = await Promise.all([
     studentsFor(db, context).list(),
     studentAccessFor(db, context).statuses(),
@@ -105,10 +105,10 @@ export default async function ProfessionalHome() {
   return (
     <>
       <PageHeading
-        eyebrow={workspace.name}
-        title={`Olá, ${user.name.split(" ")[0]}.`}
-        description="Fila de trabalho, prioridades e a próxima ação."
+        title="Visão geral"
+        description="Fila de trabalho, prioridades e próxima melhor ação"
       />
+      <hr className="overview-heading-rule" />
       <ul className="count-chips" aria-label="Resumo do que pede a sua atenção">
         <li>{queue.length === 1 ? "1 pendência" : `${queue.length} pendências`}</li>
         <li>{students.length === 1 ? "1 aluno" : `${students.length} alunos`}</li>
@@ -118,7 +118,7 @@ export default async function ProfessionalHome() {
       <div className="overview-grid">
         <section className="panel" aria-labelledby="atencao">
           <h2 id="atencao">Demandam atenção</h2>
-          <p className="small muted">Primeiro o que tem prazo ou pede revisão; depois o trabalho em andamento.</p>
+          <p className="small muted">Priorizadas por motivo e prazo</p>
           {queue.length === 0 ? (
             <div className="empty-inline">
               <h3>Nada pede a sua atenção agora.</h3>
@@ -150,11 +150,12 @@ export default async function ProfessionalHome() {
         <div className="overview-side">
           <section className="panel" aria-labelledby="atalhos">
             <h2 id="atalhos">Atalhos</h2>
+            <p className="small muted">Tarefas recorrentes</p>
             <div className="shortcut-list">
               <Link className="button primary" href="/profissional/alunos/novo">
                 <Plus size={18} /> Novo aluno
               </Link>
-              <Link className="button secondary" href="/profissional/alunos">
+              <Link className="button muted-fill" href="/profissional/alunos">
                 <Plus size={18} /> Criar plano
               </Link>
               <p className="small muted">Para criar um plano, escolha o aluno.</p>
@@ -162,11 +163,13 @@ export default async function ProfessionalHome() {
           </section>
           <section className="panel" aria-labelledby="resumo">
             <h2 id="resumo">Resumo da operação</h2>
+            <p className="small muted">Indicadores com acesso aos detalhes</p>
             <div className="kpi-grid compact">
-              <Kpi label="Alunos sob seu atendimento" value={students.length} />
-              <Kpi label="Com acesso ao portal" value={active} />
-              <Kpi label="Convites aguardando aceite" value={invited} />
+              <Kpi label="Alunos sob seu atendimento" value={students.length} href="/profissional/alunos" />
+              <Kpi label="Com acesso ao portal" value={active} href="/profissional/alunos" />
+              <Kpi label="Convites aguardando aceite" value={invited} href="/profissional/alunos" />
               <Kpi
+                href="/profissional/prescricao"
                 label="Planos em rascunho"
                 value={drafts.length}
                 hint={pending > 0 ? `${pending} com treinos abaixo do alvo (aviso)` : undefined}

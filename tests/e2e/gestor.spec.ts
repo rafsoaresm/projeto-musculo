@@ -88,7 +88,7 @@ test("the platform manager is activated once and manages organizations without s
     .click();
   await expect(manager.page.getByText("Acesso restabelecido.")).toBeVisible();
   await pro.page.goto("./profissional");
-  await expect(pro.page.getByRole("heading", { name: /^Olá, / })).toBeVisible();
+  await expect(pro.page.getByRole("heading", { name: "Visão geral", level: 1 })).toBeVisible();
 
   // A professional turns on the second step; a manager can turn it off for someone who lost the phone and
   // the codes. The person is signed out and comes back with the password alone.
@@ -103,7 +103,7 @@ test("the platform manager is activated once and manages organizations without s
   await pro.page.goto("./profissional");
   await expect(pro.page).toHaveURL(/\/entrar/);
   await signIn(pro.page, proEmail);
-  await expect(pro.page.getByRole("heading", { name: /^Olá, / })).toBeVisible();
+  await expect(pro.page.getByRole("heading", { name: "Visão geral", level: 1 })).toBeVisible();
 
   // Both actions are on the audit trail.
   await manager.page.goto("./gestor/auditoria");

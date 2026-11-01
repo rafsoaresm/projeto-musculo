@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { Info, TriangleAlert } from "lucide-react";
 
 /** Presentational building blocks. No data access and no business rules. */
@@ -8,7 +9,7 @@ export function PageHeading({
   description,
   aside,
 }: {
-  eyebrow: string;
+  eyebrow?: string;
   title: string;
   description?: string;
   aside?: ReactNode;
@@ -16,7 +17,7 @@ export function PageHeading({
   return (
     <div className="page-heading">
       <div>
-        <p className="eyebrow">{eyebrow}</p>
+        {eyebrow && <p className="eyebrow">{eyebrow}</p>}
         <h1>{title}</h1>
         {description && <p className="muted">{description}</p>}
       </div>
@@ -41,17 +42,27 @@ export function Kpi({
   label,
   value,
   hint,
+  href,
 }: {
   label: string;
   value: ReactNode;
   hint?: string;
+  /** Where the details are; the whole card becomes the link. */
+  href?: string;
 }) {
-  return (
-    <div className="kpi">
+  const body = (
+    <>
       <span className="kpi-label">{label}</span>
       <strong className="kpi-value">{value}</strong>
       {hint && <span className="kpi-hint">{hint}</span>}
-    </div>
+    </>
+  );
+  return href ? (
+    <Link className="kpi kpi-link" href={href}>
+      {body}
+    </Link>
+  ) : (
+    <div className="kpi">{body}</div>
   );
 }
 

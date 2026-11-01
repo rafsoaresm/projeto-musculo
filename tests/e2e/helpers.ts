@@ -61,7 +61,7 @@ export async function createProfessional(
   await page.getByLabel("Nome do espaço").fill(workspace);
   await acceptProfessionalTerms(page);
   await page.getByRole("button", { name: "Criar meu espaço" }).click();
-  await expect(page.getByRole("heading", { name: /^Olá, / })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Visão geral", level: 1 })).toBeVisible();
   return email;
 }
 

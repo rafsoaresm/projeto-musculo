@@ -79,7 +79,7 @@ test("a professional saves, revisits and revises a plan; nobody else reaches it"
   await other.page.getByLabel("Nome do espaço").fill("Outro estúdio dos planos");
   await acceptProfessionalTerms(other.page);
   await other.page.getByRole("button", { name: "Criar meu espaço" }).click();
-  await expect(other.page.getByRole("heading", { name: /^Olá, / })).toBeVisible();
+  await expect(other.page.getByRole("heading", { name: "Visão geral", level: 1 })).toBeVisible();
   await other.page.goto(revisionURL);
   await expect(
     other.page.getByRole("heading", { name: "Página não encontrada." }),

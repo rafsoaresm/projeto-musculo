@@ -45,7 +45,7 @@ test("account, organization and first student persist across logout with tenant 
   await other.page.getByLabel("Nome do espaço").fill("Outro estúdio");
   await acceptProfessionalTerms(other.page);
   await other.page.getByRole("button", { name: "Criar meu espaço" }).click();
-  await expect(other.page.getByRole("heading", { name: /^Olá, / })).toBeVisible();
+  await expect(other.page.getByRole("heading", { name: "Visão geral", level: 1 })).toBeVisible();
   await other.page.goto(privateURL);
   await expect(
     other.page.getByRole("heading", { name: "Página não encontrada." }),
