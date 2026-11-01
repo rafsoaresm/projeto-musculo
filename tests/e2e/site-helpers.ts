@@ -12,8 +12,15 @@ export async function panel(page: Page, name: "Blocos" | "Página" | "Propriedad
   const tabs = editor(page).getByRole("group", { name: "Painéis do editor" });
   if (await tabs.isVisible()) await tabs.getByRole("button", { name, exact: true }).click();
 }
+/** Opens a tab of the management of the site (Páginas, Publicação, Formulários e mensagens, Configurações) unless it is already open. */
+export async function showTab(page: Page, name: "Páginas" | "Publicação" | "Formulários e mensagens" | "Configurações") {
+  const tab = page.getByRole("tablist", { name: "Gestão do site" }).getByRole("tab", { name, exact: true });
+  if ((await tab.getAttribute("aria-selected")) !== "true") await tab.click();
+  await expect(tab).toHaveAttribute("aria-selected", "true");
+}
 export async function openEditor(page: Page) {
-  await state(page).getByRole("button", { name: "Abrir o editor visual" }).click();
+  await showTab(page, "Páginas");
+  await page.getByRole("region", { name: "Páginas do site" }).getByRole("button", { name: "Abrir o editor visual" }).click();
   await expect(editor(page)).toBeVisible();
 }
 export async function closeEditor(page: Page) {

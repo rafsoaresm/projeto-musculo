@@ -25,13 +25,15 @@ export interface NewEditorState {
   /** The pages on the air that have free code, and the site's switch for what that code may reach outside the site. */
   code: { pages: PanelCode[]; networkOpen: boolean };
   canEdit: boolean;
+  /** Which tab of the management this instance draws (handoff V4, Figma 10:119): the pages, the forms and messages, or the settings. */
+  part: "pages" | "forms" | "settings";
 }
 
 /**
  * The new editor (Frappe Builder) in Meu Site: where to open it, which of its pages are on the air and at what address, which editor makes the
  * main address of the site, and the way out: deleting the whole site to start again from nothing.
  */
-export function NewEditorPanel({ slug, engine, engineFixed, published, pages, waiting, forms, inquiries, code, canEdit }: NewEditorState) {
+export function NewEditorPanel({ slug, engine, engineFixed, published, pages, waiting, forms, inquiries, code, canEdit, part }: NewEditorState) {
   const router = useRouter();
   const mountPath = useMountPath();
   const [message, setMessage] = useState("");
@@ -58,8 +60,9 @@ export function NewEditorPanel({ slug, engine, engineFixed, published, pages, wa
     });
   return (
     <>
-      <section className="panel" aria-labelledby="editor-novo">
-        <h2 id="editor-novo">Editor novo (Frappe Builder)</h2>
+      {part === "pages" && (
+      <section className="panel" aria-labelledby="paginas-avancado">
+        <h2 id="paginas-avancado">{engine === "frappe" ? "Páginas publicadas" : "Páginas do Editor Avançado"}</h2>
         <p className="muted">
           Blocos livres, cores com roda e hexadecimal, fontes, imagens, o cabeçalho, o logotipo e o rodapé como blocos que você edita. Você publica pelo botão{" "}
           <strong>Publish</strong> do editor, e cada página no ar aparece em <code>/site/{slug}/…</code>.
@@ -67,7 +70,7 @@ export function NewEditorPanel({ slug, engine, engineFixed, published, pages, wa
         {canEdit && (
           <p>
             <Link className="button primary" href="/profissional/meu-site/editor" prefetch={false}>
-              Abrir o editor novo
+              Abrir o Frappe Builder
             </Link>
           </p>
         )}
@@ -88,7 +91,11 @@ export function NewEditorPanel({ slug, engine, engineFixed, published, pages, wa
             ))}
           </ul>
         )}
-        <h3>Formulários e mensagens</h3>
+      </section>
+      )}
+      {part === "forms" && (
+      <section className="panel" aria-labelledby="formularios-avancado">
+        <h2 id="formularios-avancado">{engine === "frappe" ? "Formulários e mensagens" : "Formulários do Editor Avançado"}</h2>
         <p className="small muted">
           Desenhe o formulário no editor com os blocos do próprio editor: um <strong>Form</strong> com campos (o tipo de cada campo se escolhe no painel “Input”), uma área de texto e um botão. O campo
           de texto chamado <code>nome</code> (ou o primeiro campo de texto) é o <strong>nome</strong>; o campo do tipo <strong>Email</strong> e o do tipo <strong>Tel</strong> são o contato (um dos dois
@@ -151,7 +158,16 @@ export function NewEditorPanel({ slug, engine, engineFixed, published, pages, wa
             </Link>
           </div>
         )}
-        <h3>Código livre</h3>
+        {message && (
+          <p role="status" className="small">
+            {message}
+          </p>
+        )}
+      </section>
+      )}
+      {part === "settings" && (
+      <section className="panel" aria-labelledby="codigo-livre">
+        <h2 id="codigo-livre">Código livre</h2>
         <p className="small muted">
           O bloco <strong>HTML</strong> (e os de <strong>incorporar</strong>, como um vídeo) aceita HTML, estilo e JavaScript escritos por você. Na página publicada ele aparece{" "}
           <strong>num quadro isolado</strong>: o código roda, mas não enxerga a sua conta, os cookies nem o resto da página, e <strong>por padrão não carrega nada de fora</strong> (nem scripts,
@@ -202,7 +218,16 @@ export function NewEditorPanel({ slug, engine, engineFixed, published, pages, wa
             </div>
           </>
         )}
-        <h3>Endereço principal</h3>
+        {message && (
+          <p role="status" className="small">
+            {message}
+          </p>
+        )}
+      </section>
+      )}
+      {part === "settings" && (
+      <section className="panel" aria-labelledby="endereco-principal">
+        <h2 id="endereco-principal">Endereço principal</h2>
         {engineFixed ? (
           <p>
             O endereço <PublicAddress slug={slug} /> mostra o site do <strong>{engine === "frappe" ? "Editor Avançado" : "Editor Guiado"}</strong>. O editor
@@ -237,8 +262,9 @@ export function NewEditorPanel({ slug, engine, engineFixed, published, pages, wa
           </p>
         )}
       </section>
+      )}
 
-      {canEdit && (
+      {canEdit && part === "settings" && (
         <section className="panel" aria-labelledby="excluir-site">
           <h2 id="excluir-site">Excluir o site e recomeçar</h2>
           <p className="muted">

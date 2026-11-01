@@ -47,7 +47,7 @@ test("frappe editor: opens under the mount with nothing fixed to the root and no
   await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Confirmar e criar site" }).click();
   await expect(page).toHaveURL(/\/profissional\/meu-site\/editor/);
   await page.goto("./profissional/meu-site");
-  await page.getByRole("link", { name: "Abrir o editor novo" }).click();
+  await page.getByRole("link", { name: "Abrir o Frappe Builder" }).click();
   await expect(page).toHaveURL(new RegExp(`${mount}/profissional/meu-site/editor/?$`));
   await expect(page.getByRole("heading", { name: "All Pages" })).toBeVisible();
   await expect(page.getByText("You don't have any pages yet", { exact: false })).toBeVisible();

@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { newActor } from "./helpers";
-import { addAtEnd, closeEditor, editor, inspector, library, openEditor, panel, selectLayer, startEditor as startSite } from "./site-helpers";
+import { addAtEnd, closeEditor, editor, inspector, library, openEditor, panel, selectLayer, startEditor as startSite, showTab } from "./site-helpers";
 
 const startEditor = (page: Page) => startSite(page, "Marina Versões");
 const field = (page: Page, label: string) => inspector(page).getByRole("textbox", { name: label, exact: true });
@@ -77,6 +77,7 @@ test("versions: each one can be seen as it was published, compared with another 
   await expect(frame(page).getByText("Atendimento presencial e online")).toHaveCount(0);
   await expect(page.getByRole("region", { name: "O que mudou" })).toHaveCount(0);
   await page.getByRole("link", { name: "Voltar às versões" }).click();
+  await showTab(page, "Publicação");
   await expect(page.getByRole("heading", { name: "Versões publicadas" })).toBeVisible();
 
   // ---- what changed from version 1 to version 2: the list, grouped, and the page with the new block marked ----

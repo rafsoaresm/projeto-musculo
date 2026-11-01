@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { newActor } from "./helpers";
-import { addAtEnd, closeEditor, editor, inspector, library, panel, startEditor as startSite } from "./site-helpers";
+import { addAtEnd, closeEditor, editor, inspector, library, panel, startEditor as startSite, showTab } from "./site-helpers";
 
 const startEditor = (page: Page) => startSite(page, "Marina Mensagens");
 const field = (page: Page, label: string) => inspector(page).getByRole("textbox", { name: label, exact: true });
@@ -73,10 +73,15 @@ test("contact form: a block in the editor, a sample until the site receives mess
   expect(closedPost.status()).toBe(404);
 
   // ---- the switch of the site: the environment of this run has the public forms open; the site turns on its own ----
+  await showTab(page, "Formulários e mensagens");
   await expect(messages(page)).toContainText("Formulários abertos pela plataforma");
+  await showTab(page, "Formulários e mensagens");
   await expect(messages(page)).toContainText("Recebimento desligado");
+  await showTab(page, "Formulários e mensagens");
   await messages(page).getByRole("button", { name: "Ligar o recebimento de mensagens" }).click();
+  await showTab(page, "Formulários e mensagens");
   await expect(messages(page).getByText("O site passou a receber as mensagens do formulário.")).toBeVisible();
+  await showTab(page, "Formulários e mensagens");
   await expect(messages(page)).toContainText("Recebimento ligado");
 
   // ---- the visitor: a plain form on the home page ----
@@ -154,7 +159,9 @@ test("contact form: a block in the editor, a sample until the site receives mess
 
   // ---- the site stops receiving: the form leaves the page at the next visit and the address refuses ----
   await page.goto("./profissional/meu-site");
+  await showTab(page, "Formulários e mensagens");
   await messages(page).getByRole("button", { name: "Desligar o recebimento de mensagens" }).click();
+  await showTab(page, "Formulários e mensagens");
   await expect(messages(page).getByText("O site parou de receber as mensagens do formulário.")).toBeVisible();
   await visitor.goto(`./s/${slug}`);
   await expect(visitor.locator("form")).toHaveCount(0);
@@ -171,7 +178,9 @@ test("contact form on a phone: the inbox and the switch are read and used on the
   await save(page);
   await publishAnyway(page, 1);
   await closeEditor(page);
+  await showTab(page, "Formulários e mensagens");
   await messages(page).getByRole("button", { name: "Ligar o recebimento de mensagens" }).click();
+  await showTab(page, "Formulários e mensagens");
   await expect(messages(page)).toContainText("Recebimento ligado");
   // The page has no form block, so a message comes the way a program sends it: the address takes it all the same.
   const visit = await newActor(browser, baseURL);

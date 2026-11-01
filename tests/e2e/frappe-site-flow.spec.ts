@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { showTab } from "./site-helpers";
 import { createProfessional, localIP, png } from "./helpers";
 
 /** What the editor asks of its server, asked the way the editor asks (same origin, with the header that marks its calls). */
@@ -36,11 +37,11 @@ test("meu site, new editor: a site born in it, an image sent from the editor, th
   await create.getByRole("button", { name: "Confirmar e criar site" }).click();
   await expect(page).toHaveURL(/\/profissional\/meu-site\/editor/);
   await page.goto("./profissional/meu-site");
-  const panel = page.getByRole("region", { name: "Editor novo (Frappe Builder)" });
+  const panel = page.getByRole("region", { name: "Páginas publicadas" });
   await expect(panel).toBeVisible();
   await expect(panel.getByText("Nenhuma ainda.")).toBeVisible();
   await expect(panel.getByRole("button", { name: "Colocar o site novo no endereço principal" })).toHaveCount(0); // born in the new editor: it already has the address
-  await expect(page.getByRole("link", { name: "Abrir o editor novo" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Abrir o Frappe Builder" })).toBeVisible();
 
   // ---- an image sent the way the editor's file picker sends it: a form, with the mark of the editor ----
   const endpoint = "./api/builder-editor/api/method/builder.api.upload_builder_asset";
@@ -94,6 +95,7 @@ test("meu site, new editor: a site born in it, an image sent from the editor, th
 
   // ---- the panel lists the page, and the address of the first editor leads to the new site ----
   await page.reload();
+  await showTab(page, "Páginas");
   await expect(panel.getByRole("list", { name: "Páginas no ar no editor novo" })).toContainText("Início");
   const toNew = await stranger.request.get(`./s/${slug}`, noFollow);
   expect(toNew.status()).toBe(307);
@@ -103,9 +105,11 @@ test("meu site, new editor: a site born in it, an image sent from the editor, th
   await expect(seen.getByText("Olá, mundo")).toBeVisible();
 
   // ---- the editor chosen in the creation is fixed (decision D1): nothing offers the other one ----
-  await expect(panel.getByText("foi escolhido na criação e não muda")).toBeVisible();
-  await expect(panel.getByRole("button", { name: "Voltar ao editor anterior" })).toHaveCount(0);
-  await expect(panel.getByRole("button", { name: "Colocar o site novo no endereço principal" })).toHaveCount(0);
+  await showTab(page, "Configurações");
+  const address = page.getByRole("region", { name: "Endereço principal" });
+  await expect(address.getByText("foi escolhido na criação e não muda")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Voltar ao editor anterior" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Colocar o site novo no endereço principal" })).toHaveCount(0);
 
   // ---- delete everything: the address typed again, and then it is nothing, for visitors and for the editor, and can be started again ----
   await page.getByRole("button", { name: "Excluir o site…" }).click();

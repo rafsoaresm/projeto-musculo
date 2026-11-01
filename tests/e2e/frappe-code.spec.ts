@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { showTab } from "./site-helpers";
 import { createProfessional, localIP, newActor, policyRefusals, trackPolicy } from "./helpers";
 
 /** What the editor asks of its server, asked the way the editor asks (same origin, with the header that marks its calls). */
@@ -35,7 +36,7 @@ async function publish(page: Page, route: string, title: string, blocks: string)
   return name;
 }
 
-const panel = (page: Page) => page.getByRole("region", { name: "Editor novo (Frappe Builder)" });
+const panel = (page: Page) => page.getByRole("region", { name: "Código livre" });
 
 test("frappe code: free code on a published page is a frame that runs it and reaches nothing of the site, the page holds none of it, and the switch of the site is the only way it gets the network", async ({
   page,
@@ -52,8 +53,11 @@ test("frappe code: free code on a published page is a frame that runs it and rea
   await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Confirmar e criar site" }).click();
   await expect(page).toHaveURL(/\/profissional\/meu-site\/editor/);
   await page.goto("./profissional/meu-site");
+  await showTab(page, "Configurações");
   await expect(panel(page)).toBeVisible();
+  await showTab(page, "Configurações");
   await expect(panel(page).getByText("Nenhuma página no ar tem código livre.")).toBeVisible();
+  await showTab(page, "Configurações");
   await expect(panel(page)).toContainText("O código não carrega nada de fora");
 
   // ---- a page with free code (one that is only itself, one that asks for a script of another site), a video frame, a drawing, a line of marked text and plain text ----
@@ -74,6 +78,7 @@ test("frappe code: free code on a published page is a frame that runs it and rea
 
   // ---- the panel counts the code of the page and says which asks for something outside ----
   await page.goto("./profissional/meu-site");
+  await showTab(page, "Configurações");
   const code = panel(page).getByRole("list", { name: "Código livre das páginas no ar" });
   await expect(code.getByRole("listitem")).toHaveCount(1);
   await expect(code).toContainText("Código (/codigo): 3 blocos de código, 2 pedem algo de fora: não vai aparecer enquanto o código não puder carregar coisas de outros sites.");
@@ -139,10 +144,15 @@ test("frappe code: free code on a published page is a frame that runs it and rea
   expect((await visitor.request.get(frameAddress.replace(/\/[^/]+\/0$/, "/nao-existe/0"))).status()).toBe(404);
 
   // ---- the switch of the site: the owner opens it (a line of warning in the panel), and the frames are served with https: at the next request ----
+  await showTab(page, "Configurações");
   await expect(panel(page).getByRole("button", { name: "Deixar o código carregar coisas de outros sites" })).toBeVisible();
+  await showTab(page, "Configurações");
   await expect(panel(page)).toContainText("manda o seu endereço de internet");
+  await showTab(page, "Configurações");
   await panel(page).getByRole("button", { name: "Deixar o código carregar coisas de outros sites" }).click();
+  await showTab(page, "Configurações");
   await expect(panel(page).getByText("O código livre das páginas passou a poder carregar coisas de outros sites (https).")).toBeVisible();
+  await showTab(page, "Configurações");
   await expect(panel(page)).toContainText("O código pode carregar coisas de outros sites (https)");
   const opened = await policyOf();
   expect(opened).toContain("script-src 'unsafe-inline' 'unsafe-eval' https:");
@@ -155,7 +165,9 @@ test("frappe code: free code on a published page is a frame that runs it and rea
   expect(reopened).toMatchObject({ cookie: "blocked:SecurityError", storage: "blocked:SecurityError", parentDocument: "blocked:SecurityError", origin: "null" });
 
   // ---- and closed again ----
+  await showTab(page, "Configurações");
   await panel(page).getByRole("button", { name: "Bloquear de novo o que o código carrega de fora" }).click();
+  await showTab(page, "Configurações");
   await expect(panel(page).getByText("O código livre das páginas deixou de poder carregar coisas de outros sites.")).toBeVisible();
   expect(await policyOf()).toBe(closed);
   await visit.context.close();
@@ -174,6 +186,7 @@ test("frappe code, from the editor itself: the Embed template of the library is 
   await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Confirmar e criar site" }).click();
   await expect(page).toHaveURL(/\/profissional\/meu-site\/editor/);
   await page.goto("./profissional/meu-site");
+  await showTab(page, "Configurações");
   await expect(panel(page)).toBeVisible();
 
   await trackPolicy(page);
@@ -209,6 +222,7 @@ test("frappe code, from the editor itself: the Embed template of the library is 
 
   // ---- on the site the template is the line it holds: text, and not a frame, until someone pastes code in it ----
   await page.goto("./profissional/meu-site");
+  await showTab(page, "Configurações");
   await expect(panel(page).getByText("Nenhuma página no ar tem código livre.")).toBeVisible();
   const visit = await newActor(browser, baseURL);
   await visit.page.goto(`./site/${slug}`);
