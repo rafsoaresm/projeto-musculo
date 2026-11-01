@@ -16,7 +16,7 @@ Status usados: **atende**, **parcial**, **não atende**, **conflito com decisão
 
 A V4 diz que substitui as versões anteriores, mas estes pontos desfazem decisões registradas no projeto. Nenhum foi alterado no código até a confirmação.
 
-**Decidido pelo usuário em 01/11/2026:** D1 adota a V4 (editor fixo por site, sem troca; para mudar de editor, excluir e recomeçar) e D3 adota a V4 (abaixo do alvo vira aviso). D2 espera o `designsystems-tokens.zip`; D4 continua em aberto.
+**Decidido pelo usuário em 01/11/2026:** D1 adota a V4 (editor fixo por site, sem troca; para mudar de editor, excluir e recomeçar) e D3 adota a V4 (abaixo do alvo vira aviso). D2 espera o `designsystems-tokens.zip`; D4 continua em aberto. **Atualização de 01/11/2026:** D2 resolvida com o ZIP (0.53); **D4 decidida: Sim/Não com resposta obrigatória** em cada pergunta da triagem, sem estado "não avaliado" nas avaliações novas; as antigas ficam como formato anterior (só o "sim" é confiável), sem conversão automática.
 
 | # | V4 | Hoje (decisão registrada) | Efeito de adotar a V4 |
 |---|---|---|---|
