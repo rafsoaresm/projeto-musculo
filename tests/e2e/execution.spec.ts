@@ -195,9 +195,10 @@ test("the student logs a workout, corrects it, reports pain, and the professiona
 
   // The professional finds it on the overview, before any reading.
   await page.goto("./profissional");
-  await expect(page.getByText("Relatos de dor sem leitura")).toBeVisible();
-  await expect(page.getByRole("heading", { name: /sem leitura/ })).toBeVisible();
-  await page.getByRole("link", { name: /Aluno da execução · treino Full Body/ }).click();
+  const queue = page.getByRole("region", { name: "Demandam atenção" });
+  const pain = queue.getByRole("listitem").filter({ hasText: "Aluno da execução — relato de dor ou desconforto no treino" });
+  await expect(pain).toContainText("Treino Full Body");
+  await pain.getByRole("link", { name: "Ler registro" }).click();
   await expect(page.getByText("O aluno relatou dor ou desconforto neste treino.")).toBeVisible();
   await expect(page.getByText("ombro direito")).toBeVisible();
   await expect(page.getByText("Dor ou desconforto").first()).toBeVisible();

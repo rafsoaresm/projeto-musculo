@@ -36,8 +36,8 @@ test("a student asks about their data with a deadline, the professional sees it 
 
   // The professional's overview has nothing to answer yet.
   await page.goto("./profissional");
-  await expect(page.getByText("Pedidos de alunos sobre os dados", { exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Pedidos de alunos sobre os dados deles" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Demandam atenção" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Demandam atenção" }).getByText(/pedido sobre os dados/)).toHaveCount(0);
 
   // The student's account says what can be asked, who answers and in how long, and that nothing is sent by e-mail.
   await me.goto("./aluno/conta");
@@ -70,10 +70,9 @@ test("a student asks about their data with a deadline, the professional sees it 
 
   // The professional sees it, with the deadline, on the overview and in the student's page.
   await page.goto("./profissional");
-  await expect(page.locator(".kpi", { hasText: "Pedidos de alunos sobre os dados" }).locator(".kpi-value")).toHaveText("1");
-  await expect(page.getByText("Resposta em até 15 dias")).toBeVisible();
-  const link = page.getByRole("link", { name: new RegExp(`Aluna dos pedidos · Receber uma cópia dos meus dados · prazo ${inFifteenDays()}`) });
-  await link.click();
+  const request = page.getByRole("region", { name: "Demandam atenção" }).getByRole("listitem").filter({ hasText: "Aluna dos pedidos — pedido sobre os dados" });
+  await expect(request).toContainText(`Receber uma cópia dos meus dados · prazo ${inFifteenDays()}`);
+  await request.getByRole("link", { name: "Responder pedido" }).click();
   await expect(page).toHaveURL(/#pedidos$/);
   const panel = page.locator("#pedidos");
   await expect(panel.getByRole("heading", { name: "Pedidos do aluno sobre os dados dele" })).toBeVisible();
@@ -93,8 +92,7 @@ test("a student asks about their data with a deadline, the professional sees it 
   await expect(panel.getByText("Resposta registrada: Enviei os dados de cadastro por e-mail; o treino entregue fica congelado.")).toBeVisible();
   await expect(answerForm(page)).toHaveCount(0);
   await page.goto("./profissional");
-  await expect(page.getByRole("heading", { name: "Pedidos de alunos sobre os dados deles" })).toHaveCount(0);
-  await expect(page.locator(".kpi", { hasText: "Pedidos de alunos sobre os dados" }).locator(".kpi-value")).toHaveText("0");
+  await expect(page.getByRole("region", { name: "Demandam atenção" }).getByText(/pedido sobre os dados/)).toHaveCount(0);
 
   // The student reads the answer, and can ask again, and withdraw what is still open.
   await me.reload();

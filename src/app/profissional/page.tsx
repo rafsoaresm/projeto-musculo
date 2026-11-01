@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, Check } from "lucide-react";
+import { ArrowRight, Check, Plus } from "lucide-react";
 import { requireWorkspace } from "@/modules/auth/server";
 import { studentsFor } from "@/db/students";
 import { studentAccessFor } from "@/db/student-access";
@@ -11,6 +11,7 @@ import { checkinsFor } from "@/db/student-checkins";
 import { dataRequestsFor } from "@/db/data-requests";
 import { REQUEST_KIND_LABEL } from "@/modules/pedidos/contracts";
 import { Kpi, PageHeading, Pill, formatDate } from "@/components/ui";
+import { attentionQueue } from "@/modules/atendimento/attention";
 import { formatCalendarDate } from "@/modules/training/format";
 
 export const dynamic = "force-dynamic";
@@ -87,105 +88,99 @@ export default async function ProfessionalHome() {
       cta: deliveredPlan ? "Ver entrega" : "Ver os planos",
     },
   ];
+  // The work queue (handoff V4 T02, Figma 1:2): one list with the student, the reason and where to act; nothing at zero becomes an item.
+  const names = new Map(students.map((student) => [student.id, student.displayName]));
+  const queue = attentionQueue({
+    requests: requestsPending.map((row) => ({ id: row.id, studentId: row.studentId, studentName: row.studentName, kindLabel: REQUEST_KIND_LABEL[row.kind], overdue: row.overdue, dueOn: formatDate(row.dueAt) })),
+    alerts: assessments
+      .filter((row) => row.riskStatus === "REVIEW_REQUIRED" && !row.reviewed && row.assessmentId && row.assessedOn)
+      .map((row) => ({ studentId: row.studentId, studentName: row.studentName, assessmentId: row.assessmentId!, assessedOn: formatCalendarDate(row.assessedOn!) })),
+    pain: painPending.map((row) => ({ ...row, performedOn: formatCalendarDate(row.performedOn) })),
+    checkins: checkinsPending.map((row) => ({ checkinId: row.checkinId, studentId: row.studentId, studentName: row.studentName, checkedOn: formatCalendarDate(row.checkedOn), discomfort: row.discomfort })),
+    drafts: drafts.map((plan) => ({ studentId: plan.studentId, studentName: plan.studentName, planId: plan.planId, revisionId: plan.revisionId, title: plan.title, revisionNumber: plan.revisionNumber })),
+    invited: access.filter((row) => row.access === "INVITED").map((row) => ({ studentId: row.studentId, studentName: names.get(row.studentId) ?? "Aluno" })),
+  });
+  const shown = queue.slice(0, 8);
+  const allDone = steps.every((step) => step.done);
   return (
     <>
       <PageHeading
         eyebrow={workspace.name}
         title={`Olá, ${user.name.split(" ")[0]}.`}
-        description="Seu atendimento em um só lugar."
+        description="Fila de trabalho, prioridades e a próxima ação."
       />
-      <div className="kpi-grid">
-        <Kpi label="Alunos sob seu atendimento" value={students.length} />
-        <Kpi label="Com acesso ao portal" value={active} />
-        <Kpi label="Convites pendentes" value={invited} />
-        <Kpi
-          label="Planos em rascunho"
-          value={drafts.length}
-          hint={pending > 0 ? `${pending} com treinos abaixo do alvo` : undefined}
-        />
-        <Kpi
-          label="Revisões obrigatórias pendentes"
-          value={alerts}
-          hint={alerts > 0 ? "Triagem com alerta sem revisão registrada" : undefined}
-        />
-        <Kpi
-          label="Relatos de dor sem leitura"
-          value={painPending.length}
-          hint={painPending.length > 0 ? "Registros de treino com dor ou desconforto" : undefined}
-        />
-        <Kpi
-          label="Check-ins sem leitura"
-          value={checkinsPending.length}
-          hint={
-            checkinsPending.some((row) => row.discomfort)
-              ? `${checkinsPending.filter((row) => row.discomfort).length} com relato de desconforto`
-              : undefined
-          }
-        />
-        <Kpi
-          label="Pedidos de alunos sobre os dados"
-          value={requestsPending.length}
-          hint={
-            requestsPending.some((row) => row.overdue)
-              ? `${requestsPending.filter((row) => row.overdue).length} passou do prazo de 15 dias`
-              : requestsPending.length > 0
-                ? "Resposta em até 15 dias"
-                : undefined
-          }
-        />
+      <ul className="count-chips" aria-label="Resumo do que pede a sua atenção">
+        <li>{queue.length === 1 ? "1 pendência" : `${queue.length} pendências`}</li>
+        <li>{students.length === 1 ? "1 aluno" : `${students.length} alunos`}</li>
+        <li>{drafts.length === 1 ? "1 plano em rascunho" : `${drafts.length} planos em rascunho`}</li>
+        {alerts > 0 && <li>{alerts === 1 ? "1 revisão de triagem" : `${alerts} revisões de triagem`}</li>}
+      </ul>
+      <div className="overview-grid">
+        <section className="panel" aria-labelledby="atencao">
+          <h2 id="atencao">Demandam atenção</h2>
+          <p className="small muted">Primeiro o que tem prazo ou pede revisão; depois o trabalho em andamento.</p>
+          {queue.length === 0 ? (
+            <div className="empty-inline">
+              <h3>Nada pede a sua atenção agora.</h3>
+              <p className="muted">Quando houver revisão, relato, pedido ou plano em andamento, ele aparece aqui com o caminho para resolver.</p>
+            </div>
+          ) : (
+            <>
+              <ul className="attention-queue">
+                {shown.map((item) => (
+                  <li key={item.key}>
+                    <div>
+                      <strong>
+                        {item.student} — {item.reason}
+                      </strong>
+                      <span className="small muted">{item.detail}</span>
+                    </div>
+                    <Link className="button primary small" href={item.href}>
+                      {item.cta}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              {queue.length > shown.length && (
+                <p className="small muted">E mais {queue.length - shown.length} na lista de cada módulo.</p>
+              )}
+            </>
+          )}
+        </section>
+        <div className="overview-side">
+          <section className="panel" aria-labelledby="atalhos">
+            <h2 id="atalhos">Atalhos</h2>
+            <div className="shortcut-list">
+              <Link className="button primary" href="/profissional/alunos/novo">
+                <Plus size={18} /> Novo aluno
+              </Link>
+              <Link className="button secondary" href="/profissional/alunos">
+                <Plus size={18} /> Criar plano
+              </Link>
+              <p className="small muted">Para criar um plano, escolha o aluno.</p>
+            </div>
+          </section>
+          <section className="panel" aria-labelledby="resumo">
+            <h2 id="resumo">Resumo da operação</h2>
+            <div className="kpi-grid compact">
+              <Kpi label="Alunos sob seu atendimento" value={students.length} />
+              <Kpi label="Com acesso ao portal" value={active} />
+              <Kpi label="Convites aguardando aceite" value={invited} />
+              <Kpi
+                label="Planos em rascunho"
+                value={drafts.length}
+                hint={pending > 0 ? `${pending} com treinos abaixo do alvo (aviso)` : undefined}
+              />
+            </div>
+          </section>
+        </div>
       </div>
-      {requestsPending.length > 0 && (
-        <section className="panel" aria-labelledby="pedidos-pendentes">
-          <p className="eyebrow">PEDIDOS DO TITULAR</p>
-          <h2 id="pedidos-pendentes">Pedidos de alunos sobre os dados deles</h2>
-          <p className="small muted">Do prazo mais próximo ao mais distante. A resposta é sua; a ferramenta não avisa por e-mail.</p>
-          <ul className="plan-list">
-            {requestsPending.slice(0, 8).map((row) => (
-              <li key={row.id}>
-                <Link className="account-link" href={`/profissional/alunos/${row.studentId}#pedidos`}>
-                  {row.studentName} · {REQUEST_KIND_LABEL[row.kind]} · {row.overdue ? "passou do prazo em" : "prazo"}{" "}
-                  {formatDate(row.dueAt)}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      {checkinsPending.length > 0 && (
-        <section className="panel" aria-labelledby="checkins-pendentes">
-          <p className="eyebrow">CHECK-INS</p>
-          <h2 id="checkins-pendentes">Check-ins dos alunos sem leitura</h2>
-          <p className="small muted">Primeiro os que relatam desconforto, depois os outros, do mais novo ao mais antigo.</p>
-          <ul className="plan-list">
-            {checkinsPending.slice(0, 8).map((row) => (
-              <li key={row.checkinId}>
-                <Link className="account-link" href={`/profissional/alunos/${row.studentId}#checkins`}>
-                  {row.studentName} · check-in de {formatCalendarDate(row.checkedOn)}
-                  {row.discomfort ? " · relato de desconforto" : ""}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      {painPending.length > 0 && (
-        <section className="panel" aria-labelledby="dor-pendente">
-          <p className="eyebrow">RELATOS DE DOR</p>
-          <h2 id="dor-pendente">Registros de treino com dor ou desconforto sem leitura</h2>
-          <ul className="plan-list">
-            {painPending.slice(0, 8).map((row) => (
-              <li key={row.sessionId}>
-                <Link className="account-link" href={`/profissional/alunos/${row.studentId}/execucao/${row.sessionId}`}>
-                  {row.studentName} · treino {row.workoutLabel} de {formatCalendarDate(row.performedOn)}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      <section className="panel">
-        <p className="eyebrow">PRÓXIMOS PASSOS</p>
-        <h2>Do cadastro ao acompanhamento</h2>
+      {/* Compact and collapsible (V4 T02): open while there is a step to take, closed once every step is done. */}
+      <details className="panel steps-panel" open={!allDone}>
+        <summary>
+          <span className="eyebrow">PRÓXIMOS PASSOS</span>
+          <h2>Do cadastro ao acompanhamento</h2>
+        </summary>
         <ol className="steps">
           {steps.map((step) => (
             <li key={step.title} className={step.done ? "done" : undefined}>
@@ -209,7 +204,7 @@ export default async function ProfessionalHome() {
             </li>
           ))}
         </ol>
-      </section>
+      </details>
     </>
   );
 }
