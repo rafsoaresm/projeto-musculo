@@ -3,7 +3,8 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createSite } from "./actions";
 import { SLUG_MAX, TITLE_MAX } from "./contracts";
-import { SITE_MODELS, SITE_MODEL_LABEL, type SiteModel } from "./page-models";
+import { OFFERED_SITE_MODELS, SITE_MODEL_LABEL, type SiteModel } from "./page-models";
+import { ModelPreview } from "./model-preview";
 import { SiteModelThumb } from "./site-model-thumb";
 
 type Engine = "native" | "frappe";
@@ -37,7 +38,8 @@ export function CreateSite({ suggestedSlug, suggestedTitle }: { suggestedSlug: s
   const [engine, setEngine] = useState<Engine | null>(null);
   const [slug, setSlug] = useState(suggestedSlug);
   const [title, setTitle] = useState(suggestedTitle);
-  const [model, setModel] = useState<SiteModel>("single");
+  const [model, setModel] = useState<SiteModel>("personal");
+  const [previewing, setPreviewing] = useState<SiteModel | null>(null);
   const [message, setMessage] = useState("");
   const [pending, startTransition] = useTransition();
   const heading = useRef<HTMLHeadingElement>(null);
@@ -118,15 +120,20 @@ export function CreateSite({ suggestedSlug, suggestedTitle }: { suggestedSlug: s
           <fieldset className="ve-choice">
             <legend>Começar com</legend>
             <div className="model-choice">
-              {SITE_MODELS.map((entry) => (
-                <label key={entry} className="model-card">
-                  <SiteModelThumb model={entry} />
-                  <span className="model-head">
-                    <input type="radio" name="site-model" checked={model === entry} onChange={() => setModel(entry)} />
-                    <strong>{SITE_MODEL_LABEL[entry].label}.</strong>
-                  </span>
-                  <span className="model-hint">{SITE_MODEL_LABEL[entry].hint}</span>
-                </label>
+              {OFFERED_SITE_MODELS.map((entry) => (
+                <div key={entry} className="model-card">
+                  <label className="model-pick">
+                    <SiteModelThumb model={entry} />
+                    <span className="model-head">
+                      <input type="radio" name="site-model" checked={model === entry} onChange={() => setModel(entry)} />
+                      <strong>{SITE_MODEL_LABEL[entry].label}.</strong>
+                    </span>
+                    <span className="model-hint">{SITE_MODEL_LABEL[entry].hint}</span>
+                  </label>
+                  <button type="button" className="button small secondary" onClick={() => setPreviewing(entry)} aria-label={`Ver o modelo ${SITE_MODEL_LABEL[entry].label}`}>
+                    Ver o modelo
+                  </button>
+                </div>
               ))}
             </div>
           </fieldset>
@@ -153,6 +160,17 @@ export function CreateSite({ suggestedSlug, suggestedTitle }: { suggestedSlug: s
           </button>
         </div>
       </form>
+      {previewing && (
+        <ModelPreview
+          model={previewing}
+          title={title}
+          onUse={() => {
+            setModel(previewing);
+            setPreviewing(null);
+          }}
+          onClose={() => setPreviewing(null)}
+        />
+      )}
     </div>
   );
 }

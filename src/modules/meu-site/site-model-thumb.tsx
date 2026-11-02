@@ -37,6 +37,48 @@ export function SiteModelThumb({ model }: { model: SiteModel }) {
           ))}
         </>
       )}
+      {model === "personal" && (
+        <>
+          <rect className="t-ink" x="10" y="24" width="60" height="10" rx="3" />
+          <rect className="t-muted" x="10" y="39" width="48" height="4" rx="2" />
+          <rect className="t-accent" x="10" y="48" width="26" height="8" rx="4" />
+          <rect className="t-pic" x="88" y="18" width="62" height="46" rx="6" />
+          <path className="t-accent-line" d="M92 44 H106 L110 34 L116 52 L122 28 L127 44 H146" />
+          {[10, 58, 106].map((x) => (
+            <rect key={x} className="t-outline" x={x} y="72" width="44" height="22" rx="4" />
+          ))}
+          <rect className="t-accent" x="10" y="100" width="140" height="14" rx="5" />
+        </>
+      )}
+      {model === "studio" && (
+        <>
+          <rect className="t-ink-fill" x="0.5" y="16" width="159" height="103.5" rx="0" />
+          <rect className="t-page-fill" x="44" y="22" width="72" height="8" rx="3" />
+          <rect className="t-muted" x="56" y="34" width="48" height="4" rx="2" />
+          <rect className="t-pic" x="16" y="44" width="128" height="30" rx="6" />
+          {[16, 60, 104].map((x) => (
+            <rect key={x} className="t-accent" x={x} y="80" width="40" height="18" rx="4" />
+          ))}
+          <rect className="t-accent" x="16" y="104" width="128" height="10" rx="4" />
+        </>
+      )}
+      {model === "online" && (
+        <>
+          <rect className="t-pic" x="10" y="20" width="60" height="42" rx="6" />
+          <path className="t-accent-fill" d="M34 33 L46 41 L34 49 Z" />
+          <rect className="t-ink" x="80" y="24" width="64" height="9" rx="3" />
+          <rect className="t-muted" x="80" y="38" width="50" height="4" rx="2" />
+          <rect className="t-accent" x="80" y="47" width="26" height="8" rx="4" />
+          {[10, 58, 106].map((x) => (
+            <g key={x}>
+              <circle className="t-accent-fill" cx={x + 6} cy="76" r="4" />
+              <rect className="t-muted" x={x + 14} y="74" width="30" height="4" rx="2" />
+            </g>
+          ))}
+          <rect className="t-soft" x="10" y="88" width="140" height="10" rx="3" />
+          <rect className="t-accent" x="10" y="104" width="140" height="10" rx="4" />
+        </>
+      )}
       {model === "athlete" && (
         <>
           <rect className="t-ink" x="10" y="22" width="56" height="9" rx="3" />

@@ -76,18 +76,34 @@ export const PAGE_MODELS: readonly PageModel[] = [
 
 export const pageModel = (key: string): PageModel | undefined => PAGE_MODELS.find((entry) => entry.key === key);
 
-/** What a site starts with, by the model the person chose when creating it. */
-export const SITE_MODELS = ["single", "complete", "athlete", "trainer"] as const;
+/**
+ * What a site starts with, by the model the person chose when creating it. The three complete sites (site-kits.ts, 0.63) are what is offered, with
+ * the single page; the earlier models are still accepted (a site made from them keeps its content) but no longer offered.
+ */
+export const SITE_MODELS = ["personal", "studio", "online", "single", "complete", "athlete", "trainer"] as const;
 export type SiteModel = (typeof SITE_MODELS)[number];
+export const OFFERED_SITE_MODELS = ["personal", "studio", "online", "single"] as const satisfies readonly SiteModel[];
 export const SITE_MODEL_LABEL: Record<SiteModel, { label: string; hint: string }> = {
+  personal: {
+    label: "Personal trainer",
+    hint: "Atendimento individual: destaque com você, como funciona o acompanhamento, sobre mim e planos. Em laranja, com cinco páginas.",
+  },
+  studio: {
+    label: "Estúdio / assessoria",
+    hint: "Equipe e estrutura: modalidades, o espaço, a equipe, planos e perguntas frequentes. Escuro, com cinco páginas.",
+  },
+  online: {
+    label: "Treino online / consultoria",
+    hint: "Acompanhamento a distância: como funciona, planos e perguntas frequentes. Em azul, com cinco páginas.",
+  },
   single: { label: "Uma página só", hint: "Um destaque e uma chamada para contato, para você montar do seu jeito." },
-  complete: { label: "Site completo", hint: "Início, Sobre mim, Serviços, Perguntas frequentes e Contato, com menu, para você escrever o que cada um diz." },
+  complete: { label: "Site completo (modelo anterior)", hint: "Início, Sobre mim, Serviços, Perguntas frequentes e Contato, com menu, para você escrever o que cada um diz." },
   athlete: {
-    label: "Atleta e instrutor(a)",
+    label: "Atleta e instrutor(a) (modelo anterior)",
     hint: "Título grande ao lado da sua foto, faixa de números, painéis sobre você, cartões e chamada final, em verde. Com Sobre mim, Serviços e Contato.",
   },
   trainer: {
-    label: "Personal trainer",
+    label: "Personal trainer (modelo anterior)",
     hint: "Sua foto à esquerda do título, faixa com suas áreas, cartões coloridos, imagem com texto e chamada final, em laranja. Com Sobre mim, Serviços, Perguntas frequentes e Contato.",
   },
 };

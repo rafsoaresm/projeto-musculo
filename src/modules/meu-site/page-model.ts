@@ -1,3 +1,4 @@
+import { kitContent } from "./site-kits";
 import { LAYOUT_SITES, pageModel, section, type PageModel, type SiteModel } from "./page-models";
 import {
   DESCRIPTION_MAX,
@@ -125,6 +126,7 @@ function titled(node: SiteNode, title: string): SiteNode {
  * of the layouts of the library, with the pages and the look of its model (`LAYOUT_SITES`).
  */
 export function starterOf(model: SiteModel, title: string): SiteContent {
+  if (model === "personal" || model === "studio" || model === "online") return kitContent(model, title);
   const single = starterContent(title);
   if (model === "single") return single;
   if (model === "complete") {
