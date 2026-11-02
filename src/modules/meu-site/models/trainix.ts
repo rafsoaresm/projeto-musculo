@@ -19,9 +19,11 @@ const band = (name: string, background: Style["background"], children: SiteNode[
     tablet: { padding: sides("70px", "40px") },
     mobile: { padding: SECTION_PAD_MOBILE, ...mobile },
   });
-const eyebrow = (text: string) => paragraph(text, { fontSize: "12px", fontWeight: 700, lineHeight: 1.2, color: "accent", margin: sides("0px", "0px") });
-const h2 = (text: string, size = 46, mobile = 32) => heading(text, 2, { fontSize: `${size}px`, fontWeight: 700, lineHeight: 1.2, color: "ink", margin: sides("0px", "0px") }, { mobile: { fontSize: `${mobile}px` } });
-const lead = (text: string) => paragraph(text, { fontSize: "18px", lineHeight: 1.2, color: "muted", maxWidth: "760px", margin: sides("0px", "0px") }, { mobile: { fontSize: "15px" } });
+const eyebrow = (text: string, name?: string) => paragraph(text, { fontSize: "12px", fontWeight: 700, lineHeight: 1.2, color: "accent", margin: sides("0px", "0px") }, undefined, name);
+const h2 = (text: string, size = 46, mobile = 32, name?: string) =>
+  heading(text, 2, { fontSize: `${size}px`, fontWeight: 700, lineHeight: 1.2, color: "ink", margin: sides("0px", "0px") }, { mobile: { fontSize: `${mobile}px` } }, name);
+const lead = (text: string, name?: string) =>
+  paragraph(text, { fontSize: "18px", lineHeight: 1.2, color: "muted", maxWidth: "760px", margin: sides("0px", "0px") }, { mobile: { fontSize: "15px" } }, name);
 const grid = (name: string, children: SiteNode[], gap = "18px", rowGap = gap): SiteNode =>
   box(name, "div", { display: "grid", columns: 3, gap, align: "stretch" }, children, { tablet: { columns: 2 }, mobile: { columns: 1, gap: rowGap } });
 const card = (icon: string, title: string, body: string, background: Style["background"] = "surface"): SiteNode =>
@@ -177,17 +179,17 @@ function build(title: string, mode: ModelMode): SiteContent {
       "article",
       { display: "flex", direction: "column", gap: "15px", align: "start", padding: sides("25px", "25px"), radius: "20px", background: highlight ? "dark" : "bg" },
       [
-        paragraph(label, { fontSize: "12px", fontWeight: 700, color: highlight ? "accent" : "muted", margin: sides("0px", "0px") }),
+        paragraph(highlight ? say(mode, label) : label, { fontSize: "12px", fontWeight: 700, color: highlight ? "accentOnDark" : "muted", margin: sides("0px", "0px") }, undefined, highlight ? "Selo de destaque (opcional)" : undefined),
         heading(name, 3, { fontSize: "24px", fontWeight: 700, lineHeight: 1.2, color: highlight ? "onDark" : "ink", margin: sides("0px", "0px") }),
         paragraph(say(mode, price), { fontSize: "40px", fontWeight: 700, lineHeight: 1.2, color: highlight ? "onDark" : "ink", margin: sides("0px", "0px") }, undefined, "Valor (R$)"),
         paragraph(say(mode, "por mês"), { fontSize: "14px", color: highlight ? "onDarkMuted" : "muted", margin: sides("0px", "0px") }, undefined, "Periodicidade"),
-        paragraph(tagline, { fontSize: "15px", color: highlight ? "onDarkMuted" : "muted", margin: sides("0px", "0px") }),
+        paragraph(say(mode, tagline), { fontSize: "15px", color: highlight ? "onDarkMuted" : "muted", margin: sides("0px", "0px") }, undefined, "Para quem é o plano"),
         box(
           "O que inclui",
           "div",
           { display: "flex", direction: "column", gap: "6px" },
           ["Treinos personalizados", "Evolução acompanhada", "Ajustes periódicos", "Suporte dedicado"].map((item) =>
-            paragraph(`✓ ${item}`, { fontSize: "14px", color: highlight ? "onDark" : "ink", margin: sides("0px", "0px") }),
+            paragraph(say(mode, `✓ ${item}`), { fontSize: "14px", color: highlight ? "onDark" : "ink", margin: sides("0px", "0px") }, undefined, "O que inclui (item)"),
           ),
         ),
         whatsappButton(),
@@ -221,8 +223,8 @@ function build(title: string, mode: ModelMode): SiteContent {
     styleMobile: { fontSize: "22px" },
   } as SiteNode;
   const testimonials = band("Histórias e resultados", "bg", [
-    eyebrow("RESULTADOS"),
-    h2("Histórias reais. Evoluções possíveis."),
+    eyebrow(say(mode, "RESULTADOS"), "Rótulo dos depoimentos"),
+    h2(say(mode, "Histórias reais. Evoluções possíveis."), 46, 32, "Título dos depoimentos"),
     lead(mode === "preview" ? "Use depoimentos consentidos, dados comprováveis e imagens autorizadas." : ""),
     testimonyNode,
   ]);
@@ -249,7 +251,7 @@ function build(title: string, mode: ModelMode): SiteContent {
   const contact = band("Contato e captura", "bg", [
     eyebrow("ENTRE EM CONTATO"),
     h2("Vamos construir seu próximo resultado?"),
-    lead("Um formulário simples para iniciar uma conversa com o personal trainer."),
+    lead(say(mode, "Um formulário simples para iniciar uma conversa com o personal trainer."), "Texto do contato"),
     contactForm,
   ]);
 

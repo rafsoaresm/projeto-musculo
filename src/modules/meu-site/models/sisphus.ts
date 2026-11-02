@@ -24,18 +24,18 @@ const band = (name: string, background: Style["background"], children: SiteNode[
 /** Two parts side by side in the Figma's own proportions (`grow` of each), one above the other on the phone. */
 const split = (name: string, first: SiteNode, second: SiteNode, gap: string): SiteNode =>
   box(name, "div", { display: "flex", direction: "row", gap, align: "start" }, [first, second], { mobile: { direction: "column", align: "stretch", gap: "25px" } });
-const eyebrow = (text: string) => paragraph(text, { fontSize: "12px", fontWeight: 700, lineHeight: 1.2, color: "accent", margin: ZERO });
-const h2 = (text: string, size = 46, mobile = 32, color: Style["color"] = "ink") =>
-  heading(text, 2, { fontSize: `${size}px`, fontWeight: 700, lineHeight: 1.2, color, margin: ZERO }, { mobile: { fontSize: `${mobile}px` } });
-const lead = (text: string, color: Style["color"] = "#717171", size = 18, width = "760px") =>
-  paragraph(text, { fontSize: `${size}px`, lineHeight: 1.2, color, maxWidth: width, margin: ZERO }, { mobile: { fontSize: size === 18 ? "15px" : `${size}px` } });
+const eyebrow = (text: string, name?: string) => paragraph(text, { fontSize: "12px", fontWeight: 700, lineHeight: 1.2, color: "accent", margin: ZERO }, undefined, name);
+const h2 = (text: string, size = 46, mobile = 32, color: Style["color"] = "ink", name?: string) =>
+  heading(text, 2, { fontSize: `${size}px`, fontWeight: 700, lineHeight: 1.2, color, margin: ZERO }, { mobile: { fontSize: `${mobile}px` } }, name);
+const lead = (text: string, color: Style["color"] = "muted", size = 18, width = "760px", name?: string) =>
+  paragraph(text, { fontSize: `${size}px`, lineHeight: 1.2, color, maxWidth: width, margin: ZERO }, { mobile: { fontSize: size === 18 ? "15px" : `${size}px` } }, name);
 const grid = (name: string, children: SiteNode[], gap = "18px", rowGap = gap): SiteNode =>
   box(name, "div", { display: "grid", columns: 3, gap, align: "stretch" }, children, { tablet: { columns: 2 }, mobile: { columns: 1, gap: rowGap } });
 const card = (icon: string, title: string, body: string, dark = false): SiteNode =>
   box("Cartão", "article", { display: "flex", direction: "column", gap: "12px", padding: sides("24px", "24px"), radius: "16px", background: dark ? "dark" : "surface" }, [
     paragraph(icon, { fontSize: "25px", fontWeight: 700, lineHeight: 1.2, color: "accent", margin: ZERO }, undefined, "Ícone"),
-    heading(title, 3, { fontSize: "21px", fontWeight: 700, lineHeight: 1.2, color: dark ? "onDark" : "#191919", margin: ZERO }),
-    paragraph(body, { fontSize: "14px", lineHeight: 1.4, color: dark ? "onDarkMuted" : "#686868", margin: ZERO }),
+    heading(title, 3, { fontSize: "21px", fontWeight: 700, lineHeight: 1.2, color: dark ? "onDark" : "ink", margin: ZERO }),
+    paragraph(body, { fontSize: "14px", lineHeight: 1.4, color: dark ? "onDarkMuted" : "muted", margin: ZERO }),
   ]);
 
 function build(title: string, mode: ModelMode): SiteContent {
@@ -115,7 +115,7 @@ function build(title: string, mode: ModelMode): SiteContent {
         h2("O compromisso que muda tudo.", 39, 29),
         paragraph(
           "Avaliação do seu momento atual, planejamento consistente e ajustes orientados por resultados. Uma experiência de treino pensada para a vida real.",
-          { fontSize: "16px", lineHeight: 1.4, color: "#666666", maxWidth: "460px", margin: ZERO },
+          { fontSize: "16px", lineHeight: 1.4, color: "muted", maxWidth: "460px", margin: ZERO },
         ),
         whatsappButton(),
       ], { mobile: { basis: "auto" } }),
@@ -177,7 +177,7 @@ function build(title: string, mode: ModelMode): SiteContent {
         ),
         paragraph(
           say(mode, "Apresente aqui sua história, certificações, experiência e os diferenciais do seu atendimento. O CMS permite substituir todos estes campos."),
-          { fontSize: "15px", lineHeight: 1.4, color: "#666666", maxWidth: "600px", margin: ZERO },
+          { fontSize: "15px", lineHeight: 1.4, color: "muted", maxWidth: "600px", margin: ZERO },
           undefined,
           "Sua história e formação",
         ),
@@ -191,7 +191,7 @@ function build(title: string, mode: ModelMode): SiteContent {
   const step = (label: string, body: string) =>
     box("Etapa", "div", { display: "flex", direction: "column", gap: "7px" }, [
       heading(label, 3, { fontSize: "20px", fontWeight: 700, lineHeight: 1.2, color: "ink", margin: ZERO }),
-      paragraph(body, { fontSize: "14px", lineHeight: 1.2, color: "#666666", margin: ZERO }),
+      paragraph(body, { fontSize: "14px", lineHeight: 1.2, color: "muted", margin: ZERO }),
     ]);
   const journey = band(
     "Jornada com indicadores",
@@ -199,7 +199,7 @@ function build(title: string, mode: ModelMode): SiteContent {
     [
       eyebrow("ACOMPANHAMENTO DE ALTA QUALIDADE"),
       h2("Uma transformação construída com método.", 46, 31),
-      lead("Não usamos imagens de antes e depois ou números de resultado sem consentimento e comprovação. Mostramos o processo de evolução.", "#5b5b5b", 16, "920px"),
+      lead("Não usamos imagens de antes e depois ou números de resultado sem consentimento e comprovação. Mostramos o processo de evolução.", "muted", 16, "920px"),
       split(
         "Etapas e foto",
         box(
@@ -243,17 +243,17 @@ function build(title: string, mode: ModelMode): SiteContent {
       "article",
       { display: "flex", direction: "column", gap: "15px", align: "start", padding: sides("25px", "25px"), radius: "20px", background: featured ? "dark" : "#f7f7f7" },
       [
-        paragraph(label, { fontSize: "12px", fontWeight: 700, color: featured ? "accent" : "#888888", margin: ZERO }),
+        paragraph(featured ? say(mode, label) : label, { fontSize: "12px", fontWeight: 700, color: featured ? "accentOnDark" : "muted", margin: ZERO }, undefined, featured ? "Selo de destaque (opcional)" : undefined),
         heading(name, 3, { fontSize: "24px", fontWeight: 700, lineHeight: 1.2, color: featured ? "onDark" : "ink", margin: ZERO }),
         paragraph(say(mode, price), { fontSize: "40px", fontWeight: 700, lineHeight: 1.2, color: featured ? "onDark" : "ink", margin: ZERO }, undefined, "Valor (R$)"),
-        paragraph(say(mode, "por mês"), { fontSize: "14px", color: featured ? "#d0d0d0" : "#777777", margin: ZERO }, undefined, "Periodicidade"),
-        paragraph(tagline, { fontSize: "15px", color: featured ? "#ececec" : "#555555", margin: ZERO }),
+        paragraph(say(mode, "por mês"), { fontSize: "14px", color: featured ? "#d0d0d0" : "muted", margin: ZERO }, undefined, "Periodicidade"),
+        paragraph(say(mode, tagline), { fontSize: "15px", color: featured ? "#ececec" : "muted", margin: ZERO }, undefined, "Para quem é o plano"),
         box(
           "O que inclui",
           "div",
           { display: "flex", direction: "column", gap: "6px" },
           ["Treinos personalizados", "Evolução acompanhada", "Ajustes periódicos", "Suporte dedicado"].map((item) =>
-            paragraph(`✓ ${item}`, { fontSize: "14px", color: featured ? "onDark" : "ink", margin: ZERO }),
+            paragraph(say(mode, `✓ ${item}`), { fontSize: "14px", color: featured ? "onDark" : "ink", margin: ZERO }, undefined, "O que inclui (item)"),
           ),
         ),
         whatsappButton(),
@@ -277,8 +277,8 @@ function build(title: string, mode: ModelMode): SiteContent {
 
   // 3:985
   const testimonials = band("Histórias e resultados", "bg", [
-    eyebrow("RESULTADOS"),
-    h2("Histórias reais. Evoluções possíveis."),
+    eyebrow(say(mode, "RESULTADOS"), "Rótulo dos depoimentos"),
+    h2(say(mode, "Histórias reais. Evoluções possíveis."), 46, 32, "ink", "Título dos depoimentos"),
     lead(mode === "preview" ? "Use depoimentos consentidos, dados comprováveis e imagens autorizadas." : ""),
     testimony(
       "Depoimento autorizado",
@@ -314,7 +314,7 @@ function build(title: string, mode: ModelMode): SiteContent {
   const contact = band("Contato e captura", "bg", [
     eyebrow("ENTRE EM CONTATO"),
     h2("Vamos construir seu próximo resultado?"),
-    lead("Um formulário simples para iniciar uma conversa com o personal trainer."),
+    lead(say(mode, "Um formulário simples para iniciar uma conversa com o personal trainer."), "muted", 18, "760px", "Texto do contato"),
     contactForm,
   ]);
 
