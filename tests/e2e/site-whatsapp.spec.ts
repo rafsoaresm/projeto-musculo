@@ -52,8 +52,8 @@ test("WhatsApp: the buttons go straight while the site does not receive messages
   const slug = await publishedModel(page, "Marina Energia");
   const visit = await newActor(browser, baseURL);
   const visitor = visit.page;
-  // WhatsApp itself is not part of this test: the browser is answered for it, and the address it was sent to is checked.
-  await visit.context.route("https://wa.me/**", (route) => route.fulfill({ status: 200, contentType: "text/plain", body: "WhatsApp" }));
+  // WhatsApp itself is not part of this test: it is answered here when the browser lets the test answer it, and only the address is checked.
+  await visit.context.route(/^https:\/\/(wa\.me|api\.whatsapp\.com)\//, (route) => route.fulfill({ status: 200, contentType: "text/plain", body: "WhatsApp" }));
   const straight = `https://wa.me/5511912345678?text=${encodeURIComponent(MESSAGE)}`;
 
   // ---- receiving off: straight to WhatsApp in a new tab, with the opening message; no form on the page ----
@@ -121,8 +121,10 @@ test("WhatsApp: the buttons go straight while the site does not receive messages
   const notice = dialog.getByRole("link", { name: "aviso de privacidade" });
   await expect(notice).toHaveAttribute("href", /\/aviso-de-privacidade-de-teste$/);
   await dialog.getByRole("checkbox", { name: /Li o aviso de privacidade/ }).check();
+  // The browser is sent to WhatsApp's own address (WhatsApp itself may send it on elsewhere: only the address it was sent to is checked).
+  const toWhatsApp = visitor.waitForRequest((request) => request.url().startsWith("https://wa.me/"));
   await dialog.getByRole("button", { name: "Continuar no WhatsApp" }).click();
-  await expect(visitor).toHaveURL(straight);
+  expect((await toWhatsApp).url()).toBe(straight);
   await visit.context.close();
 
   // ---- the professional: the message waits in Leads, saying where it came from ----
