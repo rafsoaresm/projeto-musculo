@@ -4,7 +4,18 @@
  * the bar sits outside the editor's root, which is moved down by the bar's height. The way back is worked out in the page from
  * `window.builder_path` (set by the shell from the mount path), so it is right under any mount.
  */
+import { EDITOR_TRANSLATIONS } from "./translations.generated";
+
 export const EDITOR_BAR_HEIGHT = 48;
+
+/**
+ * The editor in Portuguese (AC19.4) through its own `__()`, which reads `window.translated_messages`: the shell sets it empty, and this page
+ * fills it with the catalog (scripts/frappe-editor/translations.mjs). Written as JSON with `<` escaped, so no text of the catalog can close the script.
+ */
+export function withEditorTranslations(shell: string, messages: Record<string, string> = EDITOR_TRANSLATIONS): string {
+  const json = JSON.stringify(messages).replace(/</g, "\\u003c");
+  return shell.replace("window.translated_messages = {};", () => `window.translated_messages = ${json};`);
+}
 
 export function withEditorFrame(shell: string, live: boolean): string {
   const situation = live ? "Publicado" : "Rascunho";

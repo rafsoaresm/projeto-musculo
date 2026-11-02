@@ -30,7 +30,7 @@ test("frappe publish: a page made in the editor is published at /site/<address> 
 
   // A page cannot be published where the site has no address.
   await page.goto("./profissional/meu-site/editor");
-  await expect(page.getByRole("heading", { name: "All Pages" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Todas as páginas" })).toBeVisible();
   const lonely = await asEditor(page, "frappe.client.insert", { doc: { doctype: "Builder Page", page_title: "Sem endereço", route: "sem-endereco", blocks: "[]", draft_blocks: "[]" } });
   expect(lonely.status).toBe(200);
   const lonelyName = (lonely.body as { message: { name: string } }).message.name;
@@ -49,8 +49,8 @@ test("frappe publish: a page made in the editor is published at /site/<address> 
 
   // ---- a page from scratch in the editor: a container and a text drawn on it, published with the button ----
   await page.goto("./profissional/meu-site/editor");
-  await page.getByRole("button", { name: "New", exact: true }).click();
-  await page.getByText("Start from scratch").click();
+  await page.getByRole("button", { name: "Novo", exact: true }).click();
+  await page.getByText("Começar do zero").click();
   await expect(page).toHaveURL(new RegExp(`${mount}/profissional/meu-site/editor/page/(?!new$)[a-z0-9-]+$`));
   const pageName = new URL(page.url()).pathname.split("/").pop()!;
   await expect(page.getByText("body", { exact: true }).first()).toBeVisible();
@@ -86,7 +86,7 @@ test("frappe publish: a page made in the editor is published at /site/<address> 
   await expect(page.frameLocator(`iframe[src*="/site/${slug}/m/previa?"]`).locator("body.fb-1 > div.fb-2")).toHaveCount(1);
   await page.goto(`./profissional/meu-site/editor/page/${pageName}`);
   await expect(page.getByText("body", { exact: true }).first()).toBeVisible();
-  await page.getByRole("button", { name: "Publish", exact: true }).click();
+  await page.getByRole("button", { name: "Publicar", exact: true }).click();
   await expect.poll(async () => Number((await read()).published), { timeout: 30_000 }).toBe(1);
 
   // ---- the public page: a document of its own, with its own policy, and what was drawn ----

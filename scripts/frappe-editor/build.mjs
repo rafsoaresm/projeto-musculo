@@ -20,6 +20,7 @@ import { fileURLToPath } from "node:url";
 import { writeBlockTemplates } from "./block-templates.mjs";
 import { writeFonts } from "./fonts.mjs";
 import { writeResetCss } from "./reset-css.mjs";
+import { writeTranslations } from "./translations.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const PINS = {
@@ -188,4 +189,4 @@ fs.writeFileSync(
 );
 fs.rmSync(dist, { recursive: true, force: true });
 fs.rmSync(shell, { force: true });
-console.log(`done: ${path.relative(ROOT, OUT)}, ${path.relative(ROOT, SHELL_TS)}, ${writeResetCss(builderDir)} and ${writeBlockTemplates(builderDir).ts}`);
+console.log(`done: ${path.relative(ROOT, OUT)}, ${path.relative(ROOT, SHELL_TS)}, ${writeResetCss(builderDir)}, ${writeTranslations(builderDir)} and ${writeBlockTemplates(builderDir).ts}`);

@@ -5,7 +5,7 @@ import { sitesFor } from "@/db/sites";
 import { canEditSite } from "@/modules/meu-site/access";
 import { editorPolicy, withNonce } from "@/modules/frappe-editor/policy";
 import { EDITOR_SHELL } from "@/modules/frappe-editor/shell.generated";
-import { withEditorFrame } from "@/modules/frappe-editor/frame";
+import { withEditorFrame, withEditorTranslations } from "@/modules/frappe-editor/frame";
 import { hasPublishedBuilderPage } from "@/db/builder-public";
 
 export const dynamic = "force-dynamic";
@@ -52,7 +52,7 @@ export async function GET() {
   // The address of the site (letters, digits and hyphens: it is checked when it is made) lets the editor open the published page at `/site/<address>`.
   const nonce = crypto.randomUUID().replace(/-/g, "");
   const base = slug ? EDITOR_SHELL.replace("<head>", `<head>\n<script>window.__EDITOR_SITE__ = ${JSON.stringify(slug)};</script>`) : EDITOR_SHELL;
-  const shell = withEditorFrame(base, live);
+  const shell = withEditorFrame(withEditorTranslations(base), live);
   // Every inline script of the page (the one above and the shell's own) carries the nonce of this answer; nothing else inline runs.
   return new Response(withNonce(shell, nonce), { headers: { ...HEADERS, "Content-Security-Policy": editorPolicy(nonce) } });
 }

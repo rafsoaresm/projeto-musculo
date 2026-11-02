@@ -22,3 +22,18 @@ describe("the frame of the Editor Avançado (Figma 10:218)", () => {
     expect(page.match(/<script nonce="abc">/g)).toHaveLength(2);
   });
 });
+
+describe("the editor in Portuguese (AC19.4)", () => {
+  it("fills the editor's own catalog with the translations, as JSON a text cannot break out of", async () => {
+    const { withEditorTranslations } = await import("@/modules/frappe-editor/frame");
+    const page = withEditorTranslations('<script>window.translated_messages = {};</script>', { Publish: "Publicar", "</script>": "<b>" });
+    expect(page).toContain('"Publish":"Publicar"');
+    expect(page).not.toContain("</script>\"");
+    expect(page.match(/<\/script>/g)).toHaveLength(1);
+  });
+
+  it("covers the screens a person goes through first", async () => {
+    const { EDITOR_TRANSLATIONS } = await import("@/modules/frappe-editor/translations.generated");
+    for (const text of ["All Pages", "New", "Start from scratch", "Publish", "Layers", "Settings", "Folders", "Filter by title or route"]) expect(EDITOR_TRANSLATIONS[text], text).toBeTruthy();
+  });
+});

@@ -177,12 +177,12 @@ test("frappe form, from the editor itself: the form of the editor's own library,
   // ---- a page from scratch; the library ("+") has the three forms of the editor; one is dragged onto the page ----
   await trackPolicy(page);
   await page.goto("./profissional/meu-site/editor");
-  await page.getByRole("button", { name: "New", exact: true }).click();
-  await page.getByText("Start from scratch").click();
+  await page.getByRole("button", { name: "Novo", exact: true }).click();
+  await page.getByText("Começar do zero").click();
   await expect(page.getByText("body", { exact: true }).first()).toBeVisible();
   const pageName = new URL(page.url()).pathname.split("/").pop()!;
-  await page.mouse.click(28, 76);
-  await page.getByPlaceholder("Search Template").fill("form");
+  await page.mouse.click(28, 124); // the "+" of the left panel, under the 48 px bar of the Editor Avançado
+  await page.getByPlaceholder("Buscar modelo").fill("form");
   const card = page.getByText("Form 1", { exact: true });
   await expect(card).toBeVisible();
   const read = async () => {
@@ -198,7 +198,7 @@ test("frappe form, from the editor itself: the form of the editor's own library,
     await page.mouse.up();
     await expect.poll(async () => String((await read()).draft_blocks ?? ""), { timeout: 4000 }).toContain("Full Name");
   }).toPass({ timeout: 40_000 });
-  await page.getByRole("button", { name: "Publish", exact: true }).click();
+  await page.getByRole("button", { name: "Publicar", exact: true }).click();
   await expect.poll(async () => Number((await read()).published), { timeout: 30_000 }).toBe(1);
   // Dragging from the library and publishing is a normal use of the editor: its content policy refused nothing.
   expect(await policyRefusals(page)).toEqual([]);

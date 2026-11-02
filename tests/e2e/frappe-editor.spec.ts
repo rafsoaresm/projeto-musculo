@@ -49,15 +49,15 @@ test("frappe editor: opens under the mount with nothing fixed to the root and no
   await page.goto("./profissional/meu-site");
   await page.getByRole("link", { name: "Abrir o Frappe Builder" }).click();
   await expect(page).toHaveURL(new RegExp(`${mount}/profissional/meu-site/editor/?$`));
-  await expect(page.getByRole("heading", { name: "All Pages" })).toBeVisible();
-  await expect(page.getByText("You don't have any pages yet", { exact: false })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Todas as páginas" })).toBeVisible();
+  await expect(page.getByText("Você ainda não tem páginas", { exact: false })).toBeVisible();
 
   // ---- a page from scratch, and a container drawn on it ----
-  await page.getByRole("button", { name: "New", exact: true }).click();
-  await page.getByText("Start from scratch").click();
+  await page.getByRole("button", { name: "Novo", exact: true }).click();
+  await page.getByText("Começar do zero").click();
   await expect(page).toHaveURL(new RegExp(`${mount}/profissional/meu-site/editor/page/(?!new$)[a-z0-9-]+$`));
   const pageName = new URL(page.url()).pathname.split("/").pop()!;
-  await expect(page.getByText("Select a block to edit properties")).toBeVisible();
+  await expect(page.getByText("Selecione um bloco para editar as propriedades")).toBeVisible();
   // "c" is the shortcut of the container tool.
   await expect(page.getByText("body", { exact: true }).first()).toBeVisible();
   await page.keyboard.press("c");
@@ -100,7 +100,7 @@ test("frappe editor: opens under the mount with nothing fixed to the root and no
   const stranger = other.page;
   await createProfessional(stranger, `Outro ${unique}`, "Outra Pessoa");
   await stranger.goto("./profissional/meu-site/editor");
-  await expect(stranger.getByText("You don't have any pages yet", { exact: false })).toBeVisible();
+  await expect(stranger.getByText("Você ainda não tem páginas", { exact: false })).toBeVisible();
   const taken = await asEditor(stranger, "frappe.client.get", { doctype: "Builder Page", name: pageName });
   expect(taken.status).toBe(404);
   const listed = await asEditor(stranger, "frappe.client.get_list", { doctype: "Builder Page" });
@@ -111,7 +111,7 @@ test("frappe editor: opens under the mount with nothing fixed to the root and no
   const visitor = await newActor(browser, baseURL);
   await visitor.page.goto("./profissional/meu-site/editor");
   await expect(visitor.page).toHaveURL(new RegExp(`${mount}/entrar`));
-  await expect(visitor.page.getByRole("heading", { name: "All Pages" })).toHaveCount(0);
+  await expect(visitor.page.getByRole("heading", { name: "Todas as páginas" })).toHaveCount(0);
   const call = "./api/builder-editor/api/method/frappe.client.get_list";
   expect((await visitor.page.request.post(call, { headers: { "x-site-request": "1" }, data: { doctype: "Builder Page" } })).status()).toBe(401);
   expect((await page.request.post(call, { data: { doctype: "Builder Page" } })).status()).toBe(400);
