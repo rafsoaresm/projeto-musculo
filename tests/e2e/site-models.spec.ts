@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { createProfessional, localIP, newActor } from "./helpers";
-import { addAtEnd, closeEditor, editor, inspector, layerNames, library, openEditor, panel, stage, state, showTab, asLegacySite } from "./site-helpers";
+import { closeEditor, editor, inspector, library, openEditor, panel, stage, state, showTab, asLegacySite } from "./site-helpers";
 
 const list = (page: Page) => library(page).getByRole("list", { name: "Páginas do site" });
 const rowNames = (page: Page) => list(page).locator(".ve-layer strong").allInnerTexts();
@@ -38,7 +38,7 @@ async function addFromModel(page: Page, label: string) {
   await models.getByRole("button", { name: `Nova página a partir do modelo ${label}`, exact: true }).click();
 }
 
-test("models: the Personal trainer model starts as a complete site of five pages, a page from a model takes an address of its own, and empty testimonies are not published", async ({
+test("models: a site of one page with pages from models, each at an address of its own, with no text invented; published with the warnings and visited by page", async ({
   page,
   browser,
   baseURL,
@@ -46,32 +46,26 @@ test("models: the Personal trainer model starts as a complete site of five pages
   test.skip(testInfo.project.name === "mobile", "The phone has its own scenario below.");
   test.setTimeout(300_000);
   await page.setViewportSize({ width: 1440, height: 1000 });
-  const slug = await createWith(page, /^Personal trainer/, "Marina Modelos");
+  const slug = await createWith(page, /^Uma página só/, "Marina Modelos");
   // The buttons of the models go to the contacts of the site: they are filled in once, on the home page.
   await panel(page, "Propriedades");
   await field(page, "WhatsApp").fill("(11) 91234-5678");
-  await field(page, "E-mail de contato").fill("marina@example.test");
-  await field(page, "Instagram (o nome de usuário)").fill("marina.treinos");
-
-  // ---- the complete site: the home page and four more, in the order of the menu, with the name of the site as the big title ----
   await openPages(page);
-  expect(await rowNames(page)).toEqual(["Início", "Sobre", "Serviços e planos", "Depoimentos", "Contato"]);
-  await expect(list(page).getByRole("button", { name: "Abrir a página Sobre", exact: true })).toContainText("/sobre");
-  await expect(list(page).getByRole("button", { name: "Abrir a página Contato", exact: true })).toContainText("/contato");
-  await expect(stage(page).locator('[data-frame="desktop"]').getByRole("heading", { name: "Marina Modelos", level: 2 })).toBeVisible();
-  // The pictures of the model are its own drawings, not empty frames.
-  await expect(stage(page).locator('[data-frame="desktop"] svg[data-illustration]').first()).toBeVisible();
-  await expect(stage(page).locator('[data-frame="desktop"] .site-image-empty')).toHaveCount(0);
+  expect(await rowNames(page)).toEqual(["Início"]);
 
-  // ---- a page from a model opens in the editor with its blocks and no text of its own; the address of the site's own page is not taken ----
+  // ---- a page from a model opens in the editor with its blocks and no text of its own; the same model again takes another address ----
   await addFromModel(page, "Depoimentos");
   await expect(editor(page).getByText("Página “Depoimentos” criada a partir do modelo", { exact: false })).toBeVisible();
-  await expect(field(page, "Endereço da página")).toHaveValue("depoimentos-2");
+  await expect(field(page, "Endereço da página")).toHaveValue("depoimentos");
   await expect(stage(page).locator('[data-frame="desktop"] .site-quote')).toHaveCount(3);
+  await addFromModel(page, "Sobre mim");
+  await expect(field(page, "Endereço da página")).toHaveValue("sobre-mim");
+  await addFromModel(page, "Sobre mim");
+  await expect(field(page, "Endereço da página")).toHaveValue("sobre-mim-2");
   await openPages(page);
-  expect(await rowNames(page)).toEqual(["Início", "Sobre", "Serviços e planos", "Depoimentos", "Contato", "Depoimentos"]);
+  expect(await rowNames(page)).toEqual(["Início", "Depoimentos", "Sobre mim", "Sobre mim"]);
 
-  // ---- the testimonies start empty: that is a warning (an empty one is not on the site), not a block ----
+  // ---- the testimonies start empty: a warning (an empty one is not on the site), not a block ----
   await save(page);
   await editor(page).getByRole("button", { name: "Publicar", exact: true }).click();
   await expect(editor(page).getByRole("list", { name: "O que falta para publicar" })).toHaveCount(0);
@@ -80,22 +74,17 @@ test("models: the Personal trainer model starts as a complete site of five pages
   await expect(editor(page).getByText("Publicado: o site está no ar na versão 1.")).toBeVisible();
   await closeEditor(page);
 
-  // ---- the visitor: a menu with every page, each at its own address ----
   const visit = await newActor(browser, baseURL);
   const visitor = visit.page;
   await visitor.goto(`./s/${slug}`);
   const nav = visitor.getByRole("navigation", { name: "Páginas do site" });
-  await expect(nav.getByRole("link")).toHaveText(["Início", "Sobre", "Serviços e planos", "Depoimentos", "Contato", "Depoimentos"]);
-  await expect(visitor.locator("svg[data-illustration]").first()).toBeVisible();
-  await nav.getByRole("link", { name: "Contato" }).click();
-  await expect(visitor).toHaveURL(new RegExp(`/s/${slug}/contato$`));
-  await expect(visitor.getByRole("heading", { name: "Contato", level: 2 })).toBeVisible();
+  await expect(nav.getByRole("link")).toHaveText(["Início", "Depoimentos", "Sobre mim", "Sobre mim"]);
   await expect(visitor.getByRole("link", { name: "Chamar no WhatsApp" }).first()).toHaveAttribute("href", "https://wa.me/5511912345678");
-  await expect(visitor.getByRole("link", { name: "Enviar e-mail" })).toHaveAttribute("href", "mailto:marina@example.test");
-  await expect(visitor.getByRole("link", { name: "Abrir o Instagram" })).toHaveAttribute("href", "https://www.instagram.com/marina.treinos/");
-  await visitor.goto(`./s/${slug}/depoimentos-2`);
-  await expect(visitor).toHaveTitle(/^Depoimentos — /);
+  await nav.getByRole("link", { name: "Depoimentos" }).click();
+  await expect(visitor).toHaveURL(new RegExp(`/s/${slug}/depoimentos$`));
   await expect(visitor.locator(".site-quote")).toHaveCount(0);
+  await visitor.goto(`./s/${slug}/sobre-mim-2`);
+  await expect(visitor).toHaveTitle(/^Sobre mim — /);
   await visit.context.close();
 });
 
@@ -113,7 +102,18 @@ test("models: a site of one page, and a model of a page can be added on a phone"
   expect(overflow).toBeLessThanOrEqual(1);
 });
 
-test("models: three complete models as cards with a drawing, each seen whole before it is chosen; the studio is dark and purple, with its drawings in frames whose shape can be changed, and is published with nothing to the side", async ({
+/** The form of the first step, after the Editor Guiado was chosen. */
+async function startCreating(page: Page, owner: string) {
+  await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
+  const unique = crypto.randomUUID().slice(0, 8);
+  await createProfessional(page, `Estúdio ${unique}`, owner);
+  await page.goto("./profissional/meu-site");
+  await page.getByRole("button", { name: "Escolher Editor Guiado" }).click();
+  return { form: page.getByRole("form", { name: "Criar o meu site" }), slug: `estudio-${unique}` };
+}
+const LABELS = ["Energia (vermelho e laranja)", "Bem-estar (claro e laranja)", "Premium (preto e laranja)", "Performance (azul e branco)", "Uma página só"];
+
+test("models V1: four models of the handoff as cards with a picture, each seen whole with its samples; the site created starts with the model's look and none of the samples, and is published without the sample photos", async ({
   page,
   browser,
   baseURL,
@@ -121,129 +121,98 @@ test("models: three complete models as cards with a drawing, each seen whole bef
   test.skip(testInfo.project.name === "mobile", "The phone has its own scenario below.");
   test.setTimeout(300_000);
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
-  const unique = crypto.randomUUID().slice(0, 8);
-  await createProfessional(page, `Estúdio ${unique}`, "Marina Estúdio");
-  await page.goto("./profissional/meu-site");
-  await page.getByRole("button", { name: "Escolher Editor Guiado" }).click();
-  const form = page.getByRole("form", { name: "Criar o meu site" });
+  const { form, slug } = await startCreating(page, "Marina Premium");
 
-  // ---- a card for each model, with a drawing that reading aids skip; Personal trainer is chosen at first ----
-  await expect(form.locator(".model-card").getByRole("radio")).toHaveCount(4);
-  await expect(form.locator(".model-card svg.model-thumb[aria-hidden='true']")).toHaveCount(4);
-  expect(await form.locator(".model-card").getByRole("radio").evaluateAll((nodes) => nodes.map((node) => (node as HTMLInputElement).checked))).toEqual([true, false, false, false]);
-  await expect(form.getByRole("radio", { name: /^Personal trainer/ })).toBeChecked();
-  await form.getByLabel("Título do site").fill("Marina Estúdio");
+  // ---- five cards: the four models with a picture of their page, and the single page with its drawing; the first is chosen ----
+  const radios = form.locator(".model-card").getByRole("radio");
+  await expect(radios).toHaveCount(5);
+  for (const [at, label] of LABELS.entries()) await expect(radios.nth(at)).toHaveAccessibleName(new RegExp(`^${label.replace(/[()]/g, "\\$&")}`));
+  await expect(form.locator(".model-card img.model-thumb[aria-hidden='true']")).toHaveCount(4);
+  await expect(radios.first()).toBeChecked();
+  await form.getByLabel("Título do site").fill("Marina Premium");
 
-  // ---- "Ver o modelo": every page of the model, at the width of a computer or a phone, with the name typed; closed with Escape ----
-  await form.getByRole("button", { name: "Ver o modelo Treino online / consultoria" }).click();
-  let preview = page.getByRole("dialog", { name: "Modelo: Treino online / consultoria" });
-  await expect(preview.getByRole("heading", { name: "Marina Estúdio", level: 2 })).toBeVisible();
+  // ---- "Ver o modelo": the model as the Figma has it, with its sample photos, numbers and coaches; Escape closes it ----
+  await form.getByRole("button", { name: "Ver o modelo Performance (azul e branco)" }).click();
+  let preview = page.getByRole("dialog", { name: "Modelo: Performance (azul e branco)" });
+  await expect(preview.locator(".site[data-site-accent='palette'][data-site-font='inter']")).toHaveCount(1);
+  await expect(preview.getByText("Alex", { exact: true })).toBeVisible();
+  await expect(preview.locator("img[src*='/site-models/race-coach-1.webp']")).toBeVisible();
+  await expect(preview.getByText("R$ 299")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(preview).toBeHidden();
-  await expect(form.getByRole("radio", { name: /^Personal trainer/ })).toBeChecked();
-  await form.getByRole("button", { name: "Ver o modelo Estúdio / assessoria" }).click();
-  preview = page.getByRole("dialog", { name: "Modelo: Estúdio / assessoria" });
-  await expect(preview.locator(".site[data-site-mode='dark']")).toHaveCount(1);
-  await expect(preview.getByRole("combobox", { name: "Página" })).toHaveValue(/.+/);
-  await preview.getByRole("combobox", { name: "Página" }).selectOption({ label: "Contato" });
-  await expect(preview.getByRole("heading", { name: "Contato", level: 2 })).toBeVisible();
+  await form.getByRole("button", { name: "Ver o modelo Premium (preto e laranja)" }).click();
+  preview = page.getByRole("dialog", { name: "Modelo: Premium (preto e laranja)" });
+  await expect(preview.getByRole("heading", { name: "Marina Premium" })).toHaveCount(0);
   await preview.getByRole("button", { name: "Celular" }).click();
-  await expect(preview.getByRole("button", { name: "Celular" })).toHaveAttribute("aria-pressed", "true");
   await preview.getByRole("button", { name: "Usar este modelo" }).click();
   await expect(preview).toBeHidden();
-  await expect(form.getByRole("radio", { name: /^Estúdio \/ assessoria/ })).toBeChecked();
-  const card = form.locator(".model-card", { hasText: "Estúdio / assessoria" });
-  expect(await card.evaluate((node) => getComputedStyle(node).boxShadow)).not.toBe("none");
+  await expect(form.getByRole("radio", { name: /^Premium/ })).toBeChecked();
   await form.getByRole("button", { name: "Confirmar e criar site" }).click();
   await expect(page.getByRole("heading", { name: "Meu Site", level: 1 })).toBeVisible();
-  await asLegacySite(page, `estudio-${unique}`);
-  await showTab(page, "Publicação");
-  await expect(state(page).getByText("Fora do ar")).toBeVisible();
-  await openEditor(page);
-  const slug = `estudio-${unique}`;
 
-  // ---- the pages and the look of the model, the name of the site as the big title, and the drawings in frames of a shape ----
-  await openPages(page);
-  expect(await rowNames(page)).toEqual(["Início", "Sobre", "Serviços e planos", "Depoimentos", "Contato"]);
-  const desktop = stage(page).locator('[data-frame="desktop"]');
-  await expect(desktop.locator('[data-site-accent="purple"]').first()).toBeAttached();
-  await expect(desktop.locator(".site[data-site-mode='dark']").first()).toBeAttached();
-  await expect(desktop.getByRole("heading", { name: "Marina Estúdio", level: 2 })).toBeVisible();
-  await expect(desktop.locator("figure.site-image .site-image-empty")).toHaveCount(0);
-  const first = desktop.locator("figure.site-image[data-ratio]").first();
-  await expect(first.locator("svg[data-illustration]")).toBeVisible();
+  // ---- the Editor Guiado: the sections of the model, the six colors in Marca, the banner of the highlight swappable; contacts in the footer ----
+  await page.getByRole("region", { name: "Páginas do site" }).getByRole("button", { name: "Abrir o Editor Guiado" }).click();
+  const guided = page.getByRole("dialog", { name: "Editor Guiado" });
+  const picks = guided.getByRole("navigation", { name: "Seções do site" }).locator(".guided-section-pick");
+  await expect(picks.first()).toHaveText("Cabeçalho do site");
+  expect((await picks.allTextContents()).length).toBeGreaterThan(10);
+  await guided.getByRole("tablist", { name: "Partes do Editor Guiado" }).getByRole("tab", { name: "Marca" }).click();
+  await expect(guided.getByRole("group", { name: "Cores do site" }).locator("input[type='color']")).toHaveCount(6);
+  await guided.getByRole("tablist", { name: "Partes do Editor Guiado" }).getByRole("tab", { name: "Conteúdo" }).click();
+  await guided.getByRole("navigation", { name: "Seções do site" }).getByRole("button", { name: "Destaque", exact: true }).click();
+  await expect(guided.getByRole("region", { name: "Destaque" }).getByRole("group", { name: "Imagem de fundo" })).toBeVisible();
+  await guided.getByRole("navigation", { name: "Seções do site" }).getByRole("button", { name: "Rodapé do site", exact: true }).click();
+  await guided.getByRole("region", { name: "Rodapé do site" }).getByLabel("WhatsApp").fill("31 99999-0000");
+  await guided.getByRole("button", { name: "Salvar rascunho" }).first().click();
+  await expect(guided.getByText("Rascunho salvo.")).toBeVisible();
+  await guided.getByRole("tablist", { name: "Partes do Editor Guiado" }).getByRole("tab", { name: "Publicar" }).click();
+  const panelPublish = guided.getByRole("tabpanel");
+  await panelPublish.getByRole("button", { name: "Publicar", exact: true }).click();
+  // The sample photos are said before publishing (a warning: they are left out of the page).
+  await expect(guided.getByRole("list", { name: "Avisos antes de publicar" })).toContainText("foto de exemplo do modelo");
+  await panelPublish.getByRole("button", { name: "Publicar mesmo assim" }).click();
+  await expect(guided.getByText(/Publicado: o site está no ar/)).toBeVisible();
+  await guided.getByRole("button", { name: "Fechar o Editor Guiado" }).click();
 
-  // ---- the shape of a frame is chosen in the panel and is the shape that is drawn ----
-  const shape = async () => {
-    const box = (await first.locator("svg[data-illustration]").boundingBox())!;
-    return box.width / box.height;
-  };
-  await first.locator("svg[data-illustration]").click();
-  await panel(page, "Propriedades");
-  const ratio = inspector(page).locator("label", { hasText: /^Proporção/ }).locator("select");
-  await ratio.selectOption("1:1");
-  expect(await shape()).toBeCloseTo(1, 1);
-  await ratio.selectOption("16:9");
-  expect(await shape()).toBeCloseTo(16 / 9, 1);
-
-  // ---- the layouts are in the library, in a group of their own, and one added to the page is a section of containers and elements ----
-  await panel(page, "Blocos");
-  await library(page).getByRole("button", { name: "Blocos", exact: true }).click();
-  await expect(library(page).getByRole("heading", { name: "Layouts" })).toBeVisible();
-  await addAtEnd(page, "Faixa de links");
-  expect(await layerNames(page)).toContain("Faixa de links");
-
-  // ---- published with the warnings: the drawings are on the page, and the page does not go to the side at any width ----
-  await save(page);
-  await editor(page).getByRole("button", { name: "Publicar", exact: true }).click();
-  await expect(editor(page).getByRole("list", { name: "O que falta para publicar" })).toHaveCount(0);
-  await editor(page).getByRole("button", { name: "Publicar mesmo assim" }).click();
-  await expect(editor(page).getByText("Publicado: o site está no ar na versão 1.")).toBeVisible();
-  await closeEditor(page);
+  // ---- the visitor: the model's look, the menu to the sections, the WhatsApp buttons, and none of the samples or sample photos ----
   const visit = await newActor(browser, baseURL);
   const visitor = visit.page;
-  for (const width of [1280, 768, 360]) {
+  for (const width of [1440, 390]) {
     await visitor.setViewportSize({ width, height: 900 });
     await visitor.goto(`./s/${slug}`);
-    await expect(visitor.getByRole("heading", { name: "Marina Estúdio", level: 2 })).toBeVisible();
-    await expect(visitor.locator("svg[data-illustration]").first()).toBeVisible();
-    await expect(visitor.locator(".site-image-empty")).toHaveCount(0);
+    await expect(visitor.locator(".site[data-site-accent='palette']")).toHaveCount(1);
     expect(await visitor.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), `${width}px`).toBeLessThanOrEqual(1);
   }
-  // On the phone the menu is the button, and it holds the five pages.
-  await visitor.getByText("Menu", { exact: true }).click();
-  await expect(visitor.getByRole("navigation", { name: "Páginas do site" }).getByRole("link")).toHaveText(["Início", "Sobre", "Serviços e planos", "Depoimentos", "Contato"]);
+  await visitor.setViewportSize({ width: 1440, height: 900 });
+  const html = await visitor.content();
+  expect(html).not.toContain("site-models/");
+  expect(html).not.toMatch(/R\$ \d|★/);
+  const nav = visitor.getByRole("navigation", { name: "Páginas do site" });
+  await expect(nav.getByRole("link", { name: "Contato" })).toHaveAttribute("href", /^#s-/);
+  await expect(visitor.locator("header .site-header-cta")).toHaveAttribute("href", "https://wa.me/5531999990000");
+  await expect(visitor.locator("main a.site-has-icon").first()).toHaveAttribute("href", "https://wa.me/5531999990000");
   await visit.context.close();
 });
 
-test("models: the Personal trainer model on a phone, seen first, with the cards one under the other and the pages in order", async ({ page }, testInfo) => {
+test("models V1: on a phone the cards are one under the other, the model is seen without going to the side, and the site created opens in the Editor Guiado", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "mobile", "The computer has its own scenario above.");
   test.setTimeout(240_000);
-  await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
-  const unique = crypto.randomUUID().slice(0, 8);
-  await createProfessional(page, `Estúdio ${unique}`, "Luna Personal");
-  await page.goto("./profissional/meu-site");
-  await page.getByRole("button", { name: "Escolher Editor Guiado" }).click();
-  const form = page.getByRole("form", { name: "Criar o meu site" });
-  await expect(form.locator(".model-card").getByRole("radio")).toHaveCount(4);
-  const cards = await form.locator(".model-card").evaluateAll((nodes) => nodes.map((node) => Math.round(node.getBoundingClientRect().left)));
-  expect(new Set(cards).size, "one column on a phone").toBe(1);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
-  await form.getByRole("button", { name: "Ver o modelo Personal trainer" }).click();
-  const preview = page.getByRole("dialog", { name: "Modelo: Personal trainer" });
-  await expect(preview.locator("svg[data-illustration]").first()).toBeVisible();
+  const { form } = await startCreating(page, "Luna Energia");
+  await expect(form.locator(".model-card").getByRole("radio")).toHaveCount(5);
+  const lefts = await form.locator(".model-card").evaluateAll((nodes) => nodes.map((node) => Math.round(node.getBoundingClientRect().left)));
+  expect(new Set(lefts).size, "one column on a phone").toBe(1);
+  await form.getByRole("button", { name: "Ver o modelo Energia (vermelho e laranja)" }).click();
+  const preview = page.getByRole("dialog", { name: "Modelo: Energia (vermelho e laranja)" });
+  await expect(preview.locator(".site[data-site-accent='palette']")).toHaveCount(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
   await preview.getByRole("button", { name: "Fechar a prévia do modelo" }).click();
-  await form.getByRole("radio", { name: /^Personal trainer/ }).check();
-  await form.getByLabel("Título do site").fill("Luna Personal");
+  await form.getByLabel("Título do site").fill("Luna Energia");
   await form.getByRole("button", { name: "Confirmar e criar site" }).click();
   await expect(page.getByRole("heading", { name: "Meu Site", level: 1 })).toBeVisible();
-  await asLegacySite(page, `estudio-${unique}`);
-  await showTab(page, "Publicação");
-  await expect(state(page).getByText("Fora do ar")).toBeVisible();
-  await openEditor(page);
-  await openPages(page);
-  expect(await rowNames(page)).toEqual(["Início", "Sobre", "Serviços e planos", "Depoimentos", "Contato"]);
+  await page.getByRole("region", { name: "Páginas do site" }).getByRole("button", { name: "Abrir o Editor Guiado" }).click();
+  const guided = page.getByRole("dialog", { name: "Editor Guiado" });
+  await guided.getByRole("button", { name: "Ver prévia" }).click();
+  const shown = guided.getByRole("region", { name: "Prévia da página" });
+  await expect(shown.locator(".site[data-site-accent='palette']")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
 });

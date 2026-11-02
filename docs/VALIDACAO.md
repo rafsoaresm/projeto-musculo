@@ -2,6 +2,50 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.65: Os quatro modelos de site do handoff "Templates de Sites — CMS V1" no Editor Guiado (pedido do usuário de 02/11/2026; PENDENCIAS B46)
+
+**Sem migration.** Tudo cabe no documento do site: campos opcionais novos (`theme.palette`, `menu`, `headerCta`, `icon` do botão, `demo` da imagem), lidos também pelos sites antigos.
+
+- **Os quatro modelos** (Figma `IUhGcaIs9nsNghcLFYLg1n`, frames de 1440 e 390), escritos como documentos do site, com seções, textos e botões como nós editáveis, nada dentro de foto (`src/modules/meu-site/models/`):
+  - Energia (vermelho e laranja), do preset Trainix;
+  - Bem-estar (claro e laranja), do FitNova;
+  - Premium (preto e laranja), do Sisphus;
+  - Performance (azul e branco), do RACE.
+
+  Os nomes do handoff são internos e não aparecem nos cartões nem no site. São os modelos oferecidos na criação, com "Uma página só"; os três da 0.63 e os anteriores continuam abrindo e saíram da lista. A seção de artigos/blog ficou de fora, por decisão do usuário.
+- **Site de uma página**, como no Figma: o menu do cabeçalho leva às seções (Sobre, Programas, Resultados, Contato), há o botão do WhatsApp no fim do cabeçalho, e o rodapé é do próprio modelo.
+- **Paleta de seis cores por site** (primária, fundo, cartões, títulos, textos, blocos escuros), editável na aba Marca (`site-palette.ts`). A página usa a cor como está quando ela passa no contraste AA. Quando não passa, usa o tom mais próximo que passa, e o editor diz quais cores foram ajustadas. Por exemplo, a faixa laranja fica um pouco mais escura, para o texto branco ficar legível.
+- **Fonte Inter** (OFL), um arquivo do próprio app; nada é baixado de terceiros.
+- **Botão do WhatsApp** dos modelos: verde próprio (`#0e8544`, que não muda com o tema), com a marca em SVG à esquerda e o texto "Falar no WhatsApp". Leva ao WhatsApp do site; sem número, fica fora da página publicada.
+- **Fotos de exemplo** (as do Figma, em `public/site-models/`, comprimidas):
+  - aparecem enquanto o site é feito (editores, "Ver o modelo"), para o site nascer com a cara do modelo;
+  - **a página publicada não as mostra**, nem no HTML nem na folha de estilo, porque são de pessoas que não são o profissional;
+  - a publicação avisa "foto de exemplo do modelo... Troque por uma foto sua";
+  - o banner do destaque troca no próprio campo "Imagem de fundo" do Editor Guiado.
+
+  Os retratos de treinadores do RACE e as fotos "do profissional" aparecem só em "Ver o modelo".
+- **Dados de exemplo:** números (+500, 98%), preços, nome, cargo, biografia, estrelas e depoimento só aparecem em "Ver o modelo". O site criado começa com eles vazios, e o nome de cada campo diz o que vai ali. O depoimento é o bloco com autorização: escrito, só publica com a autorização marcada. Os textos genéricos de cada seção começam escritos, para a pessoa trocar.
+- **Correção encontrada no caminho:** um bloco com a cor de texto "Título" gerava `--site-ink: var(--site-ink)`, uma variável que referencia a si mesma e por isso fica inválida, e o título herdava a cor do pai. Corrigido para todos os sites.
+- **Verificado localmente:**
+  - `npm run check`: testes novos `meu-site-models-v1`, `meu-site-palette` e `meu-site-guided-menu`.
+  - Comparação visual de cada modelo com o Figma a 1440 e 390 px (`scripts/site-models/qa.sh`), em "Ver o modelo" e no site criado: altura das páginas a até 1% do Figma, sem rolagem lateral a 390.
+  - Navegador na montagem raiz: `site-models` (cartões, "Ver o modelo" com as amostras, Esc, largura de celular, criação, Editor Guiado com as seis cores e a imagem de fundo, publicação com o aviso das fotos de exemplo, visitante sem amostras nem fotos de exemplo, menu com âncoras, botões do WhatsApp com o número; e no celular) e `site-guided` adaptado aos modelos novos.
+- **Diferenças do Figma**, registradas nos relatórios de cada modelo:
+  - os cartões de etapas, brancos sobre branco no Figma, ficaram com o fundo da página para aparecerem;
+  - o formulário de contato é o do app (nome, contato, mensagem e aceite); o do Figma, com envio pelo WhatsApp, é a 0.66;
+  - as perguntas frequentes têm o mesmo estilo no computador e no celular;
+  - algumas proporções de foto no celular estão aproximadas;
+  - o logotipo em glifo do RACE não foi reproduzido: o cabeçalho mostra o nome do site.
+- **Não feito (próximas fatias):**
+  - o formulário antes do WhatsApp (modal com nome, celular, objetivo e aceite, gravando o lead antes de abrir o `wa.me`, desligável), que é a 0.66;
+  - os quatro modelos no Frappe (Editor Avançado), que é a 0.67;
+  - blog/artigos.
+- **Não verificado:**
+  - o ambiente não alcança o site publicado;
+  - iOS Safari e leitor de tela;
+  - comparação pixel a pixel com o Figma (a conferência foi visual, por seção);
+  - o direito de uso das fotos geradas para o Figma, que só aparecem enquanto o site é feito.
+
 ## Fatia 0.64: Seções no Editor Guiado e o fluxo no celular (pedido do usuário de 02/11/2026; PENDENCIAS B45)
 
 **Sem migration.** "Esconder" usa o campo de estilo `hidden` que o construtor visual já escrevia.
