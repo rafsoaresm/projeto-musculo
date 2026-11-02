@@ -24,7 +24,17 @@ export function pageModels(options: { files: string; siteTitle: string; whatsapp
           preview: thumbnail,
           thumbnail,
           categories: ["Modelos do site"],
-          pages: [{ name: `${PAGE_PREFIX}${model.key}`, page_title: model.label, preview: thumbnail, thumbnail, template_group: model.key }],
+          pages: [
+            {
+              name: `${PAGE_PREFIX}${model.key}`,
+              page_title: model.label,
+              preview: thumbnail,
+              thumbnail,
+              // The preview of the gallery: the page this model becomes, drawn by the app (profissional/meu-site/modelo-avancado/<key>).
+              live_url: `${options.files}profissional/meu-site/modelo-avancado/${model.key}`,
+              template_group: model.key,
+            },
+          ],
         };
       });
     },

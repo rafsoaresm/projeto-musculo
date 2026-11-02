@@ -48,6 +48,8 @@ export interface TemplatePage {
   page_title: string;
   preview?: string;
   thumbnail?: string;
+  /** Where the gallery's preview frames the page (an address of this app). */
+  live_url?: string;
   template_group: string;
 }
 /** A group of the gallery (`TemplateGroup` in the editor's types). */
