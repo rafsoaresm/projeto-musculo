@@ -49,9 +49,14 @@ test("menu: a row of links on a wide page that folds into a Menu button on a nar
   await expect(phone.locator(".site-menu-toggle")).toHaveText("Menu");
   await expect(phone.locator(".site-menu-link").first()).toBeHidden();
   // The name of the site and the button are on one line in the phone's frame.
-  const brand = await phone.locator(".site-brand").boundingBox();
-  const button = await phone.locator(".site-menu-toggle").boundingBox();
-  expect(Math.abs(brand!.y + brand!.height / 2 - (button!.y + button!.height / 2))).toBeLessThan(brand!.height);
+  // Measured until the frames have settled: the three frames are laid out (and the canvas fitted) after the phone's is shown.
+  await expect
+    .poll(async () => {
+      const brand = await phone.locator(".site-brand").boundingBox();
+      const button = await phone.locator(".site-menu-toggle").boundingBox();
+      return brand && button ? Math.abs(brand.y + brand.height / 2 - (button.y + button.height / 2)) < brand.height : false;
+    })
+    .toBe(true);
   await closeEditor(page);
 
   // ---- the published page on a wide window: the links are in a row, and there is no button ----
