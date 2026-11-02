@@ -18,7 +18,8 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Celular:** as abas rolam de lado; Conteúdo mostra a lista e depois os campos (com "‹ Seções" para voltar); "Ver prévia" abre a página sobre tudo, e um toque numa parte dela fecha a prévia e abre os campos.
 - **Verificado localmente:** `npm run check`; navegador na montagem raiz, cenário `site-guided` reescrito (dois testes, computador e celular): abas, trilha, cabeçalho e rodapé na prévia e no site publicado, outra página editada e publicada no endereço dela, clique na prévia, SEO da página e meta description publicada, logotipo enviado pelo editor, cor ajustada com aviso, aparência escura e fonte, imagem de uma seção enviada pelo próprio campo e vista pelo visitante; e a suíte completa.
 - **Não feito / limites (0.63 e 0.64):** os três modelos novos de site completo; acrescentar, esconder e mover seções; destino de botões e links. A página inicial não tem título de busca separado do nome do site (seria mudança no documento; fica para decisão).
-- **Não verificado:** nada no ar antes do deploy; aparelhos reais (iOS Safari), leitor de tela e comparação lado a lado com o Figma `10:162` não foram feitos.
+- **Não verificado:** o ambiente de desenvolvimento não alcança o site publicado; aparelhos reais (iOS Safari), leitor de tela e comparação lado a lado com o Figma `10:162` não foram feitos.
+- **CI e deploy:** o CI da PR #64 falhou uma vez em `/treinador` (`site-menu`: a posição do nome e do botão no quadro do celular foi medida antes de os quadros se acomodarem; o teste passou a esperar, 3 de 3 nas duas montagens) e passou nas duas montagens no commit `026de5d`. Merge `aca9efb`. Implantada: deploy `b9df3b4b`, build de 10:07 a 10:08 e deploy até 10:08 de 02/11/2026, status `success`.
 
 ## Fatia 0.61: Ficha do aluno com abas (V4 T05, Figma `1:111`)
 
