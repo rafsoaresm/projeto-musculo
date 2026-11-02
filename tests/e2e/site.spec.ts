@@ -30,6 +30,7 @@ test("a professional builds a page in the visual editor, previews it, publishes 
   await create.getByRole("button", { name: "Confirmar e criar site" }).click();
   await expect(create.getByRole("alert")).toContainText("não pode ser um nome reservado");
   await create.getByLabel("Endereço (letras minúsculas, números e hífens)").fill(slug);
+  await create.getByRole("radio", { name: /^Uma página só/ }).check();
   await create.getByRole("button", { name: "Confirmar e criar site" }).click();
   await showTab(page, "Publicação");
   await expect(state(page).getByText("Fora do ar")).toBeVisible();
@@ -389,6 +390,7 @@ test("blocks go from the library into the tree: between blocks, into containers 
   await createProfessional(page, `Arrasto ${unique}`, "Marina Arrasto");
   await page.goto("./profissional/meu-site");
   await page.getByRole("button", { name: "Escolher Editor Guiado" }).click();
+  await page.getByRole("form", { name: "Criar o meu site" }).getByRole("radio", { name: /^Uma página só/ }).check();
   await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Confirmar e criar site" }).click();
   await showTab(page, "Publicação");
   await expect(state(page).getByText("Fora do ar")).toBeVisible();

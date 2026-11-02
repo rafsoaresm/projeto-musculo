@@ -172,12 +172,11 @@ describe("the templates", () => {
     expect(siteContent.safeParse(page(all)).success).toBe(true);
     expect(allNodes([make("template-plans")]).map((entry) => entry.id)).not.toEqual(allNodes([make("template-plans")]).map((entry) => entry.id));
   });
-  it("leave only warnings when published as they are, except the testimony, which asks for the person's authorization", () => {
+  it("leave only warnings when published as they are (an empty testimony is not on the site, so it only warns)", () => {
     for (const key of TEMPLATES) {
       const issues = publishIssues(page([make(key)]), new Set());
       const blocking = issues.filter((issue) => issue.severity === "blocking").map((issue) => issue.message);
-      expect(blocking.length, key).toBe(key === "template-testimonials" ? 3 : 0);
-      for (const message of blocking) expect(message, key).toContain("autorizou");
+      expect(blocking, key).toEqual([]);
     }
   });
 });

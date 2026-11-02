@@ -16,7 +16,7 @@ import {
   type SiteNode,
 } from "@/modules/meu-site/contracts";
 import { addPage, addPageFrom, pageFromModel, starterOf } from "@/modules/meu-site/page-model";
-import { LAYOUT_SITES, PAGE_MODELS, SITE_MODELS, SITE_MODEL_LABEL, pageModel, section } from "@/modules/meu-site/page-models";
+import { LAYOUT_SITES, OFFERED_SITE_MODELS, PAGE_MODELS, SITE_MODELS, SITE_MODEL_LABEL, pageModel, section } from "@/modules/meu-site/page-models";
 
 const base = (over: Partial<SiteContent> = {}): SiteContent => ({
   schemaVersion: 3,
@@ -93,13 +93,15 @@ describe("the models of a page", () => {
     expect(pageModel("about")!.build().map((node) => node.type)).toEqual(["about", "box", "cta"]);
     expect(pageModel("faq")!.build().map((node) => node.type)).toEqual(["faq", "cta"]);
   });
-  it("bring the authorization of a testimony unticked, so nothing is published before it is confirmed", () => {
+  it("bring the authorization of a testimony unticked and the testimony empty: a warning, since an empty one is not on the site, and a written one asks for the authorization", () => {
     const quotes = allNodes(pageModel("testimonials")!.build()).filter((node) => node.type === "quote");
     expect(quotes).toHaveLength(3);
     for (const quote of quotes) expect((quote as { authorized: boolean }).authorized).toBe(false);
     const content = base({ pages: [{ id: "p1", slug: "depoimentos", title: "Depoimentos", description: "", blocks: pageModel("testimonials")!.build() }] });
     const blocking = publishIssues(content, new Set()).filter((issue) => issue.severity === "blocking");
-    expect(blocking.map((issue) => issue.page)).toEqual(["p1", "p1", "p1"]);
+    expect(blocking).toEqual([]);
+    const warnings = publishIssues(content, new Set()).filter((issue) => issue.message.includes("escreva um depoimento autorizado"));
+    expect(warnings.map((issue) => issue.page)).toEqual(["p1", "p1", "p1"]);
   });
   it("do not stop a publication for being empty: everything they leave to write is a warning", () => {
     for (const entry of PAGE_MODELS.filter((model) => model.key !== "testimonials")) {
@@ -163,8 +165,9 @@ describe("a page that starts from a model", () => {
 });
 
 describe("a site that starts from a model", () => {
-  it("is one page, as it always was, the complete site, or one of the two made of layouts", () => {
-    expect(SITE_MODELS).toEqual(["single", "complete", "athlete", "trainer"]);
+  it("offers the three complete sites and one page; the earlier models stay readable", () => {
+    expect(SITE_MODELS).toEqual(["personal", "studio", "online", "single", "complete", "athlete", "trainer"]);
+    expect(OFFERED_SITE_MODELS).toEqual(["personal", "studio", "online", "single"]);
     for (const model of SITE_MODELS) expect(SITE_MODEL_LABEL[model].label.length).toBeGreaterThan(3);
     const single = starterOf("single", "Marina Treinos");
     expect(single.blocks.map((node) => node.type)).toEqual(starterContent("Marina Treinos").blocks.map((node) => node.type));

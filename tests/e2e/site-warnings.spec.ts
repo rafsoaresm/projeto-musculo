@@ -10,6 +10,7 @@ test("warnings do not stop a publication: the page goes live with 'Publicar mesm
 
   await page.goto("./profissional/meu-site");
   await page.getByRole("button", { name: "Escolher Editor Guiado" }).click();
+  await page.getByRole("form", { name: "Criar o meu site" }).getByRole("radio", { name: /^Uma página só/ }).check();
   await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Confirmar e criar site" }).click();
   await expect(page.getByRole("heading", { name: "Meu Site", level: 1 })).toBeVisible();
   await asLegacySite(page, slug);

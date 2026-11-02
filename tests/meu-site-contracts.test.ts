@@ -378,8 +378,9 @@ describe("what stops a publication", () => {
     expect(messages(withBlocks([block("about", "a", { text: "Texto", stat: "10 anos", statLabel: "de profissão" })]))).toEqual([]);
     expect(messages(withBlocks([block("about", "a", { text: "Texto" })]))).toEqual([]);
   });
-  it("does not publish a testimony without the text, the author and the person's authorization", () => {
-    expect(messages(withBlocks([block("quote", "q")])).length).toBe(3);
+  it("does not publish a testimony without the text, the author and the person's authorization; an empty one is said once (it is not on the site)", () => {
+    expect(messages(withBlocks([block("quote", "q")]))).toEqual([expect.stringContaining("escreva um depoimento autorizado")]);
+    expect(messages(withBlocks([block("quote", "q", { quote: "Gostei" })])).length).toBe(2);
     const ok = block("quote", "q", { quote: "Gostei", author: "Ana, aluna", authorized: true });
     expect(messages(withBlocks([ok]))).toEqual([]);
     expect(messages(withBlocks([{ ...ok, authorized: false } as Block]))).toEqual([expect.stringContaining("autorizou")]);
@@ -516,7 +517,9 @@ describe("what stops a publication and what only warns", () => {
     expect(found(withBlocks([quote("q", { authorized: true })]))).toEqual([]);
     // Its other loose ends are warnings: an empty testimony or one with no author is not a safeguard.
     expect(stops(withBlocks([quote("q", { authorized: true, quote: "", author: "" })]))).toEqual([]);
-    expect(warns(withBlocks([quote("q", { authorized: true, quote: "", author: "" })]))).toHaveLength(2);
+    expect(warns(withBlocks([quote("q", { authorized: true, quote: "", author: "" })]))).toHaveLength(1);
+    // An empty testimony, even unauthorized, is not on the site: it only warns.
+    expect(stops(withBlocks([quote("q", { quote: "", author: "" })]))).toEqual([]);
   });
   it("only warns for every other loose end: the page is left without the part that is not ready, and the person decides", () => {
     const loose = withBlocks([

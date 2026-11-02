@@ -46,7 +46,7 @@ test("guided editor: tabs, every page of the site, the section outlined on the p
   browser,
   baseURL,
 }) => {
-  const { guided, slug } = await createGuided(page, /Site completo/);
+  const { guided, slug } = await createGuided(page, /^Personal trainer/);
   await expect(guided.getByRole("tablist", { name: "Partes do Editor Guiado" }).getByRole("tab")).toHaveText(["Páginas", "Conteúdo", "Marca", "SEO", "Publicar"]);
   await expect(tab(guided, "Conteúdo")).toHaveAttribute("aria-selected", "true");
   await expect(guided.getByLabel("Onde você está")).toContainText("Página inicial › Cabeçalho do site");
@@ -67,8 +67,8 @@ test("guided editor: tabs, every page of the site, the section outlined on the p
 
   // Another page of the site, chosen in the same place on a phone and on a computer: its sections are listed and its title is edited.
   if (isPhone(page)) await guided.getByRole("button", { name: "Seções", exact: true }).click();
-  await guided.getByLabel("Página em edição").selectOption({ label: "Sobre mim" });
-  await expect(guided.getByLabel("Onde você está")).toContainText("Sobre mim");
+  await guided.getByLabel("Página em edição").selectOption({ label: "Sobre" });
+  await expect(guided.getByLabel("Onde você está")).toContainText("Sobre");
   const sections = guided.getByRole("navigation", { name: "Seções do site" }).getByRole("button");
   const names = (await sections.allTextContents()).filter((entry) => entry !== "Cabeçalho do site" && entry !== "Rodapé do site");
   let typed = false;
@@ -78,11 +78,11 @@ test("guided editor: tabs, every page of the site, the section outlined on the p
     if (await title.count()) {
       await title.fill("Quem eu sou e como trabalho");
       typed = true;
-      await expect(guided.getByLabel("Onde você está")).toContainText(`Sobre mim › ${section}`);
+      await expect(guided.getByLabel("Onde você está")).toContainText(`Sobre › ${section}`);
       break;
     }
   }
-  expect(typed, "the page Sobre mim has a section with a title").toBe(true);
+  expect(typed, "the page Sobre has a section with a title").toBe(true);
   preview = await openPreview(page);
   await expect(preview.getByText("Quem eu sou e como trabalho")).toBeVisible();
   await expect(preview.locator("[data-guided-current]")).toBeInViewport();
@@ -91,14 +91,14 @@ test("guided editor: tabs, every page of the site, the section outlined on the p
   await preview.locator("header.site-header").click();
   if (isPhone(page)) await expect(guided.getByRole("region", { name: "Prévia da página" })).toBeHidden();
   else await closePreview(page);
-  await expect(guided.getByLabel("Onde você está")).toContainText("Sobre mim › Cabeçalho do site");
+  await expect(guided.getByLabel("Onde você está")).toContainText("Sobre › Cabeçalho do site");
   await expect(guided.getByRole("region", { name: "Cabeçalho do site" }).getByLabel("Nome do site")).toHaveValue(name);
 
   // SEO of that page, with the preview of a search result.
   await tab(guided, "SEO").click();
   await guided.getByLabel("Descrição para buscadores (opcional)").fill("Como é o acompanhamento, passo a passo");
   await expect(guided.getByRole("group", { name: "Prévia no Google" })).toContainText("Como é o acompanhamento, passo a passo");
-  await expect(guided.getByRole("group", { name: "Prévia no Google" })).toContainText(`Sobre mim — ${name}`);
+  await expect(guided.getByRole("group", { name: "Prévia no Google" })).toContainText(`Sobre — ${name}`);
 
   // Saved and published from the editor itself.
   await guided.getByRole("button", { name: "Salvar rascunho" }).first().click();
@@ -113,7 +113,7 @@ test("guided editor: tabs, every page of the site, the section outlined on the p
   await guided.getByRole("button", { name: "Fechar o Editor Guiado" }).click();
 
   const visitor = await newActor(browser, baseURL);
-  await visitor.page.goto(`./s/${slug}/sobre-mim`);
+  await visitor.page.goto(`./s/${slug}/sobre`);
   await expect(visitor.page.getByText("Quem eu sou e como trabalho")).toBeVisible();
   await expect(visitor.page.locator('meta[name="description"]')).toHaveAttribute("content", "Como é o acompanhamento, passo a passo");
   await expect(visitor.page.locator("footer.site-footer")).toContainText(name);
@@ -124,7 +124,7 @@ test("guided editor: tabs, every page of the site, the section outlined on the p
 });
 
 test("guided editor: the brand (logo sent from the editor, color, look and font) and an image of a section sent from its own field", async ({ page, browser, baseURL }) => {
-  const { guided, slug } = await createGuided(page, /Personal trainer/);
+  const { guided, slug } = await createGuided(page, /^Estúdio \/ assessoria/);
 
   await tab(guided, "Marca").click();
   const logo = guided.getByRole("group", { name: "Logotipo" });
@@ -156,7 +156,7 @@ test("guided editor: the brand (logo sent from the editor, color, look and font)
       break;
     }
   }
-  expect(sent, "the model Personal trainer has a section with an image").toBe(true);
+  expect(sent, "the model Estúdio / assessoria has a section with an image").toBe(true);
   preview = await openPreview(page);
   await expect(preview.getByRole("img", { name: "Treino ao ar livre" })).toBeVisible();
   await closePreview(page);
