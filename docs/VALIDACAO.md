@@ -21,6 +21,8 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Verificado localmente:**
   - `npm run check`: lint, tipos e 1649 testes, entre eles `assessment-formulas` (a tabela inteira da seção 8 do handoff: JP7 122 mm e 17,27% e 11,94 kg, JP3 63 mm e 18,44%, Guedes 55 mm e 19,35%, Faulkner 66 mm e 15,88%, IMC 23,63, RCQ 0,644, Flexiteste 32, Cooper 11,0 km/h e VO₂ 37,90, e não 37,69; mais os casos de borda) e `assessment-v2-model` (D1 local: o legado antes e depois da 0033, a fotografia sem o gênero, conflito de revisão, outra organização, congelamento e retificação pelo próprio banco);
   - as avaliações de antes continuam como eram (`assessments`, `assessment-photos`, `data-requests`);
+  - navegador, nas duas montagens: `assessments`, `photos`, `plans` e `student-tabs`, 16 cenários passaram em cada uma (o fluxo de hoje de avaliação, fotos e aprovação do plano, inalterado);
+  - revisão independente da migration e do repositório: 1 problema confirmado e corrigido (pedir um rascunho do formato novo com um do formato antigo aberto devolvia o antigo sem dizer o formato; agora diz). Os outros apontamentos foram refutados;
   - conferência independente das fórmulas: os coeficientes e os sítios batem com a matriz do handoff e com as equações publicadas; o único ponto, um limite de 70% de gordura escolhido sem fonte, foi trocado pelos limites naturais (entre 0 e 100%), e a faixa plausível fica com o técnico.
 - **Não feito (próximas fatias):** as telas (etapa Medidas, triagem com PAR-Q, finalizar e retificar, histórico), o salvamento automático, o relatório e a evolução por protocolo.
 - **Não verificado:** a migration no D1 do Webflow (depois do deploy, C37).
