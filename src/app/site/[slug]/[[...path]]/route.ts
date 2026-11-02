@@ -1,9 +1,11 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { publicBuilderPage } from "@/db/builder-public";
 import { sha256Hex } from "@/db/crypto";
+import { publicTrackingBySlug } from "@/db/site-tracking";
 import { notFoundDocument, publicDocument, PUBLIC_CSP } from "@/modules/frappe-site/public-page";
 import { requestedRoute } from "@/modules/frappe-site/routes";
 import { formsGate } from "@/modules/meu-site/inquiries";
+import { publicPageCsp, toolsOf } from "@/modules/meu-site/tracking-csp";
 
 export const dynamic = "force-dynamic";
 
@@ -27,9 +29,14 @@ export async function GET(request: Request, { params }: Params) {
   if (!found) return notFound();
   // The forms of the page are drawn only when the environment opened the public forms (and the site its own switch: the document checks it).
   const gate = formsGate(env, process.env);
-  const html = publicDocument(found, path?.length ?? 0, gate.open ? gate.noticeUrl : null);
-  const etag = `"${await sha256Hex(html)}"`;
-  const headers = { ...base, "Cache-Control": "public, no-cache", ETag: etag };
+  // The site's tagging (0.71), read at each request: with a tool on, the page loads the site's script and its policy lets that script and the
+  // tools' hosts in; without one, the document and the policy are exactly what they were.
+  const tracking = await publicTrackingBySlug(env.DB, slug);
+  const html = publicDocument(found, path?.length ?? 0, gate.open ? gate.noticeUrl : null, tracking !== null);
+  const policy = publicPageCsp(tracking && toolsOf(tracking));
+  // The policy depends on the tools, the document only on whether there is one: the digest covers both when the site has tagging.
+  const etag = `"${await sha256Hex(tracking ? `${html}\n${policy}` : html)}"`;
+  const headers = { ...base, "Content-Security-Policy": policy, "Cache-Control": "public, no-cache", ETag: etag };
   if (request.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers });
   return new Response(html, { headers });
 }

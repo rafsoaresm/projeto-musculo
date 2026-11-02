@@ -297,6 +297,8 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
         db.prepare(`DELETE FROM site_drafts WHERE ${marked}`),
         db.prepare(`DELETE FROM builder_docs WHERE organization_id = ?1 AND EXISTS (SELECT 1 FROM site_deletions d WHERE d.site_id = ?2)`).bind(organizationId, site.id),
         db.prepare(`DELETE FROM builder_files WHERE organization_id = ?1 AND EXISTS (SELECT 1 FROM site_deletions d WHERE d.site_id = ?2)`).bind(organizationId, site.id),
+        // The tagging of the site (0.71) goes with it: a new site starts with no tool on.
+        db.prepare(`DELETE FROM site_tracking WHERE organization_id = ?1 AND EXISTS (SELECT 1 FROM site_deletions d WHERE d.site_id = ?2)`).bind(organizationId, site.id),
         db.prepare(`DELETE FROM sites WHERE id IN (SELECT d.site_id FROM site_deletions d)`),
         db.prepare(`DELETE FROM site_deletions WHERE site_id = ?1`).bind(site.id),
       ]);

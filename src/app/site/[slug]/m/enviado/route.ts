@@ -1,7 +1,9 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { hasPublishedBuilderPage } from "@/db/builder-public";
+import { publicTrackingBySlug } from "@/db/site-tracking";
 import { routeFitsInbox } from "@/modules/frappe-site/form";
 import { INQUIRY_PAGE_HEADERS, inquiryPageHtml } from "@/modules/meu-site/inquiry-pages";
+import { inquiryPageCsp, toolsOf } from "@/modules/meu-site/tracking-csp";
 
 export const dynamic = "force-dynamic";
 
@@ -20,12 +22,16 @@ export async function GET(request: Request, { params }: Params) {
   const asked = new URL(request.url).searchParams.get("pagina") ?? "";
   // From `/site/<slug>/m/enviado` the site is one level up; the page the person was on is below it.
   const back = asked !== "" && routeFitsInbox(asked) ? `../${asked.split("/").map(encodeURIComponent).join("/")}` : "../";
+  // A site with tagging (0.71): the page loads the site's script, at `/s/<slug>/m/rastreio` (from `/site/<slug>/m/` that is three levels up, then
+  // down), which fires the conversion of an accepted message once.
+  const tracking = await publicTrackingBySlug(env.DB, slug);
   return new Response(
     inquiryPageHtml({
       title: "Mensagem enviada",
       message: "A sua mensagem foi enviada. Quem cuida deste site vai ler e, se for o caso, responder pelo contato que você deixou.",
       back: { href: back, label: "Voltar ao site" },
+      ...(tracking ? { script: `../../../s/${encodeURIComponent(slug)}/m/rastreio` } : {}),
     }),
-    { headers: INQUIRY_PAGE_HEADERS },
+    { headers: tracking ? { ...INQUIRY_PAGE_HEADERS, "Content-Security-Policy": inquiryPageCsp(toolsOf(tracking)) } : INQUIRY_PAGE_HEADERS },
   );
 }

@@ -4,6 +4,7 @@ import { requireWorkspace } from "@/modules/auth/server";
 import { getSiteMediaBucket } from "@/db/binding";
 import { siteAssetsFor } from "@/db/site-assets";
 import { sitesFor } from "@/db/sites";
+import { siteTrackingFor } from "@/db/site-tracking";
 import { Notice, PageHeading } from "@/components/ui";
 import { canEditSite, canSeeSite } from "@/modules/meu-site/access";
 import { slugFromName } from "@/modules/meu-site/contracts";
@@ -12,6 +13,7 @@ import { canWorkLeads } from "@/modules/leads/access";
 import { CreateSite } from "@/modules/meu-site/create-site";
 import { SiteWorkspace } from "@/modules/meu-site/site-workspace";
 import { NewEditorPanel } from "@/modules/meu-site/new-editor-panel";
+import { TrackingPanel } from "@/modules/meu-site/tracking-panel";
 import { contentOnTheAir } from "@/modules/meu-site/new-editor-forms";
 import { SiteHeader } from "@/modules/meu-site/site-header";
 import { SiteTabs } from "@/modules/meu-site/site-tabs";
@@ -43,6 +45,14 @@ export default async function MySite({ searchParams }: { searchParams: Promise<{
   const { env } = await getCloudflareContext({ async: true });
   const platformOpen = formsGate(env, process.env).open;
   const onTheAir = overview ? await contentOnTheAir(env.DB, overview.site.slug, overview.newEditor.published) : { forms: [], code: [], skipped: 0 };
+  const tracking = overview ? await siteTrackingFor(db, context).read() : null;
+  // The settings tab of both editors: the panels of the site, then the tagging (0.71).
+  const settingsTab = () => (
+    <>
+      {advanced("settings")}
+      {tracking && <TrackingPanel settings={tracking.settings} canEdit={canEdit} />}
+    </>
+  );
   const status = overview ? publicStatus({ engine: overview.site.engine, guidedLive: overview.live !== null, advancedPublished: overview.newEditor.published.length }) : null;
   const advanced = (part: "pages" | "forms" | "settings") =>
     overview && (
@@ -105,7 +115,7 @@ export default async function MySite({ searchParams }: { searchParams: Promise<{
               </section>
             ),
             formularios: advanced("forms"),
-            configuracoes: advanced("settings"),
+            configuracoes: settingsTab(),
           }}
         />
       ) : overview ? (
@@ -125,7 +135,7 @@ export default async function MySite({ searchParams }: { searchParams: Promise<{
             // A site made before the fixed choice may still hold pages of the advanced editor: they stay visible until the decision about it.
             pages: overview.site.engineFixed ? undefined : advanced("pages"),
             forms: overview.site.engineFixed ? undefined : advanced("forms"),
-            settings: advanced("settings"),
+            settings: settingsTab(),
           }}
         />
       ) : canEdit ? (

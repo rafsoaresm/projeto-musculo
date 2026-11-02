@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { publishedSiteBySlug, siteEngineBySlug } from "@/db/sites";
+import { publicTrackingBySlug } from "@/db/site-tracking";
 import { pagesOf } from "@/modules/meu-site/contracts";
 import { PublicSitePage, formsGate, publicMetadata } from "@/modules/meu-site/public-site";
 
@@ -32,5 +33,7 @@ export default async function PublicSubpage(props: Params) {
   if ((await siteEngineBySlug(env.DB, slug)) === "frappe") redirect(`/site/${slug}/${encodeURIComponent(page)}`);
   const { site, found } = await load(props);
   if (!site || !found) notFound();
-  return <PublicSitePage site={site} pageId={found.id} gate={formsGate(env, process.env)} />;
+  // The site's tagging (0.71) is read at each request: a change in the panel needs no new publication.
+  const tracking = (await publicTrackingBySlug(env.DB, site.slug)) !== null;
+  return <PublicSitePage site={site} pageId={found.id} gate={formsGate(env, process.env)} tracking={tracking} />;
 }

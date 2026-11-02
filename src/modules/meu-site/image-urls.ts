@@ -31,6 +31,8 @@ export const publicHomeUrl = (slug: string, from: PublicLevel) => (from === "hom
 export const publicFormUrl = (slug: string, from: PublicLevel) => (from === "home" ? `./${slug}/m/contato` : "./m/contato");
 /** The form before WhatsApp, beside the contact form's. */
 export const publicWhatsAppFormUrl = (slug: string, from: PublicLevel) => (from === "home" ? `./${slug}/m/whatsapp` : "./m/whatsapp");
+/** The tagging script of the site (Meu Site 0.71, route `/s/<slug>/m/rastreio`), from the home page or from another page. */
+export const publicTrackingUrl = (slug: string, from: PublicLevel) => (from === "home" ? `./${slug}/m/rastreio` : "./m/rastreio");
 /** Another page of the published site, from the home page or from another page. */
 export const publicPageUrl = (slug: string, pageSlug: string, from: PublicLevel) => (from === "home" ? `./${slug}/${pageSlug}` : `./${pageSlug}`);
 /**

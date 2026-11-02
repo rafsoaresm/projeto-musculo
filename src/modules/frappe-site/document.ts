@@ -53,6 +53,11 @@ export interface DocumentInput {
   /** The editor's setting: pages stay light whatever the visitor's device prefers. */
   keepLight: boolean;
   asset: (raw: string) => string | null;
+  /**
+   * The address of the site's tagging script (Meu Site 0.71), relative to the page, when the site has a tool on; absent otherwise, and then the
+   * document is exactly what it was without tagging. The route answering the page adds `script-src 'self'` to its policy only in that case.
+   */
+  script?: string | null;
 }
 
 /** The variables of the site as a `:root` rule; a token with a dark value uses `light-dark()`. */
@@ -105,6 +110,7 @@ export function buildDocument(input: DocumentInput): string {
     ...input.freeStyles,
   ].filter(Boolean);
   head.push(`<style>\n${inStyle(styles.join("\n"))}\n</style>`);
+  if (input.script) head.push(`<script src="${escapeAttribute(input.script)}" defer></script>`);
   const lang = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,3}$/.test(meta.language) ? meta.language : "pt-BR";
   const light = input.keepLight ? ' data-prefers-color-scheme="light"' : "";
   return `<!DOCTYPE html>\n<html lang="${lang}"${light}>\n<head>\n${head.join("\n")}\n</head>\n${rendered.body}\n</html>\n`;
