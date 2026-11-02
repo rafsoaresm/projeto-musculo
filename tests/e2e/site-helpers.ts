@@ -1,4 +1,6 @@
-import { execFileSync } from "node:child_process";
+import { readdirSync } from "node:fs";
+import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { expect, type Page } from "@playwright/test";
 import { createProfessional, localIP } from "./helpers";
 
@@ -21,20 +23,25 @@ export async function showTab(page: Page, name: "Páginas" | "Publicação" | "F
 }
 /**
  * Makes a site stand for one created before the editor became fixed (migration 0030), the only kind that still opens the visual builder:
- * a site created now opens the Editor Guiado. Written straight into the local database the preview serves (tests only).
+ * a site created now opens the Editor Guiado. Written straight into the file of the local database the preview serves (tests only), with
+ * Node's own SQLite: no other process is started, so the other tests running at the same time are not slowed down.
  */
 export async function asLegacySite(page: Page, slug: string) {
   if (!/^[a-z0-9-]{3,40}$/.test(slug)) throw new Error(`not an address: ${slug}`);
-  // Several workers write the same local file: a busy database is tried again a few times before failing.
-  for (let attempt = 1; ; attempt += 1) {
+  const dir = path.join(process.cwd(), ".wrangler", "state", "v3", "d1", "miniflare-D1DatabaseObject");
+  const files = readdirSync(dir).filter((name) => name.endsWith(".sqlite") && name !== "metadata.sqlite");
+  let changed = 0;
+  for (const file of files) {
+    const db = new DatabaseSync(path.join(dir, file));
     try {
-      execFileSync("npx", ["wrangler", "d1", "execute", "DB", "--local", "--command", `UPDATE sites SET engine_fixed = 0 WHERE slug = '${slug}'`], { stdio: "pipe" });
-      break;
-    } catch (error) {
-      if (attempt >= 6) throw error;
-      await page.waitForTimeout(500 * attempt);
+      db.exec("PRAGMA busy_timeout = 5000");
+      const hasSites = db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'sites'").get();
+      if (hasSites) changed += Number(db.prepare("UPDATE sites SET engine_fixed = 0 WHERE slug = ?").run(slug).changes);
+    } finally {
+      db.close();
     }
   }
+  if (changed !== 1) throw new Error(`the site ${slug} was not found in the local database`);
   await page.reload();
 }
 export async function openEditor(page: Page) {

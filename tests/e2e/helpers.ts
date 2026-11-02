@@ -55,13 +55,16 @@ export async function createProfessional(
 ) {
   const email = uniqueEmail("pro");
   await signUp(page, name, email);
+  // Sign-up ends in two pages drawn by the server one after the other; with many tests at once one of them can take longer than the
+  // default 5 s (seen in CI, desktop and phone). The wait is only longer, the page is the same.
+  const signUpPage = { timeout: 15_000 };
   await expect(
     page.getByRole("heading", { name: "Um espaço para seu método." }),
-  ).toBeVisible();
+  ).toBeVisible(signUpPage);
   await page.getByLabel("Nome do espaço").fill(workspace);
   await acceptProfessionalTerms(page);
   await page.getByRole("button", { name: "Criar meu espaço" }).click();
-  await expect(page.getByRole("heading", { name: "Visão geral", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Visão geral", level: 1 })).toBeVisible(signUpPage);
   return email;
 }
 
