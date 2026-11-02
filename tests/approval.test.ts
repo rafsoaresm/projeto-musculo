@@ -8,6 +8,7 @@ import { prescriptionFor } from "@/db/prescription";
 import { exercisesFor } from "@/db/exercises";
 import { studentTrainingFor } from "@/db/student-plan";
 import { ALL_MIGRATIONS, migrate } from "./helpers/migrate";
+import { ALL_NO } from "./helpers/screening";
 
 // Real local D1 with every migration, triggers included. Identities are rows, as the server
 // derives them from a verified session.
@@ -298,7 +299,7 @@ describe("the screening standing behind an approval", () => {
     const when = new Date(`${input.assessedOn}T12:00:00Z`);
     const started = await api().startDraft("st-2", when);
     if (started.status !== "started") throw new Error(started.status);
-    await api().saveDraft(started.id, input, when);
+    await api().saveDraft(started.id, { ...ALL_NO, ...(input as object) }, when);
     await api().record(started.id, { screeningAsked: true }, when);
     return started.id;
   }

@@ -4,8 +4,7 @@ import {
   createProfessional,
   localIP,
   newActor,
-  noHorizontalOverflow,
-} from "./helpers";
+  noHorizontalOverflow, answerScreening } from "./helpers";
 
 const todayBR = () => {
   const [year, month, day] = new Date().toISOString().slice(0, 10).split("-");
@@ -73,13 +72,14 @@ test("screening and indicators are recorded once, reviewed on top, and stay insi
     "Pós-operatório recente",
     "Restrição médica relatada",
   ])
-    await expect(page.getByLabel(label, { exact: true })).not.toBeChecked();
-  // Nothing marked: recording needs the professional to say the items were asked.
-  await expect(page.getByText("Isto não é liberação clínica.")).toBeVisible();
+    for (const answer of ["Sim", "Não"]) await expect(page.getByRole("group", { name: label, exact: true }).getByLabel(answer, { exact: true })).not.toBeChecked();
+  // Nothing answered: every question needs a Yes or a No before recording (decision D4); an untouched form is never "no alert".
+  await expect(page.getByText("Faltam responder 6 perguntas da triagem.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Registrar avaliação" })).toBeDisabled();
-
-  await page.getByLabel("Dor torácica relatada", { exact: true }).check();
+  await page.getByRole("group", { name: "Dor torácica relatada", exact: true }).getByLabel("Sim", { exact: true }).check();
   await expect(page.getByText(REVIEW_REQUIRED, { exact: false })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Registrar avaliação" })).toBeDisabled();
+  await answerScreening(page, ["Dor torácica relatada"]);
   await expect(page.getByRole("button", { name: "Registrar avaliação" })).toBeEnabled();
   await page.getByLabel("Detalhes da triagem").fill("Relatou aperto no peito ao subir escada");
 
@@ -122,7 +122,8 @@ test("screening and indicators are recorded once, reviewed on top, and stay insi
   await expect(page.getByText("Rascunho salvo.")).toBeVisible();
   // The draft survives a reload exactly as typed, and the student page points at it.
   await page.reload();
-  await expect(page.getByLabel("Dor torácica relatada", { exact: true })).toBeChecked();
+  await expect(page.getByRole("group", { name: "Dor torácica relatada", exact: true }).getByLabel("Sim", { exact: true })).toBeChecked();
+  await expect(page.getByRole("group", { name: "Tontura ou desmaio", exact: true }).getByLabel("Não", { exact: true })).toBeChecked();
   await expect(page.getByRole("group", { name: "Indicador 1" }).getByLabel("Valor")).toHaveValue("62");
   await expect(page.getByRole("group", { name: "Vista lateral" }).getByLabel("Cabeça anteriorizada")).toBeChecked();
   await expect(page.getByRole("group", { name: "Vista lateral" }).getByLabel("Aumento aparente de cifose")).not.toBeChecked();
@@ -186,8 +187,7 @@ test("screening and indicators are recorded once, reviewed on top, and stay insi
   await page.goto(studentURL);
   await page.getByRole("button", { name: "Iniciar reavaliação" }).click();
   await expect(page.getByRole("heading", { name: "Reavaliação de Aluna da triagem" })).toBeVisible();
-  await page.getByLabel("Dor torácica relatada", { exact: true }).uncheck();
-  await page.getByLabel(/Perguntei ao aluno sobre os seis itens/).check();
+  await answerScreening(page);
   await page.getByRole("button", { name: "Registrar avaliação" }).click();
   await expect(page.getByText("Nenhum sinal marcado na triagem. Isto não é liberação clínica.")).toBeVisible();
   await expect(page.getByText("Nenhum sinal marcado", { exact: true })).toBeVisible();
@@ -217,7 +217,7 @@ test("an alert without a review holds the approval and the delivery until the pr
   // Record an alert.
   await page.goto(studentURL);
   await page.getByRole("button", { name: "Iniciar avaliação" }).click();
-  await page.getByLabel("Tontura ou desmaio", { exact: true }).check();
+  await answerScreening(page, ["Tontura ou desmaio"]);
   await page.getByRole("button", { name: "Registrar avaliação" }).click();
   await expect(page.getByRole("heading", { name: `Avaliação de ${todayBR()}`, exact: true })).toBeVisible();
   const assessmentURL = page.url();
@@ -244,7 +244,7 @@ test("an alert without a review holds the approval and the delivery until the pr
   // An alert recorded after the approval holds the delivery until it is reviewed too.
   await page.goto(studentURL);
   await page.getByRole("button", { name: "Iniciar reavaliação" }).click();
-  await page.getByLabel("Dor durante esforço", { exact: true }).check();
+  await answerScreening(page, ["Dor durante esforço"]);
   await page.getByRole("button", { name: "Registrar avaliação" }).click();
   await expect(page.getByRole("heading", { name: `Avaliação de ${todayBR()}`, exact: true })).toBeVisible();
   const secondURL = page.url();
@@ -292,7 +292,7 @@ test("the evolution shows each measure over time and what differs between two as
   await custom.getByLabel("Tipo").selectOption("CUSTOM");
   await custom.getByLabel("Nome da medida ou do teste").fill("Sentar e levantar");
   await custom.getByLabel("Valor").fill("12 repetições");
-  await page.getByLabel(/Perguntei ao aluno sobre os seis itens/).check();
+  await answerScreening(page);
   await page.getByRole("button", { name: "Registrar avaliação" }).click();
   await expect(page.getByRole("heading", { name: `Avaliação de ${brazilian(first)}`, exact: true })).toBeVisible();
 
@@ -318,7 +318,7 @@ test("the evolution shows each measure over time and what differs between two as
   await custom2.getByLabel("Tipo").selectOption("CUSTOM");
   await custom2.getByLabel("Nome da medida ou do teste").fill("sentar e LEVANTAR");
   await custom2.getByLabel("Valor").fill("14 repetições");
-  await page.getByLabel(/Perguntei ao aluno sobre os seis itens/).check();
+  await answerScreening(page);
   await page.getByRole("button", { name: "Registrar avaliação" }).click();
   await expect(page.getByRole("heading", { name: `Avaliação de ${brazilian(second)}`, exact: true })).toBeVisible();
 

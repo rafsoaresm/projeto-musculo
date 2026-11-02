@@ -15,6 +15,7 @@ import {
   POSTURE_VIEWS,
   REVIEW_REQUIRED_TEXT,
   SCREENING_ITEMS,
+  unanswered,
   SIDES,
   SIDE_LABEL,
   type MetricType,
@@ -94,7 +95,10 @@ export function AssessmentForm({
   const [message, setMessage] = useState("");
   const [failed, setFailed] = useState(false);
   const [pending, startTransition] = useTransition();
-  const marked = SCREENING_ITEMS.some((item) => flags[item.key]);
+  const marked = SCREENING_ITEMS.some((item) => flags[item.key] === true);
+  const missing = unanswered(flags);
+  // A draft started before every question needed an answer keeps the old confirmation; a new one needs the six answers (decision D4).
+  const canRecord = detail.earlierFormat ? marked || asked : missing.length === 0;
 
   const touch = () => setMessage("");
   const updateMetric = (key: number, patch: Partial<MetricDraft>) => {
@@ -172,21 +176,38 @@ export function AssessmentForm({
       <fieldset>
         <legend>Triagem</legend>
         <p className="small muted">
-          Marque o que o aluno relatou ou o que você observou. Qualquer item
-          marcado exige a sua revisão antes da entrega de um treino.
+          Responda Sim ou Não em cada pergunta, com o que o aluno relatou ou o
+          que você observou. Todas precisam de resposta para registrar; qualquer
+          Sim exige a sua revisão antes da entrega de um treino.
         </p>
         {SCREENING_ITEMS.map((item) => (
-          <label key={item.key} className="check-row">
-            <input
-              type="checkbox"
-              checked={flags[item.key]}
-              onChange={(event) => {
-                setFlags({ ...flags, [item.key]: event.target.checked });
-                touch();
-              }}
-            />
-            {item.label}
-          </label>
+          <fieldset key={item.key} className="yes-no" aria-describedby={flags[item.key] === null ? `sem-resposta-${item.key}` : undefined}>
+            <legend>{item.label}</legend>
+            {(
+              [
+                [true, "Sim"],
+                [false, "Não"],
+              ] as const
+            ).map(([value, label]) => (
+              <label key={label} className="check-row">
+                <input
+                  type="radio"
+                  name={`triagem-${item.key}`}
+                  checked={flags[item.key] === value}
+                  onChange={() => {
+                    setFlags({ ...flags, [item.key]: value });
+                    touch();
+                  }}
+                />
+                {label}
+              </label>
+            ))}
+            {flags[item.key] === null && (
+              <span id={`sem-resposta-${item.key}`} className="small muted">
+                Sem resposta
+              </span>
+            )}
+          </fieldset>
         ))}
         <label>
           Detalhes da triagem
@@ -207,7 +228,7 @@ export function AssessmentForm({
               fica com esta marca até você anotar a sua revisão.
             </p>
           </Notice>
-        ) : (
+        ) : detail.earlierFormat ? (
           <>
             <p className="small muted" role="status">
               {CLEAR_TEXT}
@@ -224,6 +245,14 @@ export function AssessmentForm({
               Perguntei ao aluno sobre os seis itens e nenhum foi relatado.
             </label>
           </>
+        ) : missing.length > 0 ? (
+          <p className="small muted" role="status">
+            {missing.length === 1 ? "Falta responder 1 pergunta da triagem." : `Faltam responder ${missing.length} perguntas da triagem.`}
+          </p>
+        ) : (
+          <p className="small muted" role="status">
+            {CLEAR_TEXT}
+          </p>
         )}
       </fieldset>
 
@@ -455,7 +484,7 @@ export function AssessmentForm({
         <button
           type="button"
           className="button primary"
-          disabled={pending || (!marked && !asked)}
+          disabled={pending || !canRecord}
           onClick={record}
         >
           Registrar avaliação

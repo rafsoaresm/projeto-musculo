@@ -2,6 +2,17 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.60: Triagem Sim/Não obrigatória (decisão D4 do usuário, 01/11/2026; V4 T08, T09)
+
+**Migration 0031** (aditiva): `assessments.screening_answered`, a lista em JSON das perguntas da triagem respondidas. As seis colunas das perguntas continuam 0/1 com padrão 0; é a coluna nova que separa "Não" de "não perguntado".
+
+- **Avaliação nova:** cada uma das seis perguntas é um par Sim/Não, sem nada marcado de início. O formulário diz "Faltam responder N perguntas da triagem." e só libera "Registrar avaliação" quando todas têm resposta; o servidor recusa o registro com a lista do que falta ("Responda Sim ou Não em todas as perguntas da triagem antes de registrar. Falta: …"), mesmo que o navegador seja contornado. O rascunho pode ser salvo com perguntas em aberto.
+- **Avaliação já gravada (antes da 0.60):** fica `NULL`, o formato anterior. Nada é convertido para "Não": a tela mostra só os "Sim" registrados e uma nota de que, nesse formato, a ausência de "Sim" não quer dizer "Não". O registro dessas avaliações em rascunho continua pedindo a confirmação antiga ("Perguntei ao aluno sobre os seis itens").
+- **Leitura:** a avaliação registrada lista cada pergunta com "Sim" ou "Não".
+- **Verificado localmente:** `npm run check` (testes de banco dos dois formatos: rascunho novo começa com `[]`, registro recusado com pergunta em aberto, registro aceito com as seis, avaliação antiga continua legível e registrável pela confirmação); navegador na montagem raiz, cenários de avaliações, fotos e pedidos atualizados para responder às seis perguntas.
+- **Não feito / limites:** quais respostas "Sim" colocam a avaliação em revisão continua com o técnico (PENDENCIAS T1); o texto das perguntas não mudou.
+- **Não verificado:** nada no ar antes do deploy; a migration 0031 no banco do Webflow só é conferida no log do deploy.
+
 ## Fatia 0.59: Editor Guiado simples (Figma `10:162`; decisão do usuário de 01/11/2026)
 
 **Sem migration.**
@@ -12,7 +23,8 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Abrir pelo endereço:** `?editar=1` passou a abrir o editor depois que a página está no navegador (antes ele seria desenhado no servidor, que não tem o endereço da montagem).
 - **Verificado localmente:** `npm run check`; captura do Editor Guiado a 1280 px comparada com o quadro `10:162`; navegador na montagem raiz, cenário novo `site-guided` (abrir, escolher a seção, digitar o título e vê-lo na prévia, SEO, salvar, recarregar, publicar e o visitante ver o título e a descrição) e a suíte completa.
 - **Não feito / limites:** acrescentar, tirar ou reordenar seções no Editor Guiado (hoje o site nasce com as seções do modelo escolhido); as páginas além da inicial não aparecem no Editor Guiado; enviar imagens novas é pela biblioteca (o campo escolhe entre as enviadas).
-- **Não verificado:** nada no ar antes do deploy.
+- **Não verificado:** o ambiente de desenvolvimento não alcança o site publicado.
+- **CI e deploy:** o CI da PR #60 falhou uma vez em `/treinador` no commit `e2f7ec8` (o teste marcava o site anterior com `wrangler d1 execute`, lento com muitos testes ao mesmo tempo); corrigido em `091a9f5` (SQLite do Node e espera de 15 s no cadastro) e passou nas duas montagens. Merge `bf49f11`. Implantada: deploy `c8a3ebb8`, build de 02:34 a 02:36 e deploy até 02:36 de 02/11/2026, status `success`.
 
 ## Fatia 0.58: Editor Avançado — moldura, prévia e português (Figma `10:218`; defeito 1 da revisão V4; AC19.1, AC19.4, AC19.5)
 

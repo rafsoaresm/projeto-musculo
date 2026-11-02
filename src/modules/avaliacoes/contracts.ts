@@ -18,8 +18,12 @@ export const SCREENING_ITEMS = [
 export type ScreeningKey = (typeof SCREENING_ITEMS)[number]["key"];
 export type RiskStatus = "CLEAR" | "REVIEW_REQUIRED";
 
-export const riskOf = (flags: Record<ScreeningKey, boolean>): RiskStatus =>
-  SCREENING_ITEMS.some((item) => flags[item.key]) ? "REVIEW_REQUIRED" : "CLEAR";
+export const riskOf = (flags: Record<ScreeningKey, boolean | null>): RiskStatus =>
+  SCREENING_ITEMS.some((item) => flags[item.key] === true) ? "REVIEW_REQUIRED" : "CLEAR";
+
+/** The questions of the screening still without a Yes or a No (decision D4: an answer is required for each one). */
+export const unanswered = (flags: Record<ScreeningKey, boolean | null>): ScreeningKey[] =>
+  SCREENING_ITEMS.filter((item) => flags[item.key] === null || flags[item.key] === undefined).map((item) => item.key);
 
 /** The wording the product must use for a flagged assessment. */
 export const REVIEW_REQUIRED_TEXT = "Revisão obrigatória antes da entrega.";
@@ -180,7 +184,8 @@ const movementSchema = z
       context.addIssue({ code: "custom", message: "MOVEMENT_DUPLICATE" });
   });
 
-const flag = z.boolean().default(false);
+/** Yes (true), No (false) or not answered yet (null): a draft may keep a question open, the record may not (decision D4). */
+const flag = z.boolean().nullable().default(null);
 const base = z
   .object({
     assessedOn: z
@@ -203,7 +208,7 @@ const base = z
     movement: movementSchema.default([]),
   })
   .strict();
-export type AssessmentInput = z.output<typeof base> & { riskStatus: RiskStatus };
+export type AssessmentInput = z.output<typeof base> & { riskStatus: RiskStatus; answered: ScreeningKey[] };
 
 /** An assessment date cannot be in the future. The risk status is always computed, never sent. */
 export function parseAssessment(raw: unknown, today = new Date()): AssessmentInput {
@@ -214,5 +219,6 @@ export function parseAssessment(raw: unknown, today = new Date()): AssessmentInp
         context.addIssue({ code: "custom", path: ["assessedOn"], message: "DATE_INVALID" });
     })
     .parse(raw);
-  return { ...parsed, riskStatus: riskOf(parsed) };
+  const missing = new Set(unanswered(parsed));
+  return { ...parsed, riskStatus: riskOf(parsed), answered: SCREENING_ITEMS.map((item) => item.key).filter((key) => !missing.has(key)) };
 }

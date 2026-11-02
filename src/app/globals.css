@@ -5293,3 +5293,20 @@ button.ve-layer-toggle {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+/* ---------- Assessment: every screening question answered Yes or No (decision D4) ---------- */
+fieldset.yes-no {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  border: 0;
+  border-top: 1px solid var(--color-line);
+  margin: 0;
+  padding: 8px 0;
+}
+fieldset.yes-no legend {
+  float: left;
+  min-width: 14rem;
+  padding: 0;
+  font-weight: 700;
+}

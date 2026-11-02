@@ -1,4 +1,5 @@
 "use server";
+import { SCREENING_ITEMS } from "./contracts";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
@@ -68,6 +69,12 @@ export async function recordAssessment(
     const result = await api.record(assessmentId, { screeningAsked });
     if (result.status === "confirmation_required")
       return { error: "Confirme que os seis itens da triagem foram perguntados ao aluno." };
+    if (result.status === "screening_incomplete")
+      return {
+        error: `Responda Sim ou Não em todas as perguntas da triagem antes de registrar. Falta: ${SCREENING_ITEMS.filter((item) => result.missing.includes(item.key))
+          .map((item) => item.label.toLowerCase())
+          .join(", ")}.`,
+      };
     if (result.status === "not_found") return { error: NOT_FOUND };
     studentId = (await api.get(assessmentId))?.studentId ?? "";
   } catch (error) {
