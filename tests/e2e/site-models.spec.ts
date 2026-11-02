@@ -142,7 +142,7 @@ test("models V1: four models of the handoff as cards with a picture, each seen w
   await expect(preview).toBeHidden();
   await form.getByRole("button", { name: "Ver o modelo Premium (preto e laranja)" }).click();
   preview = page.getByRole("dialog", { name: "Modelo: Premium (preto e laranja)" });
-  await expect(preview.getByRole("heading", { name: "Marina Premium" })).toHaveCount(0);
+  await expect(preview.locator("header.site-header")).toContainText("Marina Premium");
   await preview.getByRole("button", { name: "Celular" }).click();
   await preview.getByRole("button", { name: "Usar este modelo" }).click();
   await expect(preview).toBeHidden();
