@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { HOME, pageContent, pagesOf } from "./contracts";
-import { starterOf } from "./page-model";
+import { previewOf } from "./page-model";
 import { SITE_MODEL_LABEL, type SiteModel } from "./page-models";
 import { SiteRenderer } from "./renderer";
 import { buildSiteCss } from "./site-css";
@@ -17,7 +17,7 @@ import { siteNav } from "./site-nav";
  * it is the starting document drawn in the browser, with the name typed in the form. Links and buttons go nowhere here.
  */
 export function ModelPreview({ model, title, onUse, onClose }: { model: SiteModel; title: string; onUse: () => void; onClose: () => void }) {
-  const content = useMemo(() => starterOf(model, title.trim() || "Seu nome"), [model, title]);
+  const content = useMemo(() => previewOf(model, title.trim() || "Seu nome"), [model, title]);
   const [pageId, setPageId] = useState(HOME);
   const [width, setWidth] = useState<"computador" | "celular">("computador");
   const closeButton = useRef<HTMLButtonElement>(null);

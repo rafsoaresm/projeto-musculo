@@ -4350,6 +4350,12 @@ button.ve-layer-toggle {
   height: auto;
   --thumb-accent: var(--color-primary);
 }
+img.model-thumb {
+  aspect-ratio: 8 / 5;
+  object-fit: cover;
+  object-position: top;
+  border-radius: 6px;
+}
 /* The solid color of the accent each model starts with: the same as the page's own (`data-site-accent` green and orange). */
 .model-thumb[data-model="athlete"] {
   --thumb-accent: #1b6e3c;

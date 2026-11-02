@@ -6,6 +6,7 @@ import { SLUG_MAX, TITLE_MAX } from "./contracts";
 import { OFFERED_SITE_MODELS, SITE_MODEL_LABEL, type SiteModel } from "./page-models";
 import { ModelPreview } from "./model-preview";
 import { SiteModelThumb } from "./site-model-thumb";
+import { useMountPath } from "@/components/use-mount-path";
 
 type Engine = "native" | "frappe";
 
@@ -38,11 +39,12 @@ export function CreateSite({ suggestedSlug, suggestedTitle }: { suggestedSlug: s
   const [engine, setEngine] = useState<Engine | null>(null);
   const [slug, setSlug] = useState(suggestedSlug);
   const [title, setTitle] = useState(suggestedTitle);
-  const [model, setModel] = useState<SiteModel>("personal");
+  const [model, setModel] = useState<SiteModel>("trainix");
   const [previewing, setPreviewing] = useState<SiteModel | null>(null);
   const [message, setMessage] = useState("");
   const [pending, startTransition] = useTransition();
   const heading = useRef<HTMLHeadingElement>(null);
+  const mountPath = useMountPath();
   useEffect(() => heading.current?.focus(), [engine]);
 
   if (!engine)
@@ -117,13 +119,14 @@ export function CreateSite({ suggestedSlug, suggestedTitle }: { suggestedSlug: s
           <input value={slug} onChange={(event) => setSlug(event.target.value)} maxLength={SLUG_MAX} autoComplete="off" required />
         </label>
         {engine === "native" && (
+          // The list of models is drawn only after the person chose the Editor Guiado (a click): the window's mount path is there to read.
           <fieldset className="ve-choice">
             <legend>Começar com</legend>
             <div className="model-choice">
               {OFFERED_SITE_MODELS.map((entry) => (
                 <div key={entry} className="model-card">
                   <label className="model-pick">
-                    <SiteModelThumb model={entry} />
+                    <SiteModelThumb model={entry} base={mountPath()} />
                     <span className="model-head">
                       <input type="radio" name="site-model" checked={model === entry} onChange={() => setModel(entry)} />
                       <strong>{SITE_MODEL_LABEL[entry].label}.</strong>

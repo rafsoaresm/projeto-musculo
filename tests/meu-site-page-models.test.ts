@@ -165,9 +165,9 @@ describe("a page that starts from a model", () => {
 });
 
 describe("a site that starts from a model", () => {
-  it("offers the three complete sites and one page; the earlier models stay readable", () => {
-    expect(SITE_MODELS).toEqual(["personal", "studio", "online", "single", "complete", "athlete", "trainer"]);
-    expect(OFFERED_SITE_MODELS).toEqual(["personal", "studio", "online", "single"]);
+  it("offers the four models of the handoff V1 and one page; the earlier models stay readable", () => {
+    expect(SITE_MODELS).toEqual(["trainix", "fitnova", "sisphus", "race", "personal", "studio", "online", "single", "complete", "athlete", "trainer"]);
+    expect(OFFERED_SITE_MODELS).toEqual(["trainix", "fitnova", "sisphus", "race", "single"]);
     for (const model of SITE_MODELS) expect(SITE_MODEL_LABEL[model].label.length).toBeGreaterThan(3);
     const single = starterOf("single", "Marina Treinos");
     expect(single.blocks.map((node) => node.type)).toEqual(starterContent("Marina Treinos").blocks.map((node) => node.type));

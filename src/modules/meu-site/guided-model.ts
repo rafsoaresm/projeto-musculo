@@ -25,6 +25,8 @@ import {
   type SiteNode,
 } from "./contracts";
 import { nodeTitle } from "./node-label";
+import { DEMO_PREFIX, demoKeyOf } from "./models/demo-photos";
+import type { Style } from "./style";
 
 export interface Section {
   id: string;
@@ -42,6 +44,8 @@ export interface Field {
   value: string;
   /** An image of a model: the drawing shown while no photo is chosen. */
   illustration?: string;
+  /** An image of a model: the sample photo shown while the site is being made (never published). */
+  demo?: string;
 }
 
 /** The sections of a page (the home page by default), in order: what the list shows. A box with the header or footer tag is called so. */
@@ -131,14 +135,23 @@ export function fieldsOf(section: SiteNode): Field[] {
       case "image": {
         const label = numbered("Imagem");
         out.push(
-          { ...own(entry, "assetId", "", "image", 64), label, ...(entry.illustration ? { illustration: entry.illustration } : null) },
+          { ...own(entry, "assetId", "", "image", 64), label, ...(entry.illustration ? { illustration: entry.illustration } : null), ...(entry.demo ? { demo: entry.demo } : null) },
           { ...own(entry, "alt", "", "text", ALT_MAX), label: `Descrição da ${label.toLowerCase()}` },
         );
         break;
       }
-      case "box":
+      case "box": {
+        // A background photo (the banner of a model's highlight): swapped here, on the computer and, when it has its own, on the phone.
+        const bg = (style: Style | undefined, property: "bg" | "bgMobile", label: string) => {
+          if (!style?.bgImage) return;
+          const demo = demoKeyOf(style.bgImage);
+          out.push({ key: `${entry.id}.${property}`, label: numbered(label), kind: "image", max: 64, value: demo ? "" : style.bgImage, ...(demo ? { demo } : null) });
+        };
+        bg(entry.style, "bg", "Imagem de fundo");
+        bg(entry.styleMobile, "bgMobile", "Imagem de fundo no celular");
         entry.children.forEach(visit);
         break;
+      }
       case "component":
         // A component is edited where it is defined; its texts are the same everywhere it is used.
         break;
@@ -191,6 +204,16 @@ export function withField(content: SiteContent, key: string, raw: string): SiteC
     const field = fieldsOf(entry).find((candidate) => candidate.key === key);
     if (!field) return entry;
     if (field.kind === "check") return { ...entry, [property]: raw === "true" } as SiteNode;
+    if (property === "bg" || property === "bgMobile") {
+      // An image of the library, or none: back to the model's sample photo when there was one, otherwise no background.
+      const which = property === "bg" ? "style" : "styleMobile";
+      const style = { ...(entry[which] ?? {}) };
+      if (raw) style.bgImage = raw.slice(0, 64);
+      else if (field.demo) style.bgImage = `${DEMO_PREFIX}${field.demo}`;
+      else delete style.bgImage;
+      if (style.bgImage === entry[which]?.bgImage) return entry;
+      return { ...entry, [which]: style } as SiteNode;
+    }
     const value = raw.slice(0, field.max);
     if (property === "items" && n !== undefined && itemProperty) {
       const items = (entry as unknown as { items: Array<Record<string, string>> }).items.map((item, at) => (at === Number(n) ? { ...item, [itemProperty]: value } : item));

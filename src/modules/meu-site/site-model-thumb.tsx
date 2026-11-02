@@ -1,11 +1,15 @@
-import type { SiteModel } from "./page-models";
+import { isModelV1, type SiteModel } from "./page-models";
 
 /**
  * A drawing of what each site model starts with: boxes in the proportions of the page, no words and no photo (nothing here claims anything about
  * the person). It is a picture for the eye, so reading aids skip it: the name and the hint of the model are the text of the choice. The colors are
  * the tool's own (see `.model-thumb` in globals.css), not the page's.
  */
-export function SiteModelThumb({ model }: { model: SiteModel }) {
+export function SiteModelThumb({ model, base = "" }: { model: SiteModel; base?: string }) {
+  // A model of the handoff V1: a picture of the top of its page (a file of the app, made from the model itself by scripts/site-models).
+  if (isModelV1(model))
+    // eslint-disable-next-line @next/next/no-img-element -- a small file of the app; the size is fixed by the card
+    return <img className="model-thumb" data-model={model} src={`${base}/site-models/thumb-${model}.webp`} width={480} height={300} alt="" aria-hidden="true" />;
   return (
     <svg className="model-thumb" data-model={model} viewBox="0 0 160 120" aria-hidden="true" focusable="false">
       <rect className="t-page" x="0.5" y="0.5" width="159" height="119" rx="6" />

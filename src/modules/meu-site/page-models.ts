@@ -1,5 +1,7 @@
 import { emptyBlock, type BlockOf, type BoxNode, type SiteNode } from "./contracts";
 import { catalogueItem } from "./presets";
+import { SITE_MODELS_V1 } from "./models";
+import { SITE_MODEL_KEYS, type SiteModelKey } from "./models/types";
 
 /**
  * Pages that start from a model: a title, and the blocks that page usually has, made of the sections and templates the library already offers.
@@ -77,23 +79,27 @@ export const PAGE_MODELS: readonly PageModel[] = [
 export const pageModel = (key: string): PageModel | undefined => PAGE_MODELS.find((entry) => entry.key === key);
 
 /**
- * What a site starts with, by the model the person chose when creating it. The three complete sites (site-kits.ts, 0.63) are what is offered, with
- * the single page; the earlier models are still accepted (a site made from them keeps its content) but no longer offered.
+ * What a site starts with, by the model the person chose when creating it. The four models of the handoff "Templates de Sites — CMS V1"
+ * (models/) are what is offered, with the single page; the earlier ones (the three of 0.63 and those before) are still accepted (a site made from
+ * them keeps its content) but no longer offered.
  */
-export const SITE_MODELS = ["personal", "studio", "online", "single", "complete", "athlete", "trainer"] as const;
+export const SITE_MODELS = ["trainix", "fitnova", "sisphus", "race", "personal", "studio", "online", "single", "complete", "athlete", "trainer"] as const;
 export type SiteModel = (typeof SITE_MODELS)[number];
-export const OFFERED_SITE_MODELS = ["personal", "studio", "online", "single"] as const satisfies readonly SiteModel[];
+export const OFFERED_SITE_MODELS = ["trainix", "fitnova", "sisphus", "race", "single"] as const satisfies readonly SiteModel[];
+/** The models of the handoff V1 among the site models. */
+export const isModelV1 = (model: SiteModel): model is SiteModelKey => (SITE_MODEL_KEYS as readonly string[]).includes(model);
 export const SITE_MODEL_LABEL: Record<SiteModel, { label: string; hint: string }> = {
+  ...(Object.fromEntries(SITE_MODELS_V1.map((entry) => [entry.key, { label: entry.label, hint: entry.hint }])) as Record<SiteModelKey, { label: string; hint: string }>),
   personal: {
-    label: "Personal trainer",
+    label: "Personal trainer (modelo anterior)",
     hint: "Atendimento individual: destaque com você, como funciona o acompanhamento, sobre mim e planos. Em laranja, com cinco páginas.",
   },
   studio: {
-    label: "Estúdio / assessoria",
+    label: "Estúdio / assessoria (modelo anterior)",
     hint: "Equipe e estrutura: modalidades, o espaço, a equipe, planos e perguntas frequentes. Escuro, com cinco páginas.",
   },
   online: {
-    label: "Treino online / consultoria",
+    label: "Treino online / consultoria (modelo anterior)",
     hint: "Acompanhamento a distância: como funciona, planos e perguntas frequentes. Em azul, com cinco páginas.",
   },
   single: { label: "Uma página só", hint: "Um destaque e uma chamada para contato, para você montar do seu jeito." },
