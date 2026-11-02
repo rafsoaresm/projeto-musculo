@@ -15,7 +15,10 @@
  *   the Google Ads contact conversion. The form before WhatsApp sends `generate_lead` and `contact` when the browser lets it be sent. The
  *   contact form's conversion (`generate_lead`, Meta `Lead`, the Ads form conversion) fires only on the thank-you page, only with the one-time
  *   `envio` id the server added to an accepted submission, once per id.
- * - Never anything a visitor typed: no field of a form is read, and no event carries a name, e-mail, phone or message.
+ * - Never anything a visitor typed: no field of a form is read, and no event carries a name, e-mail, phone or message. The Meta Pixel's
+ *   automatic events are off (`autoConfig`); its automatic advanced matching and Google's automatic user-provided data are account settings,
+ *   which the panel tells the owner to leave off.
+ * - The sites share the app's address, so Google's cookies are named per site (`cookie_prefix`). Meta's `_fbp` has no such option.
  */
 import type { ScriptConfig } from "./tracking";
 
@@ -48,6 +51,9 @@ const RUNTIME = String.raw`(function (C) {
   var me = d.currentScript;
   var THANKS = !!(me && me.getAttribute("data-pagina") === "enviado");
   var GOOGLE = !!(C.ga4 || C.ads);
+  // The sites share the app's address: Google's cookies (_ga, _ga_*, _gcl_au) get a name of their own per site, so one site's tools never
+  // read the visitor's id made under another site's consent. (A slug is [a-z0-9-]; anything else is made "_" all the same.)
+  var COOKIES = { cookie_prefix: "rst_" + String(C.site).replace(/[^A-Za-z0-9-]/g, "_") };
   var on = { a: false, m: false };
   var done = { g: false, ga4: false, ads: false, meta: false };
   var banner = null, opener = null, back = null;
@@ -79,8 +85,8 @@ const RUNTIME = String.raw`(function (C) {
         inject("https://www.googletagmanager.com/gtag/js?id=" + encodeURIComponent(ga ? C.ga4 : C.ads.id));
         gtag("js", new Date());
       }
-      if (ga) { done.ga4 = true; gtag("config", C.ga4); }
-      if (ads) { done.ads = true; gtag("config", C.ads.id); }
+      if (ga) { done.ga4 = true; gtag("config", C.ga4, merge({}, COOKIES)); }
+      if (ads) { done.ads = true; gtag("config", C.ads.id, merge({}, COOKIES)); }
     }
     if (C.meta) {
       if (on.m && !done.meta) {
@@ -88,6 +94,9 @@ const RUNTIME = String.raw`(function (C) {
         fbqStub();
         inject("https://connect.facebook.net/en_US/fbevents.js");
         w.fbq("consent", "grant");
+        // No automatic events (the pixel would report buttons and page data on its own) before init; the automatic advanced matching, which
+        // would read the fields of a form, is switched off in Events Manager (the panel says so).
+        w.fbq("set", "autoConfig", false, C.meta);
         w.fbq("init", C.meta);
         w.fbq("track", "PageView");
       } else if (done.meta) w.fbq("consent", on.m ? "grant" : "revoke");
@@ -210,7 +219,7 @@ const RUNTIME = String.raw`(function (C) {
     ".rst-banner .rst-small{font-size:13px;color:#3e4c59}" +
     ".rst-bar{display:flex;justify-content:center;padding:12px 16px 20px;margin:0}" +
     ".rst-prefs{min-height:44px;padding:8px 18px;border:1px solid #9aa5b1;border-radius:999px;background:#fff;color:#1f2933;font:600 14px/1.2 system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;cursor:pointer}" +
-    "@media (max-width:600px){.rst-banner{left:8px;right:8px;width:auto;max-width:none;bottom:88px;max-height:calc(100vh - 104px);padding:16px}}";
+    "@media (max-width:600px){.rst-banner{left:8px;right:8px;width:auto;max-width:none;bottom:88px;max-height:calc(100vh - 104px);padding:16px}.rst-banner .rst-btn{padding:10px 6px}}";
 
   function el(tag, attrs, children) {
     var e = d.createElement(tag);

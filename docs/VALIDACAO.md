@@ -25,6 +25,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
   - `npm run check`: 107 arquivos de teste, com dois que falharam por o servidor local ser derrubado pela rodada de navegador ao mesmo tempo (`fetch failed`); rodados sozinhos, os dois passaram (27 testes);
   - `tsc`, lint e os testes de site (`tests/meu-site*`, `tests/site*`), com os testes novos de `meu-site-layout`;
   - revisão independente em duas rodadas: os defeitos da primeira (prévia de computador mostrando o celular em notebooks de 1101 a 1307 px, fotos encolhidas no tablet, cartões estreitos, áreas de toque, rolagem ao trocar de largura) foram corrigidos; da segunda, o cabeçalho em duas linhas entre 1024 e 1055 px e o botão de largura sem destaque, também corrigidos.
+- **CI e deploy:** o CI do PR #72 passou (`validate` e `validate (/treinador)`, no commit `8fff848`); merge `dc58eda`; deploy `640ecb8c` com sucesso em 02/11/2026 (sem migration).
 - **Não verificado:** Safari e Firefox; o Editor Guiado num celular de verdade; páginas publicadas pela rota pública em produção (a medição usa o mesmo renderizador e o mesmo CSS).
 
 ## Fatia 0.69: Avaliação Física V2, a etapa Medidas (atrás da chave `ASSESSMENT_V2_ENABLED`; PENDENCIAS B47 e C38)

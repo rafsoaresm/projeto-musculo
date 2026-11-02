@@ -92,12 +92,12 @@ export function TrackingPanel({ settings, canEdit }: { settings: TrackingSetting
       >
         <fieldset className="tracking-fieldset" disabled={!canEdit || pending}>
           <legend>Google Analytics 4</legend>
-          {text("ga4", "ID de medição do GA4", settings.ga4Id ?? "", <>Começa com G-. No GA4: Administrador › Fluxos de dados › o seu site.</>, { placeholder: "G-XXXXXXXXXX" })}
+          {text("ga4", "ID de medição do GA4", settings.ga4Id ?? "", <>Começa com G-. No GA4: Administrador › Fluxos de dados › o seu site. Lá, deixe desligada a “coleta de dados fornecidos pelo usuário”: o site não envia dados de quem preenche os formulários.</>, { placeholder: "G-XXXXXXXXXX" })}
         </fieldset>
 
         <fieldset className="tracking-fieldset" disabled={!canEdit || pending}>
           <legend>Google Ads</legend>
-          {text("adsId", "ID do Google Ads", settings.adsId ?? "", <>Começa com AW-. No Google Ads: Metas › Conversões › a ação › Configurar a tag (o valor antes da barra em send_to).</>, {
+          {text("adsId", "ID do Google Ads", settings.adsId ?? "", <>Começa com AW-. No Google Ads: Metas › Conversões › a ação › Configurar a tag (o valor antes da barra em send_to). Deixe desligadas as “conversões otimizadas” automáticas: o site não envia dados de quem preenche os formulários.</>, {
             placeholder: "AW-123456789",
           })}
           {text("adsLabelLead", "Rótulo da conversão do formulário", settings.adsLabelLead ?? "", <>O texto depois da barra em send_to da ação que conta as mensagens do formulário. Dá para colar “AW-…/rótulo” inteiro.</>)}
@@ -106,7 +106,7 @@ export function TrackingPanel({ settings, canEdit }: { settings: TrackingSetting
 
         <fieldset className="tracking-fieldset" disabled={!canEdit || pending}>
           <legend>Meta Pixel</legend>
-          {text("meta", "ID do Meta Pixel", settings.metaPixelId ?? "", <>Só números (em geral 15 ou 16). No Gerenciador de Eventos da Meta: Fontes de dados › o seu pixel.</>, { inputMode: "numeric" })}
+          {text("meta", "ID do Meta Pixel", settings.metaPixelId ?? "", <>Só números (em geral 15 ou 16). No Gerenciador de Eventos da Meta: Fontes de dados › o seu pixel. Em Configurações do pixel, deixe desligada a “correspondência avançada automática”: ela leria os campos dos formulários do site.</>, { inputMode: "numeric" })}
         </fieldset>
 
         <fieldset className="tracking-fieldset">

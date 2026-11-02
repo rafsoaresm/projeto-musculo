@@ -1,5 +1,5 @@
 import { test, expect, type Page, type Request } from "@playwright/test";
-import { createProfessional, localIP, newActor } from "./helpers";
+import { createProfessional, localIP, newActor, policyRefusals, trackPolicy } from "./helpers";
 import { showTab } from "./site-helpers";
 
 /**
@@ -45,8 +45,9 @@ async function publishedSite(page: Page) {
   await editor.getByRole("tablist", { name: "Partes do Editor Guiado" }).getByRole("tab", { name: "Publicar" }).click();
   const publish = editor.getByRole("tabpanel");
   await publish.getByRole("button", { name: "Publicar", exact: true }).click();
-  const anyway = publish.getByRole("button", { name: "Publicar mesmo assim" });
-  if (await anyway.isVisible({ timeout: 3000 }).catch(() => false)) await anyway.click();
+  // The model's sample photos are always said before publishing (a warning): it is published anyway.
+  await expect(editor.getByRole("list", { name: "Avisos antes de publicar" })).toBeVisible();
+  await publish.getByRole("button", { name: "Publicar mesmo assim" }).click();
   await expect(editor.getByText(/Publicado: o site está no ar/)).toBeVisible();
   await editor.getByRole("button", { name: "Fechar o Editor Guiado" }).click();
   await showTab(page, "Formulários e mensagens");
@@ -87,6 +88,10 @@ test("tagging: configured in the panel, nothing loads before consent, refusal an
   await settings.getByLabel("ID do Meta Pixel").fill("123456789012345");
   await settings.getByLabel("Valor de um contato (opcional, R$)").fill("150,00");
   await settings.getByLabel("Endereço do aviso de privacidade do seu site").fill("https://marina.example/privacidade");
+  // What the site does not send is also up to the accounts: the panel says which automatic collections to leave off.
+  await expect(settings).toContainText("deixe desligada a “correspondência avançada automática”");
+  await expect(settings).toContainText("deixe desligada a “coleta de dados fornecidos pelo usuário”");
+  await expect(settings).toContainText("Deixe desligadas as “conversões otimizadas” automáticas");
   await expect(settings.getByRole("checkbox", { name: "Mensagem pelo formulário" })).toBeChecked();
   await expect(settings.getByRole("checkbox", { name: "Clique no WhatsApp" })).toBeChecked();
   await expect(settings.getByRole("checkbox", { name: "Clique no e-mail" })).not.toBeChecked();
@@ -193,10 +198,15 @@ test("tagging: configured in the panel, nothing loads before consent, refusal an
   const google = await calls(visitor, "__gtag");
   const order = google.map((call) => `${call[0]}:${typeof call[1] === "string" ? call[1] : ""}`);
   expect(order.indexOf("consent:default")).toBe(0);
-  expect(order.indexOf("consent:update")).toBeLessThan(order.indexOf("config:G-TEST1234"));
-  expect(order).toContain("config:AW-123456789");
-  expect(google.find((call) => call[0] === "consent" && call[1] === "update")![2]).toEqual({ analytics_storage: "granted", ad_storage: "granted", ad_user_data: "granted", ad_personalization: "granted" });
-  expect(await calls(visitor, "__fbq")).toEqual([["consent", "grant"], ["init", "123456789012345"], ["track", "PageView"]]);
+  // The refusal kept from the earlier visit is applied first; the acceptance (the last update) comes before either tag is configured.
+  expect(order.lastIndexOf("consent:update")).toBeGreaterThan(order.indexOf("consent:update"));
+  expect(order.lastIndexOf("consent:update")).toBeLessThan(order.indexOf("config:G-TEST1234"));
+  expect(order.lastIndexOf("consent:update")).toBeLessThan(order.indexOf("config:AW-123456789"));
+  // Google's cookies are named per site (the sites share the app's address).
+  expect(google.filter((call) => call[0] === "config").map((call) => call[2])).toEqual([{ cookie_prefix: `rst_${slug}` }, { cookie_prefix: `rst_${slug}` }]);
+  // The last update is the acceptance (the one before it is the refusal stored on the earlier visit, applied when the page opened).
+  expect(google.filter((call) => call[0] === "consent" && call[1] === "update").at(-1)![2]).toEqual({ analytics_storage: "granted", ad_storage: "granted", ad_user_data: "granted", ad_personalization: "granted" });
+  expect(await calls(visitor, "__fbq")).toEqual([["consent", "grant"], ["set", "autoConfig", false, "123456789012345"], ["init", "123456789012345"], ["track", "PageView"]]);
   expect(vendor.filter((url) => url.startsWith("https://www.googletagmanager.com/gtag/js"))).toHaveLength(1);
   expect(vendor.filter((url) => url.startsWith("https://connect.facebook.net/"))).toHaveLength(1);
 
@@ -236,6 +246,96 @@ test("tagging: configured in the panel, nothing loads before consent, refusal an
   await expect.poll(async () => (await calls(visitor, "__fbq")).length).toBeGreaterThan(0);
   expect(await events(visitor, "generate_lead")).toEqual([]);
   expect(await tracks(visitor, "Lead")).toEqual([]);
+  expect(problems).toEqual([]);
+  await visit.context.close();
+});
+
+// ---- the advanced editor (Frappe): its pages and its thank-you page run the same script under their own strict policy ----
+
+/** What the editor asks of its server, asked the way the editor asks (same origin, with the header that marks its calls). */
+const asEditor = async (page: Page, method: string, params: Record<string, unknown>) => {
+  const response = await page.request.post(`./api/builder-editor/api/method/${method}`, { headers: { "x-site-request": "1" }, data: params });
+  return { status: response.status(), body: (await response.json()) as { message?: Record<string, unknown> } };
+};
+const node = (element: string, attributes: Record<string, string> = {}, more: Record<string, unknown> = {}) => ({ blockId: crypto.randomUUID().slice(0, 8), element, attributes, ...more });
+const body = (...children: unknown[]) => JSON.stringify([{ blockId: "root", originalElement: "body", element: "div", baseStyles: { display: "flex", flexDirection: "column", padding: "16px" }, children }]);
+async function publishFrappe(page: Page, route: string, title: string, blocks: string) {
+  const made = await asEditor(page, "frappe.client.insert", { doc: { doctype: "Builder Page", page_title: title, route, blocks: "[]", draft_blocks: blocks } });
+  expect(made.status).toBe(200);
+  expect((await asEditor(page, "run_doc_method", { dt: "Builder Page", dn: String(made.body.message!.name), method: "publish", args: {} })).status).toBe(200);
+}
+
+test("tagging on the advanced editor: the banner and the tools at any depth, within the page's policy, and the form's conversion on its thank-you page", async ({ page, browser, baseURL }) => {
+  test.setTimeout(300_000);
+  await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
+  const unique = crypto.randomUUID().slice(0, 8);
+  await createProfessional(page, `Estúdio ${unique}`, "Marina Avançado");
+  const slug = `estudio-${unique}`;
+  await page.goto("./profissional/meu-site");
+  await page.getByRole("button", { name: "Escolher Editor Avançado" }).click();
+  await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Confirmar e criar site" }).click();
+  await expect(page).toHaveURL(/\/profissional\/meu-site\/editor/);
+  const form = node("form", {}, {
+    blockId: "contact-form",
+    children: [node("input", { type: "text", placeholder: "Seu nome" }), node("input", { type: "email", placeholder: "E-mail" }), node("textarea", { placeholder: "Mensagem" }), node("button", {}, { innerHTML: "Enviar mensagem" })],
+  });
+  await publishFrappe(page, "contato", "Contato", body(node("h1", {}, { innerHTML: "Fale comigo" }), form));
+  await publishFrappe(page, "servicos/personal", "Personal", body(node("h1", {}, { innerHTML: "Personal" })));
+  await page.goto("./profissional/meu-site");
+  await showTab(page, "Formulários e mensagens");
+  await page.getByRole("region", { name: "Formulários e mensagens" }).getByRole("button", { name: "Ligar o recebimento de mensagens" }).click();
+  await showTab(page, "Formulários e mensagens");
+  await expect(page.getByRole("region", { name: "Formulários e mensagens" })).toContainText("Recebimento ligado");
+  await showTab(page, "Configurações");
+  const settings = panel(page);
+  await settings.getByLabel("ID de medição do GA4").fill("G-TEST1234");
+  await settings.getByLabel("ID do Google Ads").fill("AW-123456789/LeadLabel1");
+  await settings.getByLabel("ID do Meta Pixel").fill("123456789012345");
+  await settings.getByRole("button", { name: "Salvar rastreamento" }).click();
+  await expect(settings).toContainText("Ativo: GA4, Google Ads, Meta Pixel");
+
+  const visit = await newActor(browser, baseURL);
+  const visitor = visit.page;
+  await trackPolicy(visitor);
+  const problems: string[] = [];
+  visitor.on("pageerror", (error) => problems.push(error.message));
+  await visit.context.route(VENDOR, (route, request: Request) => {
+    const url = request.url();
+    if (url.startsWith("https://www.googletagmanager.com/gtag/js")) return route.fulfill({ status: 200, contentType: "text/javascript", body: GTAG_STUB });
+    if (url === "https://connect.facebook.net/en_US/fbevents.js") return route.fulfill({ status: 200, contentType: "text/javascript", body: FBQ_STUB });
+    return route.fulfill({ status: 204, body: "" });
+  });
+
+  // ---- two levels below the site: the script's relative address reaches it, the banner opens, and nothing is loaded before the choice ----
+  await visitor.goto(`./site/${slug}/servicos/personal`);
+  await expect(visitor.getByRole("heading", { name: "Personal" })).toBeVisible();
+  await expect(banner(visitor)).toBeVisible();
+  expect(await calls(visitor, "__gtag")).toEqual([]);
+  const gtagLoaded = visitor.waitForRequest((request) => request.url().startsWith("https://www.googletagmanager.com/gtag/js?id=G-TEST1234"));
+  await banner(visitor).getByRole("button", { name: "Aceitar", exact: true }).click();
+  await gtagLoaded;
+  await expect.poll(async () => (await calls(visitor, "__fbq")).length).toBeGreaterThan(0);
+  expect((await calls(visitor, "__gtag")).filter((call) => call[0] === "config").map((call) => call[1])).toEqual(["G-TEST1234", "AW-123456789"]);
+  expect(await policyRefusals(visitor)).toEqual([]);
+
+  // ---- the page with the form: the choice holds; the message is sent; the thank-you page counts it once and drops the id ----
+  await visitor.goto(`./site/${slug}/contato`);
+  await expect(banner(visitor)).toBeHidden();
+  await expect.poll(async () => (await calls(visitor, "__gtag")).filter((call) => call[0] === "config").length).toBe(2);
+  await visitor.getByRole("textbox", { name: "Seu nome" }).fill("Ana Souza");
+  await visitor.getByRole("textbox", { name: "E-mail" }).fill("ana@example.test");
+  await visitor.getByRole("textbox", { name: "Mensagem" }).fill("Quero saber dos planos.");
+  await visitor.getByRole("checkbox", { name: /Li o aviso de privacidade/ }).check();
+  await visitor.getByRole("button", { name: "Enviar mensagem" }).click();
+  await expect(visitor.getByRole("heading", { name: "Mensagem enviada" })).toBeVisible();
+  await expect.poll(async () => (await events(visitor, "generate_lead")).length).toBe(1);
+  const [conversion] = await events(visitor, "conversion");
+  expect(conversion).toMatchObject({ send_to: "AW-123456789/LeadLabel1" });
+  expect(String(conversion!.transaction_id)).toMatch(/^[0-9a-f]{32}$/);
+  await expect.poll(async () => (await tracks(visitor, "Lead")).length).toBe(1);
+  await expect(visitor).toHaveURL(new RegExp(`/site/${slug}/m/enviado\\?pagina=contato$`));
+  expect(JSON.stringify([await calls(visitor, "__gtag"), await calls(visitor, "__fbq")])).not.toMatch(/Ana Souza|ana@example\.test/);
+  expect(await policyRefusals(visitor)).toEqual([]);
   expect(problems).toEqual([]);
   await visit.context.close();
 });

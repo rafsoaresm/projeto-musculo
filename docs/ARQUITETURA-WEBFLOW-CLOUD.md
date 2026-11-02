@@ -164,7 +164,7 @@ Use operações D1 suportadas como `batch()` para efeitos que devem ser atômico
 - Aprovação, entrega de treino, publicação de site e confirmação de pagamento são atos distintos.
 - Afiliados recebem sobre pagamentos **SaaS** confirmados; receitas do profissional são outro livro.
 - IA não aprova treino nem inventa evidências. Recuperação vetorial/RAG precisará de desenho compatível com o novo armazenamento; pgvector deixa de ser pressuposto.
-- Origem privada sem pixels/GTM. URLs, assets, sessões e APIs terão autorização própria.
+- Origem privada sem pixels/GTM. URLs, assets, sessões e APIs terão autorização própria. Os sites públicos (0.71) podem ter GA4, Google Ads e Meta Pixel, só depois do consentimento do visitante e com política de conteúdo por site; **o GTM fica fora enquanto o site dividir a origem do app** (um contêiner roda qualquer código escolhido pelo dono do site, com a sessão de quem estiver logado).
 
 ## Limites de runtime ainda relevantes
 

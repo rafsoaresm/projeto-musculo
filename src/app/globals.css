@@ -6357,6 +6357,14 @@ fieldset.yes-no legend {
 }
 
 /* ---------- Meu Site: Rastreamento e conversões (0.71) ---------- */
+/* The table of events scrolls inside its own box; nothing in the panel widens the page on a phone. */
+.tracking-panel {
+  min-width: 0;
+  max-width: 100%;
+}
+.tracking-panel code {
+  overflow-wrap: anywhere;
+}
 .tracking-panel .stack-form {
   margin-top: 16px;
 }
