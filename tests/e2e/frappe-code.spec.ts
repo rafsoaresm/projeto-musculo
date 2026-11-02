@@ -191,14 +191,14 @@ test("frappe code, from the editor itself: the Embed template of the library is 
 
   await trackPolicy(page);
   await page.goto("./profissional/meu-site/editor");
-  await page.getByRole("button", { name: "New", exact: true }).click();
-  await page.getByText("Start from scratch").click();
+  await page.getByRole("button", { name: "Novo", exact: true }).click();
+  await page.getByText("Começar do zero").click();
   await expect(page.getByText("body", { exact: true }).first()).toBeVisible();
   const pageName = new URL(page.url()).pathname.split("/").pop()!;
-  await page.mouse.click(28, 76);
-  await page.getByPlaceholder("Search Template").fill("youtube");
+  await page.mouse.click(28, 124); // the "+" of the left panel, under the 48 px bar of the Editor Avançado
+  await page.getByPlaceholder("Buscar modelo").fill("youtube");
   await expect(page.getByText("YouTube", { exact: true })).toHaveCount(0);
-  await page.getByPlaceholder("Search Template").fill("embed");
+  await page.getByPlaceholder("Buscar modelo").fill("embed");
   const card = page.getByText("Embed", { exact: true }).first();
   await expect(card).toBeVisible();
   const read = async () => {
@@ -216,7 +216,7 @@ test("frappe code, from the editor itself: the Embed template of the library is 
   }).toPass({ timeout: 40_000 });
   // The block is drawn in the canvas inside a frame that runs nothing, and the editor's policy refused nothing.
   await expect(page.locator('iframe[sandbox=""]').first()).toBeVisible({ timeout: 20_000 });
-  await page.getByRole("button", { name: "Publish", exact: true }).click();
+  await page.getByRole("button", { name: "Publicar", exact: true }).click();
   await expect.poll(async () => Number((await read()).published), { timeout: 30_000 }).toBe(1);
   expect(await policyRefusals(page)).toEqual([]);
 

@@ -110,10 +110,45 @@ export async function publicBuilderPage(db: D1Database, rawSlug: string, request
     .first<{ data: string }>();
   const page = row ? parse(row.data) : null;
   if (!page || Number(page.published) !== 1) return null;
-  const blocks = parseBlocks(page.blocks);
+  return assemble(db, { slug: slug.data, org, site, page, blocks: parseBlocks(page.blocks), settings, shared: shared!.results });
+}
+
+type SharedRow = { name: string; data?: string; doctype?: string };
+
+/**
+ * The draft of one page of the editor, as the editor's preview shows it (handoff V4, defect 1 and AC19.5): read by the editor's name of the
+ * page within the organization of the verified session, published or not, with the draft's blocks when there is a draft. Never public: the
+ * route that answers it checks the session and that the site is the session's own.
+ */
+export async function previewBuilderPage(db: D1Database, organizationId: string, pageName: string): Promise<PublicPage | null> {
+  if (!pageName || pageName.length > 140) return null;
+  const site = await db
+    .prepare("SELECT slug, organization_id AS organizationId, inquiries_open AS inquiriesOpen, code_external_open AS codeExternalOpen FROM sites WHERE organization_id = ?")
+    .bind(organizationId)
+    .first<{ slug: string; organizationId: string; inquiriesOpen: number; codeExternalOpen: number }>();
+  if (!site) return null;
+  const [rows, shared] = await db.batch<{ data: string } & SharedRow>([
+    db.prepare(`SELECT data FROM builder_docs WHERE organization_id = ?1 AND doctype = 'Builder Page' AND name = ?2`).bind(organizationId, pageName),
+    db.prepare(`SELECT doctype, name, data FROM builder_docs WHERE organization_id = ?1 AND doctype IN ('Builder Settings', 'Builder Token')`).bind(organizationId),
+  ]);
+  const page = rows!.results[0] ? parse(rows!.results[0].data) : null;
+  if (!page) return null;
+  const draft = parseBlocks(page.draft_blocks);
+  const blocks = Array.isArray(draft) && draft.length ? draft : parseBlocks(page.blocks);
+  const settingsRow = shared!.results.find((entry) => entry.doctype === "Builder Settings");
+  const settings = (settingsRow ? parse(settingsRow.data ?? "") : null) ?? {};
+  return assemble(db, { slug: site.slug, org: organizationId, site, page: { ...page, draft_blocks: undefined }, blocks, settings, shared: shared!.results });
+}
+
+async function assemble(
+  db: D1Database,
+  input: { slug: string; org: string; site: { inquiriesOpen: number; codeExternalOpen: number }; page: Record<string, unknown>; blocks: ReturnType<typeof parseBlocks>; settings: Record<string, unknown>; shared: SharedRow[] },
+): Promise<PublicPage> {
+  const { org, site, page, blocks, settings } = input;
+  const shared = { results: input.shared };
 
   const tokens: Token[] = [];
-  for (const entry of shared!.results) {
+  for (const entry of shared.results) {
     if (entry.doctype !== "Builder Token") continue;
     const doc = parse(entry.data);
     if (doc && text(doc.value)) tokens.push({ name: entry.name, value: text(doc.value), darkValue: text(doc.dark_value) || null });
@@ -177,7 +212,7 @@ export async function publicBuilderPage(db: D1Database, rawSlug: string, request
     }
   }
 
-  return { slug: slug.data, route: routeOf(text(page.route)), page, blocks, components, tokens, settings, styles, inquiriesOpen: site.inquiriesOpen === 1, codeExternalOpen: site.codeExternalOpen === 1 };
+  return { slug: input.slug, route: routeOf(text(page.route)), page, blocks, components, tokens, settings, styles, inquiriesOpen: site.inquiriesOpen === 1, codeExternalOpen: site.codeExternalOpen === 1 };
 }
 
 /** Whether an address has at least one published page of the new editor (the same pages `publicBuilderPage` answers). */

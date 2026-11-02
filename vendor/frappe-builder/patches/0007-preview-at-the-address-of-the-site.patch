@@ -1,0 +1,27 @@
+diff --git a/frontend/src/components/Templates/TemplatePreview.vue b/frontend/src/components/Templates/TemplatePreview.vue
+index ffc8f61b..92e0aec5 100644
+--- a/frontend/src/components/Templates/TemplatePreview.vue
++++ b/frontend/src/components/Templates/TemplatePreview.vue
+@@ -76,6 +76,6 @@ const frameStyle = computed(() => ({
+ const src = computed(
+ 	() =>
+ 		props.page.live_url ||
+-		`/api/method/builder.api.get_page_preview_html?page=${encodeURIComponent(props.page.name)}`,
++		`${(window as any).__EDITOR_SITE_URL__ ? `${(window as any).__EDITOR_SITE_URL__}/m/previa` : "/api/method/builder.api.get_page_preview_html"}?page=${encodeURIComponent(props.page.name)}`,
+ );
+ </script>
+diff --git a/frontend/src/pages/PagePreview.vue b/frontend/src/pages/PagePreview.vue
+index 0266fd4f..3b0c5d4c 100644
+--- a/frontend/src/pages/PagePreview.vue
++++ b/frontend/src/pages/PagePreview.vue
+@@ -310,7 +310,9 @@ const setPreviewURL = () => {
+ 		prefers_color_scheme: isDark.value ? "dark" : "light",
+ 		reloaded_at: Date.now(),
+ 	};
+-	previewRoute.value = `/api/method/builder.api.get_page_preview_html?${Object.entries(queryParams)
++	// Embedded: the draft is drawn by the app at <mount>/site/<address>/m/previa, not at a fixed address at the root of the domain.
++	const previewBase = (window as any).__EDITOR_SITE_URL__ ? `${(window as any).__EDITOR_SITE_URL__}/m/previa` : "/api/method/builder.api.get_page_preview_html";
++	previewRoute.value = `${previewBase}?${Object.entries(queryParams)
+ 		.map(([key, value]) => `${key}=${value}`)
+ 		.join("&")}`;
+ };

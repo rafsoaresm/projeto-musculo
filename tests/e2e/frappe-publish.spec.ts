@@ -30,7 +30,7 @@ test("frappe publish: a page made in the editor is published at /site/<address> 
 
   // A page cannot be published where the site has no address.
   await page.goto("./profissional/meu-site/editor");
-  await expect(page.getByRole("heading", { name: "All Pages" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Todas as páginas" })).toBeVisible();
   const lonely = await asEditor(page, "frappe.client.insert", { doc: { doctype: "Builder Page", page_title: "Sem endereço", route: "sem-endereco", blocks: "[]", draft_blocks: "[]" } });
   expect(lonely.status).toBe(200);
   const lonelyName = (lonely.body as { message: { name: string } }).message.name;
@@ -49,8 +49,8 @@ test("frappe publish: a page made in the editor is published at /site/<address> 
 
   // ---- a page from scratch in the editor: a container and a text drawn on it, published with the button ----
   await page.goto("./profissional/meu-site/editor");
-  await page.getByRole("button", { name: "New", exact: true }).click();
-  await page.getByText("Start from scratch").click();
+  await page.getByRole("button", { name: "Novo", exact: true }).click();
+  await page.getByText("Começar do zero").click();
   await expect(page).toHaveURL(new RegExp(`${mount}/profissional/meu-site/editor/page/(?!new$)[a-z0-9-]+$`));
   const pageName = new URL(page.url()).pathname.split("/").pop()!;
   await expect(page.getByText("body", { exact: true }).first()).toBeVisible();
@@ -67,7 +67,26 @@ test("frappe publish: a page made in the editor is published at /site/<address> 
     return (answer.body as { message?: Record<string, unknown> }).message ?? {};
   };
   await expect.poll(async () => String((await read()).draft_blocks ?? ""), { timeout: 30_000 }).toMatch(/"children":\[\{/);
-  await page.getByRole("button", { name: "Publish", exact: true }).click();
+
+  // ---- the preview of the draft (handoff V4, defect 1): at the site's own address under the mount, only for whoever edits this site ----
+  const preview = await page.request.get(`./site/${slug}/m/previa?page=${pageName}`);
+  expect(preview.status()).toBe(200);
+  expect(preview.headers()["content-security-policy"]).toContain("frame-ancestors 'self'");
+  expect(preview.headers()["cache-control"]).toBe("private, no-store");
+  expect(await preview.text()).toMatch(/<body class="fb-1">\s*<div class="fb-2"/);
+  const outsider = await newActor(browser, baseURL);
+  expect((await outsider.page.request.get(`./site/${slug}/m/previa?page=${pageName}`)).status(), "no session: nothing").toBe(404);
+  expect((await page.request.get(`./site/${slug}/m/previa?page=pagina-que-nao-existe`)).status()).toBe(404);
+  await outsider.page.close();
+  // The editor's own preview page draws it from there (before the fix it asked /api/method/... at the root, which nothing answers).
+  await expect(page.getByRole("banner").getByText("Frappe Builder / Site profissional / Rascunho")).toBeVisible();
+  await page.goto(`./profissional/meu-site/editor/page/${pageName}/preview`);
+  const framed = page.locator(`iframe[src*="/site/${slug}/m/previa?"]`);
+  await expect(framed).toHaveCount(1, { timeout: 20_000 });
+  await expect(page.frameLocator(`iframe[src*="/site/${slug}/m/previa?"]`).locator("body.fb-1 > div.fb-2")).toHaveCount(1);
+  await page.goto(`./profissional/meu-site/editor/page/${pageName}`);
+  await expect(page.getByText("body", { exact: true }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Publicar", exact: true }).click();
   await expect.poll(async () => Number((await read()).published), { timeout: 30_000 }).toBe(1);
 
   // ---- the public page: a document of its own, with its own policy, and what was drawn ----
