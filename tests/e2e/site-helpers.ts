@@ -25,7 +25,16 @@ export async function showTab(page: Page, name: "Páginas" | "Publicação" | "F
  */
 export async function asLegacySite(page: Page, slug: string) {
   if (!/^[a-z0-9-]{3,40}$/.test(slug)) throw new Error(`not an address: ${slug}`);
-  execFileSync("npx", ["wrangler", "d1", "execute", "DB", "--local", "--command", `UPDATE sites SET engine_fixed = 0 WHERE slug = '${slug}'`], { stdio: "ignore" });
+  // Several workers write the same local file: a busy database is tried again a few times before failing.
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      execFileSync("npx", ["wrangler", "d1", "execute", "DB", "--local", "--command", `UPDATE sites SET engine_fixed = 0 WHERE slug = '${slug}'`], { stdio: "pipe" });
+      break;
+    } catch (error) {
+      if (attempt >= 6) throw error;
+      await page.waitForTimeout(500 * attempt);
+    }
+  }
   await page.reload();
 }
 export async function openEditor(page: Page) {
