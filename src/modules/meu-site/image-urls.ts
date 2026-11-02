@@ -29,6 +29,8 @@ export const publicStyleUrl = (slug: string, version: number, from: PublicLevel 
 export const publicHomeUrl = (slug: string, from: PublicLevel) => (from === "home" ? `./${slug}` : `../${slug}`);
 /** Where the contact form of a published page is sent, from the home page or from another page (the route is `/s/<slug>/m/contato`). */
 export const publicFormUrl = (slug: string, from: PublicLevel) => (from === "home" ? `./${slug}/m/contato` : "./m/contato");
+/** The form before WhatsApp, beside the contact form's. */
+export const publicWhatsAppFormUrl = (slug: string, from: PublicLevel) => (from === "home" ? `./${slug}/m/whatsapp` : "./m/whatsapp");
 /** Another page of the published site, from the home page or from another page. */
 export const publicPageUrl = (slug: string, pageSlug: string, from: PublicLevel) => (from === "home" ? `./${slug}/${pageSlug}` : `./${pageSlug}`);
 /**

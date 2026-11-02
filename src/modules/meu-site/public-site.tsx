@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import type { PublicSite } from "@/db/sites";
 import { HOME, pageById, pageContent } from "./contracts";
 import { formsGate, type FormsGate } from "./inquiries";
-import { publicCssImages, publicFormUrl, publicHomeUrl, publicImages, publicPageUrl, publicStyleUrl, type PublicLevel } from "./image-urls";
+import { publicCssImages, publicFormUrl, publicWhatsAppFormUrl, publicHomeUrl, publicImages, publicPageUrl, publicStyleUrl, type PublicLevel } from "./image-urls";
 import { SiteRenderer, type PublicForm } from "./renderer";
 import { siteNav } from "./site-nav";
 import { buildSiteCss } from "./site-css";
@@ -32,7 +32,12 @@ export function publicMetadata(site: PublicSite | null, pageId: string): Metadat
 export function publicFormOf(site: PublicSite, pageId: string, gate: FormsGate): PublicForm | null {
   if (!gate.open || !site.inquiriesOpen) return null;
   const page = pageId === HOME ? undefined : pageById(site.content, pageId);
-  return { action: publicFormUrl(site.slug, levelOf(pageId)), page: page?.slug ?? "", noticeUrl: gate.noticeUrl };
+  return {
+    action: publicFormUrl(site.slug, levelOf(pageId)),
+    whatsappAction: publicWhatsAppFormUrl(site.slug, levelOf(pageId)),
+    page: page?.slug ?? "",
+    noticeUrl: gate.noticeUrl,
+  };
 }
 
 export { formsGate };

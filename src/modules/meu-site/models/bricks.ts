@@ -77,3 +77,9 @@ export const faq = (eyebrow: string, heading: string, questions: string[], answe
     ...sized(sizes),
   }) as SiteNode;
 export const sides = (vertical: string, horizontal: string, bottom = vertical, left = horizontal) => ({ top: vertical, right: horizontal, bottom, left });
+
+/**
+ * What the WhatsApp buttons of a model do when the site is created (handoff V1.1, `whatsapp`): the handoff's opening message, and the name and
+ * the mobile asked first (`requireLeadForm`, on when the site is created; the form only shows where the public forms are open).
+ */
+export const whatsappCtaOf = () => ({ message: "Olá! Gostaria de conhecer seus treinos.", askFirst: true, askGoal: true });

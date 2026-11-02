@@ -10,7 +10,7 @@ import type { ServiceChoice } from "@/db/sites";
 import type { ImageSupport } from "./editor-inspector";
 import { GUIDED_TABS, GUIDED_TAB_LABEL, guidedReducer, guidedTrail, normalizeGuided, startGuided, type GuidedTab, type SectionRef } from "./guided-state";
 import { GuidedPreview } from "./guided-preview";
-import { BrandPanel, ContentPanel, PagesTab, PublishPanel, SeoPanel } from "./guided-panels";
+import { BrandPanel, ContentPanel, PagesTab, PublishPanel, SeoPanel, type FormsState } from "./guided-panels";
 
 export type GuidedImages = Omit<ImageSupport, "src" | "usedIds">;
 
@@ -38,6 +38,8 @@ export function GuidedEditor(props: {
   issues: PublishIssue[];
   note: ReactNode;
   onClose: () => void;
+  /** Whether the public forms are open (the platform's switch and the site's own): the form before WhatsApp shows only then. */
+  forms: FormsState;
 }) {
   const { content, images } = props;
   const [raw, dispatch] = useReducer(guidedReducer, undefined, startGuided);
@@ -116,6 +118,7 @@ export function GuidedEditor(props: {
         onSection={(section) => dispatch({ type: "section", section })}
         onBack={() => dispatch({ type: "back" })}
         onBrand={() => dispatch({ type: "tab", tab: "marca" })}
+        forms={props.forms}
       />
     ),
     marca: <BrandPanel content={content} images={support} onEdit={props.onEdit} />,

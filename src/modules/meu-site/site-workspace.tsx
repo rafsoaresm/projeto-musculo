@@ -525,6 +525,7 @@ export function SiteWorkspace({ slug, initial, live, releases, services, images,
           issues={issues}
           note={editorNote.element}
           onClose={() => setEditorOpen(false)}
+          forms={{ platformOpen: inquiries.platformOpen, siteOpen: inquiries.open }}
         />
       )}
       {canEdit && editorOpen && !engineFixed && (

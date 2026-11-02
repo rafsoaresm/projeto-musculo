@@ -165,3 +165,57 @@ export async function readLimitedBody(request: Request, max: number = INQUIRY_BO
   }
   return new TextDecoder().decode(bytes);
 }
+
+// ---- the form before WhatsApp (handoff V1.1, "Fluxo A") ----
+
+/** Where the form before WhatsApp is sent, from the page that has it (beside the contact form's). */
+export const WHATSAPP_SEND_PATH = "m/whatsapp";
+export const WHATSAPP_NAME_MAX = 100;
+export const WHATSAPP_GOAL_MAX = 160;
+/** The fields of the form before WhatsApp. The name, the consent, the page and the bait are the contact form's own names. */
+export const WHATSAPP_FIELD = { name: FIELD.name, phone: "celular", goal: "objetivo", consent: FIELD.consent, page: FIELD.page, bait: FIELD.bait } as const;
+
+export type WhatsAppLeadField = "name" | "phone" | "goal" | "consent";
+export const WHATSAPP_FIELD_PROBLEM: Record<WhatsAppLeadField, string> = {
+  name: "Escreva o seu nome (de 2 a 100 letras).",
+  phone: "Escreva o seu celular com DDD (por exemplo, 31 99999-9999).",
+  goal: "O objetivo passou de 160 letras ou tem caracteres que não podem ser enviados.",
+  consent: "Marque que leu o aviso de privacidade para continuar.",
+};
+export interface WhatsAppLeadValue {
+  name: string;
+  phone: string;
+  goal: string | null;
+  page: string;
+}
+export type ParsedWhatsAppLead = { kind: "ok"; value: WhatsAppLeadValue } | { kind: "bot" } | { kind: "invalid"; field: WhatsAppLeadField };
+
+/** A Brazilian mobile: 11 digits with the DDD (the 9 in front), with or without the 55. */
+export function readMobile(raw: string): string | null {
+  const phone = clean(raw);
+  if (phone.length < 10 || phone.length > 30 || hasHidden(phone, false) || !/^[\d\s()+.-]+$/.test(phone)) return null;
+  let digits = phone.replace(/\D/g, "");
+  if (digits.length === 13 && digits.startsWith("55")) digits = digits.slice(2);
+  // The DDD is 11 to 99 (no 0 in either place) and a mobile number starts with 9.
+  if (digits.length !== 11 || digits[2] !== "9" || /^0|^.0/.test(digits)) return null;
+  return phoneKey(phone) === null ? null : phone;
+}
+
+/**
+ * What the form before WhatsApp sent: a name and a mobile always, the goal only when the site asks it (`askGoal`; it is optional for the visitor
+ * and nothing is read from it otherwise), and the box of the privacy notice ticked. A filled bait field is a program.
+ */
+export function parseWhatsAppLead(form: Pick<FormData, "get">, askGoal: boolean): ParsedWhatsAppLead {
+  if ((text(form, WHATSAPP_FIELD.bait) ?? "") !== "") return { kind: "bot" };
+  const rawName = clean(text(form, WHATSAPP_FIELD.name) ?? "");
+  if (rawName.length > WHATSAPP_NAME_MAX) return { kind: "invalid", field: "name" };
+  const name = readName(rawName);
+  if (name === null) return { kind: "invalid", field: "name" };
+  const phone = readMobile(text(form, WHATSAPP_FIELD.phone) ?? "");
+  if (phone === null) return { kind: "invalid", field: "phone" };
+  const rawGoal = askGoal ? clean(text(form, WHATSAPP_FIELD.goal) ?? "") : "";
+  if (rawGoal.length > WHATSAPP_GOAL_MAX || hasHidden(rawGoal, false)) return { kind: "invalid", field: "goal" };
+  if (text(form, WHATSAPP_FIELD.consent) !== "on") return { kind: "invalid", field: "consent" };
+  const page = pageSlug.safeParse(text(form, WHATSAPP_FIELD.page) ?? "");
+  return { kind: "ok", value: { name, phone, goal: rawGoal === "" ? null : rawGoal, page: page.success ? page.data : "" } };
+}

@@ -62,6 +62,8 @@ export const HEADING_MAX = 120;
 export const SUBHEADING_MAX = 300;
 export const TEXT_MAX = 2000;
 export const BUTTON_MAX = 40;
+/** The opening message of the WhatsApp conversation, as the professional writes it. */
+export const WHATSAPP_MESSAGE_MAX = 300;
 export const FAQ_MAX = 10;
 export const QUESTION_MAX = 160;
 export const ANSWER_MAX = 800;
@@ -588,6 +590,15 @@ export const siteContent = z
       .optional(),
     /** The WhatsApp button at the end of the header (the site models): its label; it goes to the site's WhatsApp. */
     headerCta: z.object({ label: plain(BUTTON_MAX) }).strict().optional(),
+    /**
+     * What the WhatsApp buttons do (handoff V1.1, `whatsapp`): the message the conversation opens with, and whether the visitor leaves a name and
+     * a mobile number first (`askFirst`, with the goal as an optional question when `askGoal`). The form is drawn only where the public forms are
+     * open (the environment and the site's own switch); anywhere else the buttons go straight to WhatsApp. Absent: straight, with no message.
+     */
+    whatsappCta: z
+      .object({ message: plain(WHATSAPP_MESSAGE_MAX), askFirst: z.boolean(), askGoal: z.boolean() })
+      .strict()
+      .optional(),
   })
   .strict()
   .refine((content) => new Set(documentNodes(content).map((b) => b.id)).size === documentNodes(content).length, { message: "block ids repeat" })
@@ -872,12 +883,16 @@ export function withoutResolvedServices(content: SiteContent): SiteContent {
 
 const digitsOf = (value: string) => value.replace(/\D/g, "");
 
-/** WhatsApp wa.me link. A number with 10 or 11 digits is taken as Brazilian (DDD included) and gets the 55. */
-export function whatsappUrl(raw: string): string | null {
+/**
+ * WhatsApp wa.me link. A number with 10 or 11 digits is taken as Brazilian (DDD included) and gets the 55. `text` is the message the conversation
+ * opens with (only the professional's own: never what a visitor typed), encoded whole.
+ */
+export function whatsappUrl(raw: string, text = ""): string | null {
   let digits = digitsOf(raw);
   if (digits.length === 10 || digits.length === 11) digits = `55${digits}`;
   if (digits.length < 12 || digits.length > 15) return null;
-  return `https://wa.me/${digits}`;
+  const message = text.trim();
+  return message ? `https://wa.me/${digits}?text=${encodeURIComponent(message)}` : `https://wa.me/${digits}`;
 }
 export function emailUrl(raw: string): string | null {
   const value = raw.trim();
@@ -1115,5 +1130,8 @@ export function publishIssues(
   }
   where = { page: null, prefix: "" };
   if (content.logoAssetId && assetIds && !assetIds.has(content.logoAssetId)) add(null, null, "O logotipo escolhido não está mais na biblioteca. Escolha outro ou tire o logotipo.");
+  // The header's WhatsApp button is left out of the page without a number to go to.
+  if (content.headerCta?.label.trim() && !whatsappUrl(content.contact.whatsapp))
+    add(null, null, "O botão do WhatsApp do cabeçalho não aparece: preencha o WhatsApp do site (com DDD) no rodapé.");
   return issues;
 }

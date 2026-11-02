@@ -52,6 +52,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
   - iOS Safari e leitor de tela;
   - comparação pixel a pixel com o Figma (a conferência foi visual, por seção);
   - o direito de uso das fotos geradas para o Figma, que só aparecem enquanto o site é feito.
+- **CI e deploy:** o CI da PR #67 passou nas duas montagens no commit `3390ecf`. Merge `cd0cf74`. Implantada: deploy `37a769f9`, build de 15:41 a 15:44 e deploy até 15:45 de 02/11/2026, status `success`. Sem migration. Nada foi lido ao vivo.
 
 ## Fatia 0.64: Seções no Editor Guiado e o fluxo no celular (pedido do usuário de 02/11/2026; PENDENCIAS B45)
 

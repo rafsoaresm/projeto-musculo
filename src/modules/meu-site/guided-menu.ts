@@ -71,3 +71,24 @@ export function withHeaderCta(content: SiteContent, label: string | null): SiteC
   if (content.headerCta?.label === text) return content;
   return { ...content, headerCta: { label: text } };
 }
+
+/** What the WhatsApp buttons do, as the site has it (absent: straight to WhatsApp, with no message). */
+export type WhatsAppCta = NonNullable<SiteContent["whatsappCta"]>;
+export const WHATSAPP_CTA_NONE: WhatsAppCta = { message: "", askFirst: false, askGoal: false };
+
+/**
+ * A change to what the WhatsApp buttons do. The same value returns the same document (no step in the history), and a setting back to "straight,
+ * no message, no form" drops the field, as a site that never had it.
+ */
+export function withWhatsAppCta(content: SiteContent, change: Partial<WhatsAppCta>): SiteContent {
+  const now = content.whatsappCta ?? WHATSAPP_CTA_NONE;
+  const next: WhatsAppCta = { ...now, ...change };
+  // The goal is a question of the form: without the form there is nothing to ask it in.
+  if (!next.askFirst) next.askGoal = false;
+  if (next.message === now.message && next.askFirst === now.askFirst && next.askGoal === now.askGoal) return content;
+  if (!next.message && !next.askFirst) {
+    const { whatsappCta: _dropped, ...rest } = content;
+    return rest;
+  }
+  return { ...content, whatsappCta: next };
+}

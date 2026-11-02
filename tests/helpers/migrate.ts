@@ -68,4 +68,5 @@ export const ALL_MIGRATIONS = [
   "0029_code_external_open.sql",
   "0030_site_engine_fixed.sql",
   "0031_screening_answered.sql",
+  "0032_site_inquiry_via.sql",
 ];

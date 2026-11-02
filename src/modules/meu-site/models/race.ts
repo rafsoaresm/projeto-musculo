@@ -7,7 +7,7 @@
 import { SITE_SCHEMA_VERSION, emptyBlock, type BlockOf, type SiteContent, type SiteNode } from "../contracts";
 import { DEFAULT_THEME } from "../site-theme";
 import type { Style } from "../style";
-import { box, demoBackground, faq, heading, paragraph, photo, say, sides, textLink, whatsappButton, type ModelMode } from "./bricks";
+import { box, demoBackground, faq, heading, paragraph, photo, say, sides, textLink, whatsappButton, type ModelMode, whatsappCtaOf } from "./bricks";
 import type { DemoPhoto } from "./demo-photos";
 import type { SiteModelDef } from "./types";
 
@@ -309,6 +309,7 @@ function build(title: string, mode: ModelMode): SiteContent {
       { label: "Contato", anchor: contact.id },
     ],
     headerCta: { label: "Falar no WhatsApp" },
+    whatsappCta: whatsappCtaOf(),
   };
 }
 

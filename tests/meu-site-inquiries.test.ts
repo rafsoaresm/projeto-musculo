@@ -178,7 +178,7 @@ describe("the contact form block", () => {
     expect(publicFormUrl("marina", "page")).toBe("./m/contato");
   });
 
-  const open: PublicForm = { action: "./marina/m/contato", page: "planos", noticeUrl: NOTICE };
+  const open: PublicForm = { action: "./marina/m/contato", whatsappAction: "./marina/m/whatsapp", page: "planos", noticeUrl: NOTICE };
   const render = (content: SiteContent, forms?: PublicForm | null, edit?: EditHooks) => renderToStaticMarkup(createElement(SiteRenderer, { content, forms, edit }));
   it("is a plain form on an open page: the fields of the tool, the bait out of reach, the notice linked, the page it is on and no script", () => {
     const html = render(site([node({ heading: "Escreva para mim", text: "Respondo em breve" })]), open);
@@ -248,7 +248,7 @@ describe("the form of a published page", () => {
     expect(publicFormOf(site({ inquiriesOpen: false }), "home", CLOSED)).toBeNull();
   });
   it("is sent from the home page and from another page by the address that works from there, and says which page it is on", () => {
-    expect(publicFormOf(site(), "home", OPEN)).toEqual({ action: "./marina/m/contato", page: "", noticeUrl: NOTICE });
-    expect(publicFormOf(site(), "p1", OPEN)).toEqual({ action: "./m/contato", page: "planos", noticeUrl: NOTICE });
+    expect(publicFormOf(site(), "home", OPEN)).toEqual({ action: "./marina/m/contato", whatsappAction: "./marina/m/whatsapp", page: "", noticeUrl: NOTICE });
+    expect(publicFormOf(site(), "p1", OPEN)).toEqual({ action: "./m/contato", whatsappAction: "./m/whatsapp", page: "planos", noticeUrl: NOTICE });
   });
 });

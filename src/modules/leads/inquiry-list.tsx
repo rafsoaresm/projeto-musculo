@@ -43,12 +43,24 @@ export function InquiryList({ inquiries }: { inquiries: InquiryRow[] }) {
                   <strong>{contact}</strong>
                   {entry.page ? ` · da página /${entry.page}` : " · da página inicial"} · {formatDateTime(entry.createdAt)}
                 </p>
+                {entry.via === "WHATSAPP" && (
+                  <p className="small muted">
+                    Veio do formulário antes do WhatsApp: depois de enviar, a pessoa foi levada ao seu WhatsApp. Pode ser que ela já tenha escrito por lá, ou não.
+                  </p>
+                )}
                 {entry.sameContact > 0 && (
                   <p className="small muted">
                     Já há {entry.sameContact === 1 ? "um lead" : `${entry.sameContact} leads`} com este contato em Leads. Se for a mesma pessoa, você pode apagar esta mensagem em vez de criar outro.
                   </p>
                 )}
-                {entry.message ? <p className="inquiry-message">{entry.message}</p> : <p className="small muted">Sem mensagem: só o contato.</p>}
+                {entry.message ? (
+                  <p className="inquiry-message">
+                    {entry.via === "WHATSAPP" && <strong>Objetivo: </strong>}
+                    {entry.message}
+                  </p>
+                ) : (
+                  <p className="small muted">{entry.via === "WHATSAPP" ? "Sem objetivo escrito: só o nome e o celular." : "Sem mensagem: só o contato."}</p>
+                )}
                 <div className="persist-actions">
                   <button
                     type="button"
