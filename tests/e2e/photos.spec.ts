@@ -133,7 +133,7 @@ test("a student known to be under 18 is not photographed by the tool", async ({ 
   const studentURL = await addStudent(page, "Aluno menor de idade");
   const years = new Date();
   years.setUTCFullYear(years.getUTCFullYear() - 12);
-  await page.getByRole("link", { name: "Preencher a ficha" }).click();
+  await page.getByRole("link", { name: "Preencher a ficha", exact: true }).click();
   await page.getByLabel("Data de nascimento").fill(years.toISOString().slice(0, 10));
   await page.getByRole("button", { name: "Salvar ficha" }).click();
   await expect(page.getByText("Ficha salva.")).toBeVisible();

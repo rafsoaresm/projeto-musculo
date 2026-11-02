@@ -138,8 +138,8 @@ test("screening and indicators are recorded once, reviewed on top, and stay insi
     "Teste de sentar e levantar",
   );
   await page.goto(studentURL);
-  await expect(page.getByRole("link", { name: /Rascunho de/ })).toBeVisible();
   await showStudentTab(page, "Avaliações");
+  await expect(page.getByRole("link", { name: /Rascunho de/ })).toBeVisible();
   await page.getByRole("link", { name: "Continuar o rascunho" }).click();
   await expect(page).toHaveURL(draftURL);
 

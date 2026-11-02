@@ -27,7 +27,7 @@ test("the student's file is saved, kept after errors, flags minors and stays ins
   const studentURL = await addStudent(page, "Aluna da ficha");
   await expect(page.getByText("A ficha ainda não foi preenchida")).toBeVisible();
 
-  await page.getByRole("link", { name: "Preencher a ficha" }).click();
+  await page.getByRole("link", { name: "Preencher a ficha", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Ficha de Aluna da ficha" })).toBeVisible();
   await expect(page.getByText(/base legal e o texto de\s+consentimento/)).toBeVisible();
   const fileURL = page.url();
