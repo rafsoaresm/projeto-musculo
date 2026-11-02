@@ -13,7 +13,19 @@ import {
   type RiskStatus,
   type ScreeningKey,
 } from "@/modules/avaliacoes/contracts";
+import { SECTION_STATUSES, isModule, type AssessmentModule, type SectionStatus } from "@/modules/avaliacoes/catalog";
 import { activeUser, assertContext, technicalAccessExists, type AuthenticatedContext } from "./students";
+
+/** One module of an assessment of the new format, as stored (its payload is checked by the module's schema where it is read). */
+export interface SectionRow {
+  module: AssessmentModule;
+  status: SectionStatus;
+  payload: unknown;
+  updatedAt: string;
+}
+export type SaveSectionOutcome = { status: "saved"; revision: number } | { status: "conflict"; revision: number } | { status: "not_found" } | { status: "invalid" };
+/** The largest payload of a module (the database refuses more than 64 000 characters). */
+export const MAX_SECTION_CHARS = 60_000;
 
 /**
  * Assessments: dated records with the screening of the master document and baseline metrics.
@@ -374,8 +386,12 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
       }));
     },
 
-    /** Opens a draft dated today. One open draft per student: asking again returns it. */
-    async startDraft(studentId: string, now = new Date()): Promise<StartOutcome> {
+    /**
+     * Opens a draft dated today. One open draft per student: asking again returns it. `format: 2` opens one of the new format (handoff V2): its
+     * modules are sections, and it keeps a snapshot of the student's data as they are now (birth date, height, weight, goal; never the gender,
+     * which the equation of a protocol does not take from the profile: decision of the user, 02/11/2026).
+     */
+    async startDraft(studentId: string, now = new Date(), options: { format?: 2 } = {}): Promise<StartOutcome> {
       const id = crypto.randomUUID();
       const stamp = now.toISOString();
       try {
@@ -383,19 +399,21 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
           .prepare(
             `INSERT INTO assessments
                (id, organization_id, student_id, assessed_on, kind, previous_assessment_id, state,
-                risk_status, created_by_user_id, created_at, updated_at, screening_answered)
+                risk_status, created_by_user_id, created_at, updated_at, screening_answered, format_version, student_snapshot)
              SELECT ?4, s.organization_id, s.id, ?5,
                CASE WHEN EXISTS (SELECT 1 FROM assessments p
                                    WHERE p.student_id = s.id AND p.state = 'RECORDED')
                     THEN 'REASSESSMENT' ELSE 'INITIAL' END,
                (SELECT p.id FROM assessments p WHERE p.student_id = s.id AND p.state = 'RECORDED'
                   ORDER BY p.assessed_on DESC, p.recorded_at DESC LIMIT 1),
-               'DRAFT', 'CLEAR', ?2, ?6, ?6, '[]'
+               'DRAFT', 'CLEAR', ?2, ?6, ?6, '[]', ?7,
+               CASE WHEN ?7 = 2 THEN (SELECT json_object('birthDate', p.birth_date, 'heightCm', p.height_cm, 'weightKg', p.weight_kg, 'goal', p.goal)
+                 FROM student_profiles p WHERE p.organization_id = s.organization_id AND p.student_id = s.id) END
              FROM students s
              WHERE s.organization_id = ?1 AND s.id = ?3 AND ${activeUser("?2")}
                AND ${technicalAccessExists("s", "?2")}`,
           )
-          .bind(organizationId, userId, studentId, id, stamp.slice(0, 10), stamp)
+          .bind(organizationId, userId, studentId, id, stamp.slice(0, 10), stamp, options.format ?? null)
           .run();
         return result.meta.changes > 0 ? { status: "started", id } : { status: "not_found" };
       } catch (error) {
@@ -490,6 +508,20 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
       } else if (current.riskStatus === "CLEAR" && !confirmation.screeningAsked) return { status: "confirmation_required" };
       const stamp = now.toISOString();
       const results = await db.batch([
+        // A body fat typed in the earlier format is kept as a result whose method nobody knows (migration 0033): never compared with a
+        // computed one as if it were the same thing.
+        db
+          .prepare(
+            `INSERT INTO assessment_results (id, assessment_id, organization_id, code, value, unit, method, formula_version, inputs, flags, created_at)
+             SELECT ?5, a.id, a.organization_id, 'body_fat_percent', m.value_number, '%', 'legacy_formula_unknown', NULL, NULL,
+               json_array('legacy_formula_unknown'), ?3
+             FROM assessments a JOIN assessment_metrics m ON m.assessment_id = a.id
+             WHERE a.organization_id = ?1 AND a.id = ?4 AND a.state = 'DRAFT' AND a.format_version IS NULL
+               AND m.metric_type = 'BODY_FAT' AND m.value_number IS NOT NULL AND ${reachAssessment("a")}
+               AND NOT EXISTS (SELECT 1 FROM assessment_results r WHERE r.assessment_id = a.id AND r.code = 'body_fat_percent')
+             ORDER BY m.position LIMIT 1`,
+          )
+          .bind(organizationId, userId, stamp, assessmentId, crypto.randomUUID()),
         db
           .prepare(
             `UPDATE assessments SET state = 'RECORDED', recorded_at = ?3, recorded_by_user_id = ?2,
@@ -499,9 +531,73 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
           .bind(organizationId, userId, stamp, assessmentId),
         audit("ASSESSMENT_RECORDED", assessmentId, stamp),
       ]);
-      return results[0].meta.changes > 0
+      // results[0] is the earlier format's body fat (written or not); results[1] is the state.
+      return results[1].meta.changes > 0
         ? { status: "recorded", riskStatus: current.riskStatus }
         : { status: "not_found" };
+    },
+
+    /**
+     * The modules of an assessment of the new format, each with its state and its data (handoff V2), and the revision a save must be based on.
+     * Null when the assessment is not reachable.
+     */
+    async sections(assessmentId: string): Promise<{ revision: number; formatVersion: number | null; sections: SectionRow[] } | null> {
+      const head = await db
+        .prepare(`SELECT a.revision, a.format_version AS formatVersion FROM assessments a WHERE a.organization_id = ?1 AND a.id = ?3 AND ${reachAssessment("a")}`)
+        .bind(organizationId, userId, assessmentId)
+        .first<{ revision: number; formatVersion: number | null }>();
+      if (!head) return null;
+      const rows = await db
+        .prepare(
+          `SELECT module, status, payload, updated_at AS updatedAt FROM assessment_sections
+           WHERE organization_id = ?1 AND assessment_id = ?2 ORDER BY module`,
+        )
+        .bind(organizationId, assessmentId)
+        .all<{ module: string; status: SectionStatus; payload: string; updatedAt: string }>();
+      return {
+        revision: head.revision,
+        formatVersion: head.formatVersion,
+        sections: rows.results.flatMap((row) => (isModule(row.module) ? [{ module: row.module, status: row.status, payload: JSON.parse(row.payload) as unknown, updatedAt: row.updatedAt }] : [])),
+      };
+    },
+
+    /**
+     * Saves one module of an open draft of the new format, based on the revision the screen read: a save from an older revision (another tab,
+     * another person) is refused as a conflict and changes nothing, never the last one silently winning. The payload is checked by the
+     * module's own schema before it gets here (`validate`); here only its size.
+     */
+    async saveSection(
+      assessmentId: string,
+      input: { module: AssessmentModule; status: SectionStatus; payload: unknown; revision: number },
+      now = new Date(),
+    ): Promise<SaveSectionOutcome> {
+      if (!isModule(input.module) || !(SECTION_STATUSES as readonly string[]).includes(input.status) || !Number.isInteger(input.revision)) return { status: "invalid" };
+      const payload = JSON.stringify(input.payload ?? {});
+      if (payload.length > MAX_SECTION_CHARS) return { status: "invalid" };
+      const stamp = now.toISOString();
+      const results = await db.batch([
+        db
+          .prepare(
+            `UPDATE assessments SET revision = revision + 1, updated_at = ?5
+             WHERE organization_id = ?1 AND id = ?3 AND state = 'DRAFT' AND format_version = 2 AND revision = ?4 AND ${reachAssessment("assessments")}`,
+          )
+          .bind(organizationId, userId, assessmentId, input.revision, stamp),
+        db
+          .prepare(
+            `INSERT INTO assessment_sections (assessment_id, organization_id, module, status, payload, updated_at, updated_by_user_id)
+             SELECT ?3, ?1, ?4, ?5, ?6, ?7, ?2 WHERE (SELECT changes()) > 0
+             ON CONFLICT (assessment_id, module) DO UPDATE SET status = excluded.status, payload = excluded.payload,
+               updated_at = excluded.updated_at, updated_by_user_id = excluded.updated_by_user_id`,
+          )
+          .bind(organizationId, userId, assessmentId, input.module, input.status, payload, stamp),
+      ]);
+      if (results[0].meta.changes > 0) return { status: "saved", revision: input.revision + 1 };
+      const current = await db
+        .prepare(`SELECT a.state, a.format_version AS formatVersion, a.revision FROM assessments a WHERE a.organization_id = ?1 AND a.id = ?3 AND ${reachAssessment("a")}`)
+        .bind(organizationId, userId, assessmentId)
+        .first<{ state: string; formatVersion: number | null; revision: number }>();
+      if (!current || current.state !== "DRAFT" || current.formatVersion !== 2) return { status: "not_found" };
+      return { status: "conflict", revision: current.revision };
     },
 
     /** The professional's documented review of an alert. It never changes the risk status. */
