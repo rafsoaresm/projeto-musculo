@@ -5222,6 +5222,10 @@ button.ve-layer-toggle {
   background: var(--color-background);
   padding: 16px 20px calc(16px + env(safe-area-inset-bottom));
 }
+/* The parts of the editor keep their height: a scrolling row (the tabs on a phone) would otherwise shrink to nothing in this column. */
+.guided > * {
+  flex-shrink: 0;
+}
 .guided-head {
   display: flex;
   flex-wrap: wrap;
