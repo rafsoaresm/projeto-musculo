@@ -5933,3 +5933,327 @@ fieldset.yes-no legend {
   display: flex;
   gap: 8px;
 }
+
+/* ---------- Avaliação, formato novo (handoff V2; Figma AV-03 and AV-04) ---------- */
+.assessment-start {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.av2 {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 20px;
+  min-width: 0;
+}
+.av2-steps ol {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  padding: 0 0 4px;
+  list-style: none;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.av2-steps li {
+  flex: 0 0 auto;
+}
+.av2-step,
+.av2-chip span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 8px 20px;
+  border-radius: var(--radius-button);
+  background: var(--color-primary-soft);
+  color: var(--color-primary-strong);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.av2-step {
+  min-width: 132px;
+}
+.av2-step[aria-current="step"],
+.av2-chip input:checked + span {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+.av2-step:hover:not([aria-current="step"]),
+.av2-chip:hover input:not(:checked) + span {
+  background: var(--color-primary-line);
+}
+.av2-heading h2 {
+  margin-bottom: 4px;
+}
+.av2-cards {
+  display: grid;
+  gap: 12px;
+}
+.av2-card {
+  margin-bottom: 0;
+  min-width: 0;
+}
+.av2-card > h3 {
+  font-size: var(--font-size-lg);
+  margin-bottom: 6px;
+}
+.av2-card > p.small {
+  margin-bottom: 16px;
+}
+.av2-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.av2-field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.av2-note {
+  font-weight: 400;
+  color: var(--color-muted);
+  font-size: var(--font-size-xs);
+}
+.av2-unit {
+  position: relative;
+  display: block;
+}
+.av2-unit input {
+  padding-right: 64px;
+}
+.av2-unit > span {
+  position: absolute;
+  right: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-muted);
+  font-weight: 400;
+  font-size: var(--font-size-sm);
+  pointer-events: none;
+}
+.av2-pair,
+.av2-site {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+.av2-pair legend,
+.av2-site legend {
+  padding: 0;
+  margin-bottom: 8px;
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  color: var(--color-ink);
+}
+.av2-pair-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+}
+.av2-pair-fields .av2-unit input {
+  padding: 12px 52px 12px 14px;
+}
+.av2-pair-fields .av2-unit > span {
+  right: 12px;
+  font-size: var(--font-size-xs);
+}
+.av2-slash {
+  color: var(--color-muted);
+}
+.av2-reading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.av2-reading .av2-field {
+  flex: 1;
+}
+.av2-icon-button,
+.av2-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 44px;
+  min-width: 44px;
+  border-radius: var(--radius-button);
+  background: transparent;
+  color: var(--color-primary-strong);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+.av2-add {
+  justify-self: start;
+  min-height: 44px;
+  padding: 0 12px;
+}
+.av2-icon-button:hover,
+.av2-add:hover {
+  background: var(--color-primary-soft);
+}
+.av2-chips {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.av2-chip {
+  display: block;
+  position: relative;
+  font-weight: 700;
+}
+.av2-chip input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.av2-chip span {
+  display: flex;
+  width: 100%;
+  cursor: pointer;
+}
+.av2-chip input:focus-visible + span {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 3px;
+}
+.av2-others {
+  margin-top: 16px;
+  border-top: 1px solid var(--color-line);
+  padding-top: 12px;
+}
+.av2-others > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: var(--font-size-sm);
+  color: var(--color-primary-strong);
+}
+.av2-others[open] > summary {
+  margin-bottom: 12px;
+}
+.av2-results {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 1fr));
+  gap: 16px;
+  margin: 0;
+}
+.av2-result {
+  display: grid;
+  gap: 8px;
+}
+.av2-result dt {
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  color: var(--color-ink);
+}
+.av2-result dd {
+  margin: 0;
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  padding: 12px 22px;
+  border: 1px solid var(--color-line-strong);
+  border-radius: var(--radius-input);
+  background: var(--color-background);
+  color: var(--color-ink);
+}
+.av2-preview-status,
+.av2-flag {
+  margin-top: 14px;
+  font-size: var(--font-size-sm);
+}
+.av2-preview-status {
+  color: var(--color-muted);
+}
+.av2-flag {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: var(--radius-xs);
+  background: var(--color-warning-soft);
+  color: var(--color-warning-text);
+}
+.av2-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.av2-status {
+  font-size: var(--font-size-sm);
+  color: var(--color-muted);
+}
+.av2-status.saved {
+  color: var(--color-success-text);
+}
+.av2-status.conflict,
+.av2-status.error {
+  color: var(--color-error);
+  background: var(--color-error-soft);
+  border: 1px solid var(--color-error);
+  padding: 10px 14px;
+  border-radius: var(--radius-card);
+}
+.av2-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-left: auto;
+}
+@media (max-width: 900px) {
+  .av2-chips {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (pointer: coarse) {
+  .av2-add {
+    min-height: 44px;
+  }
+}
+@media (max-width: 640px) {
+  .av2-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .av2-results {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .av2-chip span {
+    padding: 8px 10px;
+    white-space: normal;
+    text-align: center;
+  }
+  .av2-add {
+    min-height: 44px;
+  }
+  .av2-card {
+    padding: 18px 16px;
+  }
+  .av2-step {
+    min-width: 0;
+  }
+  .av2-actions {
+    width: 100%;
+    margin-left: 0;
+  }
+  .av2-actions .button {
+    flex: 1 1 auto;
+    padding: 12px 16px;
+  }
+}

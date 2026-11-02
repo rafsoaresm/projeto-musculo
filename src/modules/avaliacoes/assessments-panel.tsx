@@ -9,9 +9,12 @@ import { ScreeningPill } from "./screening-pill";
 export function AssessmentsPanel({
   studentId,
   assessments,
+  newFormat = false,
 }: {
   studentId: string;
   assessments: AssessmentSummary[];
+  /** The new format of the assessment is open in this environment (a server-side switch): it is offered next to the current one. */
+  newFormat?: boolean;
 }) {
   const draft = assessments.find((item) => item.state === "DRAFT");
   const recorded = assessments.filter((item) => item.state === "RECORDED");
@@ -59,7 +62,14 @@ export function AssessmentsPanel({
           Continuar o rascunho
         </Link>
       ) : (
-        <StartAssessmentButton studentId={studentId} first={recorded.length === 0} />
+        newFormat ? (
+          <div className="assessment-start">
+            <StartAssessmentButton studentId={studentId} first={recorded.length === 0} />
+            <StartAssessmentButton studentId={studentId} first={recorded.length === 0} newFormat />
+          </div>
+        ) : (
+          <StartAssessmentButton studentId={studentId} first={recorded.length === 0} />
+        )
       )}
     </section>
   );

@@ -2,6 +2,24 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.69: Avaliação Física V2, a etapa Medidas (atrás da chave `ASSESSMENT_V2_ENABLED`; PENDENCIAS B47 e C38)
+
+**Sem migration. Desligada em produção:** sem a chave `ASSESSMENT_V2_ENABLED=true` no ambiente, nada muda para o profissional (o botão de sempre, a mesma marcação). A chave é lida só no servidor; as ações do formato novo conferem a chave de novo. Os testes locais e o CI ligam a chave (`scripts/setup-local-auth.mjs`). Fica desligada até a avaliação nova poder ser finalizada (0.73).
+
+- **Com a chave ligada:** "Nova avaliação (formato novo)" ao lado de "Iniciar avaliação", que continua a principal. Havendo um rascunho aberto, de qualquer formato, abre-se esse.
+- **A tela (Figma AV-03 e AV-04):** etapas 1 Triagem, 2 Medidas, 3 Movimento, 4 Revisão; só Medidas está pronta, as outras dizem "Esta etapa chega numa próxima versão." sem campos de enfeite.
+  - Medidas básicas: peso, altura (1,71 ou 171), PAS/PAD, FC de repouso; vírgula decimal; campo vazio é "sem aferição", nunca zero.
+  - Protocolo: Faulkner, Guedes 3, Jackson & Pollock 7 e 3; **equação de referência escolhida** (Masculina, Feminina ou Não selecionada, nunca tirada do gênero do perfil); idade na data da avaliação, da fotografia do aluno; Siri (1961); leituras por dobra (média, mediana ou leitura única).
+  - Dobras do método escolhido com até 3 leituras; as outras ficam em "Outras dobras", guardadas; trocar de protocolo não apaga nada.
+  - Prévia calculada: soma, gordura, massa gorda, massa livre e IMC, com a linha do método montada da fórmula; o que falta aparece por extenso (dobras, equação, idade, protocolo) e valores impossíveis como "fora do possível"; o aviso de fora da faixa de validação; nenhuma classificação.
+  - Salvar rascunho contra a revisão: de outra aba ou de outra pessoa vira o aviso de conflito, sem gravar por cima. O servidor valida tudo com o mesmo esquema e recusa campo desconhecido.
+- **O formato anterior:** salvar e registrar pelo formulário de antes **recusam** um rascunho do formato novo (no banco, não só na tela).
+- **Verificado localmente:**
+  - tipos e lint sem erro; `assessment-v2-composition` (16 casos: vírgula, altura em m e cm, leituras 1 a 3, campo desconhecido recusado, troca de protocolo sem perder valores, cada estado da prévia e o exemplo JP7 do handoff: 122 mm, 17,3%, 11,9 kg, 57,2 kg, IMC 23,63) e `assessment-v2-model` (D1: a fotografia lida só na organização; o formulário anterior não grava nem registra o rascunho novo, conferido também desfazendo a proteção e vendo o teste falhar);
+  - navegador, nas duas montagens (raiz e `/treinador`), computador e celular: `assessment-v2`, `assessments` e `student-tabs`, 14 cenários passaram em cada uma (o exemplo do handoff do começo ao fim, Faulkner e volta sem perder valores, salvar e recarregar, conflito de outra aba, campo que não é número, e o fluxo de sempre como o principal);
+  - revisão independente: 5 apontamentos; 4 corrigidos (o formulário anterior aceitava o rascunho novo; a marcação do botão mudava com a chave desligada; o nome do campo da equação repetia a nota; o "+ leitura" com 32 px fora do celular) e 1 registrado (C38: rascunho novo com a chave desligada depois).
+- **Não verificado:** a chave desligada no navegador (só no código e nos testes unitários); Safari e leitor de tela; produção (a chave fica desligada lá).
+
 ## Fatia 0.68: Avaliação Física V2, o modelo e as fórmulas (handoff "Avaliação Física V2"; PENDENCIAS B47)
 
 **Migration 0033 (aditiva).** Nenhuma tela muda nesta fatia: ela prepara a avaliação do formato novo e as contas, que as próximas fatias põem na tela.
@@ -25,7 +43,8 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
   - revisão independente da migration e do repositório: 1 problema confirmado e corrigido (pedir um rascunho do formato novo com um do formato antigo aberto devolvia o antigo sem dizer o formato; agora diz). Os outros apontamentos foram refutados;
   - conferência independente das fórmulas: os coeficientes e os sítios batem com a matriz do handoff e com as equações publicadas; o único ponto, um limite de 70% de gordura escolhido sem fonte, foi trocado pelos limites naturais (entre 0 e 100%), e a faixa plausível fica com o técnico.
 - **Não feito (próximas fatias):** as telas (etapa Medidas, triagem com PAR-Q, finalizar e retificar, histórico), o salvamento automático, o relatório e a evolução por protocolo.
-- **Não verificado:** a migration no D1 do Webflow (depois do deploy, C37).
+- **CI e deploy:** o CI do PR #70 passou (`validate` e `validate (/treinador)`, no commit `5a1121a`); merge `484200d`; deploy `e6b25038` com sucesso em 02/11/2026, com `0033_assessment_v2.sql ✅` no log.
+- **Não verificado:** `/api/health` em produção (o proxy deste ambiente recusa o endereço; C37) e as avaliações já gravadas abertas em produção.
 
 ## Fatia 0.67: Os quatro modelos de site no Editor Avançado (Frappe) (pedido do usuário de 02/11/2026; PENDENCIAS B46)
 

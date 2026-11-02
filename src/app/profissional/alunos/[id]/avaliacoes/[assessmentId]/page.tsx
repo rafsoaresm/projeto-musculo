@@ -9,11 +9,14 @@ import { photoStorageAvailable } from "@/db/binding";
 import { studentConsentFor } from "@/db/consent";
 import { profilesFor } from "@/db/student-profile";
 import { ageOn } from "@/modules/ficha/contracts";
-import { PageHeading } from "@/components/ui";
+import { Notice, PageHeading } from "@/components/ui";
 import { AssessmentForm } from "@/modules/avaliacoes/assessment-form";
 import { AssessmentView } from "@/modules/avaliacoes/assessment-view";
 import { photoDenialOf } from "@/modules/consentimento/photo-authorization";
 import { formatCalendarDate } from "@/modules/training/format";
+import { assessmentV2Here } from "@/modules/avaliacoes/v2/switch";
+import { AssessmentShell } from "@/modules/avaliacoes/v2/assessment-shell";
+import { COMPOSITION_MODULE, readComposition } from "@/modules/avaliacoes/v2/composition";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Avaliação" };
@@ -30,6 +33,39 @@ export default async function Assessment({
   const detail = await assessmentsFor(db, context).get(assessmentId);
   // The assessment must belong to the student in the address, not just to this professional.
   if (!detail || detail.studentId !== student.id) notFound();
+  const api = assessmentsFor(db, context);
+  const v2 = await api.sections(assessmentId);
+  // A draft of the new format (handoff V2) is never edited by the earlier form: it has its own guided steps, open only where the switch is on.
+  if (detail.state === "DRAFT" && v2?.formatVersion === 2) {
+    const open = await assessmentV2Here();
+    const snapshot = open ? await api.studentSnapshot(assessmentId) : null;
+    const composition = v2.sections.find((section) => section.module === COMPOSITION_MODULE);
+    return (
+      <>
+        <PageHeading
+          eyebrow={workspace.name}
+          title={`${detail.kind === "INITIAL" ? "Avaliação inicial" : "Reavaliação"} de ${student.displayName}`}
+          description={`Formato novo, em teste. Rascunho de ${formatCalendarDate(detail.assessedOn)}.`}
+        />
+        {open ? (
+          <AssessmentShell
+            assessmentId={assessmentId}
+            assessedOn={detail.assessedOn}
+            birthDate={snapshot?.birthDate ?? null}
+            revision={v2.revision}
+            composition={readComposition(composition?.payload)}
+          />
+        ) : (
+          <Notice tone="warning">
+            <p>Esta avaliação está no formato novo, ainda em teste. Ela não pode ser editada neste ambiente.</p>
+          </Notice>
+        )}
+        <Link href={`/profissional/alunos/${student.id}/avaliacoes`} className="button secondary">
+          <ArrowLeft size={17} /> Voltar às avaliações
+        </Link>
+      </>
+    );
+  }
   // Photos of a student known to be under 18 are not accepted (the file is the only place that says so).
   const birthDate = detail.state === "DRAFT" ? (await profilesFor(db, context).get(student.id))?.birthDate : null;
   const minor = Boolean(birthDate && ageOn(birthDate, new Date().toISOString().slice(0, 10)) < 18);

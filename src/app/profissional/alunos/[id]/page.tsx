@@ -17,6 +17,7 @@ import { InvitePanel } from "@/modules/convites/invite-panel";
 import { PlansPanel } from "@/modules/planos/plans-panel";
 import { ProfileSummary } from "@/modules/ficha/profile-summary";
 import { AssessmentsPanel } from "@/modules/avaliacoes/assessments-panel";
+import { assessmentV2Here } from "@/modules/avaliacoes/v2/switch";
 import { ExecutionPanel } from "@/modules/execucao/execution-panel";
 import { ConsentLine } from "@/modules/consentimento/consent-line";
 import { CheckinPanel } from "@/modules/checkin/checkin-panel";
@@ -103,7 +104,7 @@ export default async function Student({
               />
             </div>
           ),
-          avaliacoes: <AssessmentsPanel studentId={student.id} assessments={assessments} />,
+          avaliacoes: <AssessmentsPanel studentId={student.id} assessments={assessments} newFormat={await assessmentV2Here()} />,
           periodizacao: (
             <>
               <PlansPanel studentId={student.id} plans={plans} />
