@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useReducer, useRef, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useReducer, useRef, useState, useSyncExternalStore, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LayoutTemplate } from "lucide-react";
@@ -18,6 +18,7 @@ import { PREPARE_MESSAGE, prepareImage } from "./image-upload";
 import type { RemoveResult, UploadResult } from "./image-picker";
 import { PublicAddress } from "./public-address";
 import { VisualEditor } from "./visual-editor";
+import { GuidedEditor } from "./guided-editor";
 import { changeSiteAddress, publishSite, restoreSiteRelease, saveSiteDraft, setSiteInquiries, unpublishSite, type SaveResult } from "./actions";
 import { AUTOSAVE_DELAY_MS, AUTOSAVE_SAVED, AUTOSAVE_STOPPED, SAVE_UNREACHABLE, afterFailure, shouldAutosave } from "./autosave";
 import { useAutosavePreference } from "./use-autosave";
@@ -72,7 +73,15 @@ export function SiteWorkspace({ slug, initial, live, releases, services, images,
   const content = history.present;
   const [saved, setSaved] = useState(() => JSON.stringify(initial.content));
   const [revision, setRevision] = useState(initial.revision);
-  const [editorOpen, setEditorOpen] = useState(startEditing && canEdit);
+  // The editors read the browser's address (the mount path): `?editar=1` opens one once the page is in the browser, never on the server.
+  const inBrowser = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
+  const [editorChoice, setEditorChoice] = useState<boolean | null>(null);
+  const editorOpen = inBrowser && (editorChoice ?? startEditing);
+  const setEditorOpen = (open: boolean) => setEditorChoice(open);
   const [confirmingUnpublish, setConfirmingUnpublish] = useState(false);
   useEffect(() => {
     if (!canEdit) return;
@@ -256,7 +265,7 @@ export function SiteWorkspace({ slug, initial, live, releases, services, images,
           {canEdit && (
             <div className="persist-actions">
               <button type="button" className="button primary" onClick={() => setEditorOpen(true)}>
-                <LayoutTemplate size={20} /> Abrir o editor visual
+                <LayoutTemplate size={20} /> {engineFixed ? "Abrir o Editor Guiado" : "Abrir o editor visual"}
               </button>
             </div>
           )}
@@ -490,7 +499,21 @@ export function SiteWorkspace({ slug, initial, live, releases, services, images,
         }}
       />
 
-      {canEdit && editorOpen && (
+      {canEdit && editorOpen && engineFixed && (
+        <GuidedEditor
+          content={content}
+          onEdit={(next) => edit(next)}
+          services={services}
+          library={library}
+          dirty={dirty}
+          pending={pending}
+          live={live !== null}
+          onSave={() => save(editorNote)}
+          onClose={() => setEditorOpen(false)}
+          note={editorNote.element}
+        />
+      )}
+      {canEdit && editorOpen && !engineFixed && (
         <VisualEditor
           content={content}
           onEdit={edit}

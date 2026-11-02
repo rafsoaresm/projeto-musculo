@@ -1,6 +1,6 @@
 import { test, expect, type Locator } from "@playwright/test";
 import { createProfessional, localIP, newActor, noHorizontalOverflow } from "./helpers";
-import { addAtEnd, addSelected, closeEditor, contentTab, editor, inspector, layerNames, library, openEditor, panel, selectLayer, stage, state, styleTab, showTab } from "./site-helpers";
+import { addAtEnd, addSelected, closeEditor, contentTab, editor, inspector, layerNames, library, openEditor, panel, selectLayer, stage, state, styleTab, showTab, asLegacySite } from "./site-helpers";
 
 test("a professional builds a page in the visual editor, previews it, publishes it, changes it without touching what is public, takes it offline and changes its address", async ({
   page,
@@ -42,9 +42,17 @@ test("a professional builds a page in the visual editor, previews it, publishes 
     await expect(page.getByRole("main").getByText(/Frappe/)).toHaveCount(0);
     await expect(page.getByRole("region", { name: "Código livre" })).toHaveCount(0);
   }
+  // "Editar site" opens the Editor Guiado (Figma 10:162): the sections on the left, the page in the middle, the content of a section on the right.
   await page.getByRole("link", { name: "Editar site" }).click();
-  await expect(editor(page)).toBeVisible();
-  await closeEditor(page);
+  const guided = page.getByRole("dialog", { name: "Editor Guiado" });
+  await expect(guided).toBeVisible();
+  const sections = guided.getByRole("navigation", { name: "Seções do site" });
+  await expect(sections.getByRole("button").first()).toHaveAttribute("aria-pressed", "true");
+  await expect(guided.getByRole("region", { name: "Prévia da página" })).toBeVisible();
+  await guided.getByRole("button", { name: "Fechar o Editor Guiado" }).click();
+  await expect(guided).toHaveCount(0);
+  // The rest of this scenario is the visual builder, which stays for the sites made before the editor became fixed.
+  await asLegacySite(page, slug);
 
   // A new site is not published at the first click: the call to action points to a WhatsApp that is not filled in. That is a warning, not a
   // blockade: it is shown with the way to publish anyway (which the next scenario takes).
@@ -381,6 +389,7 @@ test("blocks go from the library into the tree: between blocks, into containers 
   await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Confirmar e criar site" }).click();
   await showTab(page, "Publicação");
   await expect(state(page).getByText("Fora do ar")).toBeVisible();
+  await asLegacySite(page, `arrasto-${unique}`);
   await openEditor(page);
 
   const tile = (name: string) => library(page).getByRole("button", { name: `Acrescentar ${name}`, exact: true });

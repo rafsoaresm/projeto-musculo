@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { newActor, png } from "./helpers";
-import { addAtEnd, editor, inspector, library, panel, selectLayer, stage, startEditor as startSite } from "./site-helpers";
+import { addAtEnd, editor, inspector, library, panel, selectLayer, stage, startEditor as startSite, openEditor } from "./site-helpers";
 
 const startEditor = (page: Page) => startSite(page, "Marina Páginas");
 
@@ -277,7 +277,7 @@ test("pages: addresses that are accepted, refused or taken, moving, copying, del
   expect(await rowNames(page)).toEqual(["Início", "Planos", "Sobre mim"]);
   await save(page);
   await page.reload();
-  await page.getByRole("button", { name: "Abrir o editor visual" }).click();
+  await openEditor(page);
   await openPages(page);
   expect(await rowNames(page)).toEqual(["Início", "Planos", "Sobre mim"]);
 

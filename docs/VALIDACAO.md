@@ -2,6 +2,18 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.59: Editor Guiado simples (Figma `10:162`; decisão do usuário de 01/11/2026)
+
+**Sem migration.**
+
+- **O que é** (`guided-model.ts`, regra pura com testes; `guided-editor.tsx`): o editor de um site criado no Editor Guiado é o editor simples, em três colunas como no quadro: "Seções do site" (as seções da página inicial, em ordem; "Cabeçalho" e "Rodapé" pelo tipo do contêiner, ou o nome que a pessoa deu), "Prévia da página" (a página desenhada pelo mesmo renderizador, mudando enquanto se digita) e "Conteúdo da seção" (os textos, os botões, as imagens e a descrição de cada imagem da seção, numerados quando há mais de um, e o "SEO da página": título e descrição). "Pré-visualizar" abre a prévia do rascunho salvo; "Salvar rascunho" grava o mesmo rascunho, com a mesma revisão e a mesma publicação de antes.
+- **O que não muda por aqui:** o desenho (contêineres, estilos, tamanhos de tela) fica como o modelo fez; um componente é editado onde foi definido. Uma chave que não é campo da seção (um estilo, um bloco inexistente, o próprio contêiner) não altera nada (teste).
+- **O construtor visual** (de 0.35 a 0.49) continua só para os sites criados antes da escolha fixa do editor, até a decisão sobre eles; os testes de navegador dele marcam o site como anterior à escolha (`asLegacySite`, só no banco local de teste).
+- **Abrir pelo endereço:** `?editar=1` passou a abrir o editor depois que a página está no navegador (antes ele seria desenhado no servidor, que não tem o endereço da montagem).
+- **Verificado localmente:** `npm run check`; captura do Editor Guiado a 1280 px comparada com o quadro `10:162`; navegador na montagem raiz, cenário novo `site-guided` (abrir, escolher a seção, digitar o título e vê-lo na prévia, SEO, salvar, recarregar, publicar e o visitante ver o título e a descrição) e a suíte completa.
+- **Não feito / limites:** acrescentar, tirar ou reordenar seções no Editor Guiado (hoje o site nasce com as seções do modelo escolhido); as páginas além da inicial não aparecem no Editor Guiado; enviar imagens novas é pela biblioteca (o campo escolhe entre as enviadas).
+- **Não verificado:** nada no ar antes do deploy.
+
 ## Fatia 0.58: Editor Avançado — moldura, prévia e português (Figma `10:218`; defeito 1 da revisão V4; AC19.1, AC19.4, AC19.5)
 
 **Sem migration.** O editor do Frappe foi recompilado (patch 0007) a partir dos commits fixados; a compilação sem o patch novo reproduziu byte a byte os arquivos guardados, antes de aplicá-lo.
@@ -11,7 +23,8 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Português** (AC19.4): o `__()` do próprio editor lê `window.translated_messages`; a página do editor agora o preenche com o catálogo oficial do Frappe Builder (`pt.po` e `pt_BR.po`, 218 textos) mais um complemento do app (`vendor/frappe-builder/pt-BR-extra.json`, 273 textos das telas essenciais: lista de páginas, nova página e modelos, barra de ferramentas, camadas, propriedades de bloco, publicação, variáveis e configurações da página). Gerado por `scripts/frappe-editor/translations.mjs`. Nenhuma linha do editor mudou para isso.
 - **Verificado localmente:** `npm run check`; navegador na montagem raiz, todos os testes do Frappe (os testes passaram a usar os rótulos em português, e dois cliques por coordenada desceram 48 px por causa da barra); o teste de publicação confere a prévia por pedido direto e dentro da tela de prévia do editor.
 - **Não feito / limites:** textos que o Frappe não passa pelo `__()` e textos da biblioteca de componentes do Frappe (frappe-ui) continuam em inglês; a prévia dos modelos da galeria mostra "Página não encontrada" (os modelos não são páginas do espaço); despublicar páginas do Frappe pela gestão continua fora.
-- **Não verificado:** nada no ar antes do deploy.
+- **Não verificado:** o ambiente de desenvolvimento não alcança o site publicado.
+- **CI e deploy:** o CI da PR #59 passou nas duas montagens no commit `f617826`. Merge `0f99a5d`. Implantada: deploy `b7406fa4`, build de 01:29 a 01:31 e deploy até 01:32 de 02/11/2026, status `success`.
 
 ## Fatia 0.57: Meu Site — abas da gestão e duas correções relatadas pelo usuário (Figma `10:76`, `10:119`)
 
