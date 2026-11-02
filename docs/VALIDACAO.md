@@ -30,7 +30,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Verificado localmente:**
   - `npm run check`: lint, tipos e 1586 testes, entre eles `meu-site-whatsapp-cta` (regra, endereço, página, padrão do celular igual ao do servidor, editor, modelos, aviso) e `site-whatsapp-route` (a rota com o D1 local: fechado em cada caso, gravado antes do redirecionamento, nada do visitante no endereço, erros, isca, limite, caixa de entrada e lead);
   - navegador, cenário `site-whatsapp` (computador e celular, raiz e `/treinador`): direto enquanto o recebimento está desligado; a janela abre, recebe o foco, fecha com Escape e com o "×"; o celular fixo é barrado no navegador; o envio leva ao endereço do WhatsApp; a mensagem aparece em Leads;
-  - mais `site-models`, `site-inquiries`, `site-guided`, `leads`, `site`, `site-templates` e `site-warnings` nas duas montagens (resultado na linha de navegador abaixo);
+  - mais `site-models`, `site-inquiries`, `site-guided`, `leads`, `site`, `site-templates` e `site-warnings`: 23 cenários passaram na raiz e 23 em `/treinador` (os 9 pulados de cada lado são os cenários só do computador ou só do celular);
   - revisão independente do diff: 7 problemas confirmados, todos corrigidos (o teclado da janela; o celular conferido só no servidor; o formulário de contato do modelo, que seguia como um segundo formulário; o aceite que não citava o objetivo; o aviso sem número que valia só para o cabeçalho; a falta de saída no limite da caixa; e a nota do editor sem o objetivo).
 - **Não feito (fica de fora):**
   - sobrescrever a escolha por botão (`cta.requireLeadForm` do handoff);
