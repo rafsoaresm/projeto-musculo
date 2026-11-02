@@ -94,9 +94,12 @@ test("meu site, new editor: a site born in it, an image sent from the editor, th
   expect(outside).toEqual([]);
 
   // ---- the panel lists the page, and the address of the first editor leads to the new site ----
-  await page.reload();
+  // Drawn by the server with a published page in the list (it used to fail there, reading the browser's address, and the page answered 500).
+  expect((await page.reload())?.status()).toBe(200);
   await showTab(page, "Páginas");
-  await expect(panel.getByRole("list", { name: "Páginas no ar no editor novo" })).toContainText("Início");
+  const live = panel.getByRole("list", { name: "Páginas no ar no editor novo" });
+  await expect(live).toContainText("Início");
+  await expect(live.getByRole("link", { name: "ver" })).toHaveAttribute("href", `${mount}/site/${slug}/home`);
   const toNew = await stranger.request.get(`./s/${slug}`, noFollow);
   expect(toNew.status()).toBe(307);
   expect(toNew.headers().location).toContain(`/site/${slug}`);

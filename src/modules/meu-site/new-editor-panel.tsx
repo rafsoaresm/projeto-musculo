@@ -2,7 +2,6 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMountPath } from "@/components/use-mount-path";
 import { Pill } from "@/components/ui";
 import { deleteSite, setSiteCodeNetwork, setSiteEngine, setSiteInquiries } from "./actions";
 import { PublicAddress } from "./public-address";
@@ -35,7 +34,6 @@ export interface NewEditorState {
  */
 export function NewEditorPanel({ slug, engine, engineFixed, published, pages, waiting, forms, inquiries, code, canEdit, part }: NewEditorState) {
   const router = useRouter();
-  const mountPath = useMountPath();
   const [message, setMessage] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [pending, startTransition] = useTransition();
@@ -84,9 +82,10 @@ export function NewEditorPanel({ slug, engine, engineFixed, published, pages, wa
             {published.map((page) => (
               <li key={page.route}>
                 {page.title} — <PublicAddress slug={slug} base="site" path={page.route ? `/${page.route}` : ""} />{" "}
-                <a href={`${mountPath()}/site/${slug}${page.route ? `/${page.route}` : ""}`} target="_blank" rel="noopener noreferrer">
+                {/* Drawn on the server too: next/link adds the mount; reading the browser's address here broke the whole page (500) once a page was published. */}
+                <Link href={`/site/${slug}${page.route ? `/${page.route}` : ""}`} prefetch={false} target="_blank" rel="noopener noreferrer">
                   ver
-                </a>
+                </Link>
               </li>
             ))}
           </ul>

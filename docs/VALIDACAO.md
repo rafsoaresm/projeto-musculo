@@ -2,6 +2,16 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.60.1: Meu Site não cai com página publicada no Editor Avançado
+
+**Sem migration.** Defeito achado ao ler os erros do servidor local pelo explorador do Wrangler (a busca de `level = 'error'` mostrou `ReferenceError: window is not defined`).
+
+- **O defeito:** com pelo menos uma página do Editor Avançado publicada, `GET /profissional/meu-site` respondia **500**: o link "ver" da lista "Páginas no ar no editor novo" (`new-editor-panel.tsx`) lia o endereço do navegador (`window.location`) enquanto a página era desenhada no servidor. Aparece em logs locais desde a 0.52, então provavelmente estava no ar também (não conferido no ar: o ambiente não alcança o site publicado e os logs de execução do Webflow guardam cerca de 1 hora).
+- **A correção:** o link passou a ser um `next/link` com o caminho do app (`/site/<endereço>/<página>`), que recebe a montagem também no servidor.
+- **Os outros usos do mesmo recurso** (`useMountPath`) foram revistos: os demais rodam só no navegador (ações, envios, depois de um clique, ou pelo valor do servidor em `useSyncExternalStore`).
+- **Verificado localmente:** `npm run check`; navegador na montagem raiz, testes do Frappe, com a busca de erros do servidor vazia no fim. O teste `frappe-site-flow` agora confere que a página recarregada com uma página publicada responde 200 e que o "ver" leva a `<montagem>/site/<endereço>/home` (antes da correção, a mesma recarga respondia 500).
+- **Não verificado:** nada no ar antes do deploy.
+
 ## Fatia 0.60: Triagem Sim/Não obrigatória (decisão D4 do usuário, 01/11/2026; V4 T08, T09)
 
 **Migration 0031** (aditiva): `assessments.screening_answered`, a lista em JSON das perguntas da triagem respondidas. As seis colunas das perguntas continuam 0/1 com padrão 0; é a coluna nova que separa "Não" de "não perguntado".
@@ -11,7 +21,9 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Leitura:** a avaliação registrada lista cada pergunta com "Sim" ou "Não".
 - **Verificado localmente:** `npm run check` (testes de banco dos dois formatos: rascunho novo começa com `[]`, registro recusado com pergunta em aberto, registro aceito com as seis, avaliação antiga continua legível e registrável pela confirmação); navegador na montagem raiz, cenários de avaliações, fotos e pedidos atualizados para responder às seis perguntas.
 - **Não feito / limites:** quais respostas "Sim" colocam a avaliação em revisão continua com o técnico (PENDENCIAS T1); o texto das perguntas não mudou.
-- **Não verificado:** nada no ar antes do deploy; a migration 0031 no banco do Webflow só é conferida no log do deploy.
+- **Não verificado:** o ambiente de desenvolvimento não alcança o site publicado; nenhuma avaliação foi registrada no ar.
+- **CI e deploy:** o CI da PR #61 passou nas duas montagens no commit `1f648a0`. Merge `ba3e567`. Implantada: deploy `6768899f`, build de 03:42 a 03:43 e deploy até 03:44 de 02/11/2026, status `success`; **o log do deploy mostra `0031_screening_answered.sql ✅`**.
+- **Testes de navegador:** a marcação de site anterior à escolha fixa (`asLegacySite`) passou a gravar pelo explorador local do Wrangler (`/cdn-cgi/local/explorer/api`), pela mesma porta do banco que o app usa. Escrever o arquivo do D1 local por outro processo fazia o D1 local recusar as gravações seguintes do app ("Failed to get session commit token"): erros 500 ao acaso e "Não foi possível criar o espaço" nos testes.
 
 ## Fatia 0.59: Editor Guiado simples (Figma `10:162`; decisão do usuário de 01/11/2026)
 
