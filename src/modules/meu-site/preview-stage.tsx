@@ -47,7 +47,9 @@ export function PreviewStage({
     observer.observe(box);
     observer.observe(inner);
     return () => observer.disconnect();
-  }, [page]);
+    // Measured again, before the paint, when the width changes: the stage has the new page's height at once, so the preview can be scrolled to the
+    // section being edited at its new place (guided-preview.tsx).
+  }, [page, width]);
 
   // What is chosen is what is shown, at any width of the panel: only the scale changes (a phone panel shows the computer's page, smaller).
   const scale = previewScale(available, width);

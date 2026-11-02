@@ -22,22 +22,32 @@ const band = (name: string, background: Style["background"], children: SiteNode[
     tablet: { padding: sides("70px", "40px") },
     mobile: { padding: SECTION_PAD_MOBILE, ...mobile },
   });
-/** Two parts side by side in the Figma's own proportions (`grow` of each), one above the other on the phone. */
+/**
+ * Two parts side by side in the Figma's own proportions (`grow` of each) on a computer, one above the other on a tablet and a phone (0.70: on a
+ * 577 px tablet the text's 320 px left the photo a thumbnail). Each part says `basis: "auto"` on the tablet (`STACKED`).
+ */
 const split = (name: string, first: SiteNode, second: SiteNode, gap: string): SiteNode =>
-  box(name, "div", { display: "flex", direction: "row", gap, align: "start" }, [first, second], { mobile: { direction: "column", align: "stretch", gap: "25px" } });
+  box(name, "div", { display: "flex", direction: "row", gap, align: "start" }, [first, second], { tablet: { direction: "column", align: "stretch", gap: "25px" } });
+const STACKED = { tablet: { basis: "auto" } };
 const eyebrow = (text: string, name?: string) => paragraph(text, { fontSize: "12px", fontWeight: 700, lineHeight: 1.2, color: "accent", margin: ZERO }, undefined, name);
 const h2 = (text: string, size = 46, mobile = 32, color: Style["color"] = "ink", name?: string) =>
   heading(text, 2, { fontSize: `${size}px`, fontWeight: 700, lineHeight: 1.2, color, margin: ZERO }, { mobile: { fontSize: `${mobile}px` } }, name);
 const lead = (text: string, color: Style["color"] = "muted", size = 18, width = "760px", name?: string) =>
   paragraph(text, { fontSize: `${size}px`, lineHeight: 1.2, color, maxWidth: width, margin: ZERO }, { mobile: { fontSize: size === 18 ? "15px" : `${size}px` } }, name);
-const grid = (name: string, children: SiteNode[], gap = "18px", rowGap = gap): SiteNode =>
-  box(name, "div", { display: "grid", columns: 3, gap, align: "stretch" }, children, { tablet: { columns: 2 }, mobile: { columns: 1, gap: rowGap } });
+/** Three across on a computer; on a tablet one under the other unless said (two cards of a 577 px tablet would be under 260 px each, 0.70). */
+const grid = (name: string, children: SiteNode[], gap = "18px", rowGap = gap, tabletColumns = 1): SiteNode =>
+  box(name, "div", { display: "grid", columns: 3, gap, align: "stretch" }, children, { tablet: { columns: tabletColumns, gap: rowGap }, mobile: { columns: 1, gap: rowGap } });
+/**
+ * A card's sides are a share of its width on a computer (0.70): 5 % is the Figma's 24 px of a 1440 page, and at 1024 it leaves the text 240 px
+ * at least in three columns. On a tablet and a phone (one card a row) the Figma's 24 px.
+ */
+const CARD_SIZES = { tablet: { padding: sides("24px", "24px") } };
 const card = (icon: string, title: string, body: string, dark = false): SiteNode =>
-  box("Cartão", "article", { display: "flex", direction: "column", gap: "12px", padding: sides("24px", "24px"), radius: "16px", background: dark ? "dark" : "surface" }, [
+  box("Cartão", "article", { display: "flex", direction: "column", gap: "12px", padding: sides("24px", "5%"), radius: "16px", background: dark ? "dark" : "surface" }, [
     paragraph(icon, { fontSize: "25px", fontWeight: 700, lineHeight: 1.2, color: "accent", margin: ZERO }, undefined, "Ícone"),
     heading(title, 3, { fontSize: "21px", fontWeight: 700, lineHeight: 1.2, color: dark ? "onDark" : "ink", margin: ZERO }),
     paragraph(body, { fontSize: "14px", lineHeight: 1.4, color: dark ? "onDarkMuted" : "muted", margin: ZERO }),
-  ]);
+  ], CARD_SIZES);
 
 function build(title: string, mode: ModelMode): SiteContent {
   // 3:845 — a full-bleed photo under a flat dark veil (rgba(3,11,15,.22), .44 on the phone), the text on the left.
@@ -112,8 +122,8 @@ function build(title: string, mode: ModelMode): SiteContent {
   const editorial = band("Apresentação com imagem", "surface", [
     split(
       "Imagem e texto",
-      photo("sisphus-foto", "16:9", { radius: "20px", grow: 4, basis: "0px" }, { mobile: { basis: "auto" } }, "Foto do método"),
-      // The text keeps 320 px at least (0.70): on a narrow tablet the photo gives way, and the title is not pushed out of the page.
+      photo("sisphus-foto", "16:9", { radius: "20px", grow: 4, basis: "0px" }, STACKED, "Foto do método"),
+      // The text keeps 320 px at least beside the photo (on a computer, 0.70).
       box("Texto", "div", { display: "flex", direction: "column", gap: "20px", align: "start", grow: 3, basis: "0px", minWidth: "320px" }, [
         eyebrow("MÉTODO E RESULTADOS"),
         h2("O compromisso que muda tudo.", 39, 29),
@@ -122,7 +132,7 @@ function build(title: string, mode: ModelMode): SiteContent {
           { fontSize: "16px", lineHeight: 1.4, color: "muted", maxWidth: "460px", margin: ZERO },
         ),
         whatsappButton(),
-      ], { mobile: { basis: "auto", minWidth: "0px" } }),
+      ], { tablet: { basis: "auto", minWidth: "0px" } }),
       "36px",
     ),
   ]);
@@ -169,7 +179,7 @@ function build(title: string, mode: ModelMode): SiteContent {
     split(
       "Foto e biografia",
       // The person's own photo: only the preview has a sample (a photo of someone else is never the professional's).
-      photo(mode === "preview" ? "sisphus-foto" : undefined, "3:2", { radius: "20px", grow: 5, basis: "0px" }, { mobile: { basis: "auto" } }, "Sua foto"),
+      photo(mode === "preview" ? "sisphus-foto" : undefined, "3:2", { radius: "20px", grow: 5, basis: "0px" }, STACKED, "Sua foto"),
       box("Biografia", "div", { display: "flex", direction: "column", gap: "14px", grow: 8, basis: "0px" }, [
         paragraph(say(mode, "SEU NOME AQUI"), { fontSize: "13px", fontWeight: 700, color: "accent", margin: ZERO }, undefined, "Seu nome"),
         heading(
@@ -186,7 +196,7 @@ function build(title: string, mode: ModelMode): SiteContent {
           "Sua história e formação",
         ),
         paragraph(say(mode, "8+ anos de experiência\u00a0\u00a0\u00a0\u00a0•\u00a0\u00a0\u00a0\u00a0Atendimento individual"), { fontSize: "15px", fontWeight: 600, color: "accent", margin: ZERO }, undefined, "Destaques (ex.: experiência)"),
-      ], { mobile: { basis: "auto" } }),
+      ], STACKED),
       "36px",
     ),
   ]);
@@ -215,9 +225,9 @@ function build(title: string, mode: ModelMode): SiteContent {
             step("02\u00a0\u00a0Plano progressivo", "Metas claras, treino adaptado e indicadores acompanhados."),
             step("03\u00a0\u00a0Revisões periódicas", "Check-ins, ajustes e evolução orientada por dados."),
           ],
-          { mobile: { basis: "auto" } },
+          STACKED,
         ),
-        photo("sisphus-foto", "4:3", { radius: "18px", grow: 7, basis: "0px" }, { mobile: { basis: "auto" } }, "Foto do acompanhamento"),
+        photo("sisphus-foto", "4:3", { radius: "18px", grow: 7, basis: "0px" }, STACKED, "Foto do acompanhamento"),
         "26px",
       ),
     ],
@@ -235,7 +245,7 @@ function build(title: string, mode: ModelMode): SiteContent {
   const stats = band(
     "Números e conquistas",
     "#fafaf9",
-    [grid("Métricas", [stat("+500", "alunos acompanhados"), stat("98%", "nível de satisfação"), stat("8+", "anos de experiência")], "25px", "25px")],
+    [grid("Métricas", [stat("+500", "alunos acompanhados"), stat("98%", "nível de satisfação"), stat("8+", "anos de experiência")], "25px", "25px", 3)],
     { padding: sides("45px", "80px", "55px") },
     { padding: sides("45px", "22px", "55px") },
   );
@@ -245,7 +255,7 @@ function build(title: string, mode: ModelMode): SiteContent {
     box(
       "Plano",
       "article",
-      { display: "flex", direction: "column", gap: "15px", align: "start", padding: sides("25px", "25px"), radius: "20px", background: featured ? "dark" : "#f7f7f7" },
+      { display: "flex", direction: "column", gap: "15px", align: "start", padding: sides("25px", "5%"), radius: "20px", background: featured ? "dark" : "#f7f7f7" },
       [
         paragraph(featured ? say(mode, label) : label, { fontSize: "12px", fontWeight: 700, color: featured ? "accentOnDark" : "muted", margin: ZERO }, undefined, featured ? "Selo de destaque (opcional)" : undefined),
         heading(name, 3, { fontSize: "24px", fontWeight: 700, lineHeight: 1.2, color: featured ? "onDark" : "ink", margin: ZERO }),
@@ -262,6 +272,7 @@ function build(title: string, mode: ModelMode): SiteContent {
         ),
         whatsappButton(),
       ],
+      { tablet: { padding: sides("25px", "25px") } },
     );
   const pricing = band("Planos e investimento", "surface", [
     eyebrow("PLANOS"),

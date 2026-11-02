@@ -2958,6 +2958,15 @@ a.site-menu-link:hover {
 .site-link:hover {
   text-decoration-thickness: 2px;
 }
+/* On a phone a link of the page is a target a finger hits (0.70): 44 px tall and wide at least, the text in the middle of its height. */
+@container site (max-width: 576px) {
+  .site a.site-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
 .site-eyebrow {
   color: var(--site-accent);
   font-size: 12px;
@@ -3105,19 +3114,23 @@ a.site-menu-link:hover {
   color: var(--site-text);
   overflow-wrap: break-word;
 }
+/* The question is the target (0.70): 44 px tall at least, its padding taken from the box around it, so the box looks as it did. */
 .site-faq details {
-  padding: 12px 16px;
+  padding: 2px 16px;
   border: 1px solid var(--site-line);
   border-radius: var(--radius-card);
 }
 .site-faq summary {
+  min-height: 44px;
+  padding: 10px 0;
+  box-sizing: border-box;
   cursor: pointer;
   color: var(--site-ink);
   font-weight: 700;
   overflow-wrap: break-word;
 }
 .site-faq details p {
-  margin-top: 8px;
+  margin: 0 0 10px;
 }
 /* The section blocks inside a site model take the model's type: the eyebrow, the section title, the testimony card. */
 .site[data-site-accent="palette"] .site-eyebrow {
@@ -3162,6 +3175,10 @@ a.site-menu-link:hover {
   padding: 18px 24px;
   background: color-mix(in srgb, var(--site-ink) 5%, transparent);
 }
+/* A question that opens: 10 of its 18 px of padding are the question's own, so its row is 44 px tall (0.70). */
+.site[data-site-accent="palette"] .site-faq details {
+  padding: 8px 24px;
+}
 .site[data-site-accent="palette"] .site-faq summary {
   display: flex;
   justify-content: space-between;
@@ -3186,7 +3203,7 @@ a.site-menu-link:hover {
   content: "\2212";
 }
 .site[data-site-accent="palette"] .site-faq details p {
-  margin: 12px 0 0;
+  margin: 2px 0 10px;
   color: var(--site-text);
 }
 .site-faq-open {
@@ -3254,7 +3271,9 @@ a.site-menu-link:hover {
   min-height: 110px;
   resize: vertical;
 }
+/* The whole line is the target of the box (a click on the text ticks it): 44 px tall at least, the box keeps its 22 px. */
 .site-form .site-form-consent {
+  min-height: 44px;
   display: flex;
   flex-direction: row;
   align-items: flex-start;
@@ -3484,7 +3503,7 @@ a.site-menu-link:hover {
   background: var(--site-surface);
   border-bottom: 0;
   padding: 24px max(var(--site-gutter), calc((100% - var(--site-container)) / 2));
-  gap: 12px 30px;
+  gap: 12px clamp(16px, 2.2cqi, 30px);
 }
 .site[data-site-accent="palette"] .site-brand {
   font-size: 24px;
@@ -3496,7 +3515,8 @@ a.site-menu-link:hover {
   justify-content: center;
 }
 .site[data-site-accent="palette"] .site-menu ul {
-  gap: 4px 30px;
+  /* Narrower between 1024 and ~1100 so the WhatsApp button stays on the row of the menu (0.70). */
+  gap: 4px clamp(14px, 2.2cqi, 30px);
   justify-content: center;
 }
 .site[data-site-accent="palette"] .site-menu-link {
@@ -5756,6 +5776,12 @@ img.model-thumb {
   display: flex;
   gap: 8px;
 }
+/* The width being shown (Computador or Celular) reads as chosen, not only to a screen reader (0.70). */
+.guided-preview-tools button[aria-pressed="true"] {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-on-primary);
+}
 .guided-frame-scroll {
   margin-top: 8px;
   max-height: calc(100dvh - 260px);
@@ -5884,9 +5910,6 @@ img.model-thumb {
   }
   .guided[data-preview] .guided-frame-scroll {
     max-height: calc(100dvh - 140px);
-  }
-  .guided[data-preview] .guided-preview-tools {
-    display: none;
   }
   .guided-bar {
     position: fixed;

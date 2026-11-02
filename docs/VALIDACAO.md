@@ -2,6 +2,29 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.70: Sites, alinhamento e responsivo dos modelos (pedido do usuário de 02/11/2026)
+
+**Sem migration.** A partir das capturas do usuário: palavras quebradas letra por letra na prévia do celular, faixas e seções começando em margens diferentes, formulário de contato mais estreito que a seção, e o painel do Editor Guiado arredondado demais.
+
+- **Prévia do Editor Guiado e de "Ver o modelo":**
+  - a causa da prévia quebrada era uma linha de CSS: o quadro da prévia não tinha o nome de contêiner que as regras de tablet e celular do site procuram, então a prévia mostrava sempre o layout de computador, espremido;
+  - "Computador" agora é a página de 1280 px reduzida para caber no painel, e "Celular" é a de 390 px; o botão marcado é sempre o que aparece, com destaque visual; trocar de largura volta à seção escolhida; clicar numa parte da página continua abrindo a seção.
+- **Os quatro modelos (Energia, Bem-estar, Premium, Performance):**
+  - um contêiner só para todas as seções (largura máxima de 1280 px e margens de 80 / 40 / 22 px em computador, tablet e celular), cabeçalho e rodapé inclusive; os pontos de quebra são os mesmos em toda a página (576 e 1023 px);
+  - texto quebra entre palavras (`overflow-wrap: break-word`), sem hifenização automática;
+  - no tablet, imagem e texto ficam um sobre o outro e os cartões em uma coluna; no computador, o texto ao lado da foto nunca fica com menos de 320 px;
+  - contato: texto à esquerda e cartão à direita no computador, uma coluna no tablet e no celular; os campos ocupam o cartão;
+  - cabeçalho numa linha só de 1024 px para cima (o botão do WhatsApp não desce mais);
+  - no celular, perguntas do FAQ, links do rodapé, a linha do aceite e os links de texto com área de toque de 44 px;
+  - textos de amostra sem "ilustrativo": "nível de satisfação", "Escolha o formato que combina com a sua rotina."; em "Ver o modelo", um aviso diz que números, preços, nomes e depoimentos são amostras. O site criado continua começando sem eles.
+- **Painel do Editor Guiado:** campos, seletores, lista de seções e botões com cantos de 8 a 10 px (só dentro do painel do Editor Guiado; o resto do app continua com botões em pílula).
+- **Verificado localmente:**
+  - medição dos quatro modelos, na página publicada e na prévia, em 16 larguras (360 a 1920 px): **0 transbordamento, 0 palavras partidas no meio, uma margem esquerda por largura**, nenhuma coluna de texto que quebre linha com menos de 240 px, nenhuma área de toque menor que 44 px no celular. Antes: até 253 px de transbordamento e 170 a 250 palavras partidas por página na prévia do celular, e duas margens diferentes entre 768 e 1920 px. O celular publicado já estava certo e continua igual;
+  - o cabeçalho medido de 1024 a 1090 px: uma linha só (100 px de altura) nos quatro modelos;
+  - `tsc`, lint e os testes de site (`tests/meu-site*`, `tests/site*`), com os testes novos de `meu-site-layout`;
+  - revisão independente em duas rodadas: os defeitos da primeira (prévia de computador mostrando o celular em notebooks de 1101 a 1307 px, fotos encolhidas no tablet, cartões estreitos, áreas de toque, rolagem ao trocar de largura) foram corrigidos; da segunda, o cabeçalho em duas linhas entre 1024 e 1055 px e o botão de largura sem destaque, também corrigidos.
+- **Não verificado:** Safari e Firefox; o Editor Guiado num celular de verdade; páginas publicadas pela rota pública em produção (a medição usa o mesmo renderizador e o mesmo CSS).
+
 ## Fatia 0.69: Avaliação Física V2, a etapa Medidas (atrás da chave `ASSESSMENT_V2_ENABLED`; PENDENCIAS B47 e C38)
 
 **Sem migration. Desligada em produção:** sem a chave `ASSESSMENT_V2_ENABLED=true` no ambiente, nada muda para o profissional (o botão de sempre, a mesma marcação). A chave é lida só no servidor; as ações do formato novo conferem a chave de novo. Os testes locais e o CI ligam a chave (`scripts/setup-local-auth.mjs`). Fica desligada até a avaliação nova poder ser finalizada (0.73).

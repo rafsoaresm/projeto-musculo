@@ -60,11 +60,34 @@ describe("the content column of the site models", () => {
     }
   });
 
-  it("the race model's text next to the photo keeps 320 px on a computer and a tablet, and gives it up on a phone", () => {
+  it("the race model's text next to the photo keeps 320 px on a computer, and gives it up where the photo goes above it", () => {
     const race = SITE_MODELS_V1.find((model) => model.key === "race")!.build("Marina Costa", "site");
     const editorial = race.blocks.find((block) => block.name === "Apresentação com imagem")!;
     const text = allNodes([editorial]).find((node) => node.type === "box" && node.name === "Texto")!;
-    expect(SCREENS.map((screen) => resolveStyle(text, screen).minWidth)).toEqual(["320px", "320px", "0px"]);
+    expect(SCREENS.map((screen) => resolveStyle(text, screen).minWidth)).toEqual(["320px", "0px", "0px"]);
+  });
+
+  it("puts a photo beside a text only on a computer: on a tablet and a phone the parts of every side-by-side box go one under the other", () => {
+    for (const model of SITE_MODELS_V1) {
+      for (const node of allNodes(model.build("Marina Costa", "preview").blocks)) {
+        if (node.type !== "box" || !node.children.some((child) => child.type === "image")) continue;
+        const side = (screen: Screen) => {
+          const style = resolveStyle(node, screen);
+          return (style.display === "grid" && (style.columns ?? 1) > 1) || (style.display === "flex" && style.direction === "row");
+        };
+        if (!side("desktop")) continue;
+        expect([model.key, node.name, side("tablet"), side("mobile")]).toEqual([model.key, node.name, false, false]);
+      }
+    }
+  });
+
+  it("lays the cards out one a row on a tablet (two of a 577 px tablet would be under 260 px), and keeps the stats in a row", () => {
+    for (const model of SITE_MODELS_V1) {
+      for (const node of allNodes(model.build("Marina Costa", "preview").blocks)) {
+        if (node.type !== "box" || node.style?.display !== "grid" || node.style.columns !== 3) continue;
+        expect([model.key, node.name, resolveStyle(node, "tablet").columns]).toEqual([model.key, node.name, node.name === "Métricas" ? 3 : 1]);
+      }
+    }
   });
 
   it("the samples of the preview read as a page would, and a created site still starts without them", () => {
@@ -96,6 +119,12 @@ describe("the page's stylesheet", () => {
     for (const selector of [".site-brand", ".site-heading", ".site-lead", ".site-text", ".site-hero h1,\n.site-hero h2"]) expect(rule(selector), selector).toContain("overflow-wrap: break-word;");
     const site = css.slice(css.indexOf("\n.site {"), css.indexOf("/* The header of a site model"));
     expect(site).not.toContain("overflow-wrap: anywhere");
+  });
+
+  it("makes a phone's links, questions and consent box 44 px targets", () => {
+    expect(css).toContain("@container site (max-width: 576px) {\n  .site a.site-link {\n    display: inline-flex;\n    align-items: center;\n    min-height: 44px;\n    min-width: 44px;");
+    expect(rule(".site-faq summary")).toContain("min-height: 44px;");
+    expect(rule(".site-form .site-form-consent")).toContain("min-height: 44px;");
   });
 
   it("lets the contact form fill its card", () => {

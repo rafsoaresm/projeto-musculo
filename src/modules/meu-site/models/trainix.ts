@@ -25,14 +25,20 @@ const h2 = (text: string, size = 46, mobile = 32, name?: string) =>
   heading(text, 2, { fontSize: `${size}px`, fontWeight: 700, lineHeight: 1.2, color: "ink", margin: sides("0px", "0px") }, { mobile: { fontSize: `${mobile}px` } }, name);
 const lead = (text: string, name?: string) =>
   paragraph(text, { fontSize: "18px", lineHeight: 1.2, color: "muted", maxWidth: "760px", margin: sides("0px", "0px") }, { mobile: { fontSize: "15px" } }, name);
-const grid = (name: string, children: SiteNode[], gap = "18px", rowGap = gap): SiteNode =>
-  box(name, "div", { display: "grid", columns: 3, gap, align: "stretch" }, children, { tablet: { columns: 2 }, mobile: { columns: 1, gap: rowGap } });
+/** Three across on a computer; on a tablet one under the other unless said (two cards of a 577 px tablet would be under 260 px each, 0.70). */
+const grid = (name: string, children: SiteNode[], gap = "18px", rowGap = gap, tabletColumns = 1): SiteNode =>
+  box(name, "div", { display: "grid", columns: 3, gap, align: "stretch" }, children, { tablet: { columns: tabletColumns, gap: rowGap }, mobile: { columns: 1, gap: rowGap } });
+/**
+ * A card's sides are a share of its width on a computer (0.70): 5 % is the Figma's 24 px of a 1440 page, and at 1024 it leaves the text 240 px
+ * at least in three columns. On a tablet and a phone (one card a row) the Figma's 24 px.
+ */
+const CARD_SIZES = { tablet: { padding: sides("24px", "24px") } };
 const card = (icon: string, title: string, body: string, background: Style["background"] = "surface"): SiteNode =>
-  box("Cartão", "article", { display: "flex", direction: "column", gap: "12px", padding: sides("24px", "24px"), radius: "16px", background }, [
+  box("Cartão", "article", { display: "flex", direction: "column", gap: "12px", padding: sides("24px", "5%"), radius: "16px", background }, [
     paragraph(icon, { fontSize: "25px", fontWeight: 700, lineHeight: 1.2, color: "accent", margin: sides("0px", "0px") }, undefined, "Ícone"),
     heading(title, 3, { fontSize: "21px", fontWeight: 700, lineHeight: 1.2, color: "ink", margin: sides("0px", "0px") }),
     paragraph(body, { fontSize: "14px", lineHeight: 1.4, color: "muted", margin: sides("0px", "0px") }),
-  ]);
+  ], CARD_SIZES);
 
 function build(title: string, mode: ModelMode): SiteContent {
   const hero = box(
@@ -70,13 +76,15 @@ function build(title: string, mode: ModelMode): SiteContent {
     ]),
   ]);
 
+// Side by side only on a computer (0.70): on a tablet the photo goes above the text, the whole width, as on the phone (on a 577 px tablet the
+  // text's 320 px left the photo a thumbnail).
   const editorial = box("Apresentação com imagem", "section", { background: "surface", padding: SECTION_PAD }, [
     box(
       "Imagem e texto",
       "div",
       { display: "grid", columns: 2, gap: "36px", align: "start", maxWidth: "1280px", margin: sides("0px", "auto") },
       [
-        photo(mode === "preview" ? "trainix-foto" : "trainix-foto", "16:9", { radius: "20px" }, { mobile: {} }, "Foto do método"),
+        photo("trainix-foto", "16:9", { radius: "20px" }, undefined, "Foto do método"),
         box("Texto", "div", { display: "flex", direction: "column", gap: "20px", align: "start" }, [
           eyebrow("MÉTODO E RESULTADOS"),
           h2("Uma estratégia sob medida para você.", 39, 29),
@@ -87,7 +95,7 @@ function build(title: string, mode: ModelMode): SiteContent {
           whatsappButton(),
         ]),
       ],
-      { mobile: { columns: 1, gap: "25px" } },
+      { tablet: { columns: 1, gap: "25px" } },
     ),
   ], { tablet: { padding: sides("70px", "40px") }, mobile: { padding: SECTION_PAD_MOBILE } });
 
@@ -161,7 +169,7 @@ function build(title: string, mode: ModelMode): SiteContent {
           paragraph(say(mode, "8+ anos de experiência    •    Atendimento individual"), { fontSize: "15px", fontWeight: 600, color: "accent", margin: sides("0px", "0px") }, undefined, "Destaques (ex.: experiência)"),
         ]),
       ],
-      { mobile: { columns: 1, gap: "25px" } },
+      { tablet: { columns: 1, gap: "25px" } },
     ),
   ]);
 
@@ -174,7 +182,7 @@ function build(title: string, mode: ModelMode): SiteContent {
     "Números e conquistas",
     "section",
     { background: "surface", padding: sides("45px", "80px", "55px") },
-    [column({}, [grid("Métricas", [stat("+500", "alunos acompanhados"), stat("98%", "nível de satisfação"), stat("8+", "anos de experiência")], "25px", "25px")])],
+    [column({}, [grid("Métricas", [stat("+500", "alunos acompanhados"), stat("98%", "nível de satisfação"), stat("8+", "anos de experiência")], "25px", "25px", 3)])],
     { tablet: { padding: sides("45px", "40px", "55px") }, mobile: { padding: sides("45px", "22px", "55px") } },
   );
 
@@ -182,7 +190,7 @@ function build(title: string, mode: ModelMode): SiteContent {
     box(
       "Plano",
       "article",
-      { display: "flex", direction: "column", gap: "15px", align: "start", padding: sides("25px", "25px"), radius: "20px", background: highlight ? "dark" : "bg" },
+      { display: "flex", direction: "column", gap: "15px", align: "start", padding: sides("25px", "5%"), radius: "20px", background: highlight ? "dark" : "bg" },
       [
         paragraph(highlight ? say(mode, label) : label, { fontSize: "12px", fontWeight: 700, color: highlight ? "accentOnDark" : "muted", margin: sides("0px", "0px") }, undefined, highlight ? "Selo de destaque (opcional)" : undefined),
         heading(name, 3, { fontSize: "24px", fontWeight: 700, lineHeight: 1.2, color: highlight ? "onDark" : "ink", margin: sides("0px", "0px") }),
@@ -199,6 +207,7 @@ function build(title: string, mode: ModelMode): SiteContent {
         ),
         whatsappButton(),
       ],
+      { tablet: { padding: sides("25px", "25px") } },
     );
   const pricing = band("Planos e investimento", "surface", [
     eyebrow("PLANOS"),

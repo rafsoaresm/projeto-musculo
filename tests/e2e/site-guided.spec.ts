@@ -94,6 +94,15 @@ test("guided editor: tabs, every page of the site, the section outlined on the p
   preview = await openPreview(page);
   await expect(preview.getByText("Quem eu sou e como trabalho")).toBeVisible();
   await expect(preview.locator("[data-guided-current]")).toBeInViewport();
+  // The width of the preview (0.70): the button pressed is the page shown, and the chosen section stays in view after switching.
+  for (const width of ["Celular", "Computador"]) {
+    const chosen = preview.getByRole("button", { name: width, exact: true });
+    if (!(await chosen.isVisible())) continue;
+    await chosen.click();
+    await expect(chosen).toHaveAttribute("aria-pressed", "true");
+    await expect(preview.locator(".guided-frame")).toHaveAttribute("data-width", width.toLowerCase());
+    await expect(preview.locator("[data-guided-current]")).toBeInViewport();
+  }
   await expect(preview.locator("footer.site-footer")).toContainText("WhatsApp");
   // A click on a part of the page chooses it (on a phone the preview closes and its fields open).
   await preview.locator("header.site-header").click();
