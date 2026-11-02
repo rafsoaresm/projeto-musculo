@@ -1,6 +1,7 @@
 import { type ReactNode } from "react";
 import { IllustrationView } from "./illustrations";
 import { WhatsAppIcon } from "./whatsapp-icon";
+import { DEMO_PHOTOS, demoPhotoUrl } from "./models/demo-photos";
 import {
   HOME,
   allNodes,
@@ -84,6 +85,8 @@ interface Ctx {
   anchors: ReadonlySet<string>;
   /** The first highlight of the page, which holds its only first-level heading. */
   firstHero: string | null;
+  /** Where the models' sample photos are (`<mount>/site-models/`): given while the site is being made, never on the published page. */
+  demoFolder?: string;
   /** In front of the DOM id of an anchor, so a page drawn more than once in one window (the frames of the editor) does not repeat an id. */
   scope: string;
   /** The pages of the site: where a button or a link that goes to a page leads. Absent where there is no site around the page (a page drawn alone). */
@@ -189,8 +192,9 @@ const visiting = (ctx: Ctx, where: { visit?: string }) =>
 /** Whether an element has anything to show on the public page: a text, a button or a link with a label and a place to go, an image of the library. */
 function visible(item: ElementNode, ctx: Ctx): boolean {
   if (ctx.edit) return true;
-  if (item.type === "image") return Boolean((item.assetId && ctx.images?.(item.assetId)) || item.illustration);
-  if (item.type === "button" || item.type === "link") return Boolean(item.label && destinationOf(item, ctx));
+  if (item.type === "image") return Boolean((item.assetId && ctx.images?.(item.assetId)) || item.illustration || (item.demo && ctx.demoFolder));
+  // While the site is being made (a sample photo folder is given) a button with nowhere to go yet is shown, as it will be once it has.
+  if (item.type === "button" || item.type === "link") return Boolean(item.label && (destinationOf(item, ctx) || ctx.demoFolder));
   return item.text !== "";
 }
 
@@ -213,6 +217,10 @@ function ElementView({ item, ctx }: { item: ElementNode; ctx: Ctx }) {
         {image ? (
           // eslint-disable-next-line @next/next/no-img-element -- served by this app from a private bucket; the size is known
           <img src={image.src} width={image.width} height={image.height} alt={item.alt} loading="lazy" decoding="async" />
+        ) : item.demo && ctx.demoFolder ? (
+          // A sample photo of the model, while the site is being made (never on the published page: no folder is given there).
+          // eslint-disable-next-line @next/next/no-img-element -- a file of the app; the size is known
+          <img src={demoPhotoUrl(ctx.demoFolder, item.demo)} width={DEMO_PHOTOS[item.demo].width} height={DEMO_PHOTOS[item.demo].height} alt={item.alt} loading="lazy" decoding="async" />
         ) : item.illustration ? (
           // The model's drawing, until a photo is chosen: decorative, so it says nothing to a screen reader.
           <IllustrationView name={item.illustration} className="site-illustration" />
@@ -246,7 +254,14 @@ function ElementView({ item, ctx }: { item: ElementNode; ctx: Ctx }) {
       </span>
     );
   }
-  const where = destinationOf(item, ctx)!;
+  const where = destinationOf(item, ctx);
+  if (!where)
+    return (
+      <span {...attrsOf(item, ctx, classes)}>
+        {icon && <WhatsAppIcon />}
+        {item.label}
+      </span>
+    );
   return (
     <a {...attrsOf(item, ctx, classes)} href={where.href} {...(where.external ? { target: "_blank", rel: "noopener noreferrer" } : {})} {...visiting(ctx, where)}>
       {icon && <WhatsAppIcon />}
@@ -279,7 +294,7 @@ function hasContent(node: SiteNode, ctx: Ctx): boolean {
  * Whether empty parts are left out: on the published page and the previews of it, not in the editors. The Editor Guiado's preview (`locate`) keeps
  * them, so the section being written can be outlined and chosen there before it has anything in it.
  */
-const leavesOutEmpty = (ctx: Ctx) => !ctx.edit && !ctx.locate;
+const leavesOutEmpty = (ctx: Ctx) => !ctx.edit && !ctx.locate && !ctx.demoFolder;
 
 function BoxView({ node, ctx }: { node: BoxNode; ctx: Ctx }) {
   const Tag = node.tag;
@@ -461,7 +476,8 @@ function NodeView({ node, ctx }: { node: SiteNode; ctx: Ctx }) {
       );
     }
     case "faq": {
-      const items = node.items.filter((item) => item.question && item.answer);
+      // While the site is being made a question still to be answered is shown (its answer is what the person writes); published, only answered ones.
+      const items = node.items.filter((item) => item.question && (item.answer || !leavesOutEmpty(ctx)));
       // No question answered yet: on the public page the section would be a title with nothing under it.
       if (leavesOutEmpty(ctx) && items.length === 0) return null;
       return (
@@ -718,6 +734,7 @@ export function SiteRenderer({
   marks,
   forms,
   locate,
+  demoFolder,
 }: {
   content: SiteContent;
   edit?: EditHooks;
@@ -733,6 +750,8 @@ export function SiteRenderer({
   bare?: boolean;
   /** The Editor Guiado's preview: which section is being edited (a node id, or `header` and `footer` for the site's own). */
   locate?: { selected: string | null };
+  /** Where the models' sample photos are: given by the editors and "Ver o modelo", never by the published page or its preview. */
+  demoFolder?: string;
 }) {
   // On the published page a part hidden on every size is not there: it takes no title, no footer's place, and no button leads to it.
   const published = !edit && !locate;
@@ -756,6 +775,7 @@ export function SiteRenderer({
     nav,
     marks,
     forms,
+    demoFolder,
     locate: locate ? { sections: new Set(content.blocks.map((entry) => entry.id)), selected: locate.selected } : undefined,
   };
   const part = (name: "header" | "footer") =>
@@ -784,7 +804,7 @@ export function SiteRenderer({
             </p>
           )}
           {nav && <SiteMenu nav={nav} edit={edit !== undefined} scope={scope} links={menuLinks(content, existing, nav, scope)} />}
-          {content.headerCta && <HeaderCta label={content.headerCta.label} whatsapp={content.contact.whatsapp} edit={edit !== undefined} />}
+          {content.headerCta && <HeaderCta label={content.headerCta.label} whatsapp={content.contact.whatsapp} edit={edit !== undefined || Boolean(demoFolder)} />}
         </header>
       )}
       <main className="site-main" data-page-root={edit ? "" : undefined}>

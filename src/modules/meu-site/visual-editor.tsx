@@ -5,7 +5,7 @@ import { HOME, componentById, componentsOf, pageById, pageContent, pagesOf, refe
 import { AUTOSAVE_DELAY_MS } from "./autosave";
 import { COMPACT_QUERY, CanvasSurface, EditorContext, canvasHooks, useCompact, type CanvasControls, type Drag, type EditorApi, type ManyAction, type NodeAction } from "./editor-canvas";
 import { BlockInspector, PageSettings, type ImageSupport } from "./editor-inspector";
-import { editorImageUrl, libraryCssImages, libraryImages } from "./image-urls";
+import { demoFolder, editorImageUrl, libraryCssImages, libraryImages } from "./image-urls";
 import type { RemoveResult, UploadResult } from "./image-picker";
 import type { AssetRow } from "@/db/site-assets";
 import { useMountPath } from "@/components/use-mount-path";
@@ -865,9 +865,9 @@ export function VisualEditor(props: VisualEditorProps) {
               interactive={mode === "edit"}
               page={(size) =>
                 mode === "edit" ? (
-                  <SiteRenderer content={resolved} edit={hooks} images={imageResolver} bare={Boolean(editing)} nav={menuEdit} />
+                  <SiteRenderer content={resolved} edit={hooks} images={imageResolver} bare={Boolean(editing)} nav={menuEdit} demoFolder={demoFolder(base)} />
                 ) : (
-                  <SiteRenderer content={pageContent(resolvedPage, currentId)} images={imageResolver} scope={`${size}-`} nav={siteNav(realContent, currentId, () => "#", showPage)} />
+                  <SiteRenderer content={pageContent(resolvedPage, currentId)} images={imageResolver} scope={`${size}-`} nav={siteNav(realContent, currentId, () => "#", showPage)} demoFolder={demoFolder(base)} />
                 )
               }
             />

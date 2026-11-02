@@ -6,7 +6,7 @@
  * and the light text on the dark blocks (4.5:1). A color that passes is used as it is. Pure arithmetic: it writes the page's style sheet on the
  * server and tells the editor what was adjusted.
  */
-import { HEX_COLOR, contrast, parseHex, toHex, type Rgb } from "./brand-color";
+import { HEX_COLOR, contrast, luminance, parseHex, toHex, type Rgb } from "./brand-color";
 
 export const PALETTE_KEYS = ["primary", "background", "surface", "ink", "muted", "dark"] as const;
 export type PaletteKey = (typeof PALETTE_KEYS)[number];
@@ -72,21 +72,21 @@ export function paletteVars(palette: Palette): PaletteVars {
   const muted = readable(parseHex(palette.muted), grounds, 4.5, awayFrom(bg));
   const primary = parseHex(palette.primary);
   const accent = readable(primary, grounds, 4.5, awayFrom(bg));
-  // The filled block keeps the primary when a label reads on it; otherwise it is darkened (or lightened) only as far as one does.
-  const labels: Rgb[] = [WHITE, [16, 22, 28]];
+  // The filled block keeps the primary when white reads on it. A dark or middle primary is darkened only as far as white does (the models put
+  // white on their filled bands); a light one (a yellow) keeps its color and takes the dark label.
+  const DARK_LABEL: Rgb = [16, 22, 28];
   let solid = primary;
-  let on = labels[0]!;
-  for (let step = 0; step * STEP <= 1; step++) {
-    const candidate = mix(primary, BLACK, step * STEP);
-    const label = contrast(candidate, labels[0]!) >= contrast(candidate, labels[1]!) ? labels[0]! : labels[1]!;
-    if (contrast(candidate, label) >= 4.5) {
-      solid = candidate;
-      on = label;
-      break;
-    }
+  let on: Rgb = WHITE;
+  if (contrast(primary, WHITE) < 4.5) {
+    if (luminance(primary) > 0.4 && contrast(primary, DARK_LABEL) >= 4.5) on = DARK_LABEL;
+    else
+      for (let step = 1; step * STEP <= 1; step++) {
+        solid = mix(primary, BLACK, step * STEP);
+        if (contrast(solid, WHITE) >= 4.5) break;
+      }
   }
   const dark = parseHex(palette.dark);
-  const onDark = awayFrom(dark) === WHITE ? WHITE : (labels[1] as Rgb);
+  const onDark = awayFrom(dark) === WHITE ? WHITE : DARK_LABEL;
   const onDarkMuted = readable(mix(onDark, dark, 0.25), [dark], 4.5, onDark);
   return {
     bg: toHex(bg),

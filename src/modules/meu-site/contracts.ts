@@ -5,6 +5,7 @@ import { HEX_COLOR } from "./brand-color";
 import { PALETTE_KEYS, type PaletteKey } from "./site-palette";
 import { ACCENTS, DEFAULT_THEME, FONTS, MODES, WIDTHS } from "./site-theme";
 import { nodeAssetIds } from "./screens";
+import { DEMO_PHOTO_KEYS, DEMO_PREFIX } from "./models/demo-photos";
 import { styleSchema, type Style } from "./style";
 
 /**
@@ -249,6 +250,8 @@ const imageShape = {
   ratio: z.enum(IMAGE_RATIOS).optional(),
   /** Drawn while no picture is chosen (a model's banner): the person replaces it with a photo of their own. */
   illustration: z.enum(ILLUSTRATIONS).optional(),
+  /** A sample photo of a site model (models/demo-photos.ts): drawn while the site is made, never on the published page. */
+  demo: z.enum(DEMO_PHOTO_KEYS).optional(),
 };
 
 const hero = z.object({ ...base, ...heroShape }).strict();
@@ -1006,7 +1009,9 @@ export function publishIssues(
     else if (item.type === "button" || item.type === "link") destination(at, label, item);
     else if (item.type === "image") {
       // A model's drawing stands in until a photo is chosen: nothing to ask for then.
-      if (!item.assetId && !item.illustration) add(at, item.id, `${label}: escolha a imagem.`);
+      if (!item.assetId && item.demo)
+        add(at, item.id, `${label}: é uma foto de exemplo do modelo e não aparece no site publicado. Troque por uma foto sua.`);
+      else if (!item.assetId && !item.illustration) add(at, item.id, `${label}: escolha a imagem.`);
       else if (item.assetId && assetIds && !assetIds.has(item.assetId)) add(at, item.id, `${label}: a imagem escolhida não está mais na biblioteca. Escolha outra.`);
       if (item.assetId && !item.alt) add(at, item.id, `${label}: descreva a imagem para quem não consegue vê-la (texto alternativo).`);
     }
@@ -1030,6 +1035,8 @@ export function publishIssues(
     if (assetIds)
       for (const assetId of nodeAssetIds(b))
         if (!assetIds.has(assetId)) add(at, b.id, `${label}: a imagem de fundo escolhida não está mais na biblioteca. Escolha outra ou tire o fundo.`);
+    if ([b.style, b.styleTablet, b.styleMobile].some((style) => style?.bgImage?.startsWith(DEMO_PREFIX)))
+      add(at, b.id, `${label}: o fundo é uma foto de exemplo do modelo e não aparece no site publicado. Troque por uma foto sua.`);
     switch (b.type) {
       case "hero":
         if (!b.heading) add(at, b.id, `${label}: escreva o título do destaque.`);

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Eye, Redo2, Undo2, X } from "lucide-react";
 import { useMountPath } from "@/components/use-mount-path";
 import { HOME, pagesOf, referencedAssetIds, resolveServices, type PublishIssue, type SiteContent } from "./contracts";
-import { editorImageUrl, libraryCssImages, libraryImages, previewPageUrl } from "./image-urls";
+import { demoFolder, editorImageUrl, libraryCssImages, libraryImages, previewPageUrl } from "./image-urls";
 import { buildSiteCss } from "./site-css";
 import type { ServiceChoice } from "@/db/sites";
 import type { ImageSupport } from "./editor-inspector";
@@ -137,7 +137,7 @@ export function GuidedEditor(props: {
   };
 
   const preview = (
-    <GuidedPreview content={resolved} pageId={state.pageId} selected={state.tab === "conteudo" ? state.section : null} css={css} images={resolver} onPick={pick} onPage={showPage} />
+    <GuidedPreview content={resolved} pageId={state.pageId} selected={state.tab === "conteudo" ? state.section : null} css={css} images={resolver} onPick={pick} onPage={showPage} demoFolder={demoFolder(base)} />
   );
 
   return (

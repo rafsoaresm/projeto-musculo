@@ -240,7 +240,8 @@ export type StyleKey = keyof Style;
 export const isEmptyStyle = (style: Style | undefined): boolean => !style || Object.keys(style).length === 0;
 
 /** The images of the library that a style uses. */
-export const styleAssetIds = (style: Style | undefined): string[] => (style?.bgImage ? [style.bgImage] : []);
+/** The images of the library a style uses; a sample photo of a model (`modelo:…`) is not one of them. */
+export const styleAssetIds = (style: Style | undefined): string[] => (style?.bgImage && !style.bgImage.startsWith("modelo:") ? [style.bgImage] : []);
 
 // ---- the declarations ----
 
@@ -306,8 +307,9 @@ export function cssDeclarations(input: unknown, context: CssContext): string[] {
     // The text, and the theme's names for text, so what is inside follows (a heading reads --site-ink, not `color`).
     const value = colorCss(s.color);
     add("color", value);
-    add("--site-ink", value);
-    add("--site-text", value);
+    // Not a name set to itself: `--site-ink: var(--site-ink)` is a cycle, which makes the value invalid (the text would fall back to the parent's).
+    if (value !== "var(--site-ink)") add("--site-ink", value);
+    if (value !== "var(--site-text)") add("--site-text", value);
   }
   if (s.background) add("background-color", colorCss(s.background));
   if (s.bgImage) {

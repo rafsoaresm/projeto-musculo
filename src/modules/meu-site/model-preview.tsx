@@ -6,6 +6,9 @@ import { starterOf } from "./page-model";
 import { SITE_MODEL_LABEL, type SiteModel } from "./page-models";
 import { SiteRenderer } from "./renderer";
 import { buildSiteCss } from "./site-css";
+import { demoFolder } from "./image-urls";
+import { demoKeyOf, demoPhotoUrl } from "./models/demo-photos";
+import { useMountPath } from "@/components/use-mount-path";
 import { InlineSiteStyles } from "./site-styles";
 import { siteNav } from "./site-nav";
 
@@ -26,7 +29,19 @@ export function ModelPreview({ model, title, onUse, onClose }: { model: SiteMode
   }, [onClose]);
   const page = useMemo(() => pageContent(content, pageId), [content, pageId]);
   const nav = useMemo(() => siteNav(content, pageId, () => "#", setPageId), [content, pageId]);
-  const css = useMemo(() => buildSiteCss(content, { container: true, imageUrl: () => null }), [content]);
+  // Shown only after a click (never drawn on the server), so the mount path of the window is read here.
+  const folder = demoFolder(useMountPath()());
+  const css = useMemo(
+    () =>
+      buildSiteCss(content, {
+        container: true,
+        imageUrl: (id) => {
+          const demo = demoKeyOf(id);
+          return demo ? demoPhotoUrl(folder, demo) : null;
+        },
+      }),
+    [content, folder],
+  );
 
   useEffect(() => {
     // Opened over the form: the focus goes to "Fechar", stays inside while it is open (Tab goes round), and goes back to "Ver o modelo" after.
@@ -104,7 +119,7 @@ export function ModelPreview({ model, title, onUse, onClose }: { model: SiteMode
           }}
         >
           <InlineSiteStyles css={css} />
-          <SiteRenderer content={page} images={() => null} nav={nav} />
+          <SiteRenderer content={page} images={() => null} nav={nav} demoFolder={folder} />
         </div>
       </div>
       <div className="persist-actions model-preview-actions">

@@ -18,6 +18,7 @@ export function GuidedPreview({
   images,
   onPick,
   onPage,
+  demoFolder,
 }: {
   content: SiteContent;
   pageId: string;
@@ -26,6 +27,8 @@ export function GuidedPreview({
   images: ImageResolver;
   onPick: (section: SectionRef) => void;
   onPage: (pageId: string) => void;
+  /** Where the models' sample photos are (they are shown while the site is being made). */
+  demoFolder?: string;
 }) {
   const frame = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState<"computador" | "celular">("computador");
@@ -70,7 +73,7 @@ export function GuidedPreview({
         {/* A click chooses a section; the keyboard path is the list of sections. */}
         <div ref={frame} className="guided-frame" data-width={width} onClickCapture={click} aria-describedby="previa-dica">
           <InlineSiteStyles css={css} />
-          <SiteRenderer content={page} images={images} nav={nav} locate={{ selected }} />
+          <SiteRenderer content={page} images={images} nav={nav} locate={{ selected }} demoFolder={demoFolder} />
         </div>
       </div>
     </>
