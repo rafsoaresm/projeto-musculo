@@ -30,6 +30,13 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
   - `npm run check`: testes novos `meu-site-models-v1`, `meu-site-palette` e `meu-site-guided-menu`.
   - Comparação visual de cada modelo com o Figma a 1440 e 390 px (`scripts/site-models/qa.sh`), em "Ver o modelo" e no site criado: altura das páginas a até 1% do Figma, sem rolagem lateral a 390.
   - Navegador na montagem raiz: `site-models` (cartões, "Ver o modelo" com as amostras, Esc, largura de celular, criação, Editor Guiado com as seis cores e a imagem de fundo, publicação com o aviso das fotos de exemplo, visitante sem amostras nem fotos de exemplo, menu com âncoras, botões do WhatsApp com o número; e no celular) e `site-guided` adaptado aos modelos novos.
+- **Revisão independente do diff** (antes da PR) achou 13 defeitos reais, todos corrigidos:
+  - **Prévia do editor visual:** tinha deixado de mostrar o site como publicado.
+  - **Contraste da paleta:** os textos agora são conferidos também sobre os cartões, os blocos tingidos e os blocos escuros. Um cartão escuro numa página clara, ou um cinza médio nos blocos escuros, passa a ser ajustado e avisado. O selo laranja sobre o cartão escuro usa um tom próprio.
+  - **Afirmações no site criado** (só aparecem em "Ver o modelo"): o selo "MAIS POPULAR", o que cada plano inclui, o título dos depoimentos, a equipe do modelo Performance e o texto do contato, que falava de um formulário desligado por padrão.
+  - **Cinzas fixos do modelo Premium:** passaram para a paleta.
+  - **Link para uma parte vazia** (do menu ou da página): sai junto com a parte, em vez de levar a lugar nenhum.
+  - **Campos do Editor Guiado:** o nome de um link do menu e o texto do botão do cabeçalho podiam ser apagados só até a última letra; agora apagam por inteiro. A imagem de fundo trocada por uma foto não some mais ao ser tirada (ela só pode ser trocada).
 - **Diferenças do Figma**, registradas nos relatórios de cada modelo:
   - os cartões de etapas, brancos sobre branco no Figma, ficaram com o fundo da página para aparecerem;
   - o formulário de contato é o do app (nome, contato, mensagem e aceite); o do Figma, com envio pelo WhatsApp, é a 0.66;
