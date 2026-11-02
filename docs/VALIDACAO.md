@@ -2,6 +2,17 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.58: Editor Avançado — moldura, prévia e português (Figma `10:218`; defeito 1 da revisão V4; AC19.1, AC19.4, AC19.5)
+
+**Sem migration.** O editor do Frappe foi recompilado (patch 0007) a partir dos commits fixados; a compilação sem o patch novo reproduziu byte a byte os arquivos guardados, antes de aplicá-lo.
+
+- **Moldura** (`src/modules/frappe-editor/frame.ts`): barra de 48 px acima do editor com "Editor Avançado", a trilha "Frappe Builder / Site profissional / Rascunho" (ou "Publicado", quando há página no ar) e "Voltar ao Meu Site", com o endereço calculado na página a partir do mount path. A área do Frappe não foi redesenhada: ela desce a altura da barra. Capturas a 1280 px (lista de páginas e edição de uma página) e no celular conferidas.
+- **Prévia do rascunho** (defeito 1): o editor pedia `/api/method/builder.api.get_page_preview_html` na raiz do domínio, e nada respondia. O patch 0007 faz a prévia (e a prévia dos modelos) pedir `<mount>/site/<endereço>/m/previa?page=…`. A rota nova desenha o **rascunho** da página com o mesmo renderizador da página pública, só para quem edita o site do próprio espaço; sem sessão, outro espaço ou página inexistente respondem o mesmo 404. A política é a da página pública, com `frame-ancestors 'self'` para poder aparecer dentro do editor. Nada é publicado.
+- **Português** (AC19.4): o `__()` do próprio editor lê `window.translated_messages`; a página do editor agora o preenche com o catálogo oficial do Frappe Builder (`pt.po` e `pt_BR.po`, 218 textos) mais um complemento do app (`vendor/frappe-builder/pt-BR-extra.json`, 273 textos das telas essenciais: lista de páginas, nova página e modelos, barra de ferramentas, camadas, propriedades de bloco, publicação, variáveis e configurações da página). Gerado por `scripts/frappe-editor/translations.mjs`. Nenhuma linha do editor mudou para isso.
+- **Verificado localmente:** `npm run check`; navegador na montagem raiz, todos os testes do Frappe (os testes passaram a usar os rótulos em português, e dois cliques por coordenada desceram 48 px por causa da barra); o teste de publicação confere a prévia por pedido direto e dentro da tela de prévia do editor.
+- **Não feito / limites:** textos que o Frappe não passa pelo `__()` e textos da biblioteca de componentes do Frappe (frappe-ui) continuam em inglês; a prévia dos modelos da galeria mostra "Página não encontrada" (os modelos não são páginas do espaço); despublicar páginas do Frappe pela gestão continua fora.
+- **Não verificado:** nada no ar antes do deploy.
+
 ## Fatia 0.57: Meu Site — abas da gestão e duas correções relatadas pelo usuário (Figma `10:76`, `10:119`)
 
 **Sem migration.**
@@ -16,7 +27,8 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
   - "Editar site" não fazia nada: era um link para a própria página com `?editar=1`, e a página já montada não reagia. Agora o botão pede ao painel que abra o editor (o link continua valendo para um acesso novo).
 - **Defeito achado antes de sair:** a página chamava, no servidor, uma função de um módulo de cliente e respondia 500; a função foi para `site-tab-names.ts`, com teste.
 - **Verificado localmente:** `npm run check`; suíte completa de navegador na montagem raiz, 121 testes passaram (as duas falhas da primeira rodada eram do teste de versões, que não abria a aba Publicação).
-- **Não verificado:** o celular do usuário depois da correção; nada foi lido no ar antes do deploy.
+- **Não verificado:** o celular do usuário depois da correção; o ambiente de desenvolvimento não alcança o site publicado (o registro de execução do Webflow não mostrou nenhum pedido nem erro depois do deploy).
+- **CI e deploy:** o CI da PR #58 passou nas duas montagens no commit `c014f14`. Merge `7e32a42`. Implantada: deploy `7d9ac536`, build de 01:05 a 01:07 e deploy até 01:07 de 02/11/2026, status `success`.
 
 ## Fatia 0.56: Meu Site — levantamento, criação em dois passos, editor fixo, cabeçalho da gestão e três correções (Figma `10:2`, `10:46`, `10:76`, `10:119`)
 
