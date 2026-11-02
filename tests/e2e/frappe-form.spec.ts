@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { showTab } from "./site-helpers";
 import { createProfessional, localIP, newActor, policyRefusals, trackPolicy } from "./helpers";
 
 /** What the editor asks of its server, asked the way the editor asks (same origin, with the header that marks its calls). */
@@ -32,7 +33,7 @@ async function publish(page: Page, route: string, title: string, blocks: string)
   return name;
 }
 
-const panel = (page: Page) => page.getByRole("region", { name: "Editor novo (Frappe Builder)" });
+const panel = (page: Page) => page.getByRole("region", { name: "Formulários e mensagens" });
 
 test("frappe form: a form drawn with the editor's blocks is on the page only when the site opens it, goes to the inbox of Leads with the lines of its fields, and the panel says what each form can do", async ({
   page,
@@ -49,7 +50,9 @@ test("frappe form: a form drawn with the editor's blocks is on the page only whe
   await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Confirmar e criar site" }).click();
   await expect(page).toHaveURL(/\/profissional\/meu-site\/editor/);
   await page.goto("./profissional/meu-site");
+  await showTab(page, "Formulários e mensagens");
   await expect(panel(page)).toBeVisible();
+  await showTab(page, "Formulários e mensagens");
   await expect(panel(page).getByText("Nenhum formulário nas páginas que estão no ar.")).toBeVisible();
 
   // ---- two pages on the air: a complete form, and a newsletter that has no field for the name ----
@@ -58,10 +61,13 @@ test("frappe form: a form drawn with the editor's blocks is on the page only whe
 
   // ---- the panel: what each form can do, and the switch (the environment of this run has the public forms open; the site is off) ----
   await page.goto("./profissional/meu-site");
+  await showTab(page, "Formulários e mensagens");
   const forms = panel(page).getByRole("list", { name: "Formulários das páginas no ar" });
   await expect(forms.getByRole("listitem").filter({ hasText: "/contato" })).toContainText("pronto — nome, e-mail, telefone, mensagem e um outro campo.");
   await expect(forms.getByRole("listitem").filter({ hasText: "/boletim" })).toContainText("incompleto e não aparece para quem visita: Falta o campo do nome: um campo de texto.");
+  await showTab(page, "Formulários e mensagens");
   await expect(panel(page)).toContainText("Formulários abertos pela plataforma");
+  await showTab(page, "Formulários e mensagens");
   await expect(panel(page)).toContainText("Recebimento desligado");
 
   // ---- a visitor: the page is there, the form is not (the site is not receiving), and a program posting to the address is refused ----
@@ -74,8 +80,11 @@ test("frappe form: a form drawn with the editor's blocks is on the page only whe
   expect((await raw({ pagina: "contato", formulario: "contact-form", aceite: "on" })).status()).toBe(404);
 
   // ---- the switch of the site ----
+  await showTab(page, "Formulários e mensagens");
   await panel(page).getByRole("button", { name: "Ligar o recebimento de mensagens" }).click();
+  await showTab(page, "Formulários e mensagens");
   await expect(panel(page).getByText("O site passou a receber as mensagens do formulário.")).toBeVisible();
+  await showTab(page, "Formulários e mensagens");
   await expect(panel(page)).toContainText("Recebimento ligado");
 
   // ---- the page now has the form, as a plain form with the box of the notice and a bait that a person never meets ----
@@ -135,7 +144,9 @@ test("frappe form: a form drawn with the editor's blocks is on the page only whe
 
   // ---- the site stops receiving: the form leaves the page at the next visit and the address refuses ----
   await page.goto("./profissional/meu-site");
+  await showTab(page, "Formulários e mensagens");
   await panel(page).getByRole("button", { name: "Desligar o recebimento de mensagens" }).click();
+  await showTab(page, "Formulários e mensagens");
   await expect(panel(page).getByText("O site parou de receber as mensagens do formulário.")).toBeVisible();
   await visitor.goto(`./site/${slug}/contato`);
   await expect(visitor.locator("form")).toHaveCount(0);
@@ -156,8 +167,11 @@ test("frappe form, from the editor itself: the form of the editor's own library,
   await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Confirmar e criar site" }).click();
   await expect(page).toHaveURL(/\/profissional\/meu-site\/editor/);
   await page.goto("./profissional/meu-site");
+  await showTab(page, "Formulários e mensagens");
   await expect(panel(page)).toBeVisible();
+  await showTab(page, "Formulários e mensagens");
   await panel(page).getByRole("button", { name: "Ligar o recebimento de mensagens" }).click();
+  await showTab(page, "Formulários e mensagens");
   await expect(panel(page)).toContainText("Recebimento ligado");
 
   // ---- a page from scratch; the library ("+") has the three forms of the editor; one is dragged onto the page ----
@@ -191,6 +205,7 @@ test("frappe form, from the editor itself: the form of the editor's own library,
 
   // ---- the panel reads the form of the editor's library as a working form ----
   await page.goto("./profissional/meu-site");
+  await showTab(page, "Formulários e mensagens");
   const forms = panel(page).getByRole("list", { name: "Formulários das páginas no ar" });
   await expect(forms.getByRole("listitem")).toHaveCount(1);
   await expect(forms).toContainText("pronto — nome, e-mail e mensagem.");

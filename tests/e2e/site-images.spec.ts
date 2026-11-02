@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { openEditor, showTab } from "./site-helpers";
 import { createProfessional, localIP, newActor, png } from "./helpers";
 
 const state = (page: Page) => page.getByRole("region", { name: "Estado do site" });
@@ -49,9 +50,9 @@ test("images: sent in the editor, shown on the page, public only through the pub
   await page.goto("./profissional/meu-site");
   await page.getByRole("button", { name: "Escolher Editor Guiado" }).click();
   await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Confirmar e criar site" }).click();
+  await showTab(page, "Publicação");
   await expect(state(page).getByText("Fora do ar")).toBeVisible();
-  await state(page).getByRole("button", { name: "Abrir o editor visual" }).click();
-  await expect(editor(page)).toBeVisible();
+  await openEditor(page);
 
   // The contact the starter page's button points to, so the page can be published.
   await panel(page, "Propriedades");
@@ -160,8 +161,11 @@ test("images: sent in the editor, shown on the page, public only through the pub
 
   // Taking the page offline takes its images with it, at once.
   await editor(page).getByRole("button", { name: "Fechar o editor" }).click();
+  await showTab(page, "Publicação");
   await state(page).getByRole("button", { name: "Tirar do ar" }).click();
+  await showTab(page, "Publicação");
   await state(page).getByRole("group", { name: "Tirar o site do ar?" }).getByRole("button", { name: "Confirmar e tirar do ar" }).click();
+  await showTab(page, "Publicação");
   await expect(state(page).getByText("O site saiu do ar.")).toBeVisible();
   expect((await anonymous.page.request.get(`./s/${slug}/m/${used}`)).status()).toBe(404);
   expect((await anonymous.page.request.get(`./s/${slug}`)).status()).toBe(404);

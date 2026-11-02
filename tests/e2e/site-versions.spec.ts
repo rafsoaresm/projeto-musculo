@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { newActor } from "./helpers";
-import { addAtEnd, closeEditor, editor, inspector, library, openEditor, panel, selectLayer, startEditor as startSite } from "./site-helpers";
+import { addAtEnd, closeEditor, editor, inspector, library, openEditor, panel, selectLayer, startEditor as startSite, showTab } from "./site-helpers";
 
 const startEditor = (page: Page) => startSite(page, "Marina Versões");
 const field = (page: Page, label: string) => inspector(page).getByRole("textbox", { name: label, exact: true });
@@ -59,16 +59,24 @@ test("versions: each one can be seen as it was published, compared with another 
   await closeEditor(page);
 
   // ---- the list of versions: what can be done with each one ----
+  await showTab(page, "Publicação");
   await expect(versions(page).getByRole("listitem")).toHaveCount(2);
+  await showTab(page, "Publicação");
   await expect(versions(page).getByRole("link", { name: "Ver a versão 1" })).toBeVisible();
+  await showTab(page, "Publicação");
   await expect(versions(page).getByRole("link", { name: "Ver a versão 2" })).toBeVisible();
+  await showTab(page, "Publicação");
   await expect(versions(page).getByRole("link", { name: "O que mudou na versão 2 desde a 1" })).toBeVisible();
   // The first version has none before it to be compared with; only the one that is public has "the draft since".
+  await showTab(page, "Publicação");
   await expect(versions(page).getByRole("link", { name: /^O que mudou na versão 1/ })).toHaveCount(0);
+  await showTab(page, "Publicação");
   await expect(versions(page).getByRole("link", { name: "O que mudou no rascunho desde a versão 2" })).toBeVisible();
+  await showTab(page, "Publicação");
   await expect(versions(page).getByRole("link", { name: "O que mudou no rascunho desde a versão 1" })).toHaveCount(0);
 
   // ---- a version as it was published: no page of version 2, and not the paragraph that came later ----
+  await showTab(page, "Publicação");
   await versions(page).getByRole("link", { name: "Ver a versão 1" }).click();
   await expect(page.getByRole("heading", { name: "Versão 1", level: 1 })).toBeVisible();
   await expect(page.getByText("Esta é a versão 1 como foi publicada")).toBeVisible();
@@ -77,9 +85,11 @@ test("versions: each one can be seen as it was published, compared with another 
   await expect(frame(page).getByText("Atendimento presencial e online")).toHaveCount(0);
   await expect(page.getByRole("region", { name: "O que mudou" })).toHaveCount(0);
   await page.getByRole("link", { name: "Voltar às versões" }).click();
+  await showTab(page, "Publicação");
   await expect(page.getByRole("heading", { name: "Versões publicadas" })).toBeVisible();
 
   // ---- what changed from version 1 to version 2: the list, grouped, and the page with the new block marked ----
+  await showTab(page, "Publicação");
   await versions(page).getByRole("link", { name: "O que mudou na versão 2 desde a 1" }).click();
   await expect(page).toHaveURL(/\/previa\?versao=2&desde=1$/);
   await expect(page.getByRole("heading", { name: "O que mudou da versão 1 para a versão 2" })).toBeVisible();
@@ -122,6 +132,7 @@ test("versions: each one can be seen as it was published, compared with another 
   await field(page, "Título do site").fill("Marina Personal Trainer");
   await save(page);
   await closeEditor(page);
+  await showTab(page, "Publicação");
   await versions(page).getByRole("link", { name: "O que mudou no rascunho desde a versão 2" }).click();
   await expect(page.getByRole("heading", { name: "Prévia do rascunho", level: 1 })).toBeVisible();
   await expect(page.getByRole("heading", { name: "O que mudou da versão 2 para o rascunho" })).toBeVisible();
@@ -144,6 +155,7 @@ test("versions: each one can be seen as it was published, compared with another 
 
   // ---- bringing a version back: the draft becomes it, pages included (and without them for the first one), and what is public does not change ----
   await page.goto("./profissional/meu-site");
+  await showTab(page, "Publicação");
   await versions(page).getByRole("button", { name: "Usar a versão 1 como rascunho" }).click();
   await page.getByRole("button", { name: "Confirmar: usar a versão 1 como rascunho" }).click();
   // The note of the first time is still on the screen: what says this one is done is the confirmation going away (the draft was replaced with it).
@@ -155,6 +167,7 @@ test("versions: each one can be seen as it was published, compared with another 
   await selectLayer(page, "Configurações da página");
   await expect(field(page, "Título do site")).toHaveValue(oldTitle);
   await closeEditor(page);
+  await showTab(page, "Publicação");
   await versions(page).getByRole("button", { name: "Usar a versão 2 como rascunho" }).click();
   await page.getByRole("button", { name: "Confirmar: usar a versão 2 como rascunho" }).click();
   // The note of the first time is still on the screen: what says this one is done is the confirmation going away (the draft was replaced with it).
@@ -164,6 +177,7 @@ test("versions: each one can be seen as it was published, compared with another 
   expect(await pageNames(page)).toEqual(["Início", "Sobre mim"]);
   await closeEditor(page);
   // The draft is version 2 again: the public page never stopped being it.
+  await showTab(page, "Publicação");
   await versions(page).getByRole("link", { name: "O que mudou no rascunho desde a versão 2" }).click();
   await expect(page.getByText("Nada mudou entre estas duas versões.")).toBeVisible();
 
@@ -188,6 +202,7 @@ test("versions on a phone: the list has the links, and the version and its chang
   await save(page);
   await publish(page, 2);
   await closeEditor(page);
+  await showTab(page, "Publicação");
   await versions(page).getByRole("link", { name: "O que mudou na versão 2 desde a 1" }).click();
   await expect(page.getByRole("region", { name: "O site", exact: true })).toContainText("O título do site mudou");
   await expect(page.locator(".site-preview")).toBeVisible();

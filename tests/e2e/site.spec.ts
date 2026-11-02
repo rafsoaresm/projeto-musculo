@@ -1,6 +1,6 @@
 import { test, expect, type Locator } from "@playwright/test";
 import { createProfessional, localIP, newActor, noHorizontalOverflow } from "./helpers";
-import { addAtEnd, addSelected, closeEditor, contentTab, editor, inspector, layerNames, library, openEditor, panel, selectLayer, stage, state, styleTab } from "./site-helpers";
+import { addAtEnd, addSelected, closeEditor, contentTab, editor, inspector, layerNames, library, openEditor, panel, selectLayer, stage, state, styleTab, showTab } from "./site-helpers";
 
 test("a professional builds a page in the visual editor, previews it, publishes it, changes it without touching what is public, takes it offline and changes its address", async ({
   page,
@@ -31,15 +31,32 @@ test("a professional builds a page in the visual editor, previews it, publishes 
   await expect(create.getByRole("alert")).toContainText("não pode ser um nome reservado");
   await create.getByLabel("Endereço (letras minúsculas, números e hífens)").fill(slug);
   await create.getByRole("button", { name: "Confirmar e criar site" }).click();
+  await showTab(page, "Publicação");
   await expect(state(page).getByText("Fora do ar")).toBeVisible();
   await noHorizontalOverflow(page);
 
+  // A site fixed in the guided editor shows nothing of the advanced one, in any tab (the user's report of 01/11/2026), and "Editar site" in the
+  // header opens the editor on the page already on the screen.
+  for (const tab of ["Páginas", "Publicação", "Formulários e mensagens", "Configurações"] as const) {
+    await showTab(page, tab);
+    await expect(page.getByRole("main").getByText(/Frappe/)).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "Código livre" })).toHaveCount(0);
+  }
+  await page.getByRole("link", { name: "Editar site" }).click();
+  await expect(editor(page)).toBeVisible();
+  await closeEditor(page);
+
   // A new site is not published at the first click: the call to action points to a WhatsApp that is not filled in. That is a warning, not a
   // blockade: it is shown with the way to publish anyway (which the next scenario takes).
+  await showTab(page, "Publicação");
   await state(page).getByRole("button", { name: "Publicar", exact: true }).click();
+  await showTab(page, "Publicação");
   await expect(state(page).getByRole("list", { name: "Avisos antes de publicar" })).toContainText("WhatsApp");
+  await showTab(page, "Publicação");
   await expect(state(page).getByRole("list", { name: "O que falta para publicar" })).toHaveCount(0);
+  await showTab(page, "Publicação");
   await expect(state(page).getByRole("button", { name: "Publicar mesmo assim" })).toBeVisible();
+  await showTab(page, "Publicação");
   await expect(state(page).getByText("Fora do ar")).toBeVisible();
 
   // The editor: the page in the middle, nothing selected shows the settings of the whole page.
@@ -195,8 +212,11 @@ test("a professional builds a page in the visual editor, previews it, publishes 
   await editor(page).getByRole("button", { name: "Publicar", exact: true }).click();
   await expect(editor(page).getByText("Publicado: o site está no ar na versão 1.")).toBeVisible();
   await closeEditor(page);
+  await showTab(page, "Publicação");
   await expect(state(page).getByText("No ar", { exact: true })).toBeVisible();
+  await showTab(page, "Publicação");
   await expect(page.getByRole("list", { name: "Versões publicadas" }).getByText("Versão 1")).toBeVisible();
+  await showTab(page, "Publicação");
   await expect(state(page).getByText("Endereço:")).toContainText(`/s/${slug}`);
 
   // The page is public, for anybody, with no session.
@@ -254,6 +274,7 @@ test("a professional builds a page in the visual editor, previews it, publishes 
   expect((await anonymous.page.request.get("./s/..%2Fprofissional")).status()).toBe(404);
 
   // The saved draft has its own preview page, which is not indexed.
+  await showTab(page, "Publicação");
   await state(page).getByRole("link", { name: "Ver a prévia do rascunho salvo" }).click();
   await expect(page.getByRole("heading", { name: "Prévia do rascunho", level: 1 })).toBeVisible();
   await expect(page.getByLabel("Prévia da página").getByText("Atende online?")).toBeVisible();
@@ -267,10 +288,13 @@ test("a professional builds a page in the visual editor, previews it, publishes 
   await editor(page).getByRole("button", { name: "Salvar rascunho" }).click();
   await expect(editor(page).getByText("Rascunho salvo.")).toBeVisible();
   await closeEditor(page);
+  await showTab(page, "Publicação");
   await expect(state(page).getByText("Há alterações salvas que ainda não foram publicadas.")).toBeVisible();
   await anonymous.page.reload();
   await expect(anonymous.page.getByText("Título novo ainda sem publicar")).toHaveCount(0);
+  await showTab(page, "Publicação");
   await state(page).getByRole("button", { name: "Publicar uma nova versão" }).click();
+  await showTab(page, "Publicação");
   await expect(state(page).getByText("Publicado: o site está no ar na versão 2.")).toBeVisible();
   await anonymous.page.reload();
   await expect(anonymous.page.getByText("Título novo ainda sem publicar").first()).toBeVisible();
@@ -280,7 +304,9 @@ test("a professional builds a page in the visual editor, previews it, publishes 
   await panel(page, "Propriedades");
   await inspector(page).getByLabel("Descrição para buscadores (opcional)").fill("Descrição que ainda não foi salva");
   await closeEditor(page);
+  await showTab(page, "Publicação");
   await expect(state(page).getByText("Há alterações no editor que ainda não foram salvas.")).toBeVisible();
+  await showTab(page, "Publicação");
   await expect(state(page).getByRole("button", { name: "Publicar uma nova versão" })).toBeDisabled();
   await openEditor(page);
   await panel(page, "Propriedades");
@@ -288,9 +314,11 @@ test("a professional builds a page in the visual editor, previews it, publishes 
   await editor(page).getByRole("button", { name: "Desfazer" }).click();
   await expect(inspector(page).getByLabel("Descrição para buscadores (opcional)")).toHaveValue("Treino com acompanhamento individual");
   await closeEditor(page);
+  await showTab(page, "Publicação");
   await expect(state(page).getByText("Há alterações no editor que ainda não foram salvas.")).toHaveCount(0);
 
   // An earlier version comes back as the draft (and asks first); the public page stays on version 2.
+  await showTab(page, "Publicação");
   const versions = page.getByRole("region", { name: "Versões publicadas" });
   await versions.getByRole("button", { name: "Usar a versão 1 como rascunho" }).click();
   await versions.getByRole("button", { name: /Confirmar: usar a versão 1 como rascunho/ }).click();
@@ -305,16 +333,24 @@ test("a professional builds a page in the visual editor, previews it, publishes 
 
   // Offline: the page answers 404 at once, the releases stay, and only now can the address change.
   await expect(page.getByRole("heading", { name: "Endereço do site" })).toHaveCount(0);
+  await showTab(page, "Publicação");
   await state(page).getByRole("button", { name: "Tirar do ar" }).click();
   // Taking it offline asks first (handoff V4, defect 3): cancelling leaves it on the air.
+  await showTab(page, "Publicação");
   await state(page).getByRole("group", { name: "Tirar o site do ar?" }).getByRole("button", { name: "Cancelar" }).click();
+  await showTab(page, "Publicação");
   await expect(state(page).getByText("No ar").first()).toBeVisible();
+  await showTab(page, "Publicação");
   await state(page).getByRole("button", { name: "Tirar do ar" }).click();
+  await showTab(page, "Publicação");
   await state(page).getByRole("group", { name: "Tirar o site do ar?" }).getByRole("button", { name: "Confirmar e tirar do ar" }).click();
+  await showTab(page, "Publicação");
   await expect(state(page).getByText("O site saiu do ar.")).toBeVisible();
   expect((await anonymous.page.request.get(`./s/${slug}`)).status()).toBe(404);
   expect((await anonymous.page.request.get(sheetUrl)).status()).toBe(404);
+  await showTab(page, "Publicação");
   await expect(page.getByRole("list", { name: "Versões publicadas" }).getByText("Versão 2")).toBeVisible();
+  await showTab(page, "Publicação");
   const address = page.getByRole("form", { name: "Mudar o endereço do site" });
   await address.getByLabel(/^Endereço/).fill("gestor");
   await address.getByRole("button", { name: "Mudar o endereço" }).click();
@@ -323,6 +359,7 @@ test("a professional builds a page in the visual editor, previews it, publishes 
   await address.getByRole("button", { name: "Mudar o endereço" }).click();
   await expect(address.getByText("Endereço mudado.")).toBeVisible();
   await page.reload();
+  await showTab(page, "Publicação");
   await expect(state(page).getByText("Endereço:")).toContainText(`/s/${slug}-novo`);
 
   // The editor is not for visitors.
@@ -342,6 +379,7 @@ test("blocks go from the library into the tree: between blocks, into containers 
   await page.goto("./profissional/meu-site");
   await page.getByRole("button", { name: "Escolher Editor Guiado" }).click();
   await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Confirmar e criar site" }).click();
+  await showTab(page, "Publicação");
   await expect(state(page).getByText("Fora do ar")).toBeVisible();
   await openEditor(page);
 

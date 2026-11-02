@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useReducer, useRef, useState, useTransition } from "react";
+import { useEffect, useReducer, useRef, useState, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LayoutTemplate } from "lucide-react";
@@ -8,7 +8,10 @@ import { useMountPath } from "@/components/use-mount-path";
 import { useUnsavedGuard } from "@/components/use-unsaved-guard";
 import type { AssetRow } from "@/db/site-assets";
 import type { ReleaseRow, ServiceChoice } from "@/db/sites";
-import { PUBLIC_WARNING, type PublishIssue, type SiteContent } from "./contracts";
+import { PUBLIC_WARNING, pagesOf, type PublishIssue, type SiteContent } from "./contracts";
+import { SiteTabs } from "./site-tabs";
+import type { SiteTab } from "./site-tab-names";
+import { EDIT_SITE_EVENT } from "./edit-site-button";
 import { PublishIssues } from "./publish-issues";
 import { historyReducer, startHistory } from "./editor-history";
 import { PREPARE_MESSAGE, prepareImage } from "./image-upload";
@@ -31,6 +34,12 @@ interface Props {
   canEdit: boolean;
   /** Open the editor right away ("Editar site" in the header of the page). */
   startEditing?: boolean;
+  /** The tab that opens first (`?aba=`). */
+  initialTab: SiteTab;
+  /** Whether the editor of this site was chosen in the two-step creation (decision D1). */
+  engineFixed: boolean;
+  /** What other parts of the page put in each tab: the advanced editor's pages and forms (old sites only) and the settings. */
+  extra: { pages?: ReactNode; forms?: ReactNode; settings: ReactNode };
 }
 
 /** One answer per place: next to the button that was pressed, so two buttons never share (or repeat) a message. */
@@ -55,7 +64,7 @@ type Note = ReturnType<typeof useNote>;
  * draft saved, and what is public changes only on "Publicar". The editor is a window over this state: the
  * answers to what is pressed inside it are shown inside it, and the ones of this screen stay here.
  */
-export function SiteWorkspace({ slug, initial, live, releases, services, images, inquiries, canEdit, startEditing = false }: Props) {
+export function SiteWorkspace({ slug, initial, live, releases, services, images, inquiries, canEdit, startEditing = false, initialTab, engineFixed, extra }: Props) {
   const router = useRouter();
   const mountPath = useMountPath();
   const [library, setLibrary] = useState<AssetRow[]>(images.library);
@@ -65,6 +74,12 @@ export function SiteWorkspace({ slug, initial, live, releases, services, images,
   const [revision, setRevision] = useState(initial.revision);
   const [editorOpen, setEditorOpen] = useState(startEditing && canEdit);
   const [confirmingUnpublish, setConfirmingUnpublish] = useState(false);
+  useEffect(() => {
+    if (!canEdit) return;
+    const open = () => setEditorOpen(true);
+    window.addEventListener(EDIT_SITE_EVENT, open);
+    return () => window.removeEventListener(EDIT_SITE_EVENT, open);
+  }, [canEdit]);
   const stateNote = useNote();
   const saveNote = useNote();
   const editorNote = useNote();
@@ -219,6 +234,47 @@ export function SiteWorkspace({ slug, initial, live, releases, services, images,
 
   return (
     <>
+      <SiteTabs
+        initial={initialTab}
+        panels={{
+          paginas: (
+            <>
+      <div className="tab-grid">
+        <section className="panel" aria-labelledby="paginas-site">
+          <h2 id="paginas-site">Páginas do site</h2>
+          <ul className="small" aria-label="Páginas do site">
+            <li>
+              Página inicial · {live ? (unpublished ? "No ar, com alterações não publicadas" : "No ar") : "Rascunho"}
+            </li>
+            {pagesOf(content).map((entry) => (
+              <li key={entry.id}>
+                {entry.title || "Página sem título"} · {live ? (unpublished ? "No ar, com alterações não publicadas" : "No ar") : "Rascunho"}
+              </li>
+            ))}
+          </ul>
+          <p className="small muted">Conteúdo, seções, identidade e SEO são editados pelo Editor Guiado.</p>
+          {canEdit && (
+            <div className="persist-actions">
+              <button type="button" className="button primary" onClick={() => setEditorOpen(true)}>
+                <LayoutTemplate size={20} /> Abrir o editor visual
+              </button>
+            </div>
+          )}
+        </section>
+        <section className="panel" aria-labelledby="sobre-edicao">
+          <h2 id="sobre-edicao">Sobre a edição</h2>
+          <p className="small">
+            {engineFixed
+              ? "Este site só pode ser alterado no Editor Guiado. A opção de trocar editor não está disponível."
+              : "Este site foi criado antes da escolha fixa do editor; a troca, enquanto existir, fica em Configurações."}
+          </p>
+        </section>
+      </div>
+              {extra.pages}
+            </>
+          ),
+          publicacao: (
+            <>
       <section className="panel" aria-labelledby="estado-site">
         <h2 id="estado-site">Estado do site</h2>
         <p>
@@ -241,11 +297,6 @@ export function SiteWorkspace({ slug, initial, live, releases, services, images,
         <p className="small muted">{PUBLIC_WARNING}</p>
         {!editorOpen && <PublishIssues issues={issues} pending={pending} onPublishAnyway={() => publish(stateNote, true)} />}
         <div className="persist-actions">
-          {canEdit && (
-            <button type="button" className="button primary" onClick={() => setEditorOpen(true)}>
-              <LayoutTemplate size={20} /> Abrir o editor visual
-            </button>
-          )}
           <Link className="button secondary" href="/profissional/meu-site/previa">
             Ver a prévia do rascunho salvo
           </Link>
@@ -298,44 +349,6 @@ export function SiteWorkspace({ slug, initial, live, releases, services, images,
         {!canEdit && <p className="small muted">Só o proprietário ou a gestão editam e publicam o site. Você pode ver a prévia do rascunho.</p>}
         {stateNote.element}
         {!editorOpen && saveNote.element}
-      </section>
-
-      <section className="panel" aria-labelledby="mensagens-site">
-        <h2 id="mensagens-site">Mensagens do site</h2>
-        <p className="small muted">
-          O bloco “Formulário de contato” deixa quem visita a página escrever para você. A mensagem não vira lead nem aluno sozinha: ela espera em Leads até você decidir.
-        </p>
-        <p className="small">
-          {inquiries.platformOpen ? <Pill tone="success">Formulários abertos pela plataforma</Pill> : <Pill tone="neutral">Formulários fechados pela plataforma</Pill>}{" "}
-          {inquiries.open ? <Pill tone="success">Recebimento ligado</Pill> : <Pill tone="neutral">Recebimento desligado</Pill>}
-        </p>
-        {!inquiries.platformOpen && (
-          <p className="small muted">
-            Os formulários públicos só abrem depois que o aviso de privacidade público e o parecer jurídico sobre leads existirem. Enquanto isso, o bloco aparece só no editor e
-            na prévia, e ligar o recebimento não o mostra para quem visita.
-          </p>
-        )}
-        {canEdit && (
-          <div className="persist-actions">
-            {inquiries.open ? (
-              <button type="button" className="button secondary" disabled={pending} onClick={() => switchInquiries(false)}>
-                Desligar o recebimento de mensagens
-              </button>
-            ) : (
-              <button type="button" className="button secondary" disabled={pending} onClick={() => switchInquiries(true)}>
-                Ligar o recebimento de mensagens
-              </button>
-            )}
-          </div>
-        )}
-        {inquiries.canWork && (
-          <div className="persist-actions">
-            <Link className="button small secondary" href="/profissional/leads/mensagens">
-              {inquiries.waiting === 0 ? "Ver as mensagens do site" : `Ver as mensagens do site (${inquiries.waiting} esperando)`}
-            </Link>
-          </div>
-        )}
-        {inquiriesNote.element}
       </section>
 
       {canEdit && !live && (
@@ -427,6 +440,55 @@ export function SiteWorkspace({ slug, initial, live, releases, services, images,
         {canEdit && dirty && releases.length > 0 && <p className="small muted">Salve as alterações para poder voltar a uma versão.</p>}
         {versionsNote.element}
       </section>
+
+            </>
+          ),
+          formularios: (
+            <>
+      <section className="panel" aria-labelledby="mensagens-site">
+        <h2 id="mensagens-site">Mensagens do site</h2>
+        <p className="small muted">
+          O bloco “Formulário de contato” deixa quem visita a página escrever para você. A mensagem não vira lead nem aluno sozinha: ela espera em Leads até você decidir.
+        </p>
+        <p className="small">
+          {inquiries.platformOpen ? <Pill tone="success">Formulários abertos pela plataforma</Pill> : <Pill tone="neutral">Formulários fechados pela plataforma</Pill>}{" "}
+          {inquiries.open ? <Pill tone="success">Recebimento ligado</Pill> : <Pill tone="neutral">Recebimento desligado</Pill>}
+        </p>
+        {!inquiries.platformOpen && (
+          <p className="small muted">
+            Os formulários públicos só abrem depois que o aviso de privacidade público e o parecer jurídico sobre leads existirem. Enquanto isso, o bloco aparece só no editor e
+            na prévia, e ligar o recebimento não o mostra para quem visita.
+          </p>
+        )}
+        {canEdit && (
+          <div className="persist-actions">
+            {inquiries.open ? (
+              <button type="button" className="button secondary" disabled={pending} onClick={() => switchInquiries(false)}>
+                Desligar o recebimento de mensagens
+              </button>
+            ) : (
+              <button type="button" className="button secondary" disabled={pending} onClick={() => switchInquiries(true)}>
+                Ligar o recebimento de mensagens
+              </button>
+            )}
+          </div>
+        )}
+        {inquiries.canWork && (
+          <div className="persist-actions">
+            <Link className="button small secondary" href="/profissional/leads/mensagens">
+              {inquiries.waiting === 0 ? "Ver as mensagens do site" : `Ver as mensagens do site (${inquiries.waiting} esperando)`}
+            </Link>
+          </div>
+        )}
+        {inquiriesNote.element}
+      </section>
+
+              {extra.forms}
+            </>
+          ),
+          configuracoes: extra.settings,
+        }}
+      />
 
       {canEdit && editorOpen && (
         <VisualEditor

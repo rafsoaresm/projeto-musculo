@@ -2,6 +2,22 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.57: Meu Site — abas da gestão e duas correções relatadas pelo usuário (Figma `10:76`, `10:119`)
+
+**Sem migration.**
+
+- **Abas** (`site-tabs.tsx`, padrão ARIA de abas: setas, Home e End; a aba aberta fica no endereço, `?aba=`, e as outras continuam montadas, sem perder o que foi digitado):
+  - **Páginas**: no Editor Guiado, "Páginas do site" (página inicial e as outras, com a situação de cada uma) e "Abrir o editor visual", ao lado de "Sobre a edição"; no Editor Avançado, "Páginas publicadas" e "Abrir o Frappe Builder".
+  - **Publicação**: estado do site com publicar e tirar do ar (com confirmação), mudar o endereço e as versões publicadas; no Editor Avançado, a situação e onde se publica cada página.
+  - **Formulários e mensagens**: o controle único do recebimento, os formulários das páginas no ar e o caminho para as mensagens.
+  - **Configurações**: endereço principal, código livre (só no Editor Avançado ou em site antigo) e excluir o site.
+- **Correções relatadas pelo usuário (captura do celular, 01/11/2026):**
+  - Um site fixo no Editor Guiado mostrava o painel "Editor novo (Frappe Builder)". Agora não mostra nada do Editor Avançado em nenhuma aba; o teste de navegador percorre as quatro abas procurando "Frappe".
+  - "Editar site" não fazia nada: era um link para a própria página com `?editar=1`, e a página já montada não reagia. Agora o botão pede ao painel que abra o editor (o link continua valendo para um acesso novo).
+- **Defeito achado antes de sair:** a página chamava, no servidor, uma função de um módulo de cliente e respondia 500; a função foi para `site-tab-names.ts`, com teste.
+- **Verificado localmente:** `npm run check`; suíte completa de navegador na montagem raiz, 121 testes passaram (as duas falhas da primeira rodada eram do teste de versões, que não abria a aba Publicação).
+- **Não verificado:** o celular do usuário depois da correção; nada foi lido no ar antes do deploy.
+
 ## Fatia 0.56: Meu Site — levantamento, criação em dois passos, editor fixo, cabeçalho da gestão e três correções (Figma `10:2`, `10:46`, `10:76`, `10:119`)
 
 **Migration 0030, aditiva** (`sites.engine_fixed`, padrão 0).
@@ -13,7 +29,8 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Correções da revisão V4**: (2) uma regra única do estado público (`public-status.ts`, com testes): uma página do Editor Avançado publicada conta como "no ar" mesmo com o endereço principal fora do ar, e a frase diz qual endereço responde; (3) "Tirar do ar" pede confirmação com as consequências, e "Cancelar" deixa como está; (4) o recebimento de mensagens tem um controle só, no painel do editor do site.
 - **Verificado localmente:** `npm run check` com 1464 testes; navegador na montagem raiz, 27 + 17 testes do Meu Site (criação nos dois editores, editor fixo, tirar do ar com cancelar e confirmar, formulários, modelos, imagens).
 - **Não feito nesta fatia:** as abas Páginas / Publicação / Formulários e mensagens / Configurações (próxima fatia, junto com a reorganização dos painéis); "Tirar do ar" para as páginas do Editor Avançado (hoje cada página é despublicada no próprio Frappe); a tirada da troca de editor dos sites antigos, que espera o usuário ver o levantamento no ar.
-- **Não verificado:** a montagem `/treinador` fica para o CI; o levantamento com os dados reais só pode ser lido no ar, pelo gestor.
+- **Não verificado:** o levantamento com os dados reais só pode ser lido no ar, pelo gestor.
+- **CI e deploy:** o CI da PR #57 passou nas duas montagens no commit `9eaf528`. Merge `66561bf`. Implantada: deploy `7a53da7d`, build de 22:22 a 22:23 e deploy até 22:24 de 01/11/2026, status `success`; o log do deploy mostra `0030_site_engine_fixed.sql ✅`.
 
 ## Fatia 0.55: Visão geral nova (Entrega 2 do handoff V4, T02; quadro `1:2` do Figma)
 

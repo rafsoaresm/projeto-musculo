@@ -3,6 +3,7 @@ import { Pill } from "@/components/ui";
 import type { SiteOverview } from "@/db/sites";
 import { PublicAddress } from "./public-address";
 import { publicStatus } from "./public-status";
+import { EditSiteButton } from "./edit-site-button";
 
 const EDITOR = { native: "Editor Guiado", frappe: "Editor Avançado" } as const;
 
@@ -26,9 +27,7 @@ export function SiteHeader({ overview, canEdit }: { overview: SiteOverview; canE
               Abrir Frappe Builder
             </Link>
           ) : (
-            <Link className="button primary" href="/profissional/meu-site?editar=1">
-              Editar site
-            </Link>
+            <EditSiteButton />
           ))}
       </div>
       <section className="panel" aria-labelledby="site-profissional">

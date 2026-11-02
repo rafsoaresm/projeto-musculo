@@ -5150,3 +5150,45 @@ button.ve-layer-toggle {
 .site-head .count-chips {
   margin: 0;
 }
+/* ---------- Meu Site: the tabs of the management (Figma 10:76, 10:119) ---------- */
+.tab-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 20px;
+}
+.tab-pills [role="tab"] {
+  border: 0;
+  border-radius: var(--radius-button);
+  padding: 6px 16px;
+  font: inherit;
+  font-size: var(--font-size-sm);
+  background: var(--color-neutral-100);
+  color: var(--color-text);
+  cursor: pointer;
+}
+.tab-pills [role="tab"][aria-selected="true"] {
+  background: var(--color-brand-subtle);
+  color: var(--color-primary-strong);
+  font-weight: 700;
+}
+.tab-pills [role="tab"]:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+.site-tabs [role="tabpanel"]:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 4px;
+}
+.tab-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .tab-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+}

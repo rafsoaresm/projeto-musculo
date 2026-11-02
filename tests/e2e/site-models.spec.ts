@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { createProfessional, localIP, newActor } from "./helpers";
-import { addAtEnd, closeEditor, editor, inspector, layerNames, library, openEditor, panel, stage, state } from "./site-helpers";
+import { addAtEnd, closeEditor, editor, inspector, layerNames, library, openEditor, panel, stage, state, showTab } from "./site-helpers";
 
 const list = (page: Page) => library(page).getByRole("list", { name: "Páginas do site" });
 const rowNames = (page: Page) => list(page).locator(".ve-layer strong").allInnerTexts();
@@ -24,6 +24,7 @@ async function createWith(page: Page, model: RegExp | null, title: string) {
   await form.getByLabel("Título do site").fill(title);
   if (model) await form.getByRole("radio", { name: model }).check();
   await form.getByRole("button", { name: "Confirmar e criar site" }).click();
+  await showTab(page, "Publicação");
   await expect(state(page).getByText("Fora do ar")).toBeVisible();
   await openEditor(page);
   return `estudio-${unique}`;
@@ -147,6 +148,7 @@ test("layout models: four models as cards with a drawing; a site of layouts star
   expect(await card.evaluate((node) => getComputedStyle(node).boxShadow)).not.toBe("none");
   await form.getByLabel("Título do site").fill("Marina Atleta");
   await form.getByRole("button", { name: "Confirmar e criar site" }).click();
+  await showTab(page, "Publicação");
   await expect(state(page).getByText("Fora do ar")).toBeVisible();
   await openEditor(page);
   const slug = `estudio-${unique}`;
@@ -232,6 +234,7 @@ test("layout models: the personal trainer model on a phone, with the cards one u
   await form.getByRole("radio", { name: /^Personal trainer/ }).check();
   await form.getByLabel("Título do site").fill("Luna Personal");
   await form.getByRole("button", { name: "Confirmar e criar site" }).click();
+  await showTab(page, "Publicação");
   await expect(state(page).getByText("Fora do ar")).toBeVisible();
   await openEditor(page);
   await openPages(page);
