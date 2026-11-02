@@ -17,7 +17,7 @@ import {
 
 /** A recorded assessment, exactly as it was recorded, plus the professional's reviews. */
 export function AssessmentView({ detail }: { detail: AssessmentDetail }) {
-  const marked = SCREENING_ITEMS.filter((item) => detail.flags[item.key]);
+  const marked = SCREENING_ITEMS.filter((item) => detail.flags[item.key] === true);
   return (
     <>
       <section className="panel" aria-labelledby="triagem-titulo">
@@ -32,14 +32,33 @@ export function AssessmentView({ detail }: { detail: AssessmentDetail }) {
             Registrada em {detail.recordedAt ? formatDateTime(detail.recordedAt) : "—"}. Não muda mais.
           </span>
         </p>
-        {marked.length > 0 ? (
-          <ul>
-            {marked.map((item) => (
-              <li key={item.key}>{item.label}</li>
-            ))}
-          </ul>
+        {detail.earlierFormat ? (
+          <>
+            {marked.length > 0 ? (
+              <ul>
+                {marked.map((item) => (
+                  <li key={item.key}>{item.label}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted">{CLEAR_TEXT}</p>
+            )}
+            <p className="small muted">
+              Formato anterior: esta avaliação foi registrada antes de cada pergunta exigir Sim ou Não. Só os itens marcados são respostas
+              registradas; os outros podem não ter sido perguntados.
+            </p>
+          </>
         ) : (
-          <p className="muted">{CLEAR_TEXT}</p>
+          <>
+            <ul aria-label="Respostas da triagem">
+              {SCREENING_ITEMS.map((item) => (
+                <li key={item.key}>
+                  {item.label}: <strong>{detail.flags[item.key] === true ? "Sim" : detail.flags[item.key] === false ? "Não" : "Sem resposta"}</strong>
+                </li>
+              ))}
+            </ul>
+            {marked.length === 0 && <p className="muted">{CLEAR_TEXT}</p>}
+          </>
         )}
         {detail.screeningNotes && <p>{detail.screeningNotes}</p>}
         {detail.riskStatus === "REVIEW_REQUIRED" && !detail.reviewed && (

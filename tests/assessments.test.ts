@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { assessmentsFor, screeningStanding } from "@/db/assessments";
 import { GRADE_KEYS, MOVEMENT_KEYS, parseAssessment, POSTURE_KEYS } from "@/modules/avaliacoes/contracts";
 import { ALL_MIGRATIONS, migrate } from "./helpers/migrate";
+import { ALL_NO } from "./helpers/screening";
 
 // Real local D1. Identities are rows, as the server derives them from a verified session.
 let mf: Miniflare;
@@ -60,7 +61,7 @@ async function recordedFor(student: string, input: Record<string, unknown>, when
   const api = assessmentsFor(db, scope(user));
   const started = await api.startDraft(student, when);
   if (started.status !== "started") throw new Error(`could not start: ${started.status}`);
-  await api.saveDraft(started.id, input, when);
+  await api.saveDraft(started.id, { ...ALL_NO, ...(input as object) }, when);
   const result = await api.record(started.id, { screeningAsked: true }, when);
   if (result.status !== "recorded") throw new Error(`could not record: ${result.status}`);
   return started.id;
@@ -143,14 +144,12 @@ describe("recording an assessment", () => {
     expect(await api.startDraft("st-1", day(10))).toEqual({ status: "draft_open", id: started.id });
 
     expect(
-      await api.saveDraft(
-        started.id,
-        { assessedOn: "2026-11-10", exertionPain: true, screeningNotes: "Dor no joelho ao subir escada", metrics: [{ metricType: "RESTING_HEART_RATE", value: "62" }, bp] },
+      await api.saveDraft(started.id, { ...ALL_NO, assessedOn: "2026-11-10", exertionPain: true, screeningNotes: "Dor no joelho ao subir escada", metrics: [{ metricType: "RESTING_HEART_RATE", value: "62" }, bp] },
         day(10),
       ),
     ).toBe(true);
     // Saving again replaces the metrics, it does not add to them.
-    expect(await api.saveDraft(started.id, { assessedOn: "2026-11-10", exertionPain: true, metrics: [bp] }, day(10))).toBe(true);
+    expect(await api.saveDraft(started.id, { ...ALL_NO, assessedOn: "2026-11-10", exertionPain: true, metrics: [bp] }, day(10))).toBe(true);
     const draft = await api.get(started.id);
     expect(draft).toMatchObject({ state: "DRAFT", kind: "INITIAL", riskStatus: "REVIEW_REQUIRED", previousAssessmentId: null });
     expect(draft?.flags).toMatchObject({ exertionPain: true, chestPain: false });
@@ -162,18 +161,41 @@ describe("recording an assessment", () => {
     expect(recorded).toMatchObject({ state: "RECORDED", recordedAt: day(10).toISOString(), reviewed: false });
     // Once recorded it cannot be recorded again nor saved over.
     expect(await api.record(started.id, { screeningAsked: true }, day(11))).toEqual({ status: "not_found" });
-    expect(await api.saveDraft(started.id, { assessedOn: "2026-11-10" }, day(11))).toBe(false);
+    expect(await api.saveDraft(started.id, { ...ALL_NO, assessedOn: "2026-11-10" }, day(11))).toBe(false);
     expect((await api.get(started.id))?.flags.exertionPain).toBe(true);
   });
 
-  it("does not turn an untouched form into 'no alert': recording a clear form asks for confirmation", async () => {
+  it("does not turn an untouched form into 'no alert': every question needs a Yes or a No before recording (decision D4)", async () => {
     const api = a();
     const started = await api.startDraft("st-3", day(10));
     if (started.status !== "started") throw new Error("expected draft");
-    await api.saveDraft(started.id, { assessedOn: "2026-11-10" }, day(10));
-    expect(await api.record(started.id, { screeningAsked: false }, day(10))).toEqual({ status: "confirmation_required" });
+    await api.saveDraft(started.id, { assessedOn: "2026-11-10", chestPain: false }, day(10));
+    const draft = await api.get(started.id);
+    expect(draft?.earlierFormat).toBe(false);
+    expect(draft?.flags).toMatchObject({ chestPain: false, exertionPain: null });
+    const refused = await api.record(started.id, { screeningAsked: true }, day(10));
+    expect(refused.status).toBe("screening_incomplete");
+    expect(refused.status === "screening_incomplete" && refused.missing).toEqual(["exertionPain", "dizzinessFainting", "injuryInTreatment", "recentSurgery", "medicalRestriction"]);
     expect((await api.get(started.id))?.state).toBe("DRAFT");
+    await api.saveDraft(started.id, { ...ALL_NO, assessedOn: "2026-11-10" }, day(10));
+    expect(await api.record(started.id, { screeningAsked: false }, day(10))).toEqual({ status: "recorded", riskStatus: "CLEAR" });
+    const recorded = await api.get(started.id);
+    expect(recorded?.flags).toEqual(ALL_NO);
+  });
+
+  it("keeps the earlier format of a draft started before every answer was required: only a confirmed clear form is recorded", async () => {
+    const api = a();
+    const started = await api.startDraft("st-3", day(10));
+    if (started.status !== "started") throw new Error("expected draft");
+    // A draft from before migration 0031 has no list of answered questions.
+    await db.prepare("UPDATE assessments SET screening_answered = NULL WHERE id = ?1").bind(started.id).run();
+    await api.saveDraft(started.id, { assessedOn: "2026-11-10" }, day(10));
+    const draft = await api.get(started.id);
+    expect(draft?.earlierFormat).toBe(true);
+    expect(draft?.flags.exertionPain).toBeNull();
+    expect(await api.record(started.id, { screeningAsked: false }, day(10))).toEqual({ status: "confirmation_required" });
     expect(await api.record(started.id, { screeningAsked: true }, day(10))).toEqual({ status: "recorded", riskStatus: "CLEAR" });
+    expect((await api.get(started.id))?.earlierFormat).toBe(true);
   });
 
   it("makes the next one a reassessment linked to the previous recorded one", async () => {
@@ -188,7 +210,7 @@ describe("recording an assessment", () => {
   it("keeps screening standing on the newest recorded assessment only", async () => {
     const draft = (await a().listForStudent("st-1")).find((x) => x.state === "DRAFT")!;
     expect(await screeningStanding(db, "org-a", "st-1")).toMatchObject({ risk: "REVIEW_REQUIRED", reviewed: false, assessedOn: "2026-11-10" });
-    await a().saveDraft(draft.id, { assessedOn: "2026-11-20" }, day(20));
+    await a().saveDraft(draft.id, { ...ALL_NO, assessedOn: "2026-11-20" }, day(20));
     await a().record(draft.id, { screeningAsked: true }, day(20));
     expect(await screeningStanding(db, "org-a", "st-1")).toMatchObject({ risk: "CLEAR", assessedOn: "2026-11-20" });
     expect(await screeningStanding(db, "org-a", "st-2")).toBeNull();
@@ -246,7 +268,7 @@ describe("who can reach an assessment", () => {
       expect(await api.listForStudent("st-1"), `${user}/${org} list`).toEqual([]);
       expect(await api.standing("st-1"), `${user}/${org} standing`).toBeNull();
       expect(await api.startDraft("st-1", day(25)), `${user}/${org} start`).toEqual({ status: "not_found" });
-      expect(await api.saveDraft(target.id, { assessedOn: "2026-11-10" }, day(25)), `${user}/${org} save`).toBe(false);
+      expect(await api.saveDraft(target.id, { ...ALL_NO, assessedOn: "2026-11-10" }, day(25)), `${user}/${org} save`).toBe(false);
       expect(await api.record(target.id, { screeningAsked: true }), `${user}/${org} record`).toEqual({ status: "not_found" });
       expect(await api.addReview(alert.id, "tentativa"), `${user}/${org} review`).toBe(false);
       expect((await api.overview()).filter((row) => row.studentId === "st-1"), `${user}/${org} overview`).toEqual([]);
@@ -259,7 +281,7 @@ describe("who can reach an assessment", () => {
     const started = draft ? { status: "draft_open" as const, id: draft.id } : await a().startDraft("st-1", day(26));
     const id = "id" in started ? started.id : "";
     const before = await a().get(id);
-    expect(await assessmentsFor(db, scope("tech-a2")).saveDraft(id, { assessedOn: "2026-11-10", chestPain: true, metrics: [bp] }, day(26))).toBe(false);
+    expect(await assessmentsFor(db, scope("tech-a2")).saveDraft(id, { ...ALL_NO, assessedOn: "2026-11-10", chestPain: true, metrics: [bp] }, day(26))).toBe(false);
     expect(await a().get(id)).toEqual(before);
   });
 
@@ -357,10 +379,7 @@ describe("posture and movement of an assessment", () => {
     if (started.status !== "started") throw new Error(started.status);
     const base = { assessedOn: "2026-11-28" };
     expect(
-      await api().saveDraft(
-        started.id,
-        {
-          ...base,
+      await api().saveDraft(started.id, { ...ALL_NO, ...base,
           posture: { findings: ["POSTERIOR.OTHER_VISUAL", "ANTERIOR.KNEE_VALGUS", "LATERAL.FORWARD_HEAD", "ANTERIOR.KNEE_VALGUS"], notes: "Foto não feita" },
           movement: [
             { test: "PUSH", grade: "STOPPED_BY_PAIN", notes: "Dor no ombro direito" },
@@ -384,26 +403,26 @@ describe("posture and movement of an assessment", () => {
     expect(saved.riskStatus).toBe("CLEAR");
 
     // Another save replaces everything, it does not add.
-    await api().saveDraft(started.id, { ...base, posture: { findings: ["LATERAL.KYPHOSIS"] }, movement: [{ test: "LUNGE", grade: "NO_LIMITATION" }] }, day(28));
+    await api().saveDraft(started.id, { ...ALL_NO, ...base, posture: { findings: ["LATERAL.KYPHOSIS"] }, movement: [{ test: "LUNGE", grade: "NO_LIMITATION" }] }, day(28));
     expect(await rows(started.id)).toEqual([
       { area: "POSTURE", item: "LATERAL.KYPHOSIS", grade: null, notes: null },
       { area: "MOVEMENT", item: "LUNGE", grade: "NO_LIMITATION", notes: null },
     ]);
     // What is not sent is not kept: a save without the fields clears them.
-    await api().saveDraft(started.id, base, day(28));
+    await api().saveDraft(started.id, { ...ALL_NO, ...base }, day(28));
     expect(await rows(started.id)).toEqual([]);
     expect((await api().get(started.id))?.posture).toEqual({ findings: [], notes: null });
   });
 
   it("is refused to anyone else, and an invalid payload writes nothing", async () => {
     const draft = (await api().listForStudent("st-2")).find((x) => x.state === "DRAFT")!;
-    await api().saveDraft(draft.id, { assessedOn: "2026-11-28", posture: { findings: ["ANTERIOR.HEAD_TILT"] }, movement: [{ test: "SQUAT", grade: "MODERATE" }] }, day(28));
+    await api().saveDraft(draft.id, { ...ALL_NO, assessedOn: "2026-11-28", posture: { findings: ["ANTERIOR.HEAD_TILT"] }, movement: [{ test: "SQUAT", grade: "MODERATE" }] }, day(28));
     const before = await rows(draft.id);
     expect(before).toHaveLength(2);
     for (const user of ["tech-a", "owner-a", "commercial-a", "client-1", "mgr-1"])
-      expect(await assessmentsFor(db, scope(user)).saveDraft(draft.id, { assessedOn: "2026-11-28", posture: { findings: ["LATERAL.LORDOSIS"] }, movement: [] }, day(28)), user).toBe(false);
+      expect(await assessmentsFor(db, scope(user)).saveDraft(draft.id, { ...ALL_NO, assessedOn: "2026-11-28", posture: { findings: ["LATERAL.LORDOSIS"] }, movement: [] }, day(28)), user).toBe(false);
     expect(await rows(draft.id)).toEqual(before);
-    await expect(api().saveDraft(draft.id, { assessedOn: "2026-11-28", posture: { findings: ["NOPE"] } }, day(28))).rejects.toThrow();
+    await expect(api().saveDraft(draft.id, { ...ALL_NO, assessedOn: "2026-11-28", posture: { findings: ["NOPE"] } }, day(28))).rejects.toThrow();
     expect(await rows(draft.id)).toEqual(before);
   });
 
@@ -411,7 +430,7 @@ describe("posture and movement of an assessment", () => {
     const draft = (await api().listForStudent("st-2")).find((x) => x.state === "DRAFT")!;
     expect(await api().record(draft.id, { screeningAsked: true }, day(28))).toEqual({ status: "recorded", riskStatus: "CLEAR" });
     const before = await rows(draft.id);
-    expect(await api().saveDraft(draft.id, { assessedOn: "2026-11-28", posture: { findings: [] }, movement: [] }, day(29))).toBe(false);
+    expect(await api().saveDraft(draft.id, { ...ALL_NO, assessedOn: "2026-11-28", posture: { findings: [] }, movement: [] }, day(29))).toBe(false);
     expect(await rows(draft.id)).toEqual(before);
     const run = (sql: string, ...binds: unknown[]) => db.prepare(sql).bind(...binds).run();
     await expect(run("UPDATE assessment_findings SET grade = 'NO_LIMITATION' WHERE assessment_id = ?1 AND area = 'MOVEMENT'", draft.id)).rejects.toThrow(/ASSESSMENT_FROZEN/);
@@ -447,7 +466,7 @@ describe("the history of a student's assessments", () => {
     await recordedFor("st-2", { assessedOn: "2026-11-29", metrics: [{ metricType: "WAIST", value: "88,5" }, { metricType: "CUSTOM", name: "Sentar e levantar", value: "14 reps", side: "BOTH" }] }, day(29), owner);
     const draft = await api.startDraft("st-2", day(30));
     if (draft.status !== "started") throw new Error(draft.status);
-    await api.saveDraft(draft.id, { assessedOn: "2026-11-30", metrics: [{ metricType: "WAIST", value: "80" }] }, day(30));
+    await api.saveDraft(draft.id, { ...ALL_NO, assessedOn: "2026-11-30", metrics: [{ metricType: "WAIST", value: "80" }] }, day(30));
 
     const history = await api.history("st-2");
     expect(history.map((entry) => entry.assessedOn)).toEqual(["2026-11-10", "2026-11-28", "2026-11-29"]);

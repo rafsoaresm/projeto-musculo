@@ -228,3 +228,10 @@ export async function policyRefusals(page: Page): Promise<string[]> {
   const all = await page.evaluate(() => (window as unknown as { __refused?: string[] }).__refused ?? []);
   return all.filter((entry) => !/^script-src eval \S+\/frappe-editor\/assets\/PageBuilder-[\w-]+\.js\s*$/.test(entry));
 }
+
+/** The six questions of the screening, each answered: "Sim" for the ones named, "Não" for the others (decision D4: an answer is required). */
+export const SCREENING_QUESTIONS = ["Dor durante esforço", "Tontura ou desmaio", "Dor torácica relatada", "Lesão em tratamento", "Pós-operatório recente", "Restrição médica relatada"] as const;
+export async function answerScreening(page: import("@playwright/test").Page, yes: readonly string[] = []) {
+  for (const question of SCREENING_QUESTIONS)
+    await page.getByRole("group", { name: question, exact: true }).getByLabel(yes.includes(question) ? "Sim" : "Não", { exact: true }).check();
+}

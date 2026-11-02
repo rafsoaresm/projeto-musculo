@@ -59,9 +59,23 @@ export interface MovementRow {
   grade: MovementGrade;
   notes: string | null;
 }
+/** The keys of the answered questions, or null for an assessment of the earlier format (made before migration 0031). */
+function answeredOf(raw: string | null): Set<string> | null {
+  if (raw === null) return null;
+  try {
+    const list = JSON.parse(raw) as unknown;
+    return new Set(Array.isArray(list) ? list.filter((key): key is string => typeof key === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
 export interface AssessmentDetail extends AssessmentSummary {
   previousAssessmentId: string | null;
-  flags: Record<ScreeningKey, boolean>;
+  /** Yes, No, or null for a question not answered (in a draft) or not recorded as an answer (in the earlier format). */
+  flags: Record<ScreeningKey, boolean | null>;
+  /** The assessment was made before every question had to be answered (decision D4): only a "yes" of it is a recorded answer. */
+  earlierFormat: boolean;
   screeningNotes: string | null;
   notes: string | null;
   metrics: MetricRow[];
@@ -137,6 +151,8 @@ export type StartOutcome =
 export type RecordOutcome =
   | { status: "recorded"; riskStatus: RiskStatus }
   | { status: "confirmation_required" }
+  /** Decision D4: a question of the screening has neither Yes nor No. */
+  | { status: "screening_incomplete"; missing: ScreeningKey[] }
   | { status: "not_found" };
 
 /** The newest recorded assessment of a student and whether an alert was reviewed. No access check. */
@@ -201,7 +217,7 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
         .prepare(
           `SELECT ${summaryColumns}, a.previous_assessment_id AS previousAssessmentId,
              ${SCREENING_ITEMS.map((item) => `a.${item.column} AS ${item.key}`).join(", ")},
-             a.screening_notes AS screeningNotes, a.notes
+             a.screening_notes AS screeningNotes, a.notes, a.screening_answered AS screeningAnswered
            FROM assessments a
            WHERE a.organization_id = ?1 AND a.id = ?3 AND ${reachAssessment("a")}`,
         )
@@ -210,6 +226,7 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
           previousAssessmentId: string | null;
           screeningNotes: string | null;
           notes: string | null;
+          screeningAnswered: string | null;
         }>();
       if (!row) return null;
       const [metrics, findings, photoRows, reviews] = await Promise.all([
@@ -251,9 +268,11 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
           .bind(organizationId, assessmentId)
           .all<ReviewRow>(),
       ]);
+      const answered = answeredOf(row.screeningAnswered);
+      // Earlier format (no list): a "yes" is an answer; a 0 may be a "no" or a question never asked, so it is shown as not answered.
       const flags = Object.fromEntries(
-        SCREENING_ITEMS.map((item) => [item.key, Boolean(row[item.key])]),
-      ) as Record<ScreeningKey, boolean>;
+        SCREENING_ITEMS.map((item) => [item.key, row[item.key] ? true : answered?.has(item.key) ? false : null]),
+      ) as Record<ScreeningKey, boolean | null>;
       return {
         id: row.id,
         studentId: row.studentId,
@@ -265,6 +284,7 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
         reviewed: Boolean(row.reviewed),
         previousAssessmentId: row.previousAssessmentId,
         flags,
+        earlierFormat: answered === null,
         screeningNotes: row.screeningNotes,
         notes: row.notes,
         metrics: metrics.results,
@@ -363,14 +383,14 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
           .prepare(
             `INSERT INTO assessments
                (id, organization_id, student_id, assessed_on, kind, previous_assessment_id, state,
-                risk_status, created_by_user_id, created_at, updated_at)
+                risk_status, created_by_user_id, created_at, updated_at, screening_answered)
              SELECT ?4, s.organization_id, s.id, ?5,
                CASE WHEN EXISTS (SELECT 1 FROM assessments p
                                    WHERE p.student_id = s.id AND p.state = 'RECORDED')
                     THEN 'REASSESSMENT' ELSE 'INITIAL' END,
                (SELECT p.id FROM assessments p WHERE p.student_id = s.id AND p.state = 'RECORDED'
                   ORDER BY p.assessed_on DESC, p.recorded_at DESC LIMIT 1),
-               'DRAFT', 'CLEAR', ?2, ?6, ?6
+               'DRAFT', 'CLEAR', ?2, ?6, ?6, '[]'
              FROM students s
              WHERE s.organization_id = ?1 AND s.id = ?3 AND ${activeUser("?2")}
                AND ${technicalAccessExists("s", "?2")}`,
@@ -409,13 +429,14 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
           .prepare(
             `UPDATE assessments
              SET assessed_on = ?4, risk_status = ?5, ${flagColumns.join(", ")},
-               screening_notes = ?12, notes = ?13, updated_at = ?14
+               screening_notes = ?12, notes = ?13, updated_at = ?14,
+               screening_answered = CASE WHEN screening_answered IS NULL THEN NULL ELSE ?15 END
              WHERE organization_id = ?1 AND id = ?3 AND state = 'DRAFT' AND ${reachAssessment("assessments")}`,
           )
           .bind(
             organizationId, userId, assessmentId, input.assessedOn, input.riskStatus,
             ...SCREENING_ITEMS.map((item) => (input[item.key] ? 1 : 0)),
-            input.screeningNotes, input.notes, stamp,
+            input.screeningNotes, input.notes, stamp, JSON.stringify(input.answered),
           ),
         db
           .prepare(`DELETE FROM assessment_metrics WHERE organization_id = ?1 AND assessment_id = ?3 AND ${open}`)
@@ -462,8 +483,11 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
     ): Promise<RecordOutcome> {
       const current = await api.get(assessmentId);
       if (!current || current.state !== "DRAFT") return { status: "not_found" };
-      if (current.riskStatus === "CLEAR" && !confirmation.screeningAsked)
-        return { status: "confirmation_required" };
+      if (!current.earlierFormat) {
+        // Decision D4: every question has a Yes or a No before the assessment is recorded.
+        const missing = SCREENING_ITEMS.filter((item) => current.flags[item.key] === null).map((item) => item.key);
+        if (missing.length > 0) return { status: "screening_incomplete", missing };
+      } else if (current.riskStatus === "CLEAR" && !confirmation.screeningAsked) return { status: "confirmation_required" };
       const stamp = now.toISOString();
       const results = await db.batch([
         db

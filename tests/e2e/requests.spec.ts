@@ -9,8 +9,7 @@ import {
   noHorizontalOverflow,
   openInvitation,
   png,
-  signIn,
-} from "./helpers";
+  signIn, answerScreening } from "./helpers";
 
 const inBrazil = (date: Date) =>
   new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
@@ -134,7 +133,7 @@ test("on request, the professional erases the stored photos; the assessment keep
   await photo.scrollIntoViewIfNeeded();
   const src = new URL((await photo.getAttribute("src"))!, page.url()).href;
   expect((await page.request.get(src)).status()).toBe(200);
-  await page.getByLabel(/Perguntei ao aluno sobre os seis itens/).check();
+  await answerScreening(page);
   await page.getByRole("button", { name: "Registrar avaliação" }).click();
   await expect(page.getByRole("heading", { name: /Avaliação de \d{2}\/\d{2}\/\d{4}/ })).toBeVisible();
   const recordedURL = page.url();

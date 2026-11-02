@@ -8,6 +8,7 @@ import { BASELINE_VERSION } from "@/modules/consentimento/terms";
 import { profilesFor } from "@/db/student-profile";
 import { MAX_PHOTO_BYTES } from "@/modules/avaliacoes/photos";
 import { ALL_MIGRATIONS, migrate } from "./helpers/migrate";
+import { ALL_NO } from "./helpers/screening";
 
 // Real local D1 and R2 with the real migrations and triggers. Identities are rows, as the server
 // derives them from a verified session.
@@ -314,7 +315,7 @@ describe("who can reach a photo", () => {
 describe("a recorded assessment keeps its photos", () => {
   it("freezes them with the assessment, in the code and in the database, and still serves them", async () => {
     const draft = (await assessmentsFor(db, scope("tech-a")).listForStudent("st-1")).find((a) => a.state === "DRAFT")!.id;
-    await assessmentsFor(db, scope("tech-a")).saveDraft(draft, { assessedOn: "2026-11-10", chestPain: true }, day(12));
+    await assessmentsFor(db, scope("tech-a")).saveDraft(draft, { ...ALL_NO, assessedOn: "2026-11-10", chestPain: true }, day(12));
     expect(await assessmentsFor(db, scope("tech-a")).record(draft, { screeningAsked: true }, day(12))).toMatchObject({ status: "recorded" });
     const before = { objects: await objects(), rows: await rows(draft) };
     expect(await photos().put(draft, "ANTERIOR", jpeg(), day(13))).toEqual({ status: "not_found" });
@@ -341,7 +342,7 @@ describe("a recorded assessment keeps its photos", () => {
         return async (statements: Parameters<D1Database["batch"]>[0]) => {
           if (!raced) {
             raced = true;
-            await assessmentsFor(db, scope("tech-a2")).saveDraft(draft, { assessedOn: "2026-11-14" }, day(14));
+            await assessmentsFor(db, scope("tech-a2")).saveDraft(draft, { ...ALL_NO, assessedOn: "2026-11-14" }, day(14));
             await assessmentsFor(db, scope("tech-a2")).record(draft, { screeningAsked: true }, day(14));
           }
           return target.batch(statements);

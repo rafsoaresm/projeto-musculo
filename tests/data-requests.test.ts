@@ -8,6 +8,7 @@ import { recordAcceptance } from "@/db/consent";
 import { dataRequestsFor, studentRequestsFor } from "@/db/data-requests";
 import { BASELINE_VERSION } from "@/modules/consentimento/terms";
 import { ALL_MIGRATIONS, migrate } from "./helpers/migrate";
+import { ALL_NO } from "./helpers/screening";
 
 // Real local D1 and R2 with the real migrations and triggers. Identities are rows, as the server
 // derives them from a verified session.
@@ -303,6 +304,7 @@ describe("erasing the photos of a student on request", () => {
   const recordedWithPhoto = async (student: string, view: string, when: Date) => {
     const id = await draftFor(student, when);
     expect(await put(id, view)).toEqual({ status: "stored", replaced: false });
+    await assessmentsFor(db, scope("tech-a")).saveDraft(id, { ...ALL_NO, assessedOn: when.toISOString().slice(0, 10) }, when);
     expect(await assessmentsFor(db, scope("tech-a")).record(id, { screeningAsked: true }, when)).toMatchObject({ status: "recorded" });
     return id;
   };
@@ -316,7 +318,7 @@ describe("erasing the photos of a student on request", () => {
     recorded = await draftFor("st-ph", day(10));
     expect(await put(recorded, "ANTERIOR")).toEqual({ status: "stored", replaced: false });
     expect(await put(recorded, "LATERAL_LEFT")).toEqual({ status: "stored", replaced: false });
-    await assessmentsFor(db, scope("tech-a")).saveDraft(recorded, { assessedOn: "2026-11-10" }, day(10));
+    await assessmentsFor(db, scope("tech-a")).saveDraft(recorded, { ...ALL_NO, assessedOn: "2026-11-10" }, day(10));
     expect(await assessmentsFor(db, scope("tech-a")).record(recorded, { screeningAsked: true }, day(10))).toMatchObject({ status: "recorded" });
     draft = await draftFor("st-ph", day(20));
     expect(await put(draft, "POSTERIOR")).toEqual({ status: "stored", replaced: false });

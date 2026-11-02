@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { addStudent, createProfessional, joinStudent, localIP, newActor, noHorizontalOverflow, png, signIn } from "./helpers";
+import { addStudent, createProfessional, joinStudent, localIP, newActor, noHorizontalOverflow, png, signIn, answerScreening } from "./helpers";
 
 const todayBR = () => {
   const [year, month, day] = new Date().toISOString().slice(0, 10).split("-");
@@ -106,7 +106,7 @@ test("postural photos are sent as clean JPEGs to the private storage, shown only
   await other.context.close();
 
   // Recording closes it: the photos stay, nothing can change them.
-  await page.getByLabel(/Perguntei ao aluno sobre os seis itens/).check();
+  await answerScreening(page);
   await page.getByRole("button", { name: "Registrar avaliação" }).click();
   await expect(page.getByRole("heading", { name: `Avaliação de ${todayBR()}`, exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Fotos da postura" })).toBeVisible();
