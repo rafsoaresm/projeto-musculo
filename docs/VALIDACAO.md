@@ -35,6 +35,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
   - no canvas do editor, uma imagem ainda sem foto aparece como imagem quebrada com o texto "Troque pela sua foto" (na página publicada é uma caixa vazia);
   - se editar o texto de um botão no editor mantém a marca do WhatsApp;
   - o editor num tablet, Safari e leitor de tela.
+- **CI e deploy:** o CI da PR #69 passou nas duas montagens no commit `8ec0c46`. Merge `57515e5`. Implantada: deploy `e7983322`, build de 17:49 a 17:51 e deploy até 17:52 de 02/11/2026, status `success`. Sem migration. Nada foi lido ao vivo.
 
 ## Fatia 0.66: Formulário antes do WhatsApp (handoff "Templates de Sites — CMS V1", seção 12; PENDENCIAS B46)
 
