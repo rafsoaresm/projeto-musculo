@@ -67,6 +67,25 @@ test("frappe publish: a page made in the editor is published at /site/<address> 
     return (answer.body as { message?: Record<string, unknown> }).message ?? {};
   };
   await expect.poll(async () => String((await read()).draft_blocks ?? ""), { timeout: 30_000 }).toMatch(/"children":\[\{/);
+
+  // ---- the preview of the draft (handoff V4, defect 1): at the site's own address under the mount, only for whoever edits this site ----
+  const preview = await page.request.get(`./site/${slug}/m/previa?page=${pageName}`);
+  expect(preview.status()).toBe(200);
+  expect(preview.headers()["content-security-policy"]).toContain("frame-ancestors 'self'");
+  expect(preview.headers()["cache-control"]).toBe("private, no-store");
+  expect(await preview.text()).toMatch(/<body class="fb-1">\s*<div class="fb-2"/);
+  const outsider = await newActor(browser, baseURL);
+  expect((await outsider.page.request.get(`./site/${slug}/m/previa?page=${pageName}`)).status(), "no session: nothing").toBe(404);
+  expect((await page.request.get(`./site/${slug}/m/previa?page=pagina-que-nao-existe`)).status()).toBe(404);
+  await outsider.page.close();
+  // The editor's own preview page draws it from there (before the fix it asked /api/method/... at the root, which nothing answers).
+  await expect(page.getByRole("banner").getByText("Frappe Builder / Site profissional / Rascunho")).toBeVisible();
+  await page.goto(`./profissional/meu-site/editor/page/${pageName}/preview`);
+  const framed = page.locator(`iframe[src*="/site/${slug}/m/previa?"]`);
+  await expect(framed).toHaveCount(1, { timeout: 20_000 });
+  await expect(page.frameLocator(`iframe[src*="/site/${slug}/m/previa?"]`).locator("body.fb-1 > div.fb-2")).toHaveCount(1);
+  await page.goto(`./profissional/meu-site/editor/page/${pageName}`);
+  await expect(page.getByText("body", { exact: true }).first()).toBeVisible();
   await page.getByRole("button", { name: "Publish", exact: true }).click();
   await expect.poll(async () => Number((await read()).published), { timeout: 30_000 }).toBe(1);
 
