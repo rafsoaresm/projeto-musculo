@@ -15,6 +15,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Revisão independente do diff** (antes da PR) achou, e foi corrigido: as ilustrações geravam o aviso falso "a imagem escolhida não está mais na biblioteca" ao publicar; a prévia do Editor Guiado escondia as seções ainda vazias (não dava para escolher nem ver o contorno delas: agora só a página publicada e as prévias dela as tiram); um contêiner com imagem de fundo ou que é destino de um botão ou link sumia da página publicada quando os textos dele estavam vazios (agora fica); um contêiner só com perguntas sem resposta ficava como faixa vazia; e a prévia do modelo não prendia o foco do teclado nem o devolvia ao "Ver o modelo" ao fechar.
 - **Não feito / limites (0.64):** acrescentar, esconder e mover seções no Editor Guiado; aplicar um modelo a um site que já existe; mais modelos por especialidade.
 - **Não verificado:** o ambiente de desenvolvimento não alcança o site publicado; aparelhos reais (iOS Safari), leitor de tela e a impressão de quem vai usar sobre os textos de exemplo e as ilustrações.
+- **CI e deploy:** os dois primeiros CIs da PR #65 falharam em commits intermediários (o cenário `site-templates` ainda esperava o bloqueio do depoimento vazio; corrigido no commit seguinte); no commit `fe087c1` o CI passou nas duas montagens. Merge `0282c2d`. Implantada: deploy `3ea14b7f`, build de 11:06 a 11:07 e deploy até 11:07 de 02/11/2026, status `success`.
 
 ## Fatia 0.62: Editor Guiado refeito — base (pedido do usuário de 02/11/2026; PENDENCIAS B45)
 
