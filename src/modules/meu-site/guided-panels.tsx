@@ -117,6 +117,9 @@ export function ContentPanel({
   const blocks = pageContent(content, state.pageId).blocks;
   const [adding, setAdding] = useState(false);
   const [said, setSaid] = useState("");
+  // After an action the button that had the focus may be gone or disabled: the focus goes to what is next to it, not to the page.
+  const focusLater = (selector: string) =>
+    requestAnimationFrame(() => document.querySelector<HTMLElement>(`.guided-content ${selector}`)?.focus());
   const ownSection = (ref: SectionRef | null) => (ref ? (blocks.find((entry) => entry.id === ref) ?? null) : null);
   const selected = ownSection(state.section);
   const add = (key: string, label: string) => {
@@ -129,9 +132,14 @@ export function ContentPanel({
     setAdding(false);
     setSaid(`Seção “${label}” acrescentada. Escreva o conteúdo dela; o que ficar vazio não aparece no site.`);
     onSection(outcome.id);
+    focusLater("#conteudo-da-secao");
   };
   return (
     <div className="guided-content">
+      {/* Above the list and the fields, so on a phone it is read on either step. */}
+      <p className="small muted guided-said" role="status">
+        {said}
+      </p>
       <div className="guided-list">
         {pageSelect}
         <nav aria-labelledby="secoes-do-site">
@@ -144,20 +152,32 @@ export function ContentPanel({
               const position = index - 1;
               return (
                 <li key={entry.ref} data-hidden={hidden ? "" : undefined}>
-                  <button type="button" className="guided-section-pick" aria-pressed={entry.ref === state.section} onClick={() => onSection(entry.ref)}>
+                  <button type="button" className="guided-section-pick" data-section={entry.ref} aria-pressed={entry.ref === state.section} onClick={() => onSection(entry.ref)}>
                     {entry.label}
                     {hidden && <span className="guided-hidden-tag"> · escondida</span>}
                   </button>
                   {own && (
                     <span className="guided-section-tools">
-                      <button type="button" aria-label={`Subir a seção ${entry.label}`} disabled={position === 0} onClick={() => onEdit(moveSection(content, state.pageId, own.id, -1))}>
+                      <button type="button" aria-label={`Subir a seção ${entry.label}`} disabled={position === 0}
+                        data-tool={`up-${own.id}`}
+                        onClick={() => {
+                          onEdit(moveSection(content, state.pageId, own.id, -1));
+                          setSaid(`Seção “${entry.label}” subiu.`);
+                          if (position === 1) focusLater(`[data-tool="down-${own.id}"]`);
+                        }}
+                      >
                         <ArrowUp size={16} aria-hidden="true" />
                       </button>
                       <button
                         type="button"
                         aria-label={`Descer a seção ${entry.label}`}
                         disabled={position === blocks.length - 1}
-                        onClick={() => onEdit(moveSection(content, state.pageId, own.id, 1))}
+                        data-tool={`down-${own.id}`}
+                        onClick={() => {
+                          onEdit(moveSection(content, state.pageId, own.id, 1));
+                          setSaid(`Seção “${entry.label}” desceu.`);
+                          if (position === blocks.length - 2) focusLater(`[data-tool="up-${own.id}"]`);
+                        }}
                       >
                         <ArrowDown size={16} aria-hidden="true" />
                       </button>
@@ -178,6 +198,8 @@ export function ContentPanel({
                         onClick={() => {
                           onEdit(removeSection(content, state.pageId, own.id));
                           setSaid(`Seção “${entry.label}” excluída. Use Desfazer, no topo, para trazê-la de volta.`);
+                          // The section that takes its place in the list (the footer of the site after the last one).
+                          focusLater(`[data-section="${sections[index + 1]?.ref ?? FOOTER}"]`);
                         }}
                       >
                         <Trash2 size={16} aria-hidden="true" />
@@ -189,9 +211,6 @@ export function ContentPanel({
             })}
           </ul>
         </nav>
-        <p className="small muted guided-said" role="status">
-          {said}
-        </p>
         <button type="button" className="button secondary" aria-expanded={adding} aria-controls="guiado-acrescentar" onClick={() => setAdding((open) => !open)}>
           <Plus size={16} aria-hidden="true" /> Acrescentar seção
         </button>
@@ -215,7 +234,7 @@ export function ContentPanel({
         <button type="button" className="button small secondary guided-narrow-only" onClick={onBack}>
           <ChevronLeft size={16} aria-hidden="true" /> Seções
         </button>
-        <h2 id="conteudo-da-secao">{current ? current.label : "Conteúdo da seção"}</h2>
+        <h2 id="conteudo-da-secao" tabIndex={-1}>{current ? current.label : "Conteúdo da seção"}</h2>
         {selected && isHiddenSection(selected) && (
           <p className="notice">
             Esta seção está escondida: não aparece no site.{" "}

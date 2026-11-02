@@ -103,3 +103,25 @@ describe("hiding a section from the site", () => {
     expect(stops(setSectionHidden(withQuote, HOME, quoteSection.id, true))).toEqual([]);
   });
 });
+
+describe("what a hidden section takes with it on the published page", () => {
+  const render = (content: SiteContent) => renderToStaticMarkup(createElement(SiteRenderer, { content, images: () => null }));
+  const hero = (id: string, heading: string) => ({ id, type: "hero", eyebrow: "", heading, subheading: "", buttonLabel: "", buttonChannel: "" }) as unknown as SiteContent["blocks"][number];
+  it("leaves the page's big title to the first section that is shown", () => {
+    const content = { ...site, blocks: [hero("primeiro", "Escondido"), hero("segundo", "Visível")], pages: [] } as SiteContent;
+    const hidden = setSectionHidden(content, HOME, "primeiro", true);
+    expect(render(hidden)).toMatch(/<h1[^>]*>(?:(?!<\/h1>).)*Visível/s);
+  });
+  it("gives the page back the site's footer when its own footer is hidden", () => {
+    const footer = { id: "rodape", type: "box", tag: "footer", name: "Rodapé", children: [{ id: "t", type: "paragraph", text: "Rodapé próprio" }] } as unknown as SiteContent["blocks"][number];
+    const content = { ...site, blocks: [...site.blocks, footer], pages: [] } as SiteContent;
+    expect(render(content)).not.toContain("site-footer");
+    expect(render(setSectionHidden(content, HOME, "rodape", true))).toContain("site-footer");
+  });
+  it("is not a place a button leads to", () => {
+    const button = { id: "b", type: "button", label: "Ver", channel: "", anchor: site.blocks[1]!.id } as unknown as SiteContent["blocks"][number];
+    const content = { ...site, blocks: [button, ...site.blocks], pages: [] } as SiteContent;
+    expect(render(content)).toContain(`href="#`);
+    expect(render(setSectionHidden(content, HOME, site.blocks[1]!.id, true))).not.toContain(`href="#`);
+  });
+});

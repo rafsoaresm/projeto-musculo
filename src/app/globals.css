@@ -5337,6 +5337,7 @@ button.ve-layer-toggle {
 }
 .guided-section-list li {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   align-items: stretch;
 }
@@ -5385,12 +5386,18 @@ button.ve-layer-toggle {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
+.guided-said {
+  grid-column: 1 / -1;
+  margin: 0;
+}
 .guided-said:empty {
   display: none;
 }
 .guided-section-list button {
   min-width: 0;
-  flex: 1;
+  /* A long name keeps its line and the tools go under it, instead of running into them. */
+  flex: 1 1 120px;
+  overflow-wrap: anywhere;
   text-align: left;
   border: 0;
   border-radius: var(--radius-button);
