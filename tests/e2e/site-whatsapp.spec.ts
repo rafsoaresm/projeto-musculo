@@ -22,7 +22,7 @@ async function publishedModel(page: Page, owner: string) {
   const editor = guided(page);
   await editor.getByRole("navigation", { name: "Seções do site" }).getByRole("button", { name: "Rodapé do site", exact: true }).click();
   const footer = editor.getByRole("region", { name: "Rodapé do site" });
-  await footer.getByLabel("WhatsApp").fill("(11) 91234-5678");
+  await footer.getByLabel("WhatsApp", { exact: true }).fill("(11) 91234-5678");
   // The model starts asking first, with the handoff's opening message; the platform of this run has the forms open, the site has not yet.
   const buttons = footer.getByRole("group", { name: "Botões do WhatsApp" });
   await expect(buttons.getByLabel("Mensagem que já vai escrita na conversa (opcional)")).toHaveValue(MESSAGE);
@@ -34,8 +34,9 @@ async function publishedModel(page: Page, owner: string) {
   await editor.getByRole("tablist", { name: "Partes do Editor Guiado" }).getByRole("tab", { name: "Publicar" }).click();
   const publish = editor.getByRole("tabpanel");
   await publish.getByRole("button", { name: "Publicar", exact: true }).click();
-  const anyway = publish.getByRole("button", { name: "Publicar mesmo assim" });
-  if (await anyway.isVisible({ timeout: 5000 }).catch(() => false)) await anyway.click();
+  // The model's sample photos are always said before publishing (a warning): it is published anyway.
+  await expect(editor.getByRole("list", { name: "Avisos antes de publicar" })).toContainText("foto de exemplo do modelo");
+  await publish.getByRole("button", { name: "Publicar mesmo assim" }).click();
   await expect(editor.getByText(/Publicado: o site está no ar/)).toBeVisible();
   await editor.getByRole("button", { name: "Fechar o Editor Guiado" }).click();
   return `estudio-${unique}`;

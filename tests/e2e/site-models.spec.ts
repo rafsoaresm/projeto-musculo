@@ -162,7 +162,7 @@ test("models V1: four models of the handoff as cards with a picture, each seen w
   await guided.getByRole("navigation", { name: "Seções do site" }).getByRole("button", { name: "Destaque", exact: true }).click();
   await expect(guided.getByRole("region", { name: "Destaque" }).getByRole("group", { name: "Imagem de fundo" })).toBeVisible();
   await guided.getByRole("navigation", { name: "Seções do site" }).getByRole("button", { name: "Rodapé do site", exact: true }).click();
-  await guided.getByRole("region", { name: "Rodapé do site" }).getByLabel("WhatsApp").fill("31 99999-0000");
+  await guided.getByRole("region", { name: "Rodapé do site" }).getByLabel("WhatsApp", { exact: true }).fill("31 99999-0000");
   await guided.getByRole("button", { name: "Salvar rascunho" }).first().click();
   await expect(guided.getByText("Rascunho salvo.")).toBeVisible();
   await guided.getByRole("tablist", { name: "Partes do Editor Guiado" }).getByRole("tab", { name: "Publicar" }).click();
