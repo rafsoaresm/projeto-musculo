@@ -332,3 +332,104 @@ export function kitContent(kit: SiteKit, title: string): SiteContent {
     theme: { ...DEFAULT_THEME, ...built.theme },
   };
 }
+
+// ---- sections to add in the Editor Guiado (0.64) ----
+
+/** A section title still to be written: the node's name says what goes there. */
+const blankTitle = (name = "Título da seção"): SiteNode => heading("", 2, { fontSize: "34px", fontWeight: 800, lineHeight: 1.1 }, name, { fontSize: "28px" });
+const blankCard = (): SiteNode =>
+  box("Cartão", "article", CARD, [heading("", 3, { fontSize: "20px", fontWeight: 700 }, "Título do cartão"), paragraph("", undefined, "Texto do cartão")]);
+const blankPlan = (): SiteNode =>
+  box("Plano", "article", { ...CARD, shadow: "sm" }, [
+    heading("", 3, { fontSize: "22px", fontWeight: 800 }, "Nome do plano"),
+    paragraph("", { color: "muted" }, "Para quem é"),
+    paragraph("", undefined, "O que inclui e o valor (opcional)"),
+    whatsapp("Quero este plano"),
+  ]);
+
+export interface GuidedSectionItem {
+  key: string;
+  label: string;
+  hint: string;
+  create: () => SiteNode;
+}
+
+/**
+ * The short list of sections the Editor Guiado adds to a page, built from the same bricks as the three models, so they take the site's look. Every
+ * text starts empty (the name of each part says what goes there) and an empty part is not on the public page: nothing is written for the person.
+ * The buttons say what they do and go to the site's contacts.
+ */
+export const GUIDED_SECTIONS: readonly GuidedSectionItem[] = [
+  {
+    key: "texto",
+    label: "Título e texto",
+    hint: "Um título e um parágrafo",
+    create: () => box("Título e texto", "section", stack({ padding: SECTION }), [blankTitle(), paragraph("", LEAD, "Texto da seção")]),
+  },
+  {
+    key: "imagem-texto",
+    label: "Imagem e texto",
+    hint: "Uma imagem ao lado do título e do texto",
+    create: () => pictureAndText("weights", "4:3", [blankTitle(), paragraph("", LEAD, "Texto ao lado da imagem")]),
+  },
+  {
+    key: "cartoes",
+    label: "Três cartões",
+    hint: "Etapas, modalidades ou diferenciais",
+    create: () => box("Três cartões", "section", stack({ gap: "24px", padding: SECTION }), [blankTitle(), box("Cartões", "div", GRID3, [blankCard(), blankCard(), blankCard()], GRID3_SIZES)]),
+  },
+  {
+    key: "planos",
+    label: "Planos",
+    hint: "Três planos com botão",
+    create: () => box("Planos", "section", stack({ gap: "24px", padding: SECTION }), [blankTitle(), box("Lista de planos", "div", GRID3, [blankPlan(), blankPlan(), blankPlan()], GRID3_SIZES)]),
+  },
+  {
+    key: "perguntas",
+    label: "Perguntas frequentes",
+    hint: "Perguntas e respostas curtas",
+    create: () =>
+      ({
+        ...(emptyBlock("faq") as BlockOf<"faq">),
+        name: "Perguntas frequentes",
+        heading: "",
+        items: [
+          { question: "", answer: "" },
+          { question: "", answer: "" },
+          { question: "", answer: "" },
+        ],
+      }) as SiteNode,
+  },
+  {
+    key: "depoimentos",
+    label: "Depoimentos",
+    hint: "Três depoimentos, só com autorização",
+    create: () => box("Depoimentos", "section", stack({ gap: "24px", padding: SECTION }), [blankTitle(), box("Lista de depoimentos", "div", GRID3, [quote(), quote(), quote()], GRID3_SIZES)]),
+  },
+  {
+    key: "chamada",
+    label: "Chamada final",
+    hint: "Uma faixa na cor do site com botão",
+    create: () => band("", "", "Chamar no WhatsApp"),
+  },
+  {
+    key: "contato",
+    label: "Canais de contato",
+    hint: "WhatsApp, e-mail e Instagram do site",
+    create: () =>
+      box("Canais de contato", "section", stack({ padding: SECTION }), [
+        blankTitle(),
+        box("Canais", "div", row(), [
+          whatsapp("Chamar no WhatsApp"),
+          { ...emptyBlock("button"), label: "Enviar e-mail", channel: "email" } as SiteNode,
+          { ...emptyBlock("button"), label: "Abrir o Instagram", channel: "instagram" } as SiteNode,
+        ]),
+      ]),
+  },
+  {
+    key: "formulario",
+    label: "Formulário de contato",
+    hint: "Nome, contato e mensagem",
+    create: () => ({ ...(emptyBlock("contactForm") as BlockOf<"contactForm">), heading: "Envie uma mensagem", text: "", buttonLabel: "Enviar mensagem" }) as SiteNode,
+  },
+];

@@ -5,6 +5,7 @@ import {
   applyOverrides,
   channelUrl,
   componentById,
+  hiddenEverywhere,
   emailUrl,
   instagramUrl,
   whatsappUrl,
@@ -309,6 +310,8 @@ function ComponentView({ node, ctx }: { node: ComponentNode; ctx: Ctx }) {
 }
 
 function NodeView({ node, ctx }: { node: SiteNode; ctx: Ctx }) {
+  // Hidden on every size: left out of the published page's HTML, not only out of sight (the editors keep it, for their own style sheet to hide).
+  if (leavesOutEmpty(ctx) && hiddenEverywhere(node)) return null;
   const { edit } = ctx;
   const id = node.id;
   switch (node.type) {
