@@ -930,6 +930,13 @@ export interface PublishIssue {
 }
 
 /**
+ * Whether a node is hidden on every size (hidden on the computer and not shown again on the tablet or the phone): the published page leaves it out
+ * of the HTML altogether and nothing in it is asked for before publishing. The Editor Guiado's "Esconder do site" writes exactly this.
+ */
+export const hiddenEverywhere = (node: Pick<SiteNode, "style" | "styleTablet" | "styleMobile">): boolean =>
+  node.style?.hidden === true && node.styleTablet?.hidden !== false && node.styleMobile?.hidden !== false;
+
+/**
  * The problems that stop a publication. `liveServiceIds` are the services on offer right now; `assetIds` the images
  * of the site's library (null when the caller has not looked: then only what the document itself says is checked).
  */
@@ -989,6 +996,8 @@ export function publishIssues(
    * block the editor can show), with the name of the component, and the position in the page is the instance's.
    */
   const visit = (root: SiteNode, at: number, trail: number[], b: SiteNode, inside?: { instance: ComponentNode; name: string }) => {
+    // Hidden on every size: not on the published page, so nothing in it is asked for.
+    if (hiddenEverywhere(b)) return;
     const where = inside ? `Bloco ${at} (Componente “${inside.name}”)` : `Bloco ${at} (${BLOCK_LABEL[root.type]})`;
     const label = trail.length === 0 ? (inside ? where : `Bloco ${at} (${BLOCK_LABEL[b.type]})`) : `${where}, camada ${trail.map((position) => position + 1).join(".")} (${BLOCK_LABEL[b.type]})`;
     const start = issues.length;

@@ -1,6 +1,6 @@
 "use client";
 import { useState, type ReactNode } from "react";
-import { ChevronLeft } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronLeft, Eye, EyeOff, Plus, Trash2 } from "lucide-react";
 import {
   DESCRIPTION_MAX,
   HOME,
@@ -20,6 +20,8 @@ import { PublishIssues } from "./publish-issues";
 import { PublicAddress } from "./public-address";
 import { sectionFields, withPageField, type Field } from "./guided-model";
 import { FOOTER, HEADER, guidedSections, sectionOfNode, type GuidedState, type SectionRef } from "./guided-state";
+import { GUIDED_SECTIONS } from "./site-kits";
+import { SECTION_REFUSAL_MESSAGE, addSection, isHiddenSection, moveSection, removeSection, setSectionHidden } from "./guided-sections";
 import { brandNote, withAccent, withBrand, withFontChoice, withLogo, withMode, withSiteName } from "./guided-brand";
 import { seoPreview } from "./guided-seo";
 import { ACCENTS, ACCENT_LABEL, BRAND_START, FONTS, FONT_LABEL, MODES, MODE_LABEL, type Accent, type Mode } from "./site-theme";
@@ -112,28 +114,135 @@ export function ContentPanel({
 }) {
   const sections = guidedSections(content, state.pageId);
   const current = sections.find((entry) => entry.ref === state.section) ?? null;
+  const blocks = pageContent(content, state.pageId).blocks;
+  const [adding, setAdding] = useState(false);
+  const [said, setSaid] = useState("");
+  // After an action the button that had the focus may be gone or disabled: the focus goes to what is next to it, not to the page.
+  const focusLater = (selector: string) =>
+    requestAnimationFrame(() => document.querySelector<HTMLElement>(`.guided-content ${selector}`)?.focus());
+  const ownSection = (ref: SectionRef | null) => (ref ? (blocks.find((entry) => entry.id === ref) ?? null) : null);
+  const selected = ownSection(state.section);
+  const add = (key: string, label: string) => {
+    const outcome = addSection(content, state.pageId, key, selected?.id ?? null);
+    if (!outcome.ok) {
+      setSaid(SECTION_REFUSAL_MESSAGE[outcome.reason]);
+      return;
+    }
+    onEdit(outcome.content);
+    setAdding(false);
+    setSaid(`Seção “${label}” acrescentada. Escreva o conteúdo dela; o que ficar vazio não aparece no site.`);
+    onSection(outcome.id);
+    focusLater("#conteudo-da-secao");
+  };
   return (
     <div className="guided-content">
+      {/* Above the list and the fields, so on a phone it is read on either step. */}
+      <p className="small muted guided-said" role="status">
+        {said}
+      </p>
       <div className="guided-list">
         {pageSelect}
         <nav aria-labelledby="secoes-do-site">
           <h2 id="secoes-do-site">Seções do site</h2>
           <ul className="guided-section-list">
-            {sections.map((entry) => (
-              <li key={entry.ref}>
-                <button type="button" aria-pressed={entry.ref === state.section} onClick={() => onSection(entry.ref)}>
-                  {entry.label}
-                </button>
-              </li>
-            ))}
+            {sections.map((entry, index) => {
+              const own = ownSection(entry.ref);
+              const hidden = own ? isHiddenSection(own) : false;
+              // The page's own sections are numbered after the header (index 0): the first can't go up, the last can't go down.
+              const position = index - 1;
+              return (
+                <li key={entry.ref} data-hidden={hidden ? "" : undefined}>
+                  <button type="button" className="guided-section-pick" data-section={entry.ref} aria-pressed={entry.ref === state.section} onClick={() => onSection(entry.ref)}>
+                    {entry.label}
+                    {hidden && <span className="guided-hidden-tag"> · escondida</span>}
+                  </button>
+                  {own && (
+                    <span className="guided-section-tools">
+                      <button type="button" aria-label={`Subir a seção ${entry.label}`} disabled={position === 0}
+                        data-tool={`up-${own.id}`}
+                        onClick={() => {
+                          onEdit(moveSection(content, state.pageId, own.id, -1));
+                          setSaid(`Seção “${entry.label}” subiu.`);
+                          if (position === 1) focusLater(`[data-tool="down-${own.id}"]`);
+                        }}
+                      >
+                        <ArrowUp size={16} aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Descer a seção ${entry.label}`}
+                        disabled={position === blocks.length - 1}
+                        data-tool={`down-${own.id}`}
+                        onClick={() => {
+                          onEdit(moveSection(content, state.pageId, own.id, 1));
+                          setSaid(`Seção “${entry.label}” desceu.`);
+                          if (position === blocks.length - 2) focusLater(`[data-tool="up-${own.id}"]`);
+                        }}
+                      >
+                        <ArrowDown size={16} aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={hidden ? `Mostrar a seção ${entry.label} no site` : `Esconder a seção ${entry.label} do site`}
+                        aria-pressed={hidden}
+                        onClick={() => {
+                          onEdit(setSectionHidden(content, state.pageId, own.id, !hidden));
+                          setSaid(hidden ? `A seção “${entry.label}” volta a aparecer no site.` : `A seção “${entry.label}” fica escondida: não aparece no site, e o conteúdo dela continua guardado.`);
+                        }}
+                      >
+                        {hidden ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
+                      </button>
+                      <button
+                        type="button"
+                        aria-label={`Excluir a seção ${entry.label}`}
+                        onClick={() => {
+                          onEdit(removeSection(content, state.pageId, own.id));
+                          setSaid(`Seção “${entry.label}” excluída. Use Desfazer, no topo, para trazê-la de volta.`);
+                          // The section that takes its place in the list (the footer of the site after the last one).
+                          focusLater(`[data-section="${sections[index + 1]?.ref ?? FOOTER}"]`);
+                        }}
+                      >
+                        <Trash2 size={16} aria-hidden="true" />
+                      </button>
+                    </span>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </nav>
+        <button type="button" className="button secondary" aria-expanded={adding} aria-controls="guiado-acrescentar" onClick={() => setAdding((open) => !open)}>
+          <Plus size={16} aria-hidden="true" /> Acrescentar seção
+        </button>
+        {adding && (
+          <div id="guiado-acrescentar" className="guided-add" role="group" aria-label="Acrescentar seção">
+            <p className="small muted">{selected ? `Entra depois de “${current?.label ?? ""}”.` : "Entra no fim da página."} Ela já vem com a cor e a fonte do site.</p>
+            <ul>
+              {GUIDED_SECTIONS.map((item) => (
+                <li key={item.key}>
+                  <button type="button" onClick={() => add(item.key, item.label)}>
+                    <strong>{item.label}</strong>
+                    <span className="small muted">{item.hint}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
       <section className="guided-fields" aria-labelledby="conteudo-da-secao">
         <button type="button" className="button small secondary guided-narrow-only" onClick={onBack}>
           <ChevronLeft size={16} aria-hidden="true" /> Seções
         </button>
-        <h2 id="conteudo-da-secao">{current ? current.label : "Conteúdo da seção"}</h2>
+        <h2 id="conteudo-da-secao" tabIndex={-1}>{current ? current.label : "Conteúdo da seção"}</h2>
+        {selected && isHiddenSection(selected) && (
+          <p className="notice">
+            Esta seção está escondida: não aparece no site.{" "}
+            <button type="button" className="button small secondary" onClick={() => onEdit(setSectionHidden(content, state.pageId, selected.id, false))}>
+              Mostrar no site
+            </button>
+          </p>
+        )}
         {state.section === HEADER ? (
           <HeaderFields content={content} images={images} onEdit={onEdit} onBrand={onBrand} />
         ) : state.section === FOOTER ? (

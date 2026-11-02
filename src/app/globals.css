@@ -5335,8 +5335,69 @@ button.ve-layer-toggle {
   flex-direction: column;
   gap: 6px;
 }
-.guided-section-list button {
+.guided-section-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: stretch;
+}
+.guided-section-list li[data-hidden] .guided-section-pick {
+  color: var(--color-fg-muted);
+  font-style: italic;
+}
+.guided-section-tools {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.guided-section-list .guided-section-tools button {
+  width: 36px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.guided-section-list .guided-section-tools button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.guided-add ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.guided-add button {
   width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-button);
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: 10px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+.guided-add button:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+.guided-said {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.guided-said:empty {
+  display: none;
+}
+.guided-section-list button {
+  min-width: 0;
+  /* A long name keeps its line and the tools go under it, instead of running into them. */
+  flex: 1 1 120px;
+  overflow-wrap: anywhere;
   text-align: left;
   border: 0;
   border-radius: var(--radius-button);

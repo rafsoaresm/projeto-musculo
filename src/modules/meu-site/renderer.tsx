@@ -5,6 +5,7 @@ import {
   applyOverrides,
   channelUrl,
   componentById,
+  hiddenEverywhere,
   emailUrl,
   instagramUrl,
   whatsappUrl,
@@ -309,6 +310,8 @@ function ComponentView({ node, ctx }: { node: ComponentNode; ctx: Ctx }) {
 }
 
 function NodeView({ node, ctx }: { node: SiteNode; ctx: Ctx }) {
+  // Hidden on every size: left out of the published page's HTML, not only out of sight (the editors keep it, for their own style sheet to hide).
+  if (leavesOutEmpty(ctx) && hiddenEverywhere(node)) return null;
   const { edit } = ctx;
   const id = node.id;
   switch (node.type) {
@@ -682,7 +685,11 @@ export function SiteRenderer({
   /** The Editor Guiado's preview: which section is being edited (a node id, or `header` and `footer` for the site's own). */
   locate?: { selected: string | null };
 }) {
-  const nodes = allNodes(content.blocks);
+  // On the published page a part hidden on every size is not there: it takes no title, no footer's place, and no button leads to it.
+  const published = !edit && !locate;
+  const shownTrees = (list: readonly SiteNode[]): SiteNode[] =>
+    list.flatMap((entry) => (published && hiddenEverywhere(entry) ? [] : [entry, ...(entry.type === "box" ? shownTrees(entry.children) : [])]));
+  const nodes = shownTrees(content.blocks);
   const existing = new Set(nodes.map((entry) => entry.id));
   const anchors = new Set(
     nodes.flatMap((entry): string[] => ((entry.type === "button" || entry.type === "link") && entry.anchor && existing.has(entry.anchor) ? [entry.anchor] : [])),
@@ -703,7 +710,7 @@ export function SiteRenderer({
   const part = (name: "header" | "footer") =>
     locate ? { "data-guided-part": name, "data-guided-current": locate.selected === name ? "" : undefined } : {};
   // A page that has a footer of its own (a box with the footer tag at its first level) does not get the site's as well.
-  const ownFooter = content.blocks.some((entry) => entry.type === "box" && entry.tag === "footer");
+  const ownFooter = content.blocks.some((entry) => entry.type === "box" && entry.tag === "footer" && !(published && hiddenEverywhere(entry)));
   const logo = content.logoAssetId ? images?.(content.logoAssetId) ?? null : null;
   const contacts = [
     { label: "WhatsApp", href: whatsappUrl(content.contact.whatsapp), external: true },
