@@ -1,149 +1,223 @@
 "use client";
-import { useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, type KeyboardEvent, type ReactNode } from "react";
 import Link from "next/link";
-import { X } from "lucide-react";
-import type { AssetRow } from "@/db/site-assets";
+import { Eye, Redo2, Undo2, X } from "lucide-react";
 import { useMountPath } from "@/components/use-mount-path";
-import { resolveServices, type SiteContent } from "./contracts";
-import { fieldsOf, pageFields, sectionsOf, withField, type Field } from "./guided-model";
-import { libraryCssImages, libraryImages } from "./image-urls";
-import { SiteRenderer } from "./renderer";
+import { HOME, pagesOf, referencedAssetIds, resolveServices, type PublishIssue, type SiteContent } from "./contracts";
+import { editorImageUrl, libraryCssImages, libraryImages, previewPageUrl } from "./image-urls";
 import { buildSiteCss } from "./site-css";
-import { InlineSiteStyles } from "./site-styles";
 import type { ServiceChoice } from "@/db/sites";
+import type { ImageSupport } from "./editor-inspector";
+import { GUIDED_TABS, GUIDED_TAB_LABEL, guidedReducer, guidedTrail, normalizeGuided, startGuided, type GuidedTab, type SectionRef } from "./guided-state";
+import { GuidedPreview } from "./guided-preview";
+import { BrandPanel, ContentPanel, PagesTab, PublishPanel, SeoPanel } from "./guided-panels";
+
+export type GuidedImages = Omit<ImageSupport, "src" | "usedIds">;
 
 /**
- * The Editor Guiado (handoff V4, Figma `10:162`; the user's decision of 01/11/2026): the sections of the page on the left, the page on the
- * right of them as it will look, and the content of the chosen section in a form. Only what the sections say is edited here (texts, buttons,
- * images and their descriptions, and the page's title and description); the layout stays as the model made it. Saving is the same draft,
- * revision and publication as everywhere else in Meu Site.
+ * The Editor Guiado (Figma `10:162`; rebuilt from the user's review of 02/11/2026): five tabs (Páginas, Conteúdo, Marca, SEO, Publicar), every
+ * page of the site, the page as it will look next to the form with the section being edited outlined, and a trail that says where the person is.
+ * The layout of each section stays as the model made it. On a phone the same tabs show one thing at a time and the preview opens over everything.
  */
-export function GuidedEditor({
-  content,
-  onEdit,
-  services,
-  library,
-  dirty,
-  pending,
-  live,
-  onSave,
-  onClose,
-  note,
-}: {
+export function GuidedEditor(props: {
   content: SiteContent;
-  onEdit: (next: SiteContent) => void;
+  onEdit: (next: SiteContent, key?: string) => void;
+  undo: () => void;
+  redo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
   services: ServiceChoice[];
-  library: AssetRow[];
+  images: GuidedImages;
+  slug: string;
   dirty: boolean;
   pending: boolean;
   live: boolean;
   onSave: () => void;
-  onClose: () => void;
+  onPublish: () => void;
+  onPublishAnyway: () => void;
+  issues: PublishIssue[];
   note: ReactNode;
+  onClose: () => void;
 }) {
-  const sections = sectionsOf(content);
-  const [chosen, setChosen] = useState<string | null>(sections[0]?.id ?? null);
-  const section = content.blocks.find((entry) => entry.id === chosen) ?? null;
+  const { content, images } = props;
+  const [raw, dispatch] = useReducer(guidedReducer, undefined, startGuided);
+  // After an undo or a page deleted the state may point at nothing: it is read through normalizeGuided, which falls back to what exists.
+  const state = normalizeGuided(content, raw);
   const base = useMountPath()();
-  const liveServices = useMemo(() => new Map(services.map((service) => [service.id, service])), [services]);
+  const liveServices = useMemo(() => new Map(props.services.map((service) => [service.id, service])), [props.services]);
   const resolved = useMemo(() => resolveServices(content, liveServices), [content, liveServices]);
-  const images = useMemo(() => libraryImages(base, library), [base, library]);
-  const css = useMemo(() => buildSiteCss(resolved, { ...libraryCssImages(base, library), container: true }), [resolved, base, library]);
-  const fields = section ? fieldsOf(section) : [];
-  const change = (field: Field, value: string) => onEdit(withField(content, field.key, value));
+  const resolver = useMemo(() => libraryImages(base, images.library), [base, images.library]);
+  const css = useMemo(() => buildSiteCss(resolved, { ...libraryCssImages(base, images.library), container: true }), [resolved, base, images.library]);
+  const support: ImageSupport = useMemo(
+    () => ({ ...images, src: (assetId: string) => editorImageUrl(base, assetId), usedIds: new Set(referencedAssetIds(content)) }),
+    [images, base, content],
+  );
+  const trail = guidedTrail(content, state);
+  const pick = useCallback((section: SectionRef) => dispatch({ type: "pick", section }), []);
+  const showPage = useCallback((pageId: string) => dispatch({ type: "page", pageId }), []);
+
+  const tabs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const onTabKey = (event: KeyboardEvent) => {
+    const index = GUIDED_TABS.indexOf(state.tab);
+    const next =
+      event.key === "ArrowRight" ? (index + 1) % GUIDED_TABS.length : event.key === "ArrowLeft" ? (index - 1 + GUIDED_TABS.length) % GUIDED_TABS.length : event.key === "Home" ? 0 : event.key === "End" ? GUIDED_TABS.length - 1 : -1;
+    if (next < 0) return;
+    event.preventDefault();
+    const tab = GUIDED_TABS[next]!;
+    dispatch({ type: "tab", tab });
+    tabs.current[tab]?.focus();
+  };
+
+  // Escape closes the preview over everything (phone); the editor itself closes with its own button.
+  useEffect(() => {
+    if (!state.preview) return;
+    const close = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") dispatch({ type: "preview", open: false });
+    };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [state.preview]);
+
+  const pageChoices = [{ id: HOME, label: "Página inicial" }, ...pagesOf(content).map((page) => ({ id: page.id, label: page.title || "Página sem título" }))];
+  const pageSelect = (
+    <label className="guided-page-select">
+      Página em edição
+      <select value={state.pageId} onChange={(event) => showPage(event.target.value)}>
+        {pageChoices.map((choice) => (
+          <option key={choice.id} value={choice.id}>
+            {choice.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+
+  const panel: Record<GuidedTab, ReactNode> = {
+    paginas: (
+      <PagesTab
+        content={content}
+        pageId={state.pageId}
+        slug={props.slug}
+        onEdit={props.onEdit}
+        onPage={showPage}
+        onEditContent={(pageId) => {
+          showPage(pageId);
+          dispatch({ type: "tab", tab: "conteudo" });
+        }}
+      />
+    ),
+    conteudo: (
+      <ContentPanel
+        content={content}
+        state={state}
+        pageSelect={pageSelect}
+        images={support}
+        onEdit={props.onEdit}
+        onSection={(section) => dispatch({ type: "section", section })}
+        onBack={() => dispatch({ type: "back" })}
+        onBrand={() => dispatch({ type: "tab", tab: "marca" })}
+      />
+    ),
+    marca: <BrandPanel content={content} images={support} onEdit={props.onEdit} />,
+    seo: <SeoPanel content={content} pageId={state.pageId} pageSelect={pageSelect} slug={props.slug} onEdit={props.onEdit} />,
+    publicar: (
+      <PublishPanel
+        content={content}
+        issues={props.issues}
+        pending={props.pending}
+        dirty={props.dirty}
+        live={props.live}
+        slug={props.slug}
+        onSave={props.onSave}
+        onPublish={props.onPublish}
+        onPublishAnyway={props.onPublishAnyway}
+        onGo={(pageId, section) => dispatch({ type: "pick", pageId, section })}
+      />
+    ),
+  };
+
+  const preview = (
+    <GuidedPreview content={resolved} pageId={state.pageId} selected={state.tab === "conteudo" ? state.section : null} css={css} images={resolver} onPick={pick} onPage={showPage} />
+  );
 
   return (
-    <div className="guided" role="dialog" aria-modal="true" aria-labelledby="editor-guiado">
+    <div className="guided" role="dialog" aria-modal="true" aria-labelledby="editor-guiado" data-step={state.step} data-preview={state.preview ? "" : undefined}>
       <header className="guided-head">
-        <div>
+        <div className="guided-title">
           <h1 id="editor-guiado">Editor Guiado</h1>
-          <p className="small muted">
-            Site profissional / Página inicial / {live ? "Publicado" : "Rascunho"}
-            {dirty ? " · alterações não salvas" : ""}
+          <p className="guided-trail" aria-label="Onde você está">
+            <span>{trail.page}</span>
+            {state.tab === "conteudo" && trail.section && (
+              <>
+                {" › "}
+                <span>{trail.section}</span>
+              </>
+            )}
+            <span className="guided-status">
+              {" · "}
+              {props.live ? "Publicado" : "Rascunho"}
+              {props.dirty ? " · alterações não salvas" : ""}
+            </span>
           </p>
         </div>
         <div className="persist-actions">
-          <Link className="button muted-fill" href="/profissional/meu-site/previa" target="_blank" rel="noopener noreferrer">
+          <button type="button" className="button small secondary" onClick={props.undo} disabled={!props.canUndo} aria-label="Desfazer">
+            <Undo2 size={16} aria-hidden="true" />
+          </button>
+          <button type="button" className="button small secondary" onClick={props.redo} disabled={!props.canRedo} aria-label="Refazer">
+            <Redo2 size={16} aria-hidden="true" />
+          </button>
+          <Link className="button muted-fill guided-wide-only" href={`/profissional/meu-site/${previewPageUrl(state.pageId === HOME ? null : state.pageId).slice(2)}`} target="_blank" rel="noopener noreferrer">
             Pré-visualizar
           </Link>
-          <button type="button" className="button primary" disabled={pending || !dirty} onClick={onSave}>
-            {pending ? "Salvando…" : "Salvar rascunho"}
+          <button type="button" className="button primary" disabled={props.pending || !props.dirty} onClick={props.onSave}>
+            {props.pending ? "Salvando…" : "Salvar rascunho"}
           </button>
-          <button type="button" className="button secondary" onClick={onClose} aria-label="Fechar o Editor Guiado">
+          <button type="button" className="button secondary" onClick={props.onClose} aria-label="Fechar o Editor Guiado">
             <X size={18} aria-hidden="true" /> Fechar
           </button>
         </div>
       </header>
-      {note}
-      <div className="guided-grid">
-        <nav className="panel guided-sections" aria-labelledby="secoes-do-site">
-          <h2 id="secoes-do-site">Seções do site</h2>
-          {sections.length === 0 ? (
-            <p className="small muted">A página ainda não tem seções.</p>
-          ) : (
-            <ul>
-              {sections.map((entry) => (
-                <li key={entry.id}>
-                  <button type="button" aria-pressed={entry.id === chosen} onClick={() => setChosen(entry.id)}>
-                    {entry.label}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </nav>
+      {props.note}
+      <div role="tablist" aria-label="Partes do Editor Guiado" className="tab-pills guided-tabs" onKeyDown={onTabKey}>
+        {GUIDED_TABS.map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            role="tab"
+            id={`guiado-aba-${tab}`}
+            aria-selected={state.tab === tab}
+            aria-controls="guiado-painel"
+            tabIndex={state.tab === tab ? 0 : -1}
+            ref={(node) => {
+              tabs.current[tab] = node;
+            }}
+            onClick={() => dispatch({ type: "tab", tab })}
+          >
+            {GUIDED_TAB_LABEL[tab]}
+          </button>
+        ))}
+      </div>
+      <div className="guided-body" data-tab={state.tab}>
+        <div id="guiado-painel" role="tabpanel" aria-labelledby={`guiado-aba-${state.tab}`} className="guided-panel">
+          {panel[state.tab]}
+        </div>
         <section className="panel guided-preview" aria-labelledby="previa-da-pagina">
-          <h2 id="previa-da-pagina">Prévia da página</h2>
-          <div className="guided-frame">
-            <InlineSiteStyles css={css} />
-            <SiteRenderer content={resolved} images={images} />
+          <div className="guided-preview-head">
+            <h2 id="previa-da-pagina">Prévia da página</h2>
+            <button type="button" className="button small secondary guided-narrow-only" onClick={() => dispatch({ type: "preview", open: false })}>
+              Fechar prévia
+            </button>
           </div>
+          {preview}
         </section>
-        <section className="panel guided-form" aria-labelledby="conteudo-da-secao">
-          <h2 id="conteudo-da-secao">Conteúdo da seção</h2>
-          {section && fields.length === 0 && <p className="small muted">Esta seção não tem textos nem imagens para editar aqui.</p>}
-          {fields.map((field) => (
-            <FieldInput key={field.key} field={field} library={library} base={base} onChange={(value) => change(field, value)} />
-          ))}
-          <h3>SEO da página</h3>
-          {pageFields(content).map((field) => (
-            <FieldInput key={field.key} field={field} library={library} base={base} onChange={(value) => change(field, value)} />
-          ))}
-        </section>
+      </div>
+      <div className="guided-bar guided-narrow-only">
+        <button type="button" className="button primary" onClick={() => dispatch({ type: "preview", open: true })}>
+          <Eye size={16} aria-hidden="true" /> Ver prévia
+        </button>
       </div>
     </div>
   );
 }
 
-function FieldInput({ field, library, base, onChange }: { field: Field; library: AssetRow[]; base: string; onChange: (value: string) => void }) {
-  if (field.kind === "image")
-    return (
-      <label>
-        {field.label}
-        <select value={field.value} onChange={(event) => onChange(event.target.value)}>
-          <option value="">Sem imagem</option>
-          {library.map((asset, at) => (
-            <option key={asset.id} value={asset.id}>
-              Imagem {at + 1} ({asset.width} × {asset.height})
-            </option>
-          ))}
-        </select>
-        {library.length === 0 && <span className="small muted">Envie imagens pela biblioteca do site para escolher aqui.</span>}
-        {field.value && (
-          // A small image of the site's own library, behind the session (next/image would fetch it again through the optimizer).
-          // eslint-disable-next-line @next/next/no-img-element
-          <img className="guided-thumb" src={`${base}/profissional/meu-site/imagens/${field.value}`} alt="" />
-        )}
-      </label>
-    );
-  return (
-    <label>
-      {field.label}
-      {field.kind === "multiline" ? (
-        <textarea rows={3} value={field.value} maxLength={field.max} onChange={(event) => onChange(event.target.value)} />
-      ) : (
-        <input value={field.value} maxLength={field.max} onChange={(event) => onChange(event.target.value)} autoComplete="off" />
-      )}
-    </label>
-  );
-}

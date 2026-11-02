@@ -2,6 +2,24 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.62: Editor Guiado refeito — base (pedido do usuário de 02/11/2026; PENDENCIAS B45)
+
+**Sem migration.** Tudo o que o editor passou a editar já existia no documento do site (páginas, nome, descrição, contatos, tema, logotipo, "aparecer nos buscadores").
+
+- **Cinco abas:** Páginas, Conteúdo, Marca, SEO e Publicar (`guided-editor.tsx`, `guided-panels.tsx`; estado e trilha em `guided-state.ts`, regra pura com testes).
+- **Todas as páginas:** "Página em edição" em Conteúdo e em SEO, também no celular; a aba Páginas cria (em branco ou de uma página pronta), duplica, move e exclui páginas e muda título, endereço, descrição e menu de cada uma. Os campos de qualquer página são editados com a mesma regra da página inicial (`withPageField`).
+- **Onde se está:** a trilha "Página › Seção" no topo; a seção em edição fica contornada na prévia e a prévia rola até ela; um clique numa parte da prévia abre os campos dela (`SiteRenderer` ganhou a opção `locate`, só no editor: a página publicada não muda por ela). A prévia mostra o menu e troca de página por ele, e tem a largura de computador ou de celular.
+- **Cabeçalho e rodapé do site** aparecem como seções em toda página: o cabeçalho com o nome do site, o logotipo e os nomes do menu; o rodapé com os contatos.
+- **Rodapé em todas as páginas publicadas:** o rodapé do site passou a aparecer sempre (o nome do site e os contatos preenchidos); antes ele sumia quando nenhum contato estava preenchido. Uma página que tem um rodapé próprio entre as seções não recebe o do site (não fica com dois). Vale também para os sites do construtor visual; as páginas do Editor Avançado não mudam (têm o próprio renderizador).
+- **Marca:** nome do site, logotipo (enviar, escolher ou tirar), cor da lista ou "Minha cor" com o aviso de quando a cor precisou ser ajustada para o texto ficar legível (os números vêm do cálculo de contraste que a página usa), aparência clara, escura ou automática, e fonte.
+- **Imagens:** cada campo de imagem envia um arquivo novo ali mesmo (troca o banner num passo) e tem a descrição ao lado.
+- **SEO:** título e descrição de cada página, "aparecer nos buscadores" e a prévia de um resultado de busca (o título e a descrição são os que a página publicada escreve: `publicMetadata` passou a usar as mesmas funções).
+- **Publicar** de dentro do editor, com os avisos e o "Ir para" que leva à seção do aviso; desfazer e refazer no topo.
+- **Celular:** as abas rolam de lado; Conteúdo mostra a lista e depois os campos (com "‹ Seções" para voltar); "Ver prévia" abre a página sobre tudo, e um toque numa parte dela fecha a prévia e abre os campos.
+- **Verificado localmente:** `npm run check`; navegador na montagem raiz, cenário `site-guided` reescrito (dois testes, computador e celular): abas, trilha, cabeçalho e rodapé na prévia e no site publicado, outra página editada e publicada no endereço dela, clique na prévia, SEO da página e meta description publicada, logotipo enviado pelo editor, cor ajustada com aviso, aparência escura e fonte, imagem de uma seção enviada pelo próprio campo e vista pelo visitante; e a suíte completa.
+- **Não feito / limites (0.63 e 0.64):** os três modelos novos de site completo; acrescentar, esconder e mover seções; destino de botões e links. A página inicial não tem título de busca separado do nome do site (seria mudança no documento; fica para decisão).
+- **Não verificado:** nada no ar antes do deploy; aparelhos reais (iOS Safari), leitor de tela e comparação lado a lado com o Figma `10:162` não foram feitos.
+
 ## Fatia 0.61: Ficha do aluno com abas (V4 T05, Figma `1:111`)
 
 **Sem migration.**
@@ -14,7 +32,8 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Verificado localmente:** `npm run check`; navegador na montagem raiz, suíte completa, com o cenário novo `student-tabs` (cabeçalho, ordem das abas, linha do tempo sem dados inventados, teclado, `?aba=` após recarga, aba desconhecida, `#pedidos`, volta de uma subpágina, outra organização recebe 404, sem rolagem lateral).
 - **Diferenças do Figma:** "Acompanhamento ativo" não existe como estado e virou o estado do portal; o texto fixo "Próxima ação: revisar plano" só aparece quando há revisão aberta; os marcos "Avaliação aprovada" e "Periodização configurada" não existem nos dados e não foram desenhados; o quadro não tem conteúdo para as abas 2 a 5, que usam os painéis existentes; a aba "Acesso e dados" não está no quadro.
 - **Não feito / limites:** a V4 lista 7 abas (Resumo, Ficha, Avaliações, Plano e treinos, Evolução, Acompanhamento, Acesso e dados) e o Figma 5, com "Periodização", nome que a V4 aposenta: ficou o Figma mais "Acesso e dados", à espera da decisão (PENDENCIAS B44). Busca e filtros da lista de alunos (T03) continuam fora: a Entrega 2 não está completa.
-- **Não verificado:** nada no ar antes do deploy; zoom de 200% e 1440 px não foram conferidos.
+- **Não verificado:** o ambiente de desenvolvimento não alcança o site publicado; zoom de 200% e 1440 px não foram conferidos.
+- **CI e deploy:** o CI da PR #63 passou nas duas montagens no commit `cca35d1`. Merge `5abd0d8`. Implantada: deploy `406af39f`, build de 04:47 a 04:49 e deploy até 04:49 de 02/11/2026, status `success`.
 
 ## Fatia 0.60.1: Meu Site não cai com página publicada no Editor Avançado
 

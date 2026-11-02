@@ -1,3 +1,4 @@
+import { pageMetaDescription, pageMetaTitle } from "./guided-seo";
 import type { Metadata } from "next";
 import type { PublicSite } from "@/db/sites";
 import { HOME, pageById, pageContent } from "./contracts";
@@ -16,10 +17,9 @@ const levelOf = (pageId: string): PublicLevel => (pageId === HOME ? "home" : "pa
 export function publicMetadata(site: PublicSite | null, pageId: string): Metadata {
   const page = pageId === HOME ? undefined : pageById(site?.content ?? {}, pageId);
   if (!site || (pageId !== HOME && !page)) return { title: "Página não encontrada", robots: { index: false, follow: false } };
-  const title = page ? `${page.title || page.slug} — ${site.content.title}` : site.content.title;
   return {
-    title: { absolute: title },
-    description: (page?.description || site.content.description) || undefined,
+    title: { absolute: pageMetaTitle(site.content, pageId) },
+    description: pageMetaDescription(site.content, pageId) || undefined,
     // The person can ask search engines not to list the site (it stays open to whoever has the address).
     robots: site.content.indexable === false ? { index: false, follow: false } : { index: true, follow: true },
   };

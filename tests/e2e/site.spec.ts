@@ -48,7 +48,10 @@ test("a professional builds a page in the visual editor, previews it, publishes 
   await expect(guided).toBeVisible();
   const sections = guided.getByRole("navigation", { name: "Seções do site" });
   await expect(sections.getByRole("button").first()).toHaveAttribute("aria-pressed", "true");
+  // On a phone the preview opens over everything, from "Ver prévia"; on a computer it is next to the form.
+  if ((page.viewportSize()?.width ?? 1280) < 720) await guided.getByRole("button", { name: "Ver prévia" }).click();
   await expect(guided.getByRole("region", { name: "Prévia da página" })).toBeVisible();
+  if ((page.viewportSize()?.width ?? 1280) < 720) await guided.getByRole("button", { name: "Fechar prévia" }).click();
   await guided.getByRole("button", { name: "Fechar o Editor Guiado" }).click();
   await expect(guided).toHaveCount(0);
   // The rest of this scenario is the visual builder, which stays for the sites made before the editor became fixed.

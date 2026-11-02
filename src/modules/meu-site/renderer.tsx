@@ -94,6 +94,8 @@ interface Ctx {
    * the definition that have a text or a label); the instance's own field is the one that is typed over.
    */
   instance?: { id: string; overridable: ReadonlySet<string> };
+  /** The Editor Guiado's preview: the sections of the page (its first-level nodes) carry their id, and the one being edited is marked. */
+  locate?: { sections: ReadonlySet<string>; selected: string | null };
 }
 
 /** The attributes every node's element carries: its classes (the page's own and the node's), its anchor id, and in the editor the id the canvas finds it by. */
@@ -107,6 +109,8 @@ function attrsOf(node: SiteNode, ctx: Ctx, classes: string) {
     "data-type": ctx.edit && !ctx.instance ? node.type : undefined,
     "data-empty": ctx.edit && !ctx.instance && node.type === "box" && node.children.length === 0 ? "" : undefined,
     "data-diff": ctx.marks?.get(node.id),
+    "data-guided-section": ctx.locate && !ctx.instance && ctx.locate.sections.has(node.id) ? node.id : undefined,
+    "data-guided-current": ctx.locate && !ctx.instance && ctx.locate.sections.has(node.id) && ctx.locate.selected === node.id ? "" : undefined,
   };
 }
 
@@ -626,6 +630,7 @@ export function SiteRenderer({
   nav,
   marks,
   forms,
+  locate,
 }: {
   content: SiteContent;
   edit?: EditHooks;
@@ -639,6 +644,8 @@ export function SiteRenderer({
   forms?: PublicForm | null;
   /** Only the blocks, without the header with the name of the site and the footer with the contacts (the editor draws a component alone). */
   bare?: boolean;
+  /** The Editor Guiado's preview: which section is being edited (a node id, or `header` and `footer` for the site's own). */
+  locate?: { selected: string | null };
 }) {
   const nodes = allNodes(content.blocks);
   const existing = new Set(nodes.map((entry) => entry.id));
@@ -646,7 +653,22 @@ export function SiteRenderer({
     nodes.flatMap((entry): string[] => ((entry.type === "button" || entry.type === "link") && entry.anchor && existing.has(entry.anchor) ? [entry.anchor] : [])),
   );
   const firstHero = nodes.find((entry) => entry.type === "hero")?.id ?? null;
-  const ctx: Ctx = { content, edit, images, anchors, firstHero, scope, nav, marks, forms };
+  const ctx: Ctx = {
+    content,
+    edit,
+    images,
+    anchors,
+    firstHero,
+    scope,
+    nav,
+    marks,
+    forms,
+    locate: locate ? { sections: new Set(content.blocks.map((entry) => entry.id)), selected: locate.selected } : undefined,
+  };
+  const part = (name: "header" | "footer") =>
+    locate ? { "data-guided-part": name, "data-guided-current": locate.selected === name ? "" : undefined } : {};
+  // A page that has a footer of its own (a box with the footer tag at its first level) does not get the site's as well.
+  const ownFooter = content.blocks.some((entry) => entry.type === "box" && entry.tag === "footer");
   const logo = content.logoAssetId ? images?.(content.logoAssetId) ?? null : null;
   const contacts = [
     { label: "WhatsApp", href: whatsappUrl(content.contact.whatsapp), external: true },
@@ -656,7 +678,7 @@ export function SiteRenderer({
   return (
     <div className="site" {...themeAttributes(content.theme)}>
       {!bare && (
-        <header className="site-header">
+        <header className="site-header" {...part("header")}>
           {firstHero === null ? (
             <h1 className="site-brand">
               {logo && <SiteLogo logo={logo} />}
@@ -679,22 +701,28 @@ export function SiteRenderer({
           <p className="site-hint">A página está sem blocos. Arraste um bloco da biblioteca para cá, ou clique em um deles para acrescentar.</p>
         )}
       </main>
-      {!bare && contacts.length > 0 && (
-        <footer className="site-footer">
-          <p>Contato:</p>
-          <ul>
-            {contacts.map((entry) => (
-              <li key={entry.label}>
-                {edit ? (
-                  <span className="site-footer-link">{entry.label}</span>
-                ) : (
-                  <a href={entry.href} {...(entry.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
-                    {entry.label}
-                  </a>
-                )}
-              </li>
-            ))}
-          </ul>
+      {!bare && !ownFooter && (
+        // The site's footer is on every page: its name, and the contacts that are filled in.
+        <footer className="site-footer" {...part("footer")}>
+          <p className="site-footer-brand">{content.title}</p>
+          {contacts.length > 0 && (
+            <>
+              <p>Contato:</p>
+              <ul>
+                {contacts.map((entry) => (
+                  <li key={entry.label}>
+                    {edit ? (
+                      <span className="site-footer-link">{entry.label}</span>
+                    ) : (
+                      <a href={entry.href} {...(entry.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
+                        {entry.label}
+                      </a>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </footer>
       )}
     </div>
