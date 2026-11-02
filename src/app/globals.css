@@ -3158,26 +3158,32 @@ a.site-menu-link:hover {
 }
 /* A picture in a frame of a shape: it is cropped at the centre to fill it (and so is the stand-in, so the layout shows the shape before there is a picture). */
 .site-image[data-ratio="1:1"] img,
+.site-image[data-ratio="1:1"] .site-illustration,
 .site-image[data-ratio="1:1"] .site-image-empty {
   aspect-ratio: 1 / 1;
 }
 .site-image[data-ratio="4:5"] img,
+.site-image[data-ratio="4:5"] .site-illustration,
 .site-image[data-ratio="4:5"] .site-image-empty {
   aspect-ratio: 4 / 5;
 }
 .site-image[data-ratio="3:4"] img,
+.site-image[data-ratio="3:4"] .site-illustration,
 .site-image[data-ratio="3:4"] .site-image-empty {
   aspect-ratio: 3 / 4;
 }
 .site-image[data-ratio="4:3"] img,
+.site-image[data-ratio="4:3"] .site-illustration,
 .site-image[data-ratio="4:3"] .site-image-empty {
   aspect-ratio: 4 / 3;
 }
 .site-image[data-ratio="3:2"] img,
+.site-image[data-ratio="3:2"] .site-illustration,
 .site-image[data-ratio="3:2"] .site-image-empty {
   aspect-ratio: 3 / 2;
 }
 .site-image[data-ratio="16:9"] img,
+.site-image[data-ratio="16:9"] .site-illustration,
 .site-image[data-ratio="16:9"] .site-image-empty {
   aspect-ratio: 16 / 9;
 }
@@ -3187,6 +3193,14 @@ a.site-menu-link:hover {
 }
 .site-image[data-ratio] .site-image-empty {
   min-height: 0;
+}
+/* A model's drawing in place of a photo: it fills the frame like a picture would (without a frame of a shape, a landscape one). */
+.site-illustration {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;
+  border-radius: inherit;
 }
 .site-image figcaption {
   color: var(--site-muted);
@@ -4139,6 +4153,16 @@ button.ve-layer-toggle {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 2px var(--color-primary);
 }
+.model-pick {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  font-weight: 400;
+  cursor: pointer;
+}
+.model-card .button {
+  justify-self: start;
+}
 .model-card:has(input:focus-visible) {
   outline: 3px solid var(--color-focus);
   outline-offset: 2px;
@@ -4173,8 +4197,28 @@ button.ve-layer-toggle {
 .model-thumb[data-model="athlete"] {
   --thumb-accent: #1b6e3c;
 }
-.model-thumb[data-model="trainer"] {
+.model-thumb[data-model="trainer"],
+.model-thumb[data-model="personal"] {
   --thumb-accent: #b45309;
+}
+.model-thumb[data-model="studio"] {
+  --thumb-accent: #7c4dbe;
+}
+.model-thumb[data-model="online"] {
+  --thumb-accent: #0077b6;
+}
+.model-thumb .t-ink-fill {
+  fill: #1c2430;
+}
+.model-thumb .t-accent-fill {
+  fill: var(--thumb-accent);
+}
+.model-thumb .t-accent-line {
+  fill: none;
+  stroke: var(--thumb-accent);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 .model-thumb .t-page {
   fill: var(--color-surface);
@@ -5534,4 +5578,51 @@ fieldset.yes-no legend {
   background: var(--color-brand-subtle);
   color: var(--color-primary-strong);
   font-weight: 700;
+}
+
+/* ---------- A model of site seen whole before it is chosen (0.63) ---------- */
+.model-preview {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: auto;
+  padding: 16px 20px calc(16px + env(safe-area-inset-bottom));
+  background: var(--color-background);
+}
+.model-preview > * {
+  flex-shrink: 0;
+}
+.model-preview-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.model-preview-head h2 {
+  margin: 0;
+}
+.model-preview-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px;
+}
+.model-preview-tools label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+.model-preview-frame {
+  max-height: none;
+  flex: 1 0 auto;
+}
+.model-card-actions {
+  display: flex;
+  gap: 8px;
 }

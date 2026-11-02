@@ -248,7 +248,12 @@ function BlockFields({ content, pageId, sectionId, images, onEdit }: { content: 
   return (
     <div className="guided-field-list">
       {fields.map((field) =>
-        field.kind === "image" ? (
+        field.kind === "check" ? (
+          <label key={field.key} className="check-row">
+            <input type="checkbox" checked={field.value === "true"} onChange={(event) => change(field, event.target.checked ? "true" : "")} />
+            <span>{field.label}</span>
+          </label>
+        ) : field.kind === "image" ? (
           <ImagePicker
             key={field.key}
             legend={field.label}
@@ -257,7 +262,7 @@ function BlockFields({ content, pageId, sectionId, images, onEdit }: { content: 
             value={field.value}
             onChange={(assetId) => change(field, assetId)}
             allowNone
-            noneLabel="Sem imagem"
+            noneLabel={field.illustration ? "Ilustração do modelo" : "Sem imagem"}
             usedIds={images.usedIds}
             available={images.available}
             src={images.src}

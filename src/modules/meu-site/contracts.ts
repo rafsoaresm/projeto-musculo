@@ -228,6 +228,12 @@ export const IMAGE_RATIO_LABEL: Record<ImageRatio, string> = {
   "3:2": "Paisagem larga (3:2)",
   "16:9": "Panorâmica (16:9)",
 };
+/**
+ * The drawings a model of site comes with in place of a photo (illustrations.tsx): abstract shapes in the colors of the site, drawn by the page itself
+ * (no file, no address). A closed list: nothing of them comes from the document but the name. A picture of the library, when chosen, takes their place.
+ */
+export const ILLUSTRATIONS = ["pulse", "weights", "rings", "studio", "grid", "screen", "path"] as const;
+export type Illustration = (typeof ILLUSTRATIONS)[number];
 /** An image of the site's library. `assetId` is "" until one is chosen; the description is for who cannot see it. */
 const imageShape = {
   type: z.literal("image"),
@@ -236,6 +242,8 @@ const imageShape = {
   caption: plain(CAPTION_MAX),
   size: z.enum(IMAGE_SIZES),
   ratio: z.enum(IMAGE_RATIOS).optional(),
+  /** Drawn while no picture is chosen (a model's banner): the person replaces it with a photo of their own. */
+  illustration: z.enum(ILLUSTRATIONS).optional(),
 };
 
 const hero = z.object({ ...base, ...heroShape }).strict();
@@ -969,8 +977,9 @@ export function publishIssues(
     else if (item.type === "paragraph" && !item.text) add(at, item.id, `${label}: escreva o texto.`);
     else if (item.type === "button" || item.type === "link") destination(at, label, item);
     else if (item.type === "image") {
-      if (!item.assetId) add(at, item.id, `${label}: escolha a imagem.`);
-      else if (assetIds && !assetIds.has(item.assetId)) add(at, item.id, `${label}: a imagem escolhida não está mais na biblioteca. Escolha outra.`);
+      // A model's drawing stands in until a photo is chosen: nothing to ask for then.
+      if (!item.assetId && !item.illustration) add(at, item.id, `${label}: escolha a imagem.`);
+      else if (item.assetId && assetIds && !assetIds.has(item.assetId)) add(at, item.id, `${label}: a imagem escolhida não está mais na biblioteca. Escolha outra.`);
       if (item.assetId && !item.alt) add(at, item.id, `${label}: descreva a imagem para quem não consegue vê-la (texto alternativo).`);
     }
   };
@@ -1009,6 +1018,11 @@ export function publishIssues(
         if (b.stat && !b.statLabel) add(at, b.id, `${label}: o destaque numérico precisa de uma legenda.`);
         break;
       case "quote":
+        // An empty testimony (no text, no author) is not on the page: it only waits to be written. Once anything is written, the rules hold.
+        if (!b.quote && !b.author) {
+          add(at, b.id, `${label}: escreva um depoimento autorizado, ou tire o bloco (vazio, ele não aparece no site).`);
+          break;
+        }
         if (!b.quote) add(at, b.id, `${label}: escreva o depoimento.`);
         if (!b.author) add(at, b.id, `${label}: diga de quem é o depoimento.`);
         if (!b.authorized) add(at, b.id, `${label}: confirme que a pessoa autorizou o uso do depoimento.`, "blocking");

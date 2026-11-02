@@ -49,6 +49,7 @@ test("images: sent in the editor, shown on the page, public only through the pub
   const slug = `imagens-${unique}`;
   await page.goto("./profissional/meu-site");
   await page.getByRole("button", { name: "Escolher Editor Guiado" }).click();
+  await page.getByRole("form", { name: "Criar o meu site" }).getByRole("radio", { name: /^Uma página só/ }).check();
   await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Confirmar e criar site" }).click();
   await expect(page.getByRole("heading", { name: "Meu Site", level: 1 })).toBeVisible();
   await asLegacySite(page, slug);

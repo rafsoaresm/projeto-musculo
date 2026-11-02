@@ -81,6 +81,7 @@ export async function startEditor(page: Page, name = "Marina Editor") {
   await createProfessional(page, `Estúdio ${unique}`, name);
   await page.goto("./profissional/meu-site");
   await page.getByRole("button", { name: "Escolher Editor Guiado" }).click();
+  await page.getByRole("form", { name: "Criar o meu site" }).getByRole("radio", { name: /^Uma página só/ }).check();
   await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Confirmar e criar site" }).click();
   await showTab(page, "Publicação");
   await expect(state(page).getByText("Fora do ar")).toBeVisible();

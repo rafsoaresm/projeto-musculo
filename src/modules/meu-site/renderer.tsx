@@ -1,4 +1,5 @@
 import { type ReactNode } from "react";
+import { IllustrationView } from "./illustrations";
 import {
   allNodes,
   applyOverrides,
@@ -185,7 +186,7 @@ const visiting = (ctx: Ctx, where: { visit?: string }) =>
 /** Whether an element has anything to show on the public page: a text, a button or a link with a label and a place to go, an image of the library. */
 function visible(item: ElementNode, ctx: Ctx): boolean {
   if (ctx.edit) return true;
-  if (item.type === "image") return Boolean(item.assetId && ctx.images?.(item.assetId));
+  if (item.type === "image") return Boolean((item.assetId && ctx.images?.(item.assetId)) || item.illustration);
   if (item.type === "button" || item.type === "link") return Boolean(item.label && destinationOf(item, ctx));
   return item.text !== "";
 }
@@ -209,6 +210,9 @@ function ElementView({ item, ctx }: { item: ElementNode; ctx: Ctx }) {
         {image ? (
           // eslint-disable-next-line @next/next/no-img-element -- served by this app from a private bucket; the size is known
           <img src={image.src} width={image.width} height={image.height} alt={item.alt} loading="lazy" decoding="async" />
+        ) : item.illustration ? (
+          // The model's drawing, until a photo is chosen: decorative, so it says nothing to a screen reader.
+          <IllustrationView name={item.illustration} className="site-illustration" />
         ) : (
           <div className="site-image-empty">Escolha a imagem no painel à direita.</div>
         )}
@@ -245,8 +249,35 @@ function ElementView({ item, ctx }: { item: ElementNode; ctx: Ctx }) {
   );
 }
 
+/**
+ * Whether a node shows anything on the public page. A container whose contents are all empty (a band of a model whose texts were not written yet)
+ * is left out, instead of drawing a colored strip with nothing in it; one with no children at all is a spacer and stays.
+ */
+function hasContent(node: SiteNode, ctx: Ctx): boolean {
+  if (node.type === "box")
+    return (
+      node.children.length === 0 ||
+      // A background picture is something to see, and a part a button or a link points to stays where they lead.
+      [node.style, node.styleTablet, node.styleMobile].some((style) => style?.bgImage) ||
+      ctx.anchors.has(node.id) ||
+      node.children.some((child) => hasContent(child, ctx))
+    );
+  if (node.type === "quote") return node.quote !== "" || node.author !== "";
+  if (node.type === "faq") return node.items.some((item) => item.question && item.answer);
+  if (node.type === "contactForm") return ctx.forms !== null;
+  if (node.type === "heading" || node.type === "paragraph" || node.type === "button" || node.type === "link" || node.type === "image") return visible(node, ctx);
+  return true;
+}
+
+/**
+ * Whether empty parts are left out: on the published page and the previews of it, not in the editors. The Editor Guiado's preview (`locate`) keeps
+ * them, so the section being written can be outlined and chosen there before it has anything in it.
+ */
+const leavesOutEmpty = (ctx: Ctx) => !ctx.edit && !ctx.locate;
+
 function BoxView({ node, ctx }: { node: BoxNode; ctx: Ctx }) {
   const Tag = node.tag;
+  if (leavesOutEmpty(ctx) && !hasContent(node, ctx)) return null;
   return (
     <Tag {...attrsOf(node, ctx, "site-box")}>
       {node.children.map((child) => (
@@ -377,6 +408,8 @@ function NodeView({ node, ctx }: { node: SiteNode; ctx: Ctx }) {
         </section>
       );
     case "quote":
+      // A testimony not written yet is not on the public page (the publication says it waits to be written).
+      if (leavesOutEmpty(ctx) && !node.quote && !node.author) return null;
       return (
         <section {...attrsOf(node, ctx, "site-section site-quote")}>
           <Eyebrow ctx={ctx} id={id} value={node.eyebrow} />
@@ -421,6 +454,8 @@ function NodeView({ node, ctx }: { node: SiteNode; ctx: Ctx }) {
     }
     case "faq": {
       const items = node.items.filter((item) => item.question && item.answer);
+      // No question answered yet: on the public page the section would be a title with nothing under it.
+      if (leavesOutEmpty(ctx) && items.length === 0) return null;
       return (
         <section {...attrsOf(node, ctx, "site-section site-faq")}>
           <Eyebrow ctx={ctx} id={id} value={node.eyebrow} />

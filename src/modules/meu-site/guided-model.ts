@@ -31,7 +31,7 @@ export interface Section {
   label: string;
 }
 
-export type FieldKind = "text" | "multiline" | "image";
+export type FieldKind = "text" | "multiline" | "image" | "check";
 
 export interface Field {
   /** `<node id>.<property>` or `<node id>.items.<n>.<property>`; `page.title` and `page.description` for the page itself. */
@@ -40,6 +40,8 @@ export interface Field {
   kind: FieldKind;
   max: number;
   value: string;
+  /** An image of a model: the drawing shown while no photo is chosen. */
+  illustration?: string;
 }
 
 /** The sections of a page (the home page by default), in order: what the list shows. A box with the header or footer tag is called so. */
@@ -88,7 +90,13 @@ export function fieldsOf(section: SiteNode): Field[] {
         );
         break;
       case "quote":
-        out.push(own(entry, "eyebrow", "Sobretítulo", "text", EYEBROW_MAX), own(entry, "quote", "Depoimento", "multiline", QUOTE_MAX), own(entry, "author", "Autor", "text", AUTHOR_MAX));
+        out.push(
+          own(entry, "eyebrow", "Sobretítulo", "text", EYEBROW_MAX),
+          own(entry, "quote", "Depoimento", "multiline", QUOTE_MAX),
+          own(entry, "author", "Autor", "text", AUTHOR_MAX),
+          // A testimony is published only with the person's authorization, confirmed here ("true" or "").
+          { key: `${entry.id}.authorized`, label: "A pessoa autorizou o uso deste depoimento no site", kind: "check", max: 4, value: entry.authorized ? "true" : "" },
+        );
         break;
       case "stats":
         out.push(own(entry, "eyebrow", "Sobretítulo", "text", EYEBROW_MAX), own(entry, "heading", "Título", "text", HEADING_MAX));
@@ -122,7 +130,10 @@ export function fieldsOf(section: SiteNode): Field[] {
         break;
       case "image": {
         const label = numbered("Imagem");
-        out.push({ ...own(entry, "assetId", "", "image", 64), label }, { ...own(entry, "alt", "", "text", ALT_MAX), label: `Descrição da ${label.toLowerCase()}` });
+        out.push(
+          { ...own(entry, "assetId", "", "image", 64), label, ...(entry.illustration ? { illustration: entry.illustration } : null) },
+          { ...own(entry, "alt", "", "text", ALT_MAX), label: `Descrição da ${label.toLowerCase()}` },
+        );
         break;
       }
       case "box":
@@ -179,6 +190,7 @@ export function withField(content: SiteContent, key: string, raw: string): SiteC
     // Only a field this node offers by itself: the key starts with its own identifier (its children have theirs).
     const field = fieldsOf(entry).find((candidate) => candidate.key === key);
     if (!field) return entry;
+    if (field.kind === "check") return { ...entry, [property]: raw === "true" } as SiteNode;
     const value = raw.slice(0, field.max);
     if (property === "items" && n !== undefined && itemProperty) {
       const items = (entry as unknown as { items: Array<Record<string, string>> }).items.map((item, at) => (at === Number(n) ? { ...item, [itemProperty]: value } : item));
