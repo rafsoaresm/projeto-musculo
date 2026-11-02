@@ -67,10 +67,16 @@ export async function POST(request: Request, { params }: Params) {
   });
   if (outcome.status === "closed") return notFound();
   if (outcome.status === "limited") {
-    // Not kept: the visitor is not sent on as if it had been (handoff: never open WhatsApp after a failed save).
+    // Not kept: the visitor is not sent on as if it had been (handoff: never open WhatsApp after a failed save), but may go by choice.
     return answer(
       429,
-      { title: "Tente de novo mais tarde", message: "O formulário não está recebendo mais contatos agora, e por isso o WhatsApp não foi aberto. Tente de novo mais tarde.", back },
+      {
+        title: "Tente de novo mais tarde",
+        message: "O formulário não está recebendo mais contatos agora, e por isso o seu nome e o seu celular não foram guardados. Tente de novo mais tarde, ou fale direto no WhatsApp.",
+        back,
+        // Never opened by itself (the handoff): the visitor chooses to go, and nothing of what was typed goes with it.
+        also: { href: target, label: "Falar no WhatsApp mesmo assim" },
+      },
       { "Retry-After": "3600" },
     );
   }

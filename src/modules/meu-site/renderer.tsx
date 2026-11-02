@@ -20,7 +20,8 @@ import {
   type SiteContent,
   type SiteNode,
 } from "./contracts";
-import { FIELD, WHATSAPP_FIELD, WHATSAPP_GOAL_MAX, WHATSAPP_NAME_MAX } from "./inquiries";
+import { FIELD, MOBILE_PATTERN, WHATSAPP_FIELD, WHATSAPP_GOAL_MAX, WHATSAPP_NAME_MAX } from "./inquiries";
+import { WhatsAppFormKeys } from "./whatsapp-form-keys";
 import { anchorDomId, nodeClass } from "./site-css";
 import { themeAttributes } from "./site-theme";
 import { hasAnyStyle } from "./screens";
@@ -580,6 +581,8 @@ function ContactFormView({ node, ctx }: { node: ContactFormNode; ctx: Ctx }) {
   const live = ctx.forms ?? null;
   if (ctx.forms === null) return null;
   const field = (name: string) => `${ctx.scope}${id}-${name}`;
+  // A site that asks for the name and the mobile before WhatsApp: its contact form is that same form (handoff 12.4), not a second one.
+  const toWhatsApp = live !== null && ctx.content.whatsappCta?.askFirst === true && ctx.whatsapp !== null && !ctx.whatsapp.external;
   return (
     <section {...attrsOf(node, ctx, "site-section site-contact-form")}>
       <Eyebrow ctx={ctx} id={id} value={node.eyebrow} />
@@ -593,6 +596,9 @@ function ContactFormView({ node, ctx }: { node: ContactFormNode; ctx: Ctx }) {
           <T ctx={ctx} id={id} path="text" value={node.text} placeholder="Texto (opcional)" max={300} multiline />
         </p>
       )}
+      {live && toWhatsApp ? (
+        <WhatsAppLeadForm content={ctx.content} forms={live} prefix={`${ctx.scope}${id}`} submit={node.buttonLabel || "Continuar no WhatsApp"} />
+      ) : (
       <form className="site-form" method="post" action={live?.action} {...(live ? {} : { "aria-label": "Amostra do formulário" })}>
         <fieldset className="site-form-fields" disabled={!live}>
           {live && <input type="hidden" name={FIELD.page} value={live.page} />}
@@ -643,6 +649,7 @@ function ContactFormView({ node, ctx }: { node: ContactFormNode; ctx: Ctx }) {
           )
         )}
       </form>
+      )}
       {!live && (
         <p className="site-hint">
           Amostra: o formulário só funciona na página publicada, depois que os formulários públicos estiverem abertos pela plataforma e o recebimento de mensagens estiver ligado no Meu Site. Enquanto isso ele não aparece para quem visita.
@@ -893,59 +900,87 @@ export function SiteRenderer({
  */
 function WhatsAppForm({ content, forms, scope }: { content: SiteContent; forms: PublicForm; scope: string }) {
   const id = `${scope}${WHATSAPP_FORM_ID}`;
-  const field = (name: string) => `${id}-${name}`;
   const close = `#${scope}${WHATSAPP_FORM_CLOSED}`;
   return (
-    <div id={id} className="site-wa-modal" role="dialog" aria-modal="true" aria-labelledby={field("title")}>
+    // A dialog over the page; `aria-modal` is set by the script that also puts the rest of the page out of reach (whatsapp-form-keys.tsx).
+    <div id={id} className="site-wa-modal" role="dialog" aria-labelledby={`${id}-title`}>
       <a className="site-wa-backdrop" href={close} tabIndex={-1} aria-hidden="true" />
       <div className="site-wa-dialog">
         <a className="site-wa-close" href={close} aria-label="Fechar e voltar à página">
           ×
         </a>
-        <h2 id={field("title")}>Antes de abrir o WhatsApp</h2>
+        <h2 id={`${id}-title`}>Antes de abrir o WhatsApp</h2>
         <p className="site-text">
           Deixe o seu nome e o seu celular para {content.title || "o profissional"} poder responder. Depois de enviar, o WhatsApp abre nesta mesma aba.
         </p>
-        <form className="site-form" method="post" action={forms.whatsappAction}>
-          <fieldset className="site-form-fields">
-            <input type="hidden" name={WHATSAPP_FIELD.page} value={forms.page} />
-            <label htmlFor={field("nome")}>
-              Nome
-              <input id={field("nome")} name={WHATSAPP_FIELD.name} required minLength={2} maxLength={WHATSAPP_NAME_MAX} autoComplete="name" />
-            </label>
-            <label htmlFor={field("celular")}>
-              Celular com DDD
-              <input id={field("celular")} name={WHATSAPP_FIELD.phone} type="tel" required minLength={10} maxLength={30} inputMode="tel" autoComplete="tel" />
-            </label>
-            {content.whatsappCta?.askGoal && (
-              <label htmlFor={field("objetivo")}>
-                Seu objetivo (opcional)
-                <input id={field("objetivo")} name={WHATSAPP_FIELD.goal} maxLength={WHATSAPP_GOAL_MAX} autoComplete="off" />
-              </label>
-            )}
-            <div className="site-form-bait" aria-hidden="true">
-              <label>
-                Não preencha este campo
-                <input name={WHATSAPP_FIELD.bait} tabIndex={-1} autoComplete="off" />
-              </label>
-            </div>
-            <label className="site-form-consent">
-              <input type="checkbox" name={WHATSAPP_FIELD.consent} required />
-              <span>
-                Li o{" "}
-                <a href={forms.noticeUrl} target="_blank" rel="noopener noreferrer">
-                  aviso de privacidade
-                </a>{" "}
-                e concordo que o meu nome e o meu celular fiquem com este profissional para ele me responder.
-              </span>
-            </label>
-          </fieldset>
-          <button type="submit" className="button site-whatsapp site-has-icon">
-            <WhatsAppIcon />
-            Continuar no WhatsApp
-          </button>
-        </form>
+        <WhatsAppLeadForm content={content} forms={forms} prefix={id} submit="Continuar no WhatsApp" />
       </div>
+      <WhatsAppFormKeys id={id} closed={`${scope}${WHATSAPP_FORM_CLOSED}`} />
     </div>
+  );
+}
+
+/**
+ * The fields of the form before WhatsApp, sent to this app (the window above, and the contact form of a site that asks first): a name and a
+ * mobile always, the goal when the site asks it, the field a person never sees and the box of the privacy notice, unticked, which says what is
+ * kept. The mobile is checked by the browser with the same rule as the server's, so a landline is caught while the form is still open.
+ */
+function WhatsAppLeadForm({ content, forms, prefix, submit }: { content: SiteContent; forms: PublicForm; prefix: string; submit: string }) {
+  const field = (name: string) => `${prefix}-${name}`;
+  const goal = Boolean(content.whatsappCta?.askGoal);
+  return (
+    <form className="site-form" method="post" action={forms.whatsappAction}>
+      <fieldset className="site-form-fields">
+        <input type="hidden" name={WHATSAPP_FIELD.page} value={forms.page} />
+        <label htmlFor={field("nome")}>
+          Nome
+          <input id={field("nome")} name={WHATSAPP_FIELD.name} required minLength={2} maxLength={WHATSAPP_NAME_MAX} autoComplete="name" />
+        </label>
+        <label htmlFor={field("celular")}>
+          Celular com DDD
+          <input
+            id={field("celular")}
+            name={WHATSAPP_FIELD.phone}
+            type="tel"
+            required
+            minLength={10}
+            maxLength={30}
+            pattern={MOBILE_PATTERN}
+            title="Um celular com DDD, por exemplo (31) 98888-7777"
+            inputMode="tel"
+            autoComplete="tel"
+          />
+        </label>
+        {goal && (
+          <label htmlFor={field("objetivo")}>
+            Seu objetivo (opcional)
+            <input id={field("objetivo")} name={WHATSAPP_FIELD.goal} maxLength={WHATSAPP_GOAL_MAX} autoComplete="off" aria-describedby={field("objetivo-dica")} />
+            <span id={field("objetivo-dica")} className="site-form-hint">
+              Por exemplo, ganhar força ou voltar a treinar. Não escreva dados de saúde aqui.
+            </span>
+          </label>
+        )}
+        <div className="site-form-bait" aria-hidden="true">
+          <label>
+            Não preencha este campo
+            <input name={WHATSAPP_FIELD.bait} tabIndex={-1} autoComplete="off" />
+          </label>
+        </div>
+        <label className="site-form-consent">
+          <input type="checkbox" name={WHATSAPP_FIELD.consent} required />
+          <span>
+            Li o{" "}
+            <a href={forms.noticeUrl} target="_blank" rel="noopener noreferrer">
+              aviso de privacidade
+            </a>{" "}
+            e concordo que o meu nome, o meu celular{goal ? " e o objetivo, se eu escrever," : ""} fiquem com este profissional para ele me responder.
+          </span>
+        </label>
+      </fieldset>
+      <button type="submit" className="button site-whatsapp site-has-icon">
+        <WhatsAppIcon />
+        {submit}
+      </button>
+    </form>
   );
 }

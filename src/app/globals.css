@@ -3249,6 +3249,11 @@ a.site-menu-link:hover {
 }
 /* The form before WhatsApp: a window over the page, shown while the address points at it (the WhatsApp buttons link to it; no script), on the
    page's own surface and colours. On a phone it takes the width of the screen and scrolls inside. */
+.site-form .site-form-hint {
+  color: var(--site-muted);
+  font-size: 13px;
+  font-weight: 400;
+}
 .site-wa-modal {
   display: none;
 }

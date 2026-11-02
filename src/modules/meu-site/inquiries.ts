@@ -219,3 +219,10 @@ export function parseWhatsAppLead(form: Pick<FormData, "get">, askGoal: boolean)
   const page = pageSlug.safeParse(text(form, WHATSAPP_FIELD.page) ?? "");
   return { kind: "ok", value: { name, phone, goal: rawGoal === "" ? null : rawGoal, page: page.success ? page.data : "" } };
 }
+
+/**
+ * The same rule as `readMobile`, as the `pattern` of the field, so the browser stops a landline or a number without its DDD before anything is
+ * sent and the form stays open with its own message. Browsers read it with the `v` flag, where these characters must be escaped in a class.
+ */
+const MOBILE_SEPARATORS = "[\\s\\(\\)\\.\\+\\-]*";
+export const MOBILE_PATTERN = `${MOBILE_SEPARATORS}(?:5${MOBILE_SEPARATORS}5${MOBILE_SEPARATORS})?[1-9]${MOBILE_SEPARATORS}[1-9]${MOBILE_SEPARATORS}9(?:${MOBILE_SEPARATORS}[0-9]){8}${MOBILE_SEPARATORS}`;

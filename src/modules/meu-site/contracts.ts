@@ -1130,8 +1130,15 @@ export function publishIssues(
   }
   where = { page: null, prefix: "" };
   if (content.logoAssetId && assetIds && !assetIds.has(content.logoAssetId)) add(null, null, "O logotipo escolhido não está mais na biblioteca. Escolha outro ou tire o logotipo.");
-  // The header's WhatsApp button is left out of the page without a number to go to.
-  if (content.headerCta?.label.trim() && !whatsappUrl(content.contact.whatsapp))
-    add(null, null, "O botão do WhatsApp do cabeçalho não aparece: preencha o WhatsApp do site (com DDD) no rodapé.");
+  // The header's WhatsApp button and the form before WhatsApp are left out of the page without a number to go to (a button of a section that
+  // goes to WhatsApp is said above, where it is).
+  if ((content.headerCta?.label.trim() || content.whatsappCta?.askFirst) && !whatsappUrl(content.contact.whatsapp))
+    add(
+      null,
+      null,
+      content.headerCta?.label.trim()
+        ? "O botão do WhatsApp do cabeçalho não aparece: preencha o WhatsApp do site (com DDD) no rodapé."
+        : "O formulário antes do WhatsApp não aparece: preencha o WhatsApp do site (com DDD) no rodapé.",
+    );
   return issues;
 }

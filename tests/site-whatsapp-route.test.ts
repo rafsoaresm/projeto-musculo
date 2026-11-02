@@ -187,7 +187,10 @@ describe("sending it", () => {
     const answered = await post("marina-a", GOOD, { "cf-connecting-ip": "203.0.113.9" });
     expect(answered.status).toBe(429);
     expect(answered.headers.get("location")).toBeNull();
-    expect(await answered.text()).toMatch(/WhatsApp não foi aberto/);
+    const page = await answered.text();
+    expect(page).toMatch(/não foram guardados/);
+    // The visitor may still go, by choice, and with the professional's message only.
+    expect(page).toContain(`<a href="${WA.replace(/&/g, "&amp;")}" rel="noopener noreferrer">Falar no WhatsApp mesmo assim</a>`);
     expect(await count("SELECT 1 FROM site_inquiries")).toBe(INQUIRIES_PER_SENDER_PER_HOUR);
   });
   it("refuses a body that is not a form, or too large", async () => {

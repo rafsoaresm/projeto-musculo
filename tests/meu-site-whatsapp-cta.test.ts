@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { WHATSAPP_MESSAGE_MAX, publishIssues, safeParseContent, whatsappUrl, type SiteContent } from "@/modules/meu-site/contracts";
 import { WHATSAPP_CTA_NONE, withWhatsAppCta } from "@/modules/meu-site/guided-menu";
-import { parseWhatsAppLead, readMobile } from "@/modules/meu-site/inquiries";
+import { MOBILE_PATTERN, parseWhatsAppLead, readMobile } from "@/modules/meu-site/inquiries";
 import { SITE_MODELS_V1 } from "@/modules/meu-site/models";
 import { SiteRenderer, whatsappDestination, type PublicForm } from "@/modules/meu-site/renderer";
 
@@ -94,11 +94,36 @@ describe("where the WhatsApp buttons go", () => {
     expect(html).toContain('name="empresa_extra"');
     expect(html).toMatch(/<input type="checkbox" required="" name="aceite"\/>/);
     expect(html).toContain(`<a href="${NOTICE}" target="_blank" rel="noopener noreferrer">aviso de privacidade</a>`);
-    expect(html).toMatch(/role="dialog" aria-modal="true" aria-labelledby="site-whatsapp-form-title"/);
+    // Modal for a screen reader only once the script puts the page behind out of reach (it is not on the page without it).
+    expect(html).toMatch(/role="dialog" aria-labelledby="site-whatsapp-form-title"/);
+    expect(html).not.toContain("aria-modal");
+    // The consent says what is kept, the goal included when it is asked; the goal field says not to write health data.
+    expect(html).toContain("concordo que o meu nome, o meu celular e o objetivo, se eu escrever, fiquem com este profissional");
+    expect(html).toContain("Não escreva dados de saúde aqui.");
+    expect(html).toContain(`pattern="${MOBILE_PATTERN.replace(/&/g, "&amp;")}"`);
     expect(html).not.toContain("<script");
   });
-  it("without the goal when the site does not ask it", () => {
-    expect(render(site({ message: MESSAGE, askFirst: true, askGoal: false }), LIVE)).not.toContain('name="objetivo"');
+  it("without the goal when the site does not ask it, and the consent says only the name and the mobile", () => {
+    const html = render(site({ message: MESSAGE, askFirst: true, askGoal: false }), LIVE);
+    expect(html).not.toContain('name="objetivo"');
+    expect(html).toContain("concordo que o meu nome, o meu celular fiquem com este profissional");
+  });
+  it("makes the contact form of a site that asks first that same form, sent to the WhatsApp address with its own button text", () => {
+    const content: SiteContent = { ...site(), blocks: [...site().blocks, { id: "f1", type: "contactForm", eyebrow: "", heading: "Fale comigo", text: "", buttonLabel: "Quero começar" }] };
+    const html = render(content, LIVE);
+    expect(html.match(/action="\.\/marina\/m\/whatsapp"/g)).toHaveLength(2);
+    expect(html).not.toContain('action="./marina/m/contato"');
+    expect(html).toContain('id="f1-celular"');
+    expect(html).toMatch(/class="button site-whatsapp site-has-icon"><svg[^]*?<\/svg>Quero começar<\/button>/);
+    // A site that does not ask keeps the contact form as it was.
+    const plain = render({ ...content, whatsappCta: { message: MESSAGE, askFirst: false, askGoal: false } }, LIVE);
+    expect(plain).toContain('action="./marina/m/contato"');
+    expect(plain).not.toContain("m/whatsapp");
+  });
+  it("checks the mobile in the browser with the same rule as the server", () => {
+    const browser = new RegExp(`^(?:${MOBILE_PATTERN})$`, "v");
+    for (const value of ["(11) 98765-4321", "11987654321", "+55 11 98765-4321", "5521987654321", "(99) 91234-5678", "(55) 99999-9999", "55 55 99999-9999", "(11) 3456-7890", "1187654321", "(01) 98765-4321", "(10) 98765-4321", "98765-4321", "11 98765-43210", "(11) 88765-4321", "abc", "31.98888.7777"])
+      expect(browser.test(value), value).toBe(readMobile(value) !== null);
   });
   it("on a page whose forms are closed, or a site that does not ask: straight to WhatsApp in a new tab, and no form", () => {
     for (const html of [render(site(), null), render(site({ message: MESSAGE, askFirst: false, askGoal: false }), LIVE), render(site())]) {
@@ -138,5 +163,8 @@ describe("in the Editor Guiado", () => {
     expect(issue(site(undefined, ""))[0]!.severity).toBe("warning");
     expect(issue(site())).toHaveLength(0);
     expect(issue({ ...site(undefined, ""), headerCta: { label: " " } })).toHaveLength(0);
+    const form = (content: SiteContent) => publishIssues(content, new Set()).filter((entry) => /formulário antes do WhatsApp/.test(entry.message));
+    expect(form({ ...site(undefined, ""), headerCta: undefined })).toHaveLength(1);
+    expect(form({ ...site({ message: MESSAGE, askFirst: false, askGoal: false }, ""), headerCta: undefined })).toHaveLength(0);
   });
 });

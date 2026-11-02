@@ -88,6 +88,7 @@ export function withWhatsAppCta(content: SiteContent, change: Partial<WhatsAppCt
   if (next.message === now.message && next.askFirst === now.askFirst && next.askGoal === now.askGoal) return content;
   if (!next.message && !next.askFirst) {
     const { whatsappCta: _dropped, ...rest } = content;
+    void _dropped;
     return rest;
   }
   return { ...content, whatsappCta: next };

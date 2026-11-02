@@ -445,7 +445,7 @@ function WhatsAppFields({ content, onEdit, forms }: { content: SiteContent; onEd
         {!cta.askFirst
           ? "Os botões abrem o WhatsApp direto, sem formulário e sem guardar nada."
           : live
-            ? "Na página publicada, os botões abrem um formulário com o aviso de privacidade. O nome e o celular ficam em Leads, nas mensagens do site, e só depois o WhatsApp abre."
+            ? `Na página publicada, os botões abrem um formulário com o aviso de privacidade. O nome e o celular${cta.askGoal ? " (e o objetivo, se a pessoa escrever)" : ""} ficam em Leads, nas mensagens do site, e só depois o WhatsApp abre. O formulário de contato da página passa a ser este mesmo.`
             : `O formulário só aparece quando ${forms.platformOpen ? "o recebimento de mensagens estiver ligado no site (aba Formulários)" : "a plataforma abrir os formulários públicos e o recebimento de mensagens estiver ligado no site"}. Até lá, os botões abrem o WhatsApp direto.`}
       </p>
     </fieldset>

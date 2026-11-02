@@ -86,14 +86,28 @@ test("WhatsApp: the buttons go straight while the site does not receive messages
   const view = visitor.viewportSize()!;
   expect(box.x).toBeGreaterThanOrEqual(0);
   expect(box.x + box.width).toBeLessThanOrEqual(view.width);
+  // With the page's script: the focus is in the first field, the page behind is out of reach, Escape closes and the focus goes back.
+  await expect(dialog.getByLabel("Nome", { exact: true })).toBeFocused();
+  await expect(dialog).toHaveAttribute("aria-modal", "true");
+  await expect(visitor.locator(".site > main")).toHaveJSProperty("inert", true);
+  await visitor.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(cta).toBeFocused();
+  await expect(visitor.locator(".site > main")).toHaveJSProperty("inert", false);
+  await cta.click();
+  await expect(dialog).toBeVisible();
   await dialog.getByRole("link", { name: "Fechar e voltar à página" }).click();
   await expect(dialog).toBeHidden();
+  // The contact section of the model is this same form: it is sent to the WhatsApp address.
+  await expect(visitor.locator("section.site-contact-form form")).toHaveAttribute("action", /\/m\/whatsapp$/);
   await cta.click();
   await expect(dialog).toBeVisible();
 
-  // ---- the browser holds back an empty form; the server says what is wrong when the browser is passed by ----
+  // ---- the browser holds back an empty form and a landline, with the form still open; the server says what is wrong when the browser is passed by ----
   await dialog.getByRole("button", { name: "Continuar no WhatsApp" }).click();
   await expect(visitor).toHaveURL(/#site-whatsapp-form$/);
+  await dialog.getByLabel("Celular com DDD").fill("(11) 3456-7890");
+  expect(await dialog.getByLabel("Celular com DDD").evaluate((input) => (input as HTMLInputElement).validity.patternMismatch)).toBe(true);
   const raw = (fields: Record<string, string>) => visitor.request.post(`./s/${slug}/m/whatsapp`, { form: fields, maxRedirects: 0 });
   const landline = await raw({ nome: "Ana Souza", celular: "(11) 3456-7890", aceite: "on" });
   expect(landline.status()).toBe(400);
