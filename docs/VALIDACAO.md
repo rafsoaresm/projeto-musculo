@@ -2,6 +2,40 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.67: Os quatro modelos de site no Editor Avançado (Frappe) (pedido do usuário de 02/11/2026; PENDENCIAS B46)
+
+**Sem migration.** Os modelos não são guardados em lugar nenhum: a página é feita na hora, a partir do mesmo documento do Editor Guiado.
+
+- **Na galeria "Novo" do Editor Avançado**, em "Modelos do site":
+  - Energia, Bem-estar, Premium e Performance, cada um com a sua miniatura;
+  - "Pré-visualização", que abre a página que o modelo vira (`/profissional/meu-site/modelo-avancado/<modelo>`, só para quem edita o site, com a mesma política de conteúdo de uma página publicada, sem script);
+  - "Usar modelo", que cria um **rascunho não publicado** e o abre no editor. "Usar as páginas" põe a página numa pasta com o nome do modelo.
+- **O conversor** (`src/modules/frappe-editor/site-model-blocks.ts`, puro) transforma o documento do modelo em blocos do Frappe:
+  - seções com nome nas camadas;
+  - cores da paleta já resolvidas;
+  - regras do computador, do tablet e do celular;
+  - menu do cabeçalho que vira "Menu" no celular, sem script;
+  - perguntas frequentes em `details`;
+  - formulário de contato no formato do formulário do Frappe (0.51), que aparece na página só com o recebimento de mensagens ligado.
+- **Sem dado inventado:**
+  - o que o modelo só mostra como exemplo vira um marcador entre colchetes ("[Seu nome]", "[Preço do plano]", "[Depoimento de um aluno, com autorização]", "[Número]");
+  - as fotos de exemplo viram caixas vazias para a pessoa escolher a foto;
+  - os botões de contato vão ao WhatsApp, e-mail ou Instagram escritos no Editor Guiado da organização, quando válidos. Sem eles, o botão diz "[Seu WhatsApp]" (ou e-mail, ou Instagram) e não leva a lugar nenhum: nunca um número inventado.
+- **Verificado localmente:**
+  - `npm run check`: lint, tipos e 1614 testes, entre eles `frappe-site-models` (para cada modelo: árvore válida, cada âncora com destino, determinismo, tamanho, nenhuma foto de exemplo nem `var(--site-`, nenhum texto só de exemplo, contatos com e sem endereço, desenho pelo renderizador público com âncoras, `details`, marca do WhatsApp, Inter e formulário) e os novos casos de `frappe-editor-protocol` (galeria, criar do modelo, pasta de "usar as páginas", nome desconhecido recusado sem escrever nada);
+  - comparação visual de cada modelo com a versão do Editor Guiado, a 1440 e a 390 px, sem rolagem lateral (`scripts/site-models/frappe-qa.tsx`). A mesma ordem, cores, tipografia, colunas e botões; diferem as fotos (caixas vazias) e os marcadores;
+  - navegador, nas duas montagens: `frappe-models` (galeria com as quatro miniaturas sob a montagem, pré-visualização no quadro do editor, "Usar modelo", rascunho sem foto de exemplo nem número, publicação em `/site/<endereço>`, nenhuma recusa da política do editor; a prévia só para quem edita) mais `frappe-editor`, `frappe-publish`, `frappe-site-flow`, `frappe-form` e `site-models`;
+  - o editor aberto com a página de um modelo: as seções aparecem nomeadas nas camadas e a página no canvas;
+  - revisão independente do diff, em duas rodadas (a do conversor e a da fatia inteira): 4 problemas confirmados, todos corrigidos (a pasta de "usar as páginas"; os botões do WhatsApp sem número levavam ao contato, cujo formulário fica fechado por padrão; o e-mail e o Instagram do rodapé iam a "#"; a prévia dizia desenhar o formulário e não o desenhava).
+- **Não feito (fica de fora):**
+  - o formulário antes do WhatsApp (0.66) nas páginas do Frappe: lá os botões são links diretos;
+  - as seções dos modelos como modelos de bloco da biblioteca;
+  - os modelos na escolha do editor ao criar o site.
+- **Não verificado:**
+  - no canvas do editor, uma imagem ainda sem foto aparece como imagem quebrada com o texto "Troque pela sua foto" (na página publicada é uma caixa vazia);
+  - se editar o texto de um botão no editor mantém a marca do WhatsApp;
+  - o editor num tablet, Safari e leitor de tela.
+
 ## Fatia 0.66: Formulário antes do WhatsApp (handoff "Templates de Sites — CMS V1", seção 12; PENDENCIAS B46)
 
 **Migration 0032 (aditiva):** `site_inquiries.via` (`FORM` ou `WHATSAPP`, padrão `FORM`, então as mensagens antigas ficam como eram). O resto cabe no documento do site: o campo opcional `whatsappCta` (mensagem de abertura, "pedir antes" e "perguntar o objetivo").
@@ -41,6 +75,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
   - o WhatsApp de verdade (no teste, o endereço `wa.me` é respondido pelo próprio teste);
   - iOS Safari e leitor de tela;
   - produção: os formulários públicos continuam fechados (C28), então lá os botões vão direto (C35).
+- **CI e deploy:** o CI da PR #68 falhou em commits intermediários (o cenário `site-whatsapp` comparava a página final, e no CI a rede alcança o WhatsApp, que redireciona; corrigido para conferir o endereço pedido ao `wa.me`) e passou nas duas montagens no commit `d0ca0b7`. Merge `cd3d0dc`. Implantada: deploy `d36b352c`, build de 16:45 a 16:47 e deploy até 16:48 de 02/11/2026, status `success`; o log do deploy mostra `0032_site_inquiry_via.sql ✅`. Nada foi lido ao vivo.
 
 ## Fatia 0.65: Os quatro modelos de site do handoff "Templates de Sites — CMS V1" no Editor Guiado (pedido do usuário de 02/11/2026; PENDENCIAS B46)
 
