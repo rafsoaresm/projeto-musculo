@@ -96,17 +96,16 @@ test("templates: six sections ready in the library, each one a tree of container
   await inspector(page).getByRole("button", { name: "Estilo do computador" }).click();
   await expect(columns).toHaveValue("3");
 
-  // ---- the testimony still asks for the authorization: the publication is stopped until it is given, and not by the other templates ----
+  // ---- the testimonies come empty: an empty one is not on the page, so it is a warning (a written one still asks for the authorization) ----
   await panel(page, "Propriedades");
   await editor(page).getByRole("button", { name: "Salvar rascunho" }).click();
   await expect(editor(page).getByText("Rascunho salvo (revisão", { exact: false })).toBeVisible();
   await editor(page).getByRole("button", { name: "Publicar", exact: true }).click();
-  const stop = editor(page).getByRole("list", { name: "O que falta para publicar" });
-  await expect(stop).toContainText("confirme que a pessoa autorizou");
-  await expect(stop.getByRole("listitem")).toHaveCount(3);
-  await expect(editor(page).getByRole("button", { name: "Publicar mesmo assim" })).toHaveCount(0);
+  await expect(editor(page).getByRole("list", { name: "O que falta para publicar" })).toHaveCount(0);
+  await expect(editor(page).getByRole("list", { name: "Avisos antes de publicar" })).toContainText("escreva um depoimento autorizado");
+  await expect(editor(page).getByRole("button", { name: "Publicar mesmo assim" })).toBeVisible();
 
-  // Taking the testimonies out (Delete on the block selected) leaves only warnings (the words that are still to be written).
+  // Taking the testimonies out (Delete on the block selected) leaves the other warnings (the words that are still to be written).
   await selectLayer(page, /^Depoimentos/);
   await page.keyboard.press("Delete");
   await expect(main).toHaveCount(before + 5);
