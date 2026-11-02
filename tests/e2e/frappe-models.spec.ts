@@ -45,7 +45,8 @@ test("frappe models: the four site models are in the editor's 'Novo' gallery wit
   await card.getByRole("button", { name: "Pré-visualização" }).click();
   const framed = page.frameLocator(`iframe[src="${mount}/profissional/meu-site/modelo-avancado/race"]`);
   await expect(framed.getByRole("heading", { name: /TREINE PARA SER MAIS RÁPIDO/i })).toBeVisible({ timeout: 20_000 });
-  await expect(framed.locator('img[alt="Troque pela sua foto"]').first()).toBeAttached();
+  // The photos of the model are not in it: a photo still to be chosen is an empty box (the renderer draws an image without its file so).
+  expect(await framed.locator("html").evaluate((root) => root.outerHTML)).not.toContain("site-models/");
   await page.getByRole("button", { name: "Usar modelo" }).click();
 
   // ---- the page made from it: the editor opens it, its draft is the model ----
