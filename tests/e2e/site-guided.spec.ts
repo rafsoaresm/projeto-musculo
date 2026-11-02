@@ -130,6 +130,8 @@ test("guided editor: the brand (logo sent from the editor, color, look and font)
   const logo = guided.getByRole("group", { name: "Logotipo" });
   await logo.getByLabel("Escolher o arquivo da imagem").setInputFiles({ name: "logo.png", mimeType: "image/png", buffer: png(200, 80) });
   await expect(logo.getByText("Imagem enviada.")).toBeVisible();
+  // The model Estúdio starts dark; on the light look a yellow has to be darkened to stay readable, and the editor says so.
+  await guided.getByRole("radio", { name: "Claro" }).check();
   await guided.getByRole("radio", { name: "Minha cor" }).check();
   await guided.getByLabel("Cor da sua marca").fill("#ffff00");
   await expect(guided.getByText(/A cor foi ajustada para o texto continuar legível/)).toBeVisible();

@@ -145,8 +145,8 @@ test("models: three complete models as cards with a drawing, each seen whole bef
   await form.getByRole("button", { name: "Ver o modelo Estúdio / assessoria" }).click();
   preview = page.getByRole("dialog", { name: "Modelo: Estúdio / assessoria" });
   await expect(preview.locator(".site[data-site-mode='dark']")).toHaveCount(1);
-  await expect(preview.getByLabel("Página")).toHaveValue(/.+/);
-  await preview.getByLabel("Página").selectOption({ label: "Contato" });
+  await expect(preview.getByRole("combobox", { name: "Página" })).toHaveValue(/.+/);
+  await preview.getByRole("combobox", { name: "Página" }).selectOption({ label: "Contato" });
   await expect(preview.getByRole("heading", { name: "Contato", level: 2 })).toBeVisible();
   await preview.getByRole("button", { name: "Celular" }).click();
   await expect(preview.getByRole("button", { name: "Celular" })).toHaveAttribute("aria-pressed", "true");
