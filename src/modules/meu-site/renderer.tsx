@@ -20,7 +20,8 @@ import {
   type SiteContent,
   type SiteNode,
 } from "./contracts";
-import { FIELD } from "./inquiries";
+import { FIELD, MOBILE_PATTERN, WHATSAPP_FIELD, WHATSAPP_GOAL_MAX, WHATSAPP_NAME_MAX } from "./inquiries";
+import { WhatsAppFormKeys } from "./whatsapp-form-keys";
 import { anchorDomId, nodeClass } from "./site-css";
 import { themeAttributes } from "./site-theme";
 import { hasAnyStyle } from "./screens";
@@ -67,6 +68,8 @@ export type ImageResolver = (assetId: string) => ResolvedImage | null;
 export interface PublicForm {
   /** The address the form is sent to, relative to the page. */
   action: string;
+  /** The address the form before WhatsApp is sent to, relative to the page. */
+  whatsappAction: string;
   /** The page the form is on, as its address ("" for the home page): it comes back with the message. */
   page: string;
   noticeUrl: string;
@@ -95,6 +98,8 @@ interface Ctx {
   marks?: ReadonlyMap<string, "added" | "changed">;
   /** The contact form: where it is sent, `null` when it is closed on a published page, absent where it is only a sample. */
   forms?: PublicForm | null;
+  /** Where the WhatsApp buttons of the page go (see `whatsappDestination`); null while the site has no valid number. */
+  whatsapp: Destination | null;
   /**
    * Set while the nodes of a component are drawn as one instance has them. In the editor they are not blocks of the page (only the instance
    * is): they carry no identifier for the canvas, and a text is a field only when the instance can change it (`overridable`, the nodes of
@@ -155,22 +160,47 @@ function Action({ ctx, id, labelPath, label, channel }: { ctx: Ctx; id: string; 
       </span>
     );
   }
-  const href = channelUrl(ctx.content.contact, channel);
-  if (!href || !label) return null;
-  const external = href.startsWith("https://");
+  const where = contactDestination(ctx, channel);
+  if (!where || !label) return null;
   return (
-    <a className="button primary" href={href} {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
+    <a className="button primary" href={where.href} {...(where.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
       {label}
     </a>
   );
 }
 
+interface Destination {
+  href: string;
+  external: boolean;
+  visit?: string;
+}
+
+/** The DOM id of the form before WhatsApp (one per page), and an id no element has, which closes it without moving the page. */
+export const WHATSAPP_FORM_ID = "site-whatsapp-form";
+const WHATSAPP_FORM_CLOSED = "site-whatsapp-form-closed";
+
+/**
+ * Where the WhatsApp buttons of a page go (handoff V1.1). When the site asks for the name and the mobile first and the page's forms are open, they
+ * open the form of the page (`#…`), which is sent to this app before the visitor is taken to WhatsApp; anywhere else (the switch is off, the forms
+ * are closed, the editor and its preview) they go straight to the site's WhatsApp, with the professional's opening message. Null without a number.
+ */
+export function whatsappDestination(content: SiteContent, forms: PublicForm | null | undefined, scope: string): Destination | null {
+  const direct = whatsappUrl(content.contact.whatsapp, content.whatsappCta?.message ?? "");
+  if (!direct) return null;
+  if (content.whatsappCta?.askFirst && forms) return { href: `#${scope}${WHATSAPP_FORM_ID}`, external: false };
+  return { href: direct, external: true };
+}
+
+/** A contact of the site as a destination: WhatsApp as above, the others as their own address. */
+function contactDestination(ctx: Ctx, channel: Channel | undefined): Destination | null {
+  if (channel === "whatsapp") return ctx.whatsapp;
+  const href = channelUrl(ctx.content.contact, channel);
+  return href ? { href, external: href.startsWith("https://") } : null;
+}
+
 /** Where a button or a link goes: a contact (its own address), another node of this page (an anchor), or another page of the site. Null when it goes nowhere. */
-function destinationOf(item: { channel?: Channel; anchor?: string; page?: string }, ctx: Ctx): { href: string; external: boolean; visit?: string } | null {
-  if (item.channel) {
-    const href = channelUrl(ctx.content.contact, item.channel);
-    return href ? { href, external: href.startsWith("https://") } : null;
-  }
+function destinationOf(item: { channel?: Channel; anchor?: string; page?: string }, ctx: Ctx): Destination | null {
+  if (item.channel) return contactDestination(ctx, item.channel);
   if (item.anchor && ctx.anchors.has(item.anchor)) return { href: `#${ctx.scope}${anchorDomId(item.anchor)}`, external: false };
   if (item.page) {
     const href = ctx.nav?.href(item.page);
@@ -551,6 +581,8 @@ function ContactFormView({ node, ctx }: { node: ContactFormNode; ctx: Ctx }) {
   const live = ctx.forms ?? null;
   if (ctx.forms === null) return null;
   const field = (name: string) => `${ctx.scope}${id}-${name}`;
+  // A site that asks for the name and the mobile before WhatsApp: its contact form is that same form (handoff 12.4), not a second one.
+  const toWhatsApp = live !== null && ctx.content.whatsappCta?.askFirst === true && ctx.whatsapp !== null && !ctx.whatsapp.external;
   return (
     <section {...attrsOf(node, ctx, "site-section site-contact-form")}>
       <Eyebrow ctx={ctx} id={id} value={node.eyebrow} />
@@ -564,6 +596,9 @@ function ContactFormView({ node, ctx }: { node: ContactFormNode; ctx: Ctx }) {
           <T ctx={ctx} id={id} path="text" value={node.text} placeholder="Texto (opcional)" max={300} multiline />
         </p>
       )}
+      {live && toWhatsApp ? (
+        <WhatsAppLeadForm content={ctx.content} forms={live} prefix={`${ctx.scope}${id}`} submit={node.buttonLabel || "Continuar no WhatsApp"} />
+      ) : (
       <form className="site-form" method="post" action={live?.action} {...(live ? {} : { "aria-label": "Amostra do formulário" })}>
         <fieldset className="site-form-fields" disabled={!live}>
           {live && <input type="hidden" name={FIELD.page} value={live.page} />}
@@ -614,6 +649,7 @@ function ContactFormView({ node, ctx }: { node: ContactFormNode; ctx: Ctx }) {
           )
         )}
       </form>
+      )}
       {!live && (
         <p className="site-hint">
           Amostra: o formulário só funciona na página publicada, depois que os formulários públicos estiverem abertos pela plataforma e o recebimento de mensagens estiver ligado no Meu Site. Enquanto isso ele não aparece para quem visita.
@@ -651,8 +687,7 @@ function menuLinks(content: SiteContent, existing: ReadonlySet<string>, anchors:
 }
 
 /** The WhatsApp button of the header (the site models): to the site's WhatsApp, and left out of the page while there is no number. */
-function HeaderCta({ label, whatsapp, edit }: { label: string; whatsapp: string; edit: boolean }) {
-  const href = whatsappUrl(whatsapp);
+function HeaderCta({ label, where, edit }: { label: string; where: Destination | null; edit: boolean }) {
   if (edit)
     return (
       <span className="button site-whatsapp site-header-cta site-has-icon">
@@ -660,9 +695,9 @@ function HeaderCta({ label, whatsapp, edit }: { label: string; whatsapp: string;
         {label}
       </span>
     );
-  if (!href) return null;
+  if (!where) return null;
   return (
-    <a className="button site-whatsapp site-header-cta site-has-icon" href={href} target="_blank" rel="noopener noreferrer">
+    <a className="button site-whatsapp site-header-cta site-has-icon" href={where.href} {...(where.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
       <WhatsAppIcon />
       {label}
     </a>
@@ -760,7 +795,8 @@ export function SiteRenderer({
   const nodes = shownTrees(content.blocks);
   const existing = new Set(nodes.map((entry) => entry.id));
   // A part a link goes to, on the published page, only when it is drawn: an empty band is left out, and so are the links to it.
-  const probe: Ctx = { content, edit, images, anchors: new Set(), firstHero: null, scope, nav, marks, forms, demoFolder, locate: locate ? { sections: new Set(), selected: null } : undefined };
+  const whatsapp = whatsappDestination(content, forms, scope);
+  const probe: Ctx = { content, edit, images, anchors: new Set(), firstHero: null, scope, nav, marks, forms, whatsapp, demoFolder, locate: locate ? { sections: new Set(), selected: null } : undefined };
   const drawn = (id: string) => {
     if (!leavesOutEmpty(probe)) return true;
     const node = nodes.find((entry) => entry.id === id);
@@ -784,6 +820,7 @@ export function SiteRenderer({
     nav,
     marks,
     forms,
+    whatsapp,
     demoFolder,
     locate: locate ? { sections: new Set(content.blocks.map((entry) => entry.id)), selected: locate.selected } : undefined,
   };
@@ -793,10 +830,12 @@ export function SiteRenderer({
   const ownFooter = content.blocks.some((entry) => entry.type === "box" && entry.tag === "footer" && !(published && hiddenEverywhere(entry)));
   const logo = content.logoAssetId ? images?.(content.logoAssetId) ?? null : null;
   const contacts = [
-    { label: "WhatsApp", href: whatsappUrl(content.contact.whatsapp), external: true },
+    { label: "WhatsApp", href: whatsapp?.href ?? null, external: whatsapp?.external ?? true },
     { label: "E-mail", href: emailUrl(content.contact.email), external: false },
     { label: "Instagram", href: instagramUrl(content.contact.instagram), external: true },
   ].filter((entry): entry is { label: string; href: string; external: boolean } => Boolean(entry.href));
+  // The form before WhatsApp is on the page only where the WhatsApp buttons open it (see `whatsappDestination`).
+  const askFirst = !edit && forms && whatsapp && !whatsapp.external ? forms : null;
   return (
     <div className="site" {...themeAttributes(content.theme)}>
       {!bare && (
@@ -813,7 +852,7 @@ export function SiteRenderer({
             </p>
           )}
           {nav && <SiteMenu nav={nav} edit={edit !== undefined} scope={scope} links={menuLinks(content, existing, anchors, nav, scope)} />}
-          {content.headerCta?.label.trim() && <HeaderCta label={content.headerCta.label} whatsapp={content.contact.whatsapp} edit={edit !== undefined || Boolean(demoFolder)} />}
+          {content.headerCta?.label.trim() && <HeaderCta label={content.headerCta.label} where={whatsapp} edit={edit !== undefined || Boolean(demoFolder)} />}
         </header>
       )}
       <main className="site-main" data-page-root={edit ? "" : undefined}>
@@ -848,6 +887,100 @@ export function SiteRenderer({
           )}
         </footer>
       )}
+      {askFirst && <WhatsAppForm content={content} forms={askFirst} scope={scope} />}
     </div>
+  );
+}
+
+/**
+ * The form before WhatsApp (handoff V1.1, "Fluxo A"): a window over the page, opened by the page's WhatsApp buttons (a link to its id, so it works
+ * without script) and closed by a link to an id nothing has. A name and a mobile, the goal when the site asks it (optional for the visitor), the box
+ * of the privacy notice unticked, and the field a person never sees. It is sent to this app, which keeps it in the inbox and only then takes the
+ * visitor to WhatsApp, in the same tab.
+ */
+function WhatsAppForm({ content, forms, scope }: { content: SiteContent; forms: PublicForm; scope: string }) {
+  const id = `${scope}${WHATSAPP_FORM_ID}`;
+  const close = `#${scope}${WHATSAPP_FORM_CLOSED}`;
+  return (
+    // A dialog over the page; `aria-modal` is set by the script that also puts the rest of the page out of reach (whatsapp-form-keys.tsx).
+    <div id={id} className="site-wa-modal" role="dialog" aria-labelledby={`${id}-title`}>
+      <a className="site-wa-backdrop" href={close} tabIndex={-1} aria-hidden="true" />
+      <div className="site-wa-dialog">
+        <a className="site-wa-close" href={close} aria-label="Fechar e voltar à página">
+          ×
+        </a>
+        <h2 id={`${id}-title`}>Antes de abrir o WhatsApp</h2>
+        <p className="site-text">
+          Deixe o seu nome e o seu celular para {content.title || "o profissional"} poder responder. Depois de enviar, o WhatsApp abre nesta mesma aba.
+        </p>
+        <WhatsAppLeadForm content={content} forms={forms} prefix={id} submit="Continuar no WhatsApp" />
+      </div>
+      <WhatsAppFormKeys id={id} closed={`${scope}${WHATSAPP_FORM_CLOSED}`} />
+    </div>
+  );
+}
+
+/**
+ * The fields of the form before WhatsApp, sent to this app (the window above, and the contact form of a site that asks first): a name and a
+ * mobile always, the goal when the site asks it, the field a person never sees and the box of the privacy notice, unticked, which says what is
+ * kept. The mobile is checked by the browser with the same rule as the server's, so a landline is caught while the form is still open.
+ */
+function WhatsAppLeadForm({ content, forms, prefix, submit }: { content: SiteContent; forms: PublicForm; prefix: string; submit: string }) {
+  const field = (name: string) => `${prefix}-${name}`;
+  const goal = Boolean(content.whatsappCta?.askGoal);
+  return (
+    <form className="site-form" method="post" action={forms.whatsappAction}>
+      <fieldset className="site-form-fields">
+        <input type="hidden" name={WHATSAPP_FIELD.page} value={forms.page} />
+        <label htmlFor={field("nome")}>
+          Nome
+          <input id={field("nome")} name={WHATSAPP_FIELD.name} required minLength={2} maxLength={WHATSAPP_NAME_MAX} autoComplete="name" />
+        </label>
+        <label htmlFor={field("celular")}>
+          Celular com DDD
+          <input
+            id={field("celular")}
+            name={WHATSAPP_FIELD.phone}
+            type="tel"
+            required
+            minLength={10}
+            maxLength={30}
+            pattern={MOBILE_PATTERN}
+            title="Um celular com DDD, por exemplo (31) 98888-7777"
+            inputMode="tel"
+            autoComplete="tel"
+          />
+        </label>
+        {goal && (
+          <label htmlFor={field("objetivo")}>
+            Seu objetivo (opcional)
+            <input id={field("objetivo")} name={WHATSAPP_FIELD.goal} maxLength={WHATSAPP_GOAL_MAX} autoComplete="off" aria-describedby={field("objetivo-dica")} />
+            <span id={field("objetivo-dica")} className="site-form-hint">
+              Por exemplo, ganhar força ou voltar a treinar. Não escreva dados de saúde aqui.
+            </span>
+          </label>
+        )}
+        <div className="site-form-bait" aria-hidden="true">
+          <label>
+            Não preencha este campo
+            <input name={WHATSAPP_FIELD.bait} tabIndex={-1} autoComplete="off" />
+          </label>
+        </div>
+        <label className="site-form-consent">
+          <input type="checkbox" name={WHATSAPP_FIELD.consent} required />
+          <span>
+            Li o{" "}
+            <a href={forms.noticeUrl} target="_blank" rel="noopener noreferrer">
+              aviso de privacidade
+            </a>{" "}
+            e concordo que o meu nome, o meu celular{goal ? " e o objetivo, se eu escrever," : ""} fiquem com este profissional para ele me responder.
+          </span>
+        </label>
+      </fieldset>
+      <button type="submit" className="button site-whatsapp site-has-icon">
+        <WhatsAppIcon />
+        {submit}
+      </button>
+    </form>
   );
 }

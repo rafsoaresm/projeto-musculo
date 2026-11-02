@@ -11,6 +11,11 @@ export interface InquiryPage {
   message: string;
   /** Where the link under the message goes (a relative address on this site) and what it says. */
   back: { href: string; label: string };
+  /**
+   * A second link, under the first, that the visitor follows only by choice (the form before WhatsApp, when the message could not be kept:
+   * the professional's WhatsApp is still there, never opened by itself). It may go off this site, and then it opens without telling where from.
+   */
+  also?: { href: string; label: string };
 }
 
 export function inquiryPageHtml(page: InquiryPage): string {
@@ -33,7 +38,9 @@ a{color:#0b5cad;font-weight:600}
 <main>
 <h1>${escapeHtml(page.title)}</h1>
 <p>${escapeHtml(page.message)}</p>
-<p><a href="${escapeHtml(page.back.href)}">${escapeHtml(page.back.label)}</a></p>
+<p><a href="${escapeHtml(page.back.href)}">${escapeHtml(page.back.label)}</a></p>${
+    page.also ? `\n<p><a href="${escapeHtml(page.also.href)}" rel="noopener noreferrer">${escapeHtml(page.also.label)}</a></p>` : ""
+  }
 </main>
 </body>
 </html>`;

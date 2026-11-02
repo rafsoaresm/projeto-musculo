@@ -8,6 +8,7 @@ import {
   MAX_MENU_LINKS,
   PAGE_TITLE_MAX,
   TITLE_MAX,
+  WHATSAPP_MESSAGE_MAX,
   pageById,
   pageContent,
   pagesOf,
@@ -26,7 +27,7 @@ import { GUIDED_SECTIONS } from "./site-kits";
 import { SECTION_REFUSAL_MESSAGE, addSection, isHiddenSection, moveSection, removeSection, setSectionHidden } from "./guided-sections";
 import { brandNote, withAccent, withBrand, withFontChoice, withLogo, withMode, withPaletteColor, withSiteName } from "./guided-brand";
 import { PALETTE_HINT, PALETTE_KEYS, PALETTE_LABEL, paletteAdjusted } from "./site-palette";
-import { addMenuLink, moveMenuLink, removeMenuLink, withHeaderCta, withMenuAnchor, withMenuLabel } from "./guided-menu";
+import { WHATSAPP_CTA_NONE, addMenuLink, moveMenuLink, removeMenuLink, withHeaderCta, withMenuAnchor, withMenuLabel, withWhatsAppCta } from "./guided-menu";
 import { seoPreview } from "./guided-seo";
 import { ACCENTS, ACCENT_LABEL, BRAND_START, FONTS, FONT_LABEL, MODES, MODE_LABEL, type Accent, type Mode } from "./site-theme";
 
@@ -106,6 +107,7 @@ export function ContentPanel({
   onSection,
   onBack,
   onBrand,
+  forms,
 }: {
   content: SiteContent;
   state: GuidedState;
@@ -115,6 +117,8 @@ export function ContentPanel({
   onSection: (section: SectionRef) => void;
   onBack: () => void;
   onBrand: () => void;
+  /** Whether the public forms are open (the platform's switch and the site's own): the form before WhatsApp shows only then. */
+  forms: FormsState;
 }) {
   const sections = guidedSections(content, state.pageId);
   const current = sections.find((entry) => entry.ref === state.section) ?? null;
@@ -250,7 +254,7 @@ export function ContentPanel({
         {state.section === HEADER ? (
           <HeaderFields content={content} images={images} onEdit={onEdit} onBrand={onBrand} />
         ) : state.section === FOOTER ? (
-          <FooterFields content={content} pageId={state.pageId} onEdit={onEdit} />
+          <FooterFields content={content} pageId={state.pageId} onEdit={onEdit} forms={forms} />
         ) : state.section ? (
           <BlockFields content={content} pageId={state.pageId} sectionId={state.section} images={images} onEdit={onEdit} />
         ) : (
@@ -402,7 +406,53 @@ function SectionLinks({ content, onEdit }: { content: SiteContent; onEdit: Edit 
   );
 }
 
-function FooterFields({ content, pageId, onEdit }: { content: SiteContent; pageId: string; onEdit: Edit }) {
+/** The platform's switch for the public forms and the site's own switch for messages. */
+export interface FormsState {
+  platformOpen: boolean;
+  siteOpen: boolean;
+}
+
+/**
+ * What the WhatsApp buttons of the site do (handoff V1.1): the message the conversation opens with, and whether the visitor leaves a name and a
+ * mobile first. The note says what happens on the published page as things are now.
+ */
+function WhatsAppFields({ content, onEdit, forms }: { content: SiteContent; onEdit: Edit; forms: FormsState }) {
+  const cta = content.whatsappCta ?? WHATSAPP_CTA_NONE;
+  const live = forms.platformOpen && forms.siteOpen;
+  return (
+    <fieldset className="ve-choice">
+      <legend>Botões do WhatsApp</legend>
+      <label>
+        Mensagem que já vai escrita na conversa (opcional)
+        <textarea
+          value={cta.message}
+          maxLength={WHATSAPP_MESSAGE_MAX}
+          rows={3}
+          onChange={(event) => onEdit(withWhatsAppCta(content, { message: event.target.value }), "guided:whatsapp:message")}
+        />
+      </label>
+      <label className="check-row">
+        <input type="checkbox" checked={cta.askFirst} onChange={(event) => onEdit(withWhatsAppCta(content, { askFirst: event.target.checked }))} />
+        <span>Pedir o nome e o celular antes de abrir o WhatsApp</span>
+      </label>
+      {cta.askFirst && (
+        <label className="check-row">
+          <input type="checkbox" checked={cta.askGoal} onChange={(event) => onEdit(withWhatsAppCta(content, { askGoal: event.target.checked }))} />
+          <span>Perguntar também o objetivo (quem visita pode deixar em branco)</span>
+        </label>
+      )}
+      <p className="small muted" role="status">
+        {!cta.askFirst
+          ? "Os botões abrem o WhatsApp direto, sem formulário e sem guardar nada."
+          : live
+            ? `Na página publicada, os botões abrem um formulário com o aviso de privacidade. O nome e o celular${cta.askGoal ? " (e o objetivo, se a pessoa escrever)" : ""} ficam em Leads, nas mensagens do site, e só depois o WhatsApp abre. O formulário de contato da página passa a ser este mesmo.`
+            : `O formulário só aparece quando ${forms.platformOpen ? "o recebimento de mensagens estiver ligado no site (aba Formulários)" : "a plataforma abrir os formulários públicos e o recebimento de mensagens estiver ligado no site"}. Até lá, os botões abrem o WhatsApp direto.`}
+      </p>
+    </fieldset>
+  );
+}
+
+function FooterFields({ content, pageId, onEdit, forms }: { content: SiteContent; pageId: string; onEdit: Edit; forms: FormsState }) {
   const own = pageContent(content, pageId).blocks.some((entry) => entry.type === "box" && entry.tag === "footer");
   const contact = (field: keyof SiteContent["contact"], value: string) => onEdit({ ...content, contact: { ...content.contact, [field]: value } }, `guided:contact:${field}`);
   return (
@@ -423,6 +473,7 @@ function FooterFields({ content, pageId, onEdit }: { content: SiteContent; pageI
         Instagram (o nome de usuário)
         <input value={content.contact.instagram} maxLength={31} autoComplete="off" onChange={(event) => contact("instagram", event.target.value)} />
       </label>
+      <WhatsAppFields content={content} onEdit={onEdit} forms={forms} />
     </div>
   );
 }

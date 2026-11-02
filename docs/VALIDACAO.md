@@ -2,6 +2,46 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.66: Formulário antes do WhatsApp (handoff "Templates de Sites — CMS V1", seção 12; PENDENCIAS B46)
+
+**Migration 0032 (aditiva):** `site_inquiries.via` (`FORM` ou `WHATSAPP`, padrão `FORM`, então as mensagens antigas ficam como eram). O resto cabe no documento do site: o campo opcional `whatsappCta` (mensagem de abertura, "pedir antes" e "perguntar o objetivo").
+
+- **No Editor Guiado** (seção Rodapé do site, grupo "Botões do WhatsApp"):
+  - a mensagem que já vai escrita na conversa (até 300 letras);
+  - "Pedir o nome e o celular antes de abrir o WhatsApp" e "Perguntar também o objetivo";
+  - uma linha que diz o que vai acontecer na página publicada como as coisas estão (formulários da plataforma, recebimento do site).
+
+  Os quatro modelos começam com o formulário ligado e a mensagem do handoff ("Olá! Gostaria de conhecer seus treinos.").
+- **Na página publicada, com o formulário pedido e os formulários abertos** (a plataforma e o recebimento do site):
+  - todos os botões do WhatsApp (das seções, do cabeçalho e do rodapé) abrem uma janela sobre a página, sem script (`:target`);
+  - a janela tem nome, celular com DDD (o navegador confere com a mesma regra do servidor), objetivo opcional (com a dica de não escrever dados de saúde), aceite desmarcado com o aviso de privacidade e o campo-isca;
+  - o formulário de contato do modelo passa a ser esse mesmo formulário (handoff 12.4), não um segundo;
+  - com o script da página: o foco vai para o primeiro campo, a página de trás fica fora de alcance (`inert`), Escape fecha e o foco volta ao botão; só então a janela se diz modal ao leitor de tela.
+- **O envio** (`POST /s/<endereço>/m/whatsapp`):
+  - a organização, o número e a mensagem vêm do site **publicado**, nunca do que o visitante mandou;
+  - o lead é gravado na caixa de Leads com `via = WHATSAPP`, e **só depois** o visitante vai ao `wa.me`, na mesma aba, com a mensagem do profissional e nada do que escreveu;
+  - erro de campo responde uma página que diz o que corrigir e não abre o WhatsApp;
+  - no limite da caixa nada é guardado, e a página oferece "Falar no WhatsApp mesmo assim", um link que a pessoa escolhe seguir;
+  - o campo-isca é tratado como se tivesse dado certo, e nada é guardado.
+- **Sem o formulário** (desligado, formulários fechados, ou no editor): os botões vão direto ao WhatsApp, numa aba nova, com a mensagem de abertura, sem janela e sem lead.
+- **Em Leads › Mensagens do site:** a mensagem diz que veio do formulário antes do WhatsApp e mostra o objetivo. Virar lead guarda o objetivo como a primeira nota.
+- **Aviso antes de publicar:** sem número de WhatsApp, o botão do cabeçalho e o formulário não aparecem (aviso, que não impede, como os outros avisos desde a 0.38.1).
+- **Também nesta fatia:** o registro do deploy da 0.65 (abaixo).
+- **Verificado localmente:**
+  - `npm run check`: lint, tipos e 1586 testes, entre eles `meu-site-whatsapp-cta` (regra, endereço, página, padrão do celular igual ao do servidor, editor, modelos, aviso) e `site-whatsapp-route` (a rota com o D1 local: fechado em cada caso, gravado antes do redirecionamento, nada do visitante no endereço, erros, isca, limite, caixa de entrada e lead);
+  - navegador, cenário `site-whatsapp` (computador e celular, raiz e `/treinador`): direto enquanto o recebimento está desligado; a janela abre, recebe o foco, fecha com Escape e com o "×"; o celular fixo é barrado no navegador; o envio leva ao endereço do WhatsApp; a mensagem aparece em Leads;
+  - mais `site-models`, `site-inquiries`, `site-guided`, `leads`, `site`, `site-templates` e `site-warnings`: 23 cenários passaram na raiz e 23 em `/treinador` (os 9 pulados de cada lado são os cenários só do computador ou só do celular);
+  - revisão independente do diff: 7 problemas confirmados, todos corrigidos (o teclado da janela; o celular conferido só no servidor; o formulário de contato do modelo, que seguia como um segundo formulário; o aceite que não citava o objetivo; o aviso sem número que valia só para o cabeçalho; a falta de saída no limite da caixa; e a nota do editor sem o objetivo).
+- **Não feito (fica de fora):**
+  - sobrescrever a escolha por botão (`cta.requireLeadForm` do handoff);
+  - eventos de análise (o app não tem análise);
+  - gravar a versão do aviso de privacidade com o lead (fica o endereço e a data);
+  - os sites do Editor Avançado (Frappe), cujo formulário é o da 0.51.
+- **Não verificado:**
+  - o WhatsApp de verdade (no teste, o endereço `wa.me` é respondido pelo próprio teste);
+  - iOS Safari e leitor de tela;
+  - produção: os formulários públicos continuam fechados (C28), então lá os botões vão direto (C35).
+
 ## Fatia 0.65: Os quatro modelos de site do handoff "Templates de Sites — CMS V1" no Editor Guiado (pedido do usuário de 02/11/2026; PENDENCIAS B46)
 
 **Sem migration.** Tudo cabe no documento do site: campos opcionais novos (`theme.palette`, `menu`, `headerCta`, `icon` do botão, `demo` da imagem), lidos também pelos sites antigos.
@@ -52,6 +92,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
   - iOS Safari e leitor de tela;
   - comparação pixel a pixel com o Figma (a conferência foi visual, por seção);
   - o direito de uso das fotos geradas para o Figma, que só aparecem enquanto o site é feito.
+- **CI e deploy:** o CI da PR #67 passou nas duas montagens no commit `3390ecf`. Merge `cd0cf74`. Implantada: deploy `37a769f9`, build de 15:41 a 15:44 e deploy até 15:45 de 02/11/2026, status `success`. Sem migration. Nada foi lido ao vivo.
 
 ## Fatia 0.64: Seções no Editor Guiado e o fluxo no celular (pedido do usuário de 02/11/2026; PENDENCIAS B45)
 

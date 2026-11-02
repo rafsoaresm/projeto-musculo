@@ -27,10 +27,13 @@ export interface InquiryRow {
   phone: string | null;
   message: string | null;
   page: string;
+  /** Which form it came from: the contact form, or the form before WhatsApp (whose `message` is the goal the visitor wrote). */
+  via: InquiryVia;
   createdAt: string;
   /** How many leads of the organization already have this e-mail or this number. */
   sameContact: number;
 }
+export type InquiryVia = "FORM" | "WHATSAPP";
 export type ReceiveOutcome = { status: "received" } | { status: "closed" } | { status: "limited" };
 export type ConvertInquiryOutcome = { status: "converted"; leadId: string } | { status: "not_found" };
 export type DiscardInquiryOutcome = { status: "discarded" } | { status: "not_found" };
@@ -52,7 +55,7 @@ const PUBLIC_SITE = `(EXISTS (SELECT 1 FROM site_published p WHERE p.site_id = s
  */
 export async function receiveInquiry(
   db: D1Database,
-  input: { slug: string; value: InquiryValue; noticeUrl: string; sender: string | null },
+  input: { slug: string; value: InquiryValue; noticeUrl: string; sender: string | null; via?: InquiryVia },
   now = new Date(),
 ): Promise<ReceiveOutcome> {
   const slug = slugSchema.safeParse(input.slug);
@@ -63,8 +66,8 @@ export async function receiveInquiry(
   const results = await db.batch([
     db
       .prepare(
-        `INSERT INTO site_inquiries (id, organization_id, site_id, page, name, email, phone, email_key, phone_key, message, notice_url, ip_key, created_at)
-         SELECT ?1, s.organization_id, s.id, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11
+        `INSERT INTO site_inquiries (id, organization_id, site_id, page, name, email, phone, email_key, phone_key, message, notice_url, ip_key, created_at, via)
+         SELECT ?1, s.organization_id, s.id, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?17
          FROM sites s
          WHERE s.slug = ?12 AND s.inquiries_open = 1
            AND ${PUBLIC_SITE}
@@ -89,6 +92,7 @@ export async function receiveInquiry(
         sinceHour,
         INQUIRIES_PER_SITE_PER_HOUR,
         INQUIRIES_PER_SENDER_PER_HOUR,
+        input.via ?? "FORM",
       ),
     // The address hash is only for the hour it is counted over.
     db
@@ -115,7 +119,7 @@ export function siteInquiriesFor(db: D1Database, context: AuthenticatedContext |
     async list(): Promise<InquiryRow[]> {
       const result = await db
         .prepare(
-          `SELECT i.id, i.name, i.email, i.phone, i.message, i.page, i.created_at AS createdAt,
+          `SELECT i.id, i.name, i.email, i.phone, i.message, i.page, i.via, i.created_at AS createdAt,
              (SELECT COUNT(*) FROM leads l WHERE l.organization_id = i.organization_id
                 AND ((i.email_key IS NOT NULL AND l.email_key = i.email_key) OR (i.phone_key IS NOT NULL AND l.phone_key = i.phone_key))) AS sameContact
            FROM site_inquiries i
@@ -153,7 +157,9 @@ export function siteInquiriesFor(db: D1Database, context: AuthenticatedContext |
         db
           .prepare(
             `INSERT INTO lead_events (id, organization_id, lead_id, kind, note, actor_user_id, created_at)
-             SELECT ?6, ?1, ?3, 'CREATED', (SELECT i.message FROM site_inquiries i WHERE i.organization_id = ?1 AND i.id = ?5), ?2, ?4
+             SELECT ?6, ?1, ?3, 'CREATED',
+               (SELECT CASE WHEN i.via = 'WHATSAPP' AND i.message IS NOT NULL THEN 'Objetivo (formulário do WhatsApp): ' || i.message ELSE i.message END
+                  FROM site_inquiries i WHERE i.organization_id = ?1 AND i.id = ?5), ?2, ?4
              WHERE (SELECT changes()) > 0`,
           )
           .bind(organizationId, userId, leadId, stamp, inquiryId, crypto.randomUUID()),

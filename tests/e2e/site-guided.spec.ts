@@ -65,7 +65,7 @@ test("guided editor: tabs, every page of the site, the section outlined on the p
   await guided.getByRole("region", { name: "Cabeçalho do site" }).getByLabel("Nome do site").fill(name);
   // The footer has the contacts, the same on every page.
   await chooseSection(page, "Rodapé do site");
-  await guided.getByRole("region", { name: "Rodapé do site" }).getByLabel("WhatsApp").fill("31 99999-0000");
+  await guided.getByRole("region", { name: "Rodapé do site" }).getByLabel("WhatsApp", { exact: true }).fill("31 99999-0000");
   let preview = await openPreview(page);
   await expect(preview.locator("header.site-header")).toContainText(name);
   await expect(preview.locator("footer.site-footer")).toContainText(name);
