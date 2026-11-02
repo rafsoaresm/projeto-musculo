@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Doc } from "@/modules/frappe-editor/doc-query";
-import { DOCTYPES, EditorError, MAX_DOC_CHARS, call, slugOf, stamp, type DocStore, type Env, type Params } from "@/modules/frappe-editor/protocol";
+import { DOCTYPES, EditorError, MAX_DOC_CHARS, call, slugOf, stamp, type DocStore, type Env, type PageModels, type Params } from "@/modules/frappe-editor/protocol";
 
 /** The store of one organization, in memory: what the D1 repository does, without the database. */
 function memoryStore(): DocStore & { rows: Map<string, Doc>; denied: boolean } {
@@ -388,5 +388,54 @@ describe("the templates that come with the editor", () => {
   it("are nothing for the other types of document", async () => {
     expect(((await asBuiltin("frappe.client.get_list", { doctype: "Builder Component" })).message as unknown[]).length).toBe(0);
     await fails("frappe.client.get", { doctype: "Builder Component", name: "Navbar 1" }, 404);
+  });
+});
+
+describe("the page models of the gallery (0.67)", () => {
+  const root = (label: string) => ({ blockId: "root", element: "div", originalElement: "body", children: [{ blockId: "t", element: "h1", innerHTML: label, children: [] }] });
+  const models: PageModels = {
+    groups: () => [
+      { name: "trainix", title: "Energia", description: "Vermelho", categories: ["Modelos do site"], pages: [{ name: "modelo-trainix", page_title: "Energia", template_group: "trainix" }] },
+    ],
+    page: async (name) => (name === "modelo-trainix" ? { title: "Energia", root: root("Marina") } : null),
+  };
+  const withModels = (method: string, params: Params = {}) => call({ ...env(), pageModels: models }, method, params);
+
+  it("lists nothing when the app gives no models, and the models when it does", async () => {
+    expect(await run("builder.api.get_template_groups")).toEqual([]);
+    expect((await withModels("builder.api.get_template_groups")).message).toEqual(models.groups());
+  });
+  it("makes a page whose draft is the model, not published, in the folder asked, with a title that does not repeat", async () => {
+    const name = (await withModels("builder.api.create_page_from_template", { template_page: "modelo-trainix", project_folder: "Site" })).message as string;
+    const page = store.rows.get(`Builder Page\u0000${name}`)!;
+    expect(page.page_title).toBe("Energia");
+    expect(page.published).toBe(0);
+    expect(page.project_folder).toBe("Site");
+    expect(page.blocks).toBe("[]");
+    expect(JSON.parse(String(page.draft_blocks))).toEqual([root("Marina")]);
+    const again = (await withModels("builder.api.create_page_from_template", { template_page: "modelo-trainix" })).message as string;
+    expect(store.rows.get(`Builder Page\u0000${again}`)!.page_title).toBe("Energia (Copy)");
+  });
+  it("makes the page of a group with 'use all pages', and says the folder and the pages", async () => {
+    const answer = (await withModels("builder.api.import_template_group", { template_group: "trainix" })).message as { folder: string; pages: string[] };
+    expect(answer.folder).toBe("");
+    expect(answer.pages).toHaveLength(1);
+    expect(store.rows.get(`Builder Page\u0000${answer.pages[0]}`)!.page_title).toBe("Energia");
+  });
+  it("refuses a model that does not exist, and blocks the editor would send instead of a name, without writing anything", async () => {
+    for (const params of [{ template_page: "modelo-outro" }, { template_page: "" }, { template_page: JSON.stringify([root("evil")]) }, {}]) {
+      const error = await withModels("builder.api.create_page_from_template", params).then(
+        () => null,
+        (caught) => caught,
+      );
+      expect((error as EditorError).status, JSON.stringify(params)).toBe(404);
+    }
+    const error = await withModels("builder.api.import_template_group", { template_group: "outro" }).then(
+      () => null,
+      (caught) => caught,
+    );
+    expect((error as EditorError).status).toBe(404);
+    expect(await run("builder.api.create_page_from_template", { template_page: "modelo-trainix" }).then(() => "ok", (caught: EditorError) => caught.status)).toBe(404);
+    expect(store.rows.size).toBe(0);
   });
 });

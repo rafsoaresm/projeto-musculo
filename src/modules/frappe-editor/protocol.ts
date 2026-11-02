@@ -38,6 +38,32 @@ export interface Env {
   siteReady?: () => Promise<boolean>;
   /** Documents that come with the editor, the same for everyone and not to be changed (the standard block templates). Absent: none. */
   builtin?: (doctype: string) => Doc[];
+  /** The page models offered in the editor's "Novo" gallery (the four site models of the Editor Guiado, 0.67). Absent: none. */
+  pageModels?: PageModels;
+}
+
+/** A page of the gallery, as the editor reads it (`TemplatePageSummary` in the editor's types). */
+export interface TemplatePage {
+  name: string;
+  page_title: string;
+  preview?: string;
+  thumbnail?: string;
+  template_group: string;
+}
+/** A group of the gallery (`TemplateGroup` in the editor's types). */
+export interface TemplateGroup {
+  name: string;
+  title: string;
+  description?: string;
+  preview?: string;
+  thumbnail?: string;
+  categories?: string[];
+  pages: TemplatePage[];
+}
+export interface PageModels {
+  groups(): TemplateGroup[];
+  /** The blocks of a new page from one model (its root block), or null when there is no such model. */
+  page(name: string): Promise<{ title: string; root: unknown } | null>;
 }
 
 export type Params = Record<string, unknown>;
@@ -368,6 +394,20 @@ async function duplicatePage(env: Env, params: Params): Promise<Doc> {
   });
 }
 
+/**
+ * A new page from a model of the gallery: its blocks are the page's draft (published only when the person publishes it), in the folder the
+ * editor asked for. Only the models the app offers: the name comes from the editor and is looked up, never read as blocks.
+ */
+async function pageFromModel(env: Env, name: string, folder: unknown): Promise<Doc> {
+  const model = name ? await env.pageModels?.page(name) : null;
+  if (!model) return fail(404, "DoesNotExistError", "Este modelo não existe.");
+  const siblings = (await env.store.list("Builder Page")).map((entry) => text(entry.page_title));
+  const title = siblings.includes(model.title) ? copyTitle(model.title, siblings) : model.title;
+  return insert(env, {
+    doc: { doctype: "Builder Page", page_title: title, blocks: "[]", draft_blocks: JSON.stringify([model.root]), project_folder: text(folder), published: 0 },
+  });
+}
+
 async function updatePageFolder(env: Env, params: Params): Promise<null> {
   const names = Array.isArray(params.pages) ? params.pages.map(String) : [];
   for (const name of names) {
@@ -399,7 +439,6 @@ async function versionedDoc(env: Env, params: Params): Promise<Doc> {
 const FIXED: Record<string, unknown> = {
   "builder.api.is_site_read_only": false,
   "builder.api.get_apps": [],
-  "builder.api.get_template_groups": [],
   "builder.api.get_component_data": {},
   "builder.api.get_codemirror_completions": [],
   "builder.api.get_builder_users": [],
@@ -461,6 +500,18 @@ export async function call(env: Env, method: string, params: Params): Promise<{ 
       return { message: await deleteFolder(env, params) };
     case "builder.api.sync_component":
       return { message: null };
+    case "builder.api.get_template_groups":
+      return { message: env.pageModels?.groups() ?? [] };
+    case "builder.api.create_page_from_template":
+      return { message: (await pageFromModel(env, text(params.template_page), params.project_folder)).name };
+    case "builder.api.import_template_group": {
+      // A group of the gallery is one model with one page: "use all pages" makes that page.
+      const group = (env.pageModels?.groups() ?? []).find((entry) => entry.name === text(params.template_group));
+      if (!group) return fail(404, "DoesNotExistError", "Este modelo não existe.");
+      const pages: string[] = [];
+      for (const page of group.pages) pages.push(text((await pageFromModel(env, page.name, params.project_folder)).name));
+      return { message: { folder: text(params.project_folder), pages } };
+    }
     default:
       return fail(501, "NotImplementedError", `A função “${method}” do editor não está disponível aqui.`);
   }
