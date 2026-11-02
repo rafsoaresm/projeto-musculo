@@ -2,6 +2,7 @@ import { z } from "zod";
 import { DELIVERIES, type Delivery } from "@/modules/leads/contracts";
 import { ALT_MAX, CAPTION_MAX } from "./images";
 import { HEX_COLOR } from "./brand-color";
+import { PALETTE_KEYS, type PaletteKey } from "./site-palette";
 import { ACCENTS, DEFAULT_THEME, FONTS, MODES, WIDTHS } from "./site-theme";
 import { nodeAssetIds } from "./screens";
 import { styleSchema, type Style } from "./style";
@@ -30,6 +31,8 @@ import { styleSchema, type Style } from "./style";
 export const SITE_SCHEMA_VERSION = 3;
 
 /** Nodes on the page itself. */
+/** Links of the header to parts of the home page. */
+export const MAX_MENU_LINKS = 8;
 export const MAX_BLOCKS = 40;
 /** Nodes inside one container. */
 export const MAX_CHILDREN = 40;
@@ -212,7 +215,9 @@ const contactFormShape = {
 };
 const headingShape = { type: z.literal("heading"), text: plain(HEADING_MAX) };
 const paragraphShape = { type: z.literal("paragraph"), text: plain(TEXT_MAX) };
-const buttonShape = { type: z.literal("button"), label: plain(BUTTON_MAX), channel: z.enum(CHANNELS).optional() };
+/** A mark drawn before a button's label (the WhatsApp of the site models' commercial buttons). */
+export const BUTTON_ICONS = ["whatsapp"] as const;
+const buttonShape = { type: z.literal("button"), label: plain(BUTTON_MAX), channel: z.enum(CHANNELS).optional(), icon: z.enum(BUTTON_ICONS).optional() };
 export const IMAGE_SIZES = ["full", "medium", "small"] as const;
 export type ImageSize = (typeof IMAGE_SIZES)[number];
 export const IMAGE_SIZE_LABEL: Record<ImageSize, string> = { full: "Largura toda", medium: "Média", small: "Pequena" };
@@ -365,6 +370,10 @@ export const contact = z
   .strict();
 export type Contact = z.infer<typeof contact>;
 
+const paletteColor = z
+  .string()
+  .transform((value) => value.trim().toLowerCase())
+  .pipe(z.string().regex(HEX_COLOR));
 export const theme = z
   .object({
     accent: z.enum(ACCENTS),
@@ -377,6 +386,11 @@ export const theme = z
       .string()
       .transform((value) => value.trim().toLowerCase())
       .pipe(z.string().regex(HEX_COLOR))
+      .optional(),
+    /** The six colors of a site model (site-palette.ts): the page's variables are made from them, moved only as far as needed to read. */
+    palette: z
+      .object(Object.fromEntries(PALETTE_KEYS.map((key) => [key, paletteColor])) as Record<PaletteKey, typeof paletteColor>)
+      .strict()
       .optional(),
   })
   .strict();
@@ -564,6 +578,13 @@ export const siteContent = z
     components: z.array(componentDef).max(MAX_COMPONENTS).optional(),
     /** The pages besides the home page (`blocks`), in the order of the menu; absent when the site has only one. */
     pages: z.array(pageSchema).max(MAX_PAGES).optional(),
+    /** Links of the header's menu to parts of the home page (a one-page site of a model): a name and the node it leads to. */
+    menu: z
+      .array(z.object({ label: plain(BUTTON_MAX).pipe(z.string().min(1)), anchor: id }).strict())
+      .max(MAX_MENU_LINKS)
+      .optional(),
+    /** The WhatsApp button at the end of the header (the site models): its label; it goes to the site's WhatsApp. */
+    headerCta: z.object({ label: plain(BUTTON_MAX).pipe(z.string().min(1)) }).strict().optional(),
   })
   .strict()
   .refine((content) => new Set(documentNodes(content).map((b) => b.id)).size === documentNodes(content).length, { message: "block ids repeat" })

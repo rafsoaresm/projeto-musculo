@@ -32,7 +32,18 @@ const contrast = (a: string, b: string) => {
 
 describe("the colors of the public page", () => {
   it("has a rule for every mode and for every accent in every mode", () => {
-    for (const mode of MODES) expect(Object.keys(declarations(`[data-site-mode="${mode}"]`)).sort()).toEqual(["--site-bg", "--site-ink", "--site-line", "--site-muted", "--site-text"]);
+    for (const mode of MODES)
+      expect(Object.keys(declarations(`[data-site-mode="${mode}"]`)).sort()).toEqual([
+        "--site-bg",
+        "--site-dark",
+        "--site-ink",
+        "--site-line",
+        "--site-muted",
+        "--site-on-dark",
+        "--site-on-dark-muted",
+        "--site-surface",
+        "--site-text",
+      ]);
     for (const accent of ACCENTS)
       for (const mode of MODES)
         expect(Object.keys(declarations(`[data-site-accent="${accent}"][data-site-mode="${mode}"]`)).sort(), `${accent} ${mode}`).toEqual(["--site-accent", "--site-on", "--site-soft", "--site-soft-line", "--site-solid"]);
@@ -43,6 +54,11 @@ describe("the colors of the public page", () => {
       expect(contrast(base["--site-text"], base["--site-bg"])).toBeGreaterThanOrEqual(4.5);
       expect(contrast(base["--site-ink"], base["--site-bg"])).toBeGreaterThanOrEqual(7);
       expect(contrast(base["--site-muted"], base["--site-bg"])).toBeGreaterThanOrEqual(4.5);
+      // The cards and the dark blocks of the site models, on a page without a palette of its own.
+      expect(contrast(base["--site-ink"], base["--site-surface"])).toBeGreaterThanOrEqual(7);
+      expect(contrast(base["--site-text"], base["--site-surface"])).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(base["--site-on-dark"], base["--site-dark"])).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(base["--site-on-dark-muted"], base["--site-dark"])).toBeGreaterThanOrEqual(4.5);
     });
     for (const accent of ACCENTS) {
       it(`reads well with the ${accent} accent on the ${mode} base`, () => {

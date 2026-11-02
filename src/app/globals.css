@@ -2550,9 +2550,11 @@ label.check input {
  */
 [data-site-mode="light"] {
   --site-bg: #ffffff; --site-ink: #1f2933; --site-text: #4a5560; --site-muted: #5a6470; --site-line: #d7dde3;
+  --site-surface: #ffffff; --site-dark: #1f2933; --site-on-dark: #ffffff; --site-on-dark-muted: #cbd5df;
 }
 [data-site-mode="dark"] {
   --site-bg: #0f1720; --site-ink: #f1f5f9; --site-text: #cbd5df; --site-muted: #a3b0bd; --site-line: #2c3945;
+  --site-surface: #17212b; --site-dark: #05090d; --site-on-dark: #f1f5f9; --site-on-dark-muted: #a3b0bd;
 }
 [data-site-accent="blue"][data-site-mode="light"] {
   --site-solid: #0077b6;
@@ -2645,6 +2647,7 @@ label.check input {
  */
 [data-site-mode="auto"] {
   --site-bg: #ffffff; --site-ink: #1f2933; --site-text: #4a5560; --site-muted: #5a6470; --site-line: #d7dde3;
+  --site-surface: #ffffff; --site-dark: #1f2933; --site-on-dark: #ffffff; --site-on-dark-muted: #cbd5df;
 }
 [data-site-accent="blue"][data-site-mode="auto"] {
   --site-solid: #0077b6;
@@ -2691,6 +2694,7 @@ label.check input {
 @media (prefers-color-scheme: dark) {
   [data-site-mode="auto"] {
     --site-bg: #0f1720; --site-ink: #f1f5f9; --site-text: #cbd5df; --site-muted: #a3b0bd; --site-line: #2c3945;
+    --site-surface: #17212b; --site-dark: #05090d; --site-on-dark: #f1f5f9; --site-on-dark-muted: #a3b0bd;
   }
   [data-site-accent="blue"][data-site-mode="auto"] {
     --site-solid: #5bbcef;
@@ -2745,6 +2749,17 @@ label.check input {
 [data-site-font="mono"] {
   font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,Liberation Mono,monospace;
 }
+/* The font of the site models: Inter (OFL), a file of the app bundled with the page's assets, under any mount path. */
+@font-face {
+  font-family: "Inter Site";
+  src: url("./fonts/inter-site.var.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+[data-site-font="inter"] {
+  font-family: 'Inter Site',Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif;
+}
 
 .site {
   container: site / inline-size;
@@ -2766,6 +2781,38 @@ label.check input {
   gap: 8px 24px;
   padding: 18px 20px;
   border-bottom: 1px solid var(--site-line);
+}
+/* A button with a mark before its label (the WhatsApp of the site models), and the WhatsApp button of the header. The green is the
+   WhatsApp's own and does not follow the theme (handoff V1.1); white on it reads at 4.6:1. */
+.site .site-has-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+.site .site-button-icon {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+}
+.site .site-whatsapp {
+  background: #0e8544;
+  border-color: #0e8544;
+  color: #ffffff;
+  border-radius: 100px;
+  padding: 12px 20px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.site .site-whatsapp:hover {
+  background: #0b6e38;
+  border-color: #0b6e38;
+}
+.site .site-whatsapp:focus-visible {
+  outline: 3px solid var(--site-ink);
+  outline-offset: 2px;
+}
+.site-header-cta {
+  order: 3;
 }
 /* The menu of the pages of the site: a row of links on a wide page, and a "Menu" button that opens the list on a narrow one. */
 .site-menu-state {
@@ -5385,6 +5432,20 @@ button.ve-layer-toggle {
 .guided-add button:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
+}
+.guided-palette-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.guided-palette-row input[type="color"] {
+  flex-shrink: 0;
+  width: 44px;
+  height: 36px;
+  padding: 2px;
+}
+.guided-palette-row code {
+  font-size: var(--font-size-xs, 12px);
 }
 .guided-said {
   grid-column: 1 / -1;

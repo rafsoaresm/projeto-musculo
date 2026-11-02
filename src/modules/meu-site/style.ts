@@ -13,7 +13,7 @@ import { z } from "zod";
 
 // ---- colors: the theme's own names (they follow light and dark) and `#rrggbb` ----
 
-export const COLOR_TOKENS = ["ink", "text", "muted", "line", "bg", "accent", "solid", "on", "soft", "softLine", "white", "black", "transparent"] as const;
+export const COLOR_TOKENS = ["ink", "text", "muted", "line", "bg", "accent", "solid", "on", "soft", "softLine", "surface", "dark", "onDark", "onDarkMuted", "whatsapp", "white", "black", "transparent"] as const;
 export type ColorToken = (typeof COLOR_TOKENS)[number];
 export const COLOR_TOKEN_LABEL: Record<ColorToken, string> = {
   ink: "Título",
@@ -26,6 +26,11 @@ export const COLOR_TOKEN_LABEL: Record<ColorToken, string> = {
   on: "Sobre o destaque",
   soft: "Destaque suave",
   softLine: "Linha do destaque",
+  surface: "Fundo dos cartões",
+  dark: "Bloco escuro",
+  onDark: "Texto sobre o escuro",
+  onDarkMuted: "Texto suave sobre o escuro",
+  whatsapp: "Verde do WhatsApp",
   white: "Branco",
   black: "Preto",
   transparent: "Transparente",
@@ -41,6 +46,13 @@ const COLOR_TOKEN_CSS: Record<ColorToken, string> = {
   on: "var(--site-on)",
   soft: "var(--site-soft)",
   softLine: "var(--site-soft-line)",
+  // A palette of a site model sets these; any other page has them from its base (globals.css).
+  surface: "var(--site-surface)",
+  dark: "var(--site-dark)",
+  onDark: "var(--site-on-dark)",
+  onDarkMuted: "var(--site-on-dark-muted)",
+  // The WhatsApp button's green does not follow the theme (handoff V1.1): white on it reads at 4.6:1.
+  whatsapp: "#0e8544",
   white: "#ffffff",
   black: "#000000",
   transparent: "transparent",
@@ -101,7 +113,7 @@ export const WRAPS = ["nowrap", "wrap"] as const;
 export const ALIGNS = ["start", "center", "end", "stretch", "baseline"] as const;
 export const SELF_ALIGNS = ["auto", "start", "center", "end", "stretch"] as const;
 export const JUSTIFIES = ["start", "center", "end", "between", "around", "evenly"] as const;
-export const FONT_FAMILIES = ["sans", "serif", "mono"] as const;
+export const FONT_FAMILIES = ["sans", "serif", "mono", "inter"] as const;
 /** What the style of a block may use: the page's fonts and a condensed one for big titles ("display"). Only fonts the device already has. */
 export const STYLE_FONTS = [...FONT_FAMILIES, "display"] as const;
 export const TEXT_ALIGNS = ["left", "center", "right", "justify"] as const;
@@ -128,6 +140,8 @@ export const FONT_CSS: Record<(typeof STYLE_FONTS)[number], string> = {
   sans: "system-ui,-apple-system,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif",
   serif: "Georgia,Cambria,Times New Roman,Times,serif",
   mono: "ui-monospace,SFMono-Regular,Menlo,Consolas,Liberation Mono,monospace",
+  // The font of the site models (Inter, OFL): the file comes with the app (src/app/fonts), nothing is loaded from anyone else.
+  inter: "'Inter Site',Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif",
   // Condensed and heavy where the device has such a font (Impact, Haettenschweiler, Arial Narrow); a plain heavy sans where it has none.
   display: "Impact,Haettenschweiler,Arial Narrow Bold,Arial Narrow,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif",
 };

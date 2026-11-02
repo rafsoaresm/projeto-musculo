@@ -1,6 +1,8 @@
 import { type ReactNode } from "react";
 import { IllustrationView } from "./illustrations";
+import { WhatsAppIcon } from "./whatsapp-icon";
 import {
+  HOME,
   allNodes,
   applyOverrides,
   channelUrl,
@@ -234,10 +236,12 @@ function ElementView({ item, ctx }: { item: ElementNode; ctx: Ctx }) {
   }
   // A button or a link: in the editor a stand-in that does not navigate, on the page an anchor made from the destination.
   const link = item.type === "link";
-  const classes = link ? "site-link site-leaf" : "button primary site-leaf";
+  const icon = item.type === "button" && item.icon === "whatsapp";
+  const classes = link ? "site-link site-leaf" : `button primary site-leaf${icon ? " site-has-icon" : ""}`;
   if (ctx.edit) {
     return (
       <span {...attrsOf(item, ctx, `${classes}${link ? "" : " site-button-stand-in"}`)}>
+        {icon && <WhatsAppIcon />}
         <T ctx={ctx} id={item.id} path="label" value={item.label} placeholder={link ? "Texto do link" : "Texto do botão"} max={40} />
       </span>
     );
@@ -245,6 +249,7 @@ function ElementView({ item, ctx }: { item: ElementNode; ctx: Ctx }) {
   const where = destinationOf(item, ctx)!;
   return (
     <a {...attrsOf(item, ctx, classes)} href={where.href} {...(where.external ? { target: "_blank", rel: "noopener noreferrer" } : {})} {...visiting(ctx, where)}>
+      {icon && <WhatsAppIcon />}
       {item.label}
     </a>
   );
@@ -615,8 +620,41 @@ function SiteLogo({ logo }: { logo: ResolvedImage }) {
  * does the same) it folds into a "Menu" button that opens the list under the header. The button is a hidden checkbox and its label, so it
  * works with no script and with the keyboard (Space), and the links are in the page once.
  */
-function SiteMenu({ nav, edit, scope }: { nav: SiteNav; edit: boolean; scope: string }) {
-  if (nav.items.length < 2) return null;
+/** A link of the header to a part of the page: on the home page the part itself, on another page the home page at that part. */
+interface MenuLink {
+  label: string;
+  href: string;
+}
+function menuLinks(content: SiteContent, existing: ReadonlySet<string>, nav: SiteNav, scope: string): MenuLink[] {
+  const home = nav.items.find((item) => item.id === HOME);
+  return (content.menu ?? []).flatMap((entry) => {
+    if (existing.has(entry.anchor)) return [{ label: entry.label, href: `#${scope}${anchorDomId(entry.anchor)}` }];
+    // On another page the part is on the home page; a part that is not there (or a home page with no address) leaves the link out.
+    return home && !home.current && home.href ? [{ label: entry.label, href: `${home.href}#${anchorDomId(entry.anchor)}` }] : [];
+  });
+}
+
+/** The WhatsApp button of the header (the site models): to the site's WhatsApp, and left out of the page while there is no number. */
+function HeaderCta({ label, whatsapp, edit }: { label: string; whatsapp: string; edit: boolean }) {
+  const href = whatsappUrl(whatsapp);
+  if (edit)
+    return (
+      <span className="button site-whatsapp site-header-cta site-has-icon">
+        <WhatsAppIcon />
+        {label}
+      </span>
+    );
+  if (!href) return null;
+  return (
+    <a className="button site-whatsapp site-header-cta site-has-icon" href={href} target="_blank" rel="noopener noreferrer">
+      <WhatsAppIcon />
+      {label}
+    </a>
+  );
+}
+
+function SiteMenu({ nav, edit, scope, links = [] }: { nav: SiteNav; edit: boolean; scope: string; links?: MenuLink[] }) {
+  if (nav.items.length < 2 && links.length === 0) return null;
   const toggle = `${scope}site-menu-toggle`;
   return (
     <nav className="site-menu" aria-label="Páginas do site">
@@ -650,6 +688,17 @@ function SiteMenu({ nav, edit, scope }: { nav: SiteNav; edit: boolean; scope: st
                   : null)}
               >
                 {item.label}
+              </a>
+            )}
+          </li>
+        ))}
+        {links.map((link) => (
+          <li key={`${link.label}${link.href}`}>
+            {edit ? (
+              <span className="site-menu-link">{link.label}</span>
+            ) : (
+              <a className="site-menu-link" href={link.href}>
+                {link.label}
               </a>
             )}
           </li>
@@ -691,9 +740,11 @@ export function SiteRenderer({
     list.flatMap((entry) => (published && hiddenEverywhere(entry) ? [] : [entry, ...(entry.type === "box" ? shownTrees(entry.children) : [])]));
   const nodes = shownTrees(content.blocks);
   const existing = new Set(nodes.map((entry) => entry.id));
-  const anchors = new Set(
-    nodes.flatMap((entry): string[] => ((entry.type === "button" || entry.type === "link") && entry.anchor && existing.has(entry.anchor) ? [entry.anchor] : [])),
-  );
+  const anchors = new Set([
+    ...nodes.flatMap((entry): string[] => ((entry.type === "button" || entry.type === "link") && entry.anchor && existing.has(entry.anchor) ? [entry.anchor] : [])),
+    // The header's links to parts of the page: those parts get the id the links go to.
+    ...(content.menu ?? []).flatMap((entry) => (existing.has(entry.anchor) ? [entry.anchor] : [])),
+  ]);
   const firstHero = nodes.find((entry) => entry.type === "hero")?.id ?? null;
   const ctx: Ctx = {
     content,
@@ -732,7 +783,8 @@ export function SiteRenderer({
               {content.title}
             </p>
           )}
-          {nav && <SiteMenu nav={nav} edit={edit !== undefined} scope={scope} />}
+          {nav && <SiteMenu nav={nav} edit={edit !== undefined} scope={scope} links={menuLinks(content, existing, nav, scope)} />}
+          {content.headerCta && <HeaderCta label={content.headerCta.label} whatsapp={content.contact.whatsapp} edit={edit !== undefined} />}
         </header>
       )}
       <main className="site-main" data-page-root={edit ? "" : undefined}>

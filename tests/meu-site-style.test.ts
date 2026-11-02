@@ -78,8 +78,11 @@ describe("the style schema", () => {
       }),
     ).toBe(true);
   });
-  it("has a condensed font for big titles beside the page's three, made only of fonts the device already has", () => {
-    expect([...STYLE_FONTS]).toEqual(["sans", "serif", "mono", "display"]);
+  it("has a condensed font for big titles beside the page's four, made only of fonts the device already has or the app brings", () => {
+    expect([...STYLE_FONTS]).toEqual(["sans", "serif", "mono", "inter", "display"]);
+    // Inter comes with the app (src/app/fonts): named, never an address.
+    expect(FONT_CSS.inter).toMatch(/^'Inter Site',/);
+    expect(FONT_CSS.inter).not.toMatch(/url|http|@import/i);
     expect(styleSchema.safeParse({ fontFamily: "display" }).success).toBe(true);
     expect(css({ fontFamily: "display" })).toEqual([`font-family:${FONT_CSS.display}`]);
     // It falls back to a plain sans when the device has none of the condensed ones, and loads nothing from anyone else.

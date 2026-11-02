@@ -4,7 +4,8 @@
  */
 import { TITLE_MAX, type SiteContent } from "./contracts";
 import { HEX_COLOR, brandPalette } from "./brand-color";
-import { withFont, withoutBrand, type Accent, type Font, type Mode, type Width } from "./site-theme";
+import { withFont, withoutBrand, type Accent, type Font, type Mode, type Theme, type Width } from "./site-theme";
+import type { PaletteKey } from "./site-palette";
 
 export function withSiteName(content: SiteContent, raw: string): SiteContent {
   const title = raw.slice(0, TITLE_MAX);
@@ -22,15 +23,29 @@ export function withLogo(content: SiteContent, assetId: string | null): SiteCont
 }
 
 export function withAccent(content: SiteContent, accent: Accent): SiteContent {
-  if (!content.theme.brand && content.theme.accent === accent) return content;
-  return { ...content, theme: withoutBrand(content.theme, accent) };
+  if (!content.theme.brand && !content.theme.palette && content.theme.accent === accent) return content;
+  return { ...content, theme: withoutPalette(withoutBrand(content.theme, accent)) };
+}
+
+const withoutPalette = (theme: Theme): Theme => {
+  const { palette: _dropped, ...rest } = theme;
+  void _dropped;
+  return rest;
+};
+
+/** One of the six colors of a site model (`#rrggbb`); anything else, or a site without the model's colors, changes nothing. */
+export function withPaletteColor(content: SiteContent, key: PaletteKey, raw: string): SiteContent {
+  const hex = raw.trim().toLowerCase();
+  const palette = content.theme.palette;
+  if (!palette || !HEX_COLOR.test(hex) || palette[key] === hex) return content;
+  return { ...content, theme: { ...content.theme, palette: { ...palette, [key]: hex } } };
 }
 
 /** A colour of the brand (`#rrggbb`); anything else changes nothing. */
 export function withBrand(content: SiteContent, raw: string): SiteContent {
   const hex = raw.trim().toLowerCase();
-  if (!HEX_COLOR.test(hex) || content.theme.brand === hex) return content;
-  return { ...content, theme: { ...content.theme, brand: hex } };
+  if (!HEX_COLOR.test(hex) || (content.theme.brand === hex && !content.theme.palette)) return content;
+  return { ...content, theme: { ...withoutPalette(content.theme), brand: hex } };
 }
 
 export const withMode = (content: SiteContent, mode: Mode): SiteContent => (content.theme.mode === mode ? content : { ...content, theme: { ...content.theme, mode } });
