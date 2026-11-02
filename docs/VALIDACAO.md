@@ -41,6 +41,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
   - o WhatsApp de verdade (no teste, o endereço `wa.me` é respondido pelo próprio teste);
   - iOS Safari e leitor de tela;
   - produção: os formulários públicos continuam fechados (C28), então lá os botões vão direto (C35).
+- **CI e deploy:** o CI da PR #68 falhou em commits intermediários (o cenário `site-whatsapp` comparava a página final, e no CI a rede alcança o WhatsApp, que redireciona; corrigido para conferir o endereço pedido ao `wa.me`) e passou nas duas montagens no commit `d0ca0b7`. Merge `cd3d0dc`. Implantada: deploy `d36b352c`, build de 16:45 a 16:47 e deploy até 16:48 de 02/11/2026, status `success`; o log do deploy mostra `0032_site_inquiry_via.sql ✅`. Nada foi lido ao vivo.
 
 ## Fatia 0.65: Os quatro modelos de site do handoff "Templates de Sites — CMS V1" no Editor Guiado (pedido do usuário de 02/11/2026; PENDENCIAS B46)
 
