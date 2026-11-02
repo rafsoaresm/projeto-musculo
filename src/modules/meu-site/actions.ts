@@ -4,6 +4,8 @@ import { ZodError } from "zod";
 import { requireWorkspace } from "@/modules/auth/server";
 import { getSiteMediaBucket } from "@/db/binding";
 import { sitesFor, type SiteEngine } from "@/db/sites";
+import { siteTrackingFor } from "@/db/site-tracking";
+import { readTracking, type TrackingField, type TrackingInput } from "./tracking";
 import type { PublishIssue, SiteContent } from "./contracts";
 
 /**
@@ -136,6 +138,29 @@ export async function setSiteCodeNetwork(open: boolean): Promise<SimpleResult> {
     if (outcome.status === "saved") {
       refresh();
       return { ok: true, message: outcome.open ? "O código livre das páginas passou a poder carregar coisas de outros sites (https)." : "O código livre das páginas deixou de poder carregar coisas de outros sites." };
+    }
+    return { ok: false, message: FORBIDDEN };
+  } catch {
+    return { ok: false, message: FAILED };
+  }
+}
+
+export type TrackingResult = { ok: true; message: string; warnings: Partial<Record<TrackingField, string>> } | { ok: false; message: string; errors?: Partial<Record<TrackingField, string>> };
+
+/**
+ * The tagging of the site (Meu Site 0.71): the IDs of GA4, Google Ads and the Meta Pixel, what counts as a conversion, the value of a contact and
+ * the site's privacy notice. The browser sends only the fields of the panel; the organization and the person come from the session, the server
+ * reads every field again (readTracking) and the repository repeats the role in the statement that writes.
+ */
+export async function saveSiteTracking(input: TrackingInput): Promise<TrackingResult> {
+  const { db, context } = await requireWorkspace();
+  const read = readTracking(typeof input === "object" && input !== null ? input : {});
+  if (!read.ok) return { ok: false, message: "Confira os campos marcados.", errors: read.errors };
+  try {
+    const outcome = await siteTrackingFor(db, context).save(read.value);
+    if (outcome.status === "saved") {
+      refresh();
+      return { ok: true, message: outcome.changed ? "Rastreamento salvo. Vale a partir da próxima visita ao site, sem publicar de novo." : "Nada mudou.", warnings: read.warnings };
     }
     return { ok: false, message: FORBIDDEN };
   } catch {

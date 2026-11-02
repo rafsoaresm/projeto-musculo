@@ -43,8 +43,14 @@ export const formsOfPage = (found: PublicPage): FormDefinition[] => contentOfPag
 /** The free code of a published page, in the order of the page: what the frames of its blocks show. */
 export const codeOfPage = (found: PublicPage): CodeBlock[] => contentOfPage(found).code;
 
-/** `noticeUrl` is the address of the privacy notice when the environment has opened the public forms, otherwise null. */
-export function publicDocument(found: PublicPage, depth: number, noticeUrl: string | null = null): string {
+/** The tagging script of a site (`/s/<slug>/m/rastreio`), from a page `depth` segments below `/site/<slug>`. */
+export const trackingScriptUrl = (slug: string, depth: number) => `${toMountRoot(depth)}s/${slug}/m/rastreio`;
+
+/**
+ * `noticeUrl` is the address of the privacy notice when the environment has opened the public forms, otherwise null. `tracking`: the site has a
+ * tool of tagging on (Meu Site 0.71), so the page loads its script; only the published page asks for it (never the preview or a model).
+ */
+export function publicDocument(found: PublicPage, depth: number, noticeUrl: string | null = null, tracking = false): string {
   const url = urlContext(found.slug, depth);
   const rendered = renderBlocks(renderInput(found, depth, noticeUrl));
   const { page, settings } = found;
@@ -64,6 +70,7 @@ export function publicDocument(found: PublicPage, depth: number, noticeUrl: stri
     fontFaces: fontFaces(rendered.fonts, toMountRoot(depth)),
     keepLight: flag(settings.disable_auto_dark_mode),
     asset: url.asset,
+    ...(tracking ? { script: trackingScriptUrl(found.slug, depth) } : {}),
   });
 }
 

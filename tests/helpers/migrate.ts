@@ -70,4 +70,5 @@ export const ALL_MIGRATIONS = [
   "0031_screening_answered.sql",
   "0032_site_inquiry_via.sql",
   "0033_assessment_v2.sql",
+  "0034_site_tracking.sql",
 ];

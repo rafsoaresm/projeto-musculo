@@ -1,6 +1,8 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { publicBuilderPage } from "@/db/builder-public";
 import { receiveInquiry } from "@/db/site-inquiries";
+import { publicTrackingBySlug } from "@/db/site-tracking";
+import { newSubmissionId } from "@/modules/meu-site/tracking-script";
 import { FORM_BODY_MAX_BYTES, FORM_FIELD, parseFormSubmission, routeFitsInbox } from "@/modules/frappe-site/form";
 import { formsOfPage } from "@/modules/frappe-site/public-page";
 import { formsGate, readLimitedBody, senderKey } from "@/modules/meu-site/inquiries";
@@ -17,9 +19,14 @@ const answer = (status: number, page: Parameters<typeof inquiryPageHtml>[0], ext
 const notFound = () =>
   new Response("Página não encontrada.", { status: 404, headers: { "Cache-Control": "no-store", "Content-Type": "text/plain; charset=utf-8", "X-Content-Type-Options": "nosniff" } });
 
-/** The thank-you page is a sibling of this route; a relative address keeps the mount path of the platform out of the code. */
-const thanks = (route: string) =>
-  new Response(null, { status: 303, headers: { Location: route ? `./enviado?pagina=${encodeURIComponent(route)}` : "./enviado", "Cache-Control": "no-store" } });
+/**
+ * The thank-you page is a sibling of this route; a relative address keeps the mount path of the platform out of the code. `submission`: the
+ * one-time id of an accepted message on a site with tagging (0.71), for its script to fire the conversion once; never for the bait or an error.
+ */
+const thanks = (page: string, submission: string | null = null) => {
+  const query = [page ? `pagina=${encodeURIComponent(page)}` : "", submission ? `envio=${submission}` : ""].filter(Boolean).join("&");
+  return new Response(null, { status: 303, headers: { Location: query ? `./enviado?${query}` : "./enviado", "Cache-Control": "no-store" } });
+};
 
 /**
  * The form of a page made in the new editor. No session and no cookie: the organization is the one of the site the address names, and what the
@@ -77,5 +84,7 @@ export async function POST(request: Request, { params }: Params) {
       { "Retry-After": "3600" },
     );
   }
-  return thanks(found.route);
+  // Accepted: on a site with tagging the address carries a one-time id of this message (no personal data), for the conversion to count once.
+  const tracked = (await publicTrackingBySlug(env.DB, slug)) !== null;
+  return thanks(found.route, tracked ? newSubmissionId() : null);
 }

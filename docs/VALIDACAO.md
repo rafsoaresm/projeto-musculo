@@ -2,6 +2,30 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.71: Sites, tagueamento e conversões (GA4, Google Ads, Meta Pixel) com aviso de cookies (pedido do usuário de 02/11/2026; PENDENCIAS J16 e C39)
+
+**Migration 0034 (aditiva):** `site_tracking`, uma linha por organização, com os IDs conferidos também no banco.
+
+- **Decisões do usuário (02/11/2026):** o Google Tag Manager fica **fora** enquanto o site dividir o endereço do app (R3): um contêiner do GTM roda qualquer código escolhido pelo dono do site, com a sessão de quem estiver logado no app. O campo aparece desligado, com o motivo. O resto **vai ao ar já**, com o texto do aviso de cookies escrito pela ferramenta, a revisar pelo jurídico (J16).
+- **Painel "Rastreamento e conversões"** (Meu Site › Configurações, nos dois editores):
+  - Google Analytics 4, Google Ads (ID e os rótulos da conversão do formulário e da de contato) e Meta Pixel; um `AW-…/rótulo` colado é separado;
+  - um ID no campo errado (`GTM-`, `UA-`, `GT-`) é recusado com a mensagem do campo certo;
+  - "O que conta como conversão" (formulário, WhatsApp, e-mail, Instagram), valor de um contato opcional e o endereço do aviso de privacidade do site;
+  - a tabela de quais eventos cada ferramenta recebe e onde achar cada ID; o aviso para não contar a mesma conversão pelo Google Ads e pela importação do GA4, e para deixar desligadas a correspondência avançada da Meta, a coleta de dados fornecidos do GA4 e as conversões otimizadas automáticas do Ads;
+  - proprietário e gestão editam; o comercial só vê; a organização vem da sessão.
+- **No site publicado** (só com alguma ferramenta configurada; nunca nas prévias do editor):
+  - um script da própria ferramenta (`/s/<endereço>/m/rastreio`, por endereço relativo, funciona em qualquer montagem) mostra o aviso em duas camadas, **Aceitar, Recusar e Personalizar** com o mesmo peso, e o botão "Preferências de cookies" para mudar a escolha;
+  - **nada dos fornecedores carrega antes da escolha**: Consent Mode v2 começa negado; só medição carrega o GA4; marketing carrega o Google Ads e a Meta; recusar não carrega nada;
+  - cookies do Google com prefixo por site; a Meta sem configuração automática; nenhum evento leva nome, e-mail, telefone ou mensagem;
+  - **formulário:** `generate_lead`, `Lead` e a conversão do Ads só na página de "mensagem enviada" de um envio **aceito pelo servidor**, uma vez por envio (recarregar não conta de novo);
+  - **cliques:** WhatsApp, e-mail e Instagram como `contact` (GA4) e, se escolhidos no painel, `Contact` (Meta) e a conversão de contato do Ads;
+  - **Editor Avançado:** a política de conteúdo da página ganha só os endereços dos fornecedores configurados; sem rastreamento, continua exatamente a de antes.
+- **Verificado localmente:**
+  - `npm run check`: 110 arquivos, 1747 testes (unitários da validação dos IDs e da política de conteúdo; D1 das permissões por papel, da auditoria e da leitura pública; o script de verdade rodado num navegador simulado: ordem do consentimento, prefixo dos cookies, uma conversão por envio);
+  - navegador na raiz (15 passaram, 5 pulados de propósito) e em `/treinador` (21 passaram, 5 pulados), computador e celular: `site-tracking` (nada vai aos fornecedores antes da escolha, os três botões com o mesmo tamanho e alcançáveis pelo teclado, o aviso não cobre o WhatsApp no celular, Recusar e Aceitar, o clique no WhatsApp, a página de envio contando uma vez só, e o mesmo num site do Editor Avançado), `site-whatsapp`, `site-inquiries`, `frappe-publish`, `frappe-form`, `frappe-code`, `site-guided`;
+  - três revisões independentes (segurança, privacidade e correção): segurança sem defeito; privacidade com dois defeitos corrigidos (configuração automática da Meta e cookies do Google sem prefixo por site); correção com três lacunas de teste fechadas.
+- **Não verificado:** a entrega a contas reais de GA4, Meta e Google Ads (os testes usam substitutos dos scripts dos fornecedores) e a política de conteúdo do Editor Avançado com os scripts reais (C39); o formulário "pedir antes do WhatsApp" dispara o evento no envio, antes de o servidor aceitar, e não tem teste de navegador; o cookie `_fbp` da Meta é o mesmo para todos os sites do app (J16).
+
 ## Fatia 0.70: Sites, alinhamento e responsivo dos modelos (pedido do usuário de 02/11/2026)
 
 **Sem migration.** A partir das capturas do usuário: palavras quebradas letra por letra na prévia do celular, faixas e seções começando em margens diferentes, formulário de contato mais estreito que a seção, e o painel do Editor Guiado arredondado demais.
@@ -25,6 +49,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
   - `npm run check`: 107 arquivos de teste, com dois que falharam por o servidor local ser derrubado pela rodada de navegador ao mesmo tempo (`fetch failed`); rodados sozinhos, os dois passaram (27 testes);
   - `tsc`, lint e os testes de site (`tests/meu-site*`, `tests/site*`), com os testes novos de `meu-site-layout`;
   - revisão independente em duas rodadas: os defeitos da primeira (prévia de computador mostrando o celular em notebooks de 1101 a 1307 px, fotos encolhidas no tablet, cartões estreitos, áreas de toque, rolagem ao trocar de largura) foram corrigidos; da segunda, o cabeçalho em duas linhas entre 1024 e 1055 px e o botão de largura sem destaque, também corrigidos.
+- **CI e deploy:** o CI do PR #72 passou (`validate` e `validate (/treinador)`, no commit `8fff848`); merge `dc58eda`; deploy `640ecb8c` com sucesso em 02/11/2026 (sem migration).
 - **Não verificado:** Safari e Firefox; o Editor Guiado num celular de verdade; páginas publicadas pela rota pública em produção (a medição usa o mesmo renderizador e o mesmo CSS).
 
 ## Fatia 0.69: Avaliação Física V2, a etapa Medidas (atrás da chave `ASSESSMENT_V2_ENABLED`; PENDENCIAS B47 e C38)

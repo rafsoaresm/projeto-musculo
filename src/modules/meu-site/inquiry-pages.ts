@@ -16,6 +16,11 @@ export interface InquiryPage {
    * the professional's WhatsApp is still there, never opened by itself). It may go off this site, and then it opens without telling where from.
    */
   also?: { href: string; label: string };
+  /**
+   * The site's tagging script (Meu Site 0.71), relative to this page, on the thank-you page of a site with a tool on: it fires the conversion of
+   * an accepted message. Absent otherwise, and then the page is exactly what it was.
+   */
+  script?: string;
 }
 
 export function inquiryPageHtml(page: InquiryPage): string {
@@ -25,7 +30,7 @@ export function inquiryPageHtml(page: InquiryPage): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>${escapeHtml(page.title)}</title>
+<title>${escapeHtml(page.title)}</title>${page.script ? `\n<script src="${escapeHtml(page.script)}" defer data-pagina="enviado"></script>` : ""}
 <style>
 body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:#f6f7f9;color:#1f2933}
 main{max-width:460px;padding:28px;border:1px solid #d5dae1;border-radius:14px;background:#fff}
