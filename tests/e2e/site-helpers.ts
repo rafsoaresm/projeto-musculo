@@ -1,6 +1,3 @@
-import { readdirSync } from "node:fs";
-import path from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { expect, type Page } from "@playwright/test";
 import { createProfessional, localIP } from "./helpers";
 
@@ -23,25 +20,21 @@ export async function showTab(page: Page, name: "Páginas" | "Publicação" | "F
 }
 /**
  * Makes a site stand for one created before the editor became fixed (migration 0030), the only kind that still opens the visual builder:
- * a site created now opens the Editor Guiado. Written straight into the file of the local database the preview serves (tests only), with
- * Node's own SQLite: no other process is started, so the other tests running at the same time are not slowed down.
+ * a site created now opens the Editor Guiado. Tests only: the local database is changed through Wrangler's local explorer (on by default in
+ * `wrangler dev`, the preview), so the write goes through the same database object as the app's own writes. Writing the database file from
+ * another process made the local D1 fail the app's next writes ("Failed to get session commit token"), seen as random server errors.
  */
 export async function asLegacySite(page: Page, slug: string) {
   if (!/^[a-z0-9-]{3,40}$/.test(slug)) throw new Error(`not an address: ${slug}`);
-  const dir = path.join(process.cwd(), ".wrangler", "state", "v3", "d1", "miniflare-D1DatabaseObject");
-  const files = readdirSync(dir).filter((name) => name.endsWith(".sqlite") && name !== "metadata.sqlite");
-  let changed = 0;
-  for (const file of files) {
-    const db = new DatabaseSync(path.join(dir, file));
-    try {
-      db.exec("PRAGMA busy_timeout = 5000");
-      const hasSites = db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'sites'").get();
-      if (hasSites) changed += Number(db.prepare("UPDATE sites SET engine_fixed = 0 WHERE slug = ?").run(slug).changes);
-    } finally {
-      db.close();
-    }
-  }
-  if (changed !== 1) throw new Error(`the site ${slug} was not found in the local database`);
+  const explorer = new URL("/cdn-cgi/local/explorer/api/d1/database", page.url());
+  const list = (await (await page.request.get(explorer.href)).json()) as { result: { name: string; uuid: string }[] };
+  const database = list.result.find((entry) => entry.name === "DB");
+  if (!database) throw new Error("the local database is not listed by the explorer");
+  const response = await page.request.post(`${explorer.href}/${database.uuid}/raw`, {
+    data: { sql: "UPDATE sites SET engine_fixed = 0 WHERE slug = ?", params: [slug] },
+  });
+  const body = (await response.json()) as { success: boolean; result?: { meta: { changes: number } }[] };
+  if (!body.success || body.result?.[0]?.meta.changes !== 1) throw new Error(`the site ${slug} was not changed: ${JSON.stringify(body)}`);
   await page.reload();
 }
 export async function openEditor(page: Page) {
