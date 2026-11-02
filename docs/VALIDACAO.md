@@ -14,6 +14,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Revisão independente do diff** (antes da PR) achou, e foi corrigido: a mensagem do que foi feito ficava dentro da lista, que some no celular ao abrir os campos; o `h1` ia com o primeiro destaque escondido; um rodapé próprio escondido ainda tirava o rodapé do site; nomes longos de seção entravam nos botões no computador; e o foco do teclado caía na página depois de excluir, acrescentar ou mover até a ponta.
 - **Não feito / limites:** arrastar seções; duplicar uma seção; esconder só no celular ou só no computador pelo Editor Guiado (o construtor visual faz); um aviso ao publicar quando um botão leva a uma seção escondida (o botão sai do site).
 - **Não verificado:** o ambiente de desenvolvimento não alcança o site publicado; aparelhos reais (iOS Safari) e leitor de tela.
+- **CI e deploy:** o CI da PR #66 falhou uma vez num commit intermediário (`a2308f8`: a mensagem "Seção acrescentada" ficava escondida no celular, corrigida no commit seguinte) e passou nas duas montagens no commit `9572b01`. Merge `7e0b0a3`. Implantada: deploy `40ad2978`, build de 11:56 a 11:57 e deploy até 11:58 de 02/11/2026, status `success`.
 
 ## Fatia 0.63: Três modelos completos de site no Editor Guiado (pedido do usuário de 02/11/2026; PENDENCIAS B45)
 
