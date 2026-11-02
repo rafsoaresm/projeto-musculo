@@ -94,6 +94,10 @@ describe("a draft of the new format", () => {
     expect(row!.s).not.toContain("Masculino");
     expect(await a().sections(id)).toEqual({ revision: 1, formatVersion: 2, sections: [] });
   });
+  it("says the format of the open draft when one is asked for again (one draft per student, of either format)", async () => {
+    expect(await a().startDraft("st-1", day(4), { format: 2 })).toEqual({ status: "draft_open", id, formatVersion: 2 });
+    expect(await a().startDraft("st-1", day(4))).toEqual({ status: "draft_open", id, formatVersion: 2 });
+  });
   it("saves a module against the revision read, and refuses a save from an older revision without changing anything", async () => {
     const saved = await a().saveSection(id, { module: "composition", status: "IN_PROGRESS", payload: { protocol: "jackson_pollock_7" }, revision: 1 }, day(4));
     expect(saved).toEqual({ status: "saved", revision: 2 });

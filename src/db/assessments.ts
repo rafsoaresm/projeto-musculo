@@ -158,7 +158,8 @@ export interface StudentAssessmentRow {
 }
 export type StartOutcome =
   | { status: "started"; id: string }
-  | { status: "draft_open"; id: string }
+  /** The student already has an open draft (one per student); `formatVersion` says which format it is, which may not be the one asked for. */
+  | { status: "draft_open"; id: string; formatVersion: number | null }
   | { status: "not_found" };
 export type RecordOutcome =
   | { status: "recorded"; riskStatus: RiskStatus }
@@ -419,7 +420,9 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
       } catch (error) {
         if (!String(error).includes("UNIQUE")) throw error;
         const open = (await api.listForStudent(studentId)).find((a) => a.state === "DRAFT");
-        return open ? { status: "draft_open", id: open.id } : { status: "not_found" };
+        if (!open) return { status: "not_found" };
+        const format = await db.prepare("SELECT format_version AS f FROM assessments WHERE organization_id = ?1 AND id = ?2").bind(organizationId, open.id).first<{ f: number | null }>();
+        return { status: "draft_open", id: open.id, formatVersion: format?.f ?? null };
       }
     },
 
