@@ -31,6 +31,11 @@ declare global {
      * chose: it opens on purpose, once the public privacy notice (PRIVACY_NOTICE_URL) and the legal opinion on leads exist.
      */
     PUBLIC_FORMS_ENABLED?: string;
+    /**
+     * "true" opens the new format of the physical assessment (handoff V2) while it is being built: the start of a draft of the new format and
+     * its guided steps. Absent means closed: the professional sees only the current assessment.
+     */
+    ASSESSMENT_V2_ENABLED?: string;
     /** The address of the public privacy notice the form points to ("https://..."). Without it the form stays closed even when opened. */
     PRIVACY_NOTICE_URL?: string;
     /**

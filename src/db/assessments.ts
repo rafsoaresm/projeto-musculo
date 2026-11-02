@@ -434,7 +434,7 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
       const input = parseAssessment(raw, now);
       const stamp = now.toISOString();
       const open = `EXISTS (SELECT 1 FROM assessments a WHERE a.organization_id = ?1 AND a.id = ?3
-        AND a.state = 'DRAFT' AND ${reachAssessment("a")})`;
+        AND a.state = 'DRAFT' AND a.format_version IS NULL AND ${reachAssessment("a")})`;
       const findingRows: Array<{ area: "POSTURE" | "MOVEMENT"; item: string; grade: string | null; notes: string | null }> = [
         ...input.posture.findings.map((item) => ({ area: "POSTURE" as const, item, grade: null, notes: null })),
         ...(input.posture.notes
@@ -452,7 +452,7 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
              SET assessed_on = ?4, risk_status = ?5, ${flagColumns.join(", ")},
                screening_notes = ?12, notes = ?13, updated_at = ?14,
                screening_answered = CASE WHEN screening_answered IS NULL THEN NULL ELSE ?15 END
-             WHERE organization_id = ?1 AND id = ?3 AND state = 'DRAFT' AND ${reachAssessment("assessments")}`,
+             WHERE organization_id = ?1 AND id = ?3 AND state = 'DRAFT' AND format_version IS NULL AND ${reachAssessment("assessments")}`,
           )
           .bind(
             organizationId, userId, assessmentId, input.assessedOn, input.riskStatus,
@@ -504,6 +504,9 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
     ): Promise<RecordOutcome> {
       const current = await api.get(assessmentId);
       if (!current || current.state !== "DRAFT") return { status: "not_found" };
+      // A draft of the new format (handoff V2) is finished by its own flow, never recorded through the earlier form.
+      const format = await db.prepare("SELECT format_version AS f FROM assessments WHERE organization_id = ?1 AND id = ?2").bind(organizationId, assessmentId).first<{ f: number | null }>();
+      if (format?.f != null) return { status: "not_found" };
       if (!current.earlierFormat) {
         // Decision D4: every question has a Yes or a No before the assessment is recorded.
         const missing = SCREENING_ITEMS.filter((item) => current.flags[item.key] === null).map((item) => item.key);
@@ -529,7 +532,7 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
           .prepare(
             `UPDATE assessments SET state = 'RECORDED', recorded_at = ?3, recorded_by_user_id = ?2,
                updated_at = ?3
-             WHERE organization_id = ?1 AND id = ?4 AND state = 'DRAFT' AND ${reachAssessment("assessments")}`,
+             WHERE organization_id = ?1 AND id = ?4 AND state = 'DRAFT' AND format_version IS NULL AND ${reachAssessment("assessments")}`,
           )
           .bind(organizationId, userId, stamp, assessmentId),
         audit("ASSESSMENT_RECORDED", assessmentId, stamp),
@@ -562,6 +565,22 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
         formatVersion: head.formatVersion,
         sections: rows.results.flatMap((row) => (isModule(row.module) ? [{ module: row.module, status: row.status, payload: JSON.parse(row.payload) as unknown, updatedAt: row.updatedAt }] : [])),
       };
+    },
+
+    /**
+     * The student's data as the assessment of the new format took them when it started (birth date, height, weight, goal), so a later change
+     * of the profile does not change this assessment. Null when the assessment is not reachable or has no snapshot (the earlier format).
+     */
+    async studentSnapshot(assessmentId: string): Promise<{ birthDate: string | null; heightCm: number | null; weightKg: number | null; goal: string | null } | null> {
+      const row = await db
+        .prepare(`SELECT a.student_snapshot AS snapshot FROM assessments a WHERE a.organization_id = ?1 AND a.id = ?3 AND ${reachAssessment("a")}`)
+        .bind(organizationId, userId, assessmentId)
+        .first<{ snapshot: string | null }>();
+      if (!row?.snapshot) return null;
+      const raw = JSON.parse(row.snapshot) as Record<string, unknown>;
+      const text = (value: unknown) => (typeof value === "string" && value !== "" ? value : null);
+      const number = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
+      return { birthDate: text(raw.birthDate), heightCm: number(raw.heightCm), weightKg: number(raw.weightKg), goal: text(raw.goal) };
     },
 
     /**

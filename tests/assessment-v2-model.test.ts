@@ -94,6 +94,19 @@ describe("a draft of the new format", () => {
     expect(row!.s).not.toContain("Masculino");
     expect(await a().sections(id)).toEqual({ revision: 1, formatVersion: 2, sections: [] });
   });
+  it("reads the snapshot back for the screen (never the gender), only inside the organization, and none for the earlier format", async () => {
+    expect(await a().studentSnapshot(id)).toEqual({ birthDate: "1999-03-04", heightCm: 171, weightKg: 69.1, goal: "Hipertrofia" });
+    expect(await assessmentsFor(db, scope("tech-b", "org-b")).studentSnapshot(id)).toBeNull();
+    expect(await a().studentSnapshot("old-1")).toBeNull();
+  });
+  it("is never written nor recorded through the earlier form's actions", async () => {
+    expect(await a().record(id, { screeningAsked: true }, day(4))).toEqual({ status: "not_found" });
+    expect(await one("SELECT state FROM assessments WHERE id = ?1", id)).toEqual({ state: "DRAFT" });
+    expect(await one("SELECT count(*) AS n FROM audit_events WHERE action = 'ASSESSMENT_RECORDED' AND subject_id = ?1", id)).toEqual({ n: 0 });
+    const legacy = { ...ALL_NO, assessedOn: "2026-11-04", metrics: [{ metricType: "RESTING_HEART_RATE", value: "62" }] };
+    expect(await a().saveDraft(id, legacy, day(4))).toBe(false);
+    expect(await one("SELECT count(*) AS n FROM assessment_metrics WHERE assessment_id = ?1", id)).toEqual({ n: 0 });
+  });
   it("says the format of the open draft when one is asked for again (one draft per student, of either format)", async () => {
     expect(await a().startDraft("st-1", day(4), { format: 2 })).toEqual({ status: "draft_open", id, formatVersion: 2 });
     expect(await a().startDraft("st-1", day(4))).toEqual({ status: "draft_open", id, formatVersion: 2 });

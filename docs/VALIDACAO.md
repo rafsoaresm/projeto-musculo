@@ -25,7 +25,8 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
   - revisão independente da migration e do repositório: 1 problema confirmado e corrigido (pedir um rascunho do formato novo com um do formato antigo aberto devolvia o antigo sem dizer o formato; agora diz). Os outros apontamentos foram refutados;
   - conferência independente das fórmulas: os coeficientes e os sítios batem com a matriz do handoff e com as equações publicadas; o único ponto, um limite de 70% de gordura escolhido sem fonte, foi trocado pelos limites naturais (entre 0 e 100%), e a faixa plausível fica com o técnico.
 - **Não feito (próximas fatias):** as telas (etapa Medidas, triagem com PAR-Q, finalizar e retificar, histórico), o salvamento automático, o relatório e a evolução por protocolo.
-- **Não verificado:** a migration no D1 do Webflow (depois do deploy, C37).
+- **CI e deploy:** o CI do PR #70 passou (`validate` e `validate (/treinador)`, no commit `5a1121a`); merge `484200d`; deploy `e6b25038` com sucesso em 02/11/2026, com `0033_assessment_v2.sql ✅` no log.
+- **Não verificado:** `/api/health` em produção (o proxy deste ambiente recusa o endereço; C37) e as avaliações já gravadas abertas em produção.
 
 ## Fatia 0.67: Os quatro modelos de site no Editor Avançado (Frappe) (pedido do usuário de 02/11/2026; PENDENCIAS B46)
 
