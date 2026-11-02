@@ -11,6 +11,8 @@ import { demoKeyOf, demoPhotoUrl } from "./models/demo-photos";
 import { useMountPath } from "@/components/use-mount-path";
 import { InlineSiteStyles } from "./site-styles";
 import { siteNav } from "./site-nav";
+import { PreviewStage, PreviewWidthTools } from "./preview-stage";
+import type { PreviewWidth } from "./preview-scale";
 
 /**
  * A model of site seen whole before it is chosen: every page (through its own menu), at the width of a computer or of a phone. Nothing is created:
@@ -19,7 +21,7 @@ import { siteNav } from "./site-nav";
 export function ModelPreview({ model, title, onUse, onClose }: { model: SiteModel; title: string; onUse: () => void; onClose: () => void }) {
   const content = useMemo(() => previewOf(model, title.trim() || "Seu nome"), [model, title]);
   const [pageId, setPageId] = useState(HOME);
-  const [width, setWidth] = useState<"computador" | "celular">("computador");
+  const [width, setWidth] = useState<PreviewWidth>("computador");
   const closeButton = useRef<HTMLButtonElement>(null);
   const dialog = useRef<HTMLDivElement>(null);
   // Read through a ref, so a new function from the form's render does not move the focus back to "Fechar".
@@ -84,6 +86,7 @@ export function ModelPreview({ model, title, onUse, onClose }: { model: SiteMode
           <p className="small muted">
             Assim o site começa. Os textos de exemplo, as cores, o logotipo e as imagens você troca no Editor Guiado; o que só você pode dizer começa em branco.
           </p>
+          <p className="model-preview-sample">Exemplo: números, preços, nomes e depoimentos desta prévia não vão para o seu site.</p>
         </div>
         <button type="button" className="button secondary" ref={closeButton} onClick={onClose} aria-label="Fechar a prévia do modelo">
           <X size={18} aria-hidden="true" /> Fechar
@@ -101,18 +104,11 @@ export function ModelPreview({ model, title, onUse, onClose }: { model: SiteMode
             ))}
           </select>
         </label>
-        <div role="group" aria-label="Largura da prévia" className="guided-preview-tools">
-          {(["computador", "celular"] as const).map((option) => (
-            <button key={option} type="button" className="button small secondary" aria-pressed={width === option} onClick={() => setWidth(option)}>
-              {option === "computador" ? "Computador" : "Celular"}
-            </button>
-          ))}
-        </div>
+        <PreviewWidthTools width={width} onWidth={setWidth} />
       </div>
       <div className="guided-frame-scroll model-preview-frame">
-        <div
-          className="guided-frame"
-          data-width={width}
+        <PreviewStage
+          width={width}
           onClickCapture={(event) => {
             const element = event.target as HTMLElement;
             if (!element.closest(".site-menu") && element.closest("a, button, form")) event.preventDefault();
@@ -120,7 +116,7 @@ export function ModelPreview({ model, title, onUse, onClose }: { model: SiteMode
         >
           <InlineSiteStyles css={css} />
           <SiteRenderer content={page} images={() => null} nav={nav} demoFolder={folder} />
-        </div>
+        </PreviewStage>
       </div>
       <div className="persist-actions model-preview-actions">
         <button type="button" className="button primary" onClick={onUse}>

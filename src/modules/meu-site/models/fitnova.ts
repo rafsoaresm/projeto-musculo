@@ -8,6 +8,7 @@ import { SITE_SCHEMA_VERSION, emptyBlock, type BlockOf, type SiteContent, type S
 import { DEFAULT_THEME } from "../site-theme";
 import type { Style } from "../style";
 import { box, demoBackground, faq, heading, paragraph, photo, say, sides, textLink, whatsappButton, type ModelMode, whatsappCtaOf } from "./bricks";
+import { column } from "./layout";
 import type { SiteModelDef } from "./types";
 
 const PALETTE = { primary: "#f9743a", background: "#f5f5f3", surface: "#ffffff", ink: "#1d2225", muted: "#6f7778", dark: "#121c1e" };
@@ -45,13 +46,15 @@ function build(title: string, mode: ModelMode): SiteContent {
       box(
         "Texto do destaque",
         "div",
-        { display: "flex", direction: "column", gap: "20px", align: "start", minHeight: "610px", padding: sides("128px", "80px", "80px"), background: "#030b0f38" },
+        { display: "flex", direction: "column", minHeight: "610px", padding: sides("128px", "80px", "80px"), background: "#030b0f38" },
         [
-          paragraph(`PERSONAL TRAINER • ${title.toUpperCase()}`.slice(0, 80), { fontSize: "13px", fontWeight: 700, color: "white", margin: sides("0px", "0px") }, { mobile: { fontSize: "11px" } }),
-          heading("Transforme seu corpo. Cuide da sua mente.", 2, { fontSize: "65px", fontWeight: 700, lineHeight: 1.2, color: "white", maxWidth: "670px", margin: sides("0px", "0px") }, { mobile: { fontSize: "39px" } }),
-          paragraph("Acompanhamento personalizado para construir uma vida mais ativa, saudável e equilibrada.", { fontSize: "19px", lineHeight: 1.2, color: "#f5f5f5", maxWidth: "580px", margin: sides("0px", "0px") }, { mobile: { fontSize: "15px" } }),
-          whatsappButton(),
-          paragraph("✓ Treino personalizado \u00a0 ✓ Acompanhamento de verdade", { fontSize: "13px", fontWeight: 600, color: "white", margin: sides("0px", "0px") }, { mobile: { fontSize: "11px" } }),
+          column({ display: "flex", direction: "column", gap: "20px", align: "start" }, [
+            paragraph(`PERSONAL TRAINER • ${title.toUpperCase()}`.slice(0, 80), { fontSize: "13px", fontWeight: 700, color: "white", margin: sides("0px", "0px") }, { mobile: { fontSize: "11px" } }),
+            heading("Transforme seu corpo. Cuide da sua mente.", 2, { fontSize: "65px", fontWeight: 700, lineHeight: 1.2, color: "white", maxWidth: "670px", margin: sides("0px", "0px") }, { mobile: { fontSize: "39px" } }),
+            paragraph("Acompanhamento personalizado para construir uma vida mais ativa, saudável e equilibrada.", { fontSize: "19px", lineHeight: 1.2, color: "#f5f5f5", maxWidth: "580px", margin: sides("0px", "0px") }, { mobile: { fontSize: "15px" } }),
+            whatsappButton(),
+            paragraph("✓ Treino personalizado \u00a0 ✓ Acompanhamento de verdade", { fontSize: "13px", fontWeight: 600, color: "white", margin: sides("0px", "0px") }, { mobile: { fontSize: "11px" } }),
+          ]),
         ],
         { tablet: { padding: sides("96px", "40px", "64px") }, mobile: { minHeight: "560px", padding: sides("64px", "22px", "48px"), background: "#030b0f70" } },
       ),
@@ -197,7 +200,7 @@ function build(title: string, mode: ModelMode): SiteContent {
     "Números e conquistas",
     "section",
     { background: "#fafaf9", padding: sides("45px", "80px", "55px") },
-    [box("Conteúdo", "div", { maxWidth: "1280px", margin: sides("0px", "auto") }, [grid("Métricas", [stat("+500", "alunos acompanhados"), stat("98%", "satisfação ilustrativa"), stat("8+", "anos de experiência")], "25px", "25px")])],
+    [box("Conteúdo", "div", { maxWidth: "1280px", margin: sides("0px", "auto") }, [grid("Métricas", [stat("+500", "alunos acompanhados"), stat("98%", "nível de satisfação"), stat("8+", "anos de experiência")], "25px", "25px")])],
     { tablet: { padding: sides("45px", "40px", "55px") }, mobile: { padding: sides("45px", "22px", "55px") } },
   );
 
@@ -227,7 +230,7 @@ function build(title: string, mode: ModelMode): SiteContent {
   const pricing = band("Planos e investimento", "surface", [
     eyebrow("PLANOS"),
     h2("Escolha o acompanhamento ideal"),
-    lead(mode === "preview" ? "Planos ilustrativos: preços e benefícios devem ser definidos pelo profissional." : "Escolha o formato que combina com a sua rotina."),
+    lead("Escolha o formato que combina com a sua rotina."),
     grid(
       "Lista de planos",
       [
@@ -246,7 +249,7 @@ function build(title: string, mode: ModelMode): SiteContent {
     name: "Depoimento autorizado",
     eyebrow: say(mode, "★★★★★"),
     quote: say(mode, "Os treinos ficaram mais consistentes, a orientação foi clara e o acompanhamento fez toda a diferença."),
-    author: say(mode, "Depoimento de demonstração • não publicar como prova social real"),
+    author: say(mode, "Aluno do acompanhamento personalizado"),
     authorized: false,
     style: { background: "surface", radius: "18px", padding: sides("30px", "30px"), fontSize: "30px", fontWeight: 600, lineHeight: 1.2, color: "ink", margin: sides("0px", "0px") },
     styleMobile: { fontSize: "22px" },
@@ -277,33 +280,40 @@ function build(title: string, mode: ModelMode): SiteContent {
     heading: "",
     text: "",
     buttonLabel: "Enviar mensagem",
-    style: { background: "surface", radius: "15px", padding: sides("24px", "24px"), maxWidth: "680px", margin: sides("0px", "0px") },
+    style: { background: "surface", radius: "15px", padding: sides("24px", "24px"), margin: sides("0px", "0px") },
   } as SiteNode;
+  // The text on the left and the form's card on the right on a computer; one under the other on a tablet and a phone (0.70).
   const contact = band("Contato e captura", "bg", [
-    eyebrow("ENTRE EM CONTATO"),
-    h2("Vamos construir seu próximo resultado?"),
-    lead(say(mode, "Um formulário simples para iniciar uma conversa com o personal trainer."), "Texto do contato"),
-    contactForm,
+    box("Texto e formulário", "div", { display: "grid", columns: 2, gap: "48px", align: "start" }, [
+      box("Texto", "div", { display: "flex", direction: "column", gap: "25px", align: "start" }, [
+        eyebrow("ENTRE EM CONTATO"),
+        h2("Vamos construir seu próximo resultado?"),
+        lead(say(mode, "Um formulário simples para iniciar uma conversa com o personal trainer."), "Texto do contato"),
+      ]),
+      contactForm,
+    ], { tablet: { columns: 1, gap: "25px" } }),
   ]);
 
   // `3:627`
   const footer = box(
     "Rodapé",
     "footer",
-    { display: "flex", direction: "column", gap: "25px", align: "start", background: "dark", padding: sides("55px", "80px") },
+    { background: "dark", padding: sides("55px", "80px") },
     [
-      paragraph(title.toUpperCase().slice(0, 80), { fontSize: "38px", fontWeight: 700, lineHeight: 1.2, color: "onDark", margin: sides("0px", "0px") }, { mobile: { fontSize: "26px" } }, "Nome do site"),
-      paragraph("Treinos e acompanhamento pensados para a sua evolução.", { fontSize: "16px", color: "onDarkMuted", margin: sides("0px", "0px") }),
-      box("Links", "div", { display: "flex", direction: "row", wrap: "wrap", gap: "28px" }, [
-        textLink("Programas", { fontSize: "14px", color: "onDark", textDecoration: "none" }, { anchor: services.id }),
-        textLink("Sobre", { fontSize: "14px", color: "onDark", textDecoration: "none" }, { anchor: about.id }),
-        textLink("Resultados", { fontSize: "14px", color: "onDark", textDecoration: "none" }, { anchor: testimonials.id }),
-        textLink("Contato", { fontSize: "14px", color: "onDark", textDecoration: "none" }, { anchor: contact.id }),
-      ]),
-      box("Contatos", "div", { display: "flex", direction: "row", wrap: "wrap", gap: "20px" }, [
-        textLink("Instagram", { fontSize: "12px", color: "onDarkMuted" }, { channel: "instagram" }),
-        textLink("WhatsApp", { fontSize: "12px", color: "onDarkMuted" }, { channel: "whatsapp" }),
-        textLink("E-mail", { fontSize: "12px", color: "onDarkMuted" }, { channel: "email" }),
+      column({ display: "flex", direction: "column", gap: "25px", align: "start" }, [
+        paragraph(title.toUpperCase().slice(0, 80), { fontSize: "38px", fontWeight: 700, lineHeight: 1.2, color: "onDark", margin: sides("0px", "0px") }, { mobile: { fontSize: "26px" } }, "Nome do site"),
+        paragraph("Treinos e acompanhamento pensados para a sua evolução.", { fontSize: "16px", color: "onDarkMuted", margin: sides("0px", "0px") }),
+        box("Links", "div", { display: "flex", direction: "row", wrap: "wrap", gap: "28px" }, [
+          textLink("Programas", { fontSize: "14px", color: "onDark", textDecoration: "none" }, { anchor: services.id }),
+          textLink("Sobre", { fontSize: "14px", color: "onDark", textDecoration: "none" }, { anchor: about.id }),
+          textLink("Resultados", { fontSize: "14px", color: "onDark", textDecoration: "none" }, { anchor: testimonials.id }),
+          textLink("Contato", { fontSize: "14px", color: "onDark", textDecoration: "none" }, { anchor: contact.id }),
+        ]),
+        box("Contatos", "div", { display: "flex", direction: "row", wrap: "wrap", gap: "20px" }, [
+          textLink("Instagram", { fontSize: "12px", color: "onDarkMuted" }, { channel: "instagram" }),
+          textLink("WhatsApp", { fontSize: "12px", color: "onDarkMuted" }, { channel: "whatsapp" }),
+          textLink("E-mail", { fontSize: "12px", color: "onDarkMuted" }, { channel: "email" }),
+        ]),
       ]),
     ],
     { tablet: { padding: sides("55px", "40px") }, mobile: { padding: sides("55px", "22px") } },
