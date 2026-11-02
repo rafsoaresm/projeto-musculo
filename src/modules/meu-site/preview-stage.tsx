@@ -1,6 +1,6 @@
 "use client";
 import { useLayoutEffect, useRef, useState, type HTMLAttributes, type ReactNode, type RefObject } from "react";
-import { PREVIEW_LABEL, PREVIEW_PX, PREVIEW_WIDTHS, previewScale, shownWidth, type PreviewWidth } from "./preview-scale";
+import { PREVIEW_LABEL, PREVIEW_PX, PREVIEW_WIDTHS, previewScale, type PreviewWidth } from "./preview-scale";
 
 /** The buttons that choose the width of the preview. */
 export function PreviewWidthTools({ width, onWidth, className = "guided-preview-tools" }: { width: PreviewWidth; onWidth: (width: PreviewWidth) => void; className?: string }) {
@@ -49,11 +49,11 @@ export function PreviewStage({
     return () => observer.disconnect();
   }, [page]);
 
-  const shown = shownWidth(available, width);
-  const scale = previewScale(available, shown);
+  // What is chosen is what is shown, at any width of the panel: only the scale changes (a phone panel shows the computer's page, smaller).
+  const scale = previewScale(available, width);
   return (
     <div ref={stage} className="guided-stage" data-scale={scale.toFixed(3)} style={height > 0 ? { height: Math.ceil(height * scale) } : undefined}>
-      <div ref={page} className="guided-frame" data-width={shown} style={{ width: PREVIEW_PX[shown], ...(scale < 1 ? { transform: `scale(${scale})`, margin: 0 } : null) }} {...frame}>
+      <div ref={page} className="guided-frame" data-width={width} style={{ width: PREVIEW_PX[width], ...(scale < 1 ? { transform: `scale(${scale})`, margin: 0 } : null) }} {...frame}>
         {children}
       </div>
     </div>

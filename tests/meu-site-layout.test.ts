@@ -5,7 +5,7 @@ import { SITE_MODELS_V1 } from "@/modules/meu-site/models";
 import { CONTAINER, GUTTER } from "@/modules/meu-site/models/layout";
 import { MOBILE_MAX, SCREENS, TABLET_MAX, resolveStyle, type Screen } from "@/modules/meu-site/screens";
 import { FRAME_CONTAINER } from "@/modules/meu-site/site-css";
-import { PHONE_PANEL, PREVIEW_PX, previewScale, shownWidth } from "@/modules/meu-site/preview-scale";
+import { PREVIEW_PX, previewScale } from "@/modules/meu-site/preview-scale";
 
 /** 0.70: one content column for every section of every model, the preview at the width of a real screen, words that break only when they must. */
 const css = readFileSync(new URL("../src/app/globals.css", import.meta.url), "utf8");
@@ -126,10 +126,11 @@ describe("the width of the preview", () => {
     expect(previewScale(0, "computador")).toBe(1);
     expect(previewScale(Number.NaN, "celular")).toBe(1);
   });
-  it("shows the phone in a panel as narrow as a phone, and the chosen width otherwise", () => {
-    expect(shownWidth(PHONE_PANEL - 1, "computador")).toBe("celular");
-    expect(shownWidth(PHONE_PANEL, "computador")).toBe("computador");
-    expect(shownWidth(0, "computador")).toBe("computador");
-    expect(shownWidth(900, "celular")).toBe("celular");
+  it("never swaps the chosen width: a narrow panel shows the computer's 1280 page scaled down, and the phone's 390 only shrinks below 390", () => {
+    // A 1280x800 laptop gives the stage about 540 px: still the computer's page.
+    expect(previewScale(540, "computador")).toBeCloseTo(540 / 1280);
+    expect(previewScale(300, "computador")).toBeCloseTo(300 / 1280);
+    expect(previewScale(540, "celular")).toBe(1);
+    expect(previewScale(351, "celular")).toBe(0.9);
   });
 });
