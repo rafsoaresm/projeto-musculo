@@ -3645,7 +3645,8 @@ a.site-menu-link:hover {
   margin-top: 4px;
 }
 .site-address {
-  overflow-wrap: break-word;
+  /* A long address (a site under a mount path, e.g. /treinador/s/<slug>) breaks anywhere on a phone instead of widening the page (0.70). */
+  overflow-wrap: anywhere;
 }
 /* The versions: links to see one and to see what changed, beside the one that brings it back as the draft. */
 .release-links {
