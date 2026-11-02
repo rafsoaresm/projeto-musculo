@@ -979,7 +979,7 @@ export function publishIssues(
     else if (item.type === "image") {
       // A model's drawing stands in until a photo is chosen: nothing to ask for then.
       if (!item.assetId && !item.illustration) add(at, item.id, `${label}: escolha a imagem.`);
-      else if (assetIds && !assetIds.has(item.assetId)) add(at, item.id, `${label}: a imagem escolhida não está mais na biblioteca. Escolha outra.`);
+      else if (item.assetId && assetIds && !assetIds.has(item.assetId)) add(at, item.id, `${label}: a imagem escolhida não está mais na biblioteca. Escolha outra.`);
       if (item.assetId && !item.alt) add(at, item.id, `${label}: descreva a imagem para quem não consegue vê-la (texto alternativo).`);
     }
   };

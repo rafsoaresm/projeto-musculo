@@ -54,9 +54,10 @@ describe("the three complete sites (0.63)", () => {
         const images = every(content).filter((node) => node.type === "image");
         expect(images.length).toBeGreaterThan(0);
         for (const image of images) if (image.type === "image") expect([image.assetId, image.alt, Boolean(image.illustration)]).toEqual(["", "", true]);
-        const issues = publishIssues(content, new Set());
+        // As on a real publication, with the images of the library: a drawing is not "an image no longer in the library".
+        const issues = publishIssues(content, new Set(), new Set(["outra-imagem"]));
         expect(issues.filter((issue) => issue.severity === "blocking")).toEqual([]);
-        expect(issues.map((issue) => issue.message).join(" ")).not.toMatch(/escolha a imagem/);
+        expect(issues.map((issue) => issue.message).join(" ")).not.toMatch(/escolha a imagem|não está mais na biblioteca/);
       });
       it("on the public page shows the drawings and no empty band, empty testimony or unanswered question", () => {
         for (const page of [content, ...pagesOf(content).map((entry) => ({ ...content, blocks: entry.blocks }))]) {
@@ -70,6 +71,33 @@ describe("the three complete sites (0.63)", () => {
         expect(home).toContain('aria-hidden="true"');
         expect(home).not.toContain("url(");
       });
+      it("keeps the empty sections in the Editor Guiado's preview, where they are outlined and chosen before they are written", () => {
+        const testimonies = pagesOf(content).find((entry) => entry.slug === "depoimentos")!;
+        const page = { ...content, blocks: testimonies.blocks };
+        const located = renderToStaticMarkup(createElement(SiteRenderer, { content: page, images: () => null, locate: { selected: null } }));
+        for (const block of testimonies.blocks) expect(located).toContain(`data-guided-section="${block.id}"`);
+        expect(located).toContain("site-quote");
+      });
     });
   }
+});
+
+describe("what an empty container keeps on the public page", () => {
+  const base = kitContent("personal", "Marina Costa");
+  const box = (over: object): SiteNode => ({ id: "caixa", type: "box", tag: "section", children: [{ id: "t", type: "heading", level: 2, text: "" }], ...over }) as unknown as SiteNode;
+  const html = (blocks: SiteNode[]) => renderToStaticMarkup(createElement(SiteRenderer, { content: { ...base, blocks, pages: [] }, images: () => null }));
+  it("leaves out a band whose texts are all empty", () => {
+    expect(html([box({})])).not.toContain('class="site-box');
+  });
+  it("keeps one with a background picture, and one a button points to", () => {
+    expect(html([box({ style: { bgImage: "a1" } })])).toContain("site-box");
+    expect(html([box({ styleMobile: { bgImage: "a1" } })])).toContain("site-box");
+    const button = { id: "b", type: "button", label: "Ver", channel: "anchor", anchor: "caixa" } as unknown as SiteNode;
+    const out = html([button, box({})]);
+    expect(out).toContain("site-box");
+  });
+  it("leaves out one holding only an unanswered question list", () => {
+    const faq = { id: "f", type: "faq", eyebrow: "", heading: "Perguntas", items: [{ question: "Como?", answer: "" }] } as unknown as SiteNode;
+    expect(html([box({ children: [faq] })])).not.toContain("site-box");
+  });
 });

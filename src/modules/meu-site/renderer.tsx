@@ -254,15 +254,30 @@ function ElementView({ item, ctx }: { item: ElementNode; ctx: Ctx }) {
  * is left out, instead of drawing a colored strip with nothing in it; one with no children at all is a spacer and stays.
  */
 function hasContent(node: SiteNode, ctx: Ctx): boolean {
-  if (node.type === "box") return node.children.length === 0 || node.children.some((child) => hasContent(child, ctx));
+  if (node.type === "box")
+    return (
+      node.children.length === 0 ||
+      // A background picture is something to see, and a part a button or a link points to stays where they lead.
+      [node.style, node.styleTablet, node.styleMobile].some((style) => style?.bgImage) ||
+      ctx.anchors.has(node.id) ||
+      node.children.some((child) => hasContent(child, ctx))
+    );
   if (node.type === "quote") return node.quote !== "" || node.author !== "";
+  if (node.type === "faq") return node.items.some((item) => item.question && item.answer);
+  if (node.type === "contactForm") return ctx.forms !== null;
   if (node.type === "heading" || node.type === "paragraph" || node.type === "button" || node.type === "link" || node.type === "image") return visible(node, ctx);
   return true;
 }
 
+/**
+ * Whether empty parts are left out: on the published page and the previews of it, not in the editors. The Editor Guiado's preview (`locate`) keeps
+ * them, so the section being written can be outlined and chosen there before it has anything in it.
+ */
+const leavesOutEmpty = (ctx: Ctx) => !ctx.edit && !ctx.locate;
+
 function BoxView({ node, ctx }: { node: BoxNode; ctx: Ctx }) {
   const Tag = node.tag;
-  if (!ctx.edit && !hasContent(node, ctx)) return null;
+  if (leavesOutEmpty(ctx) && !hasContent(node, ctx)) return null;
   return (
     <Tag {...attrsOf(node, ctx, "site-box")}>
       {node.children.map((child) => (
@@ -394,7 +409,7 @@ function NodeView({ node, ctx }: { node: SiteNode; ctx: Ctx }) {
       );
     case "quote":
       // A testimony not written yet is not on the public page (the publication says it waits to be written).
-      if (!ctx.edit && !node.quote && !node.author) return null;
+      if (leavesOutEmpty(ctx) && !node.quote && !node.author) return null;
       return (
         <section {...attrsOf(node, ctx, "site-section site-quote")}>
           <Eyebrow ctx={ctx} id={id} value={node.eyebrow} />
@@ -440,7 +455,7 @@ function NodeView({ node, ctx }: { node: SiteNode; ctx: Ctx }) {
     case "faq": {
       const items = node.items.filter((item) => item.question && item.answer);
       // No question answered yet: on the public page the section would be a title with nothing under it.
-      if (!edit && items.length === 0) return null;
+      if (leavesOutEmpty(ctx) && items.length === 0) return null;
       return (
         <section {...attrsOf(node, ctx, "site-section site-faq")}>
           <Eyebrow ctx={ctx} id={id} value={node.eyebrow} />

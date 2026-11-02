@@ -18,21 +18,51 @@ export function ModelPreview({ model, title, onUse, onClose }: { model: SiteMode
   const [pageId, setPageId] = useState(HOME);
   const [width, setWidth] = useState<"computador" | "celular">("computador");
   const closeButton = useRef<HTMLButtonElement>(null);
+  const dialog = useRef<HTMLDivElement>(null);
+  // Read through a ref, so a new function from the form's render does not move the focus back to "Fechar".
+  const closing = useRef(onClose);
+  useEffect(() => {
+    closing.current = onClose;
+  }, [onClose]);
   const page = useMemo(() => pageContent(content, pageId), [content, pageId]);
   const nav = useMemo(() => siteNav(content, pageId, () => "#", setPageId), [content, pageId]);
   const css = useMemo(() => buildSiteCss(content, { container: true, imageUrl: () => null }), [content]);
 
   useEffect(() => {
+    // Opened over the form: the focus goes to "Fechar", stays inside while it is open (Tab goes round), and goes back to "Ver o modelo" after.
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     closeButton.current?.focus();
-    const close = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+    const keys = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closing.current();
+        return;
+      }
+      if (event.key !== "Tab" || !dialog.current) return;
+      const focusable = [...dialog.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), select, input, textarea, [tabindex]:not([tabindex="-1"])')].filter(
+        (element) => element.offsetParent !== null,
+      );
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (!first || !last) return;
+      const inside = dialog.current.contains(document.activeElement);
+      if (event.shiftKey && (document.activeElement === first || !inside)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !inside)) {
+        event.preventDefault();
+        first.focus();
+      }
     };
-    window.addEventListener("keydown", close);
-    return () => window.removeEventListener("keydown", close);
-  }, [onClose]);
+    window.addEventListener("keydown", keys);
+    return () => {
+      window.removeEventListener("keydown", keys);
+      if (opener?.isConnected) opener.focus();
+    };
+  }, []);
 
   return (
-    <div className="model-preview" role="dialog" aria-modal="true" aria-labelledby="modelo-titulo">
+    <div className="model-preview" ref={dialog} role="dialog" aria-modal="true" aria-labelledby="modelo-titulo">
       <header className="model-preview-head">
         <div>
           <h2 id="modelo-titulo">Modelo: {SITE_MODEL_LABEL[model].label}</h2>
