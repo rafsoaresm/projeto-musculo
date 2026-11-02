@@ -26,8 +26,8 @@ export function addMenuLink(content: SiteContent, anchor: string, label: string)
 export function withMenuLabel(content: SiteContent, index: number, raw: string): SiteContent {
   const menu = content.menu ?? [];
   const label = raw.slice(0, BUTTON_MAX);
-  // A link keeps a name: an empty field leaves the one it had (the field shows what is typed; the document keeps a name).
-  if (!menu[index] || !label.trim() || menu[index]!.label === label) return content;
+  // A link with no name is kept (the field is being typed) and left out of the page until it has one.
+  if (!menu[index] || menu[index]!.label === label) return content;
   return withMenu(content, menu.map((entry, at) => (at === index ? { ...entry, label } : entry)));
 }
 
@@ -66,7 +66,8 @@ export function withHeaderCta(content: SiteContent, label: string | null): SiteC
     void _dropped;
     return rest;
   }
+  // An empty label keeps the button chosen (the field is being typed); the page leaves it out until it has one.
   const text = label.slice(0, BUTTON_MAX);
-  if (!text.trim() || content.headerCta?.label === text) return content;
+  if (content.headerCta?.label === text) return content;
   return { ...content, headerCta: { label: text } };
 }

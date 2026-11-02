@@ -447,7 +447,7 @@ function BlockFields({ content, pageId, sectionId, images, onEdit }: { content: 
             library={images.library}
             value={field.value}
             onChange={(assetId) => change(field, assetId)}
-            allowNone
+            allowNone={!field.required}
             noneLabel={field.demo ? "Foto de exemplo do modelo (não vai para o site publicado)" : field.illustration ? "Ilustração do modelo" : "Sem imagem"}
             usedIds={images.usedIds}
             available={images.available}

@@ -16,7 +16,7 @@ const MODELS: Record<string, Palette> = {
 const c = (a: string, b: string) => contrast(parseHex(a), parseHex(b));
 const reads = (palette: Palette) => {
   const v = paletteVars(palette);
-  for (const ground of [v.bg, v.surface]) {
+  for (const ground of [v.bg, v.surface, v.soft]) {
     expect(c(v.ink, ground), "title").toBeGreaterThanOrEqual(4.5);
     expect(c(v.text, ground), "text").toBeGreaterThanOrEqual(4.5);
     expect(c(v.accent, ground), "primary as text").toBeGreaterThanOrEqual(4.5);
@@ -24,6 +24,7 @@ const reads = (palette: Palette) => {
   expect(c(v.on, v.solid), "label on the filled block").toBeGreaterThanOrEqual(4.5);
   expect(c(v.onDark, v.dark), "text on the dark block").toBeGreaterThanOrEqual(4.5);
   expect(c(v.onDarkMuted, v.dark), "secondary text on the dark block").toBeGreaterThanOrEqual(4.5);
+  expect(c(v.accentOnDark, v.dark), "primary as text on the dark block").toBeGreaterThanOrEqual(4.5);
 };
 
 describe("the six colors of a site model", () => {
@@ -38,7 +39,12 @@ describe("the six colors of a site model", () => {
     const pale = { ...MODELS.trainix!, primary: "#ffee88", muted: "#dddddd" };
     reads(pale);
     expect(paletteAdjusted(pale)).toEqual(["primary", "muted"]);
-    expect(paletteAdjusted(MODELS.race!)).toEqual([]);
+    // The models keep their titles and cards as they are (their grey text may take a darker tone to read on the tinted blocks).
+    for (const model of Object.values(MODELS)) expect(paletteAdjusted(model)).not.toEqual(expect.arrayContaining(["ink"]));
+    // A middle grey for the dark blocks, and a dark card on a light page: moved until the text reads, and said.
+    const grey = { ...MODELS.trainix!, dark: "#7a7a7a", surface: "#333333" };
+    reads(grey);
+    expect(paletteAdjusted(grey)).toEqual(expect.arrayContaining(["surface", "dark"]));
     // A dark page with light text reads too.
     reads({ primary: "#fc5e21", background: "#111111", surface: "#1b1b1b", ink: "#fafafa", muted: "#bbbbbb", dark: "#000000" });
     for (let hue = 0; hue < 360; hue += 30) {

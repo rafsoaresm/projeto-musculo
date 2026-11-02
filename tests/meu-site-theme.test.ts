@@ -34,6 +34,7 @@ describe("the colors of the public page", () => {
   it("has a rule for every mode and for every accent in every mode", () => {
     for (const mode of MODES)
       expect(Object.keys(declarations(`[data-site-mode="${mode}"]`)).sort()).toEqual([
+        "--site-accent-on-dark",
         "--site-bg",
         "--site-dark",
         "--site-ink",
@@ -59,6 +60,7 @@ describe("the colors of the public page", () => {
       expect(contrast(base["--site-text"], base["--site-surface"])).toBeGreaterThanOrEqual(4.5);
       expect(contrast(base["--site-on-dark"], base["--site-dark"])).toBeGreaterThanOrEqual(4.5);
       expect(contrast(base["--site-on-dark-muted"], base["--site-dark"])).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(base["--site-accent-on-dark"], base["--site-dark"])).toBeGreaterThanOrEqual(4.5);
     });
     for (const accent of ACCENTS) {
       it(`reads well with the ${accent} accent on the ${mode} base`, () => {

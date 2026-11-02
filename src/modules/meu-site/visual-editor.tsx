@@ -867,7 +867,7 @@ export function VisualEditor(props: VisualEditorProps) {
                 mode === "edit" ? (
                   <SiteRenderer content={resolved} edit={hooks} images={imageResolver} bare={Boolean(editing)} nav={menuEdit} demoFolder={demoFolder(base)} />
                 ) : (
-                  <SiteRenderer content={pageContent(resolvedPage, currentId)} images={imageResolver} scope={`${size}-`} nav={siteNav(realContent, currentId, () => "#", showPage)} demoFolder={demoFolder(base)} />
+                  <SiteRenderer content={pageContent(resolvedPage, currentId)} images={imageResolver} scope={`${size}-`} nav={siteNav(realContent, currentId, () => "#", showPage)} />
                 )
               }
             />

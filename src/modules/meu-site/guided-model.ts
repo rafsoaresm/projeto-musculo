@@ -46,6 +46,8 @@ export interface Field {
   illustration?: string;
   /** An image of a model: the sample photo shown while the site is being made (never published). */
   demo?: string;
+  /** An image that cannot be taken away here, only swapped (a background with no sample to go back to). */
+  required?: boolean;
 }
 
 /** The sections of a page (the home page by default), in order: what the list shows. A box with the header or footer tag is called so. */
@@ -145,7 +147,7 @@ export function fieldsOf(section: SiteNode): Field[] {
         const bg = (style: Style | undefined, property: "bg" | "bgMobile", label: string) => {
           if (!style?.bgImage) return;
           const demo = demoKeyOf(style.bgImage);
-          out.push({ key: `${entry.id}.${property}`, label: numbered(label), kind: "image", max: 64, value: demo ? "" : style.bgImage, ...(demo ? { demo } : null) });
+          out.push({ key: `${entry.id}.${property}`, label: numbered(label), kind: "image", max: 64, value: demo ? "" : style.bgImage, ...(demo ? { demo } : { required: true }) });
         };
         bg(entry.style, "bg", "Imagem de fundo");
         bg(entry.styleMobile, "bgMobile", "Imagem de fundo no celular");

@@ -13,7 +13,7 @@ import { z } from "zod";
 
 // ---- colors: the theme's own names (they follow light and dark) and `#rrggbb` ----
 
-export const COLOR_TOKENS = ["ink", "text", "muted", "line", "bg", "accent", "solid", "on", "soft", "softLine", "surface", "dark", "onDark", "onDarkMuted", "whatsapp", "white", "black", "transparent"] as const;
+export const COLOR_TOKENS = ["ink", "text", "muted", "line", "bg", "accent", "solid", "on", "soft", "softLine", "surface", "dark", "onDark", "onDarkMuted", "accentOnDark", "whatsapp", "white", "black", "transparent"] as const;
 export type ColorToken = (typeof COLOR_TOKENS)[number];
 export const COLOR_TOKEN_LABEL: Record<ColorToken, string> = {
   ink: "Título",
@@ -30,6 +30,7 @@ export const COLOR_TOKEN_LABEL: Record<ColorToken, string> = {
   dark: "Bloco escuro",
   onDark: "Texto sobre o escuro",
   onDarkMuted: "Texto suave sobre o escuro",
+  accentOnDark: "Destaque sobre o escuro",
   whatsapp: "Verde do WhatsApp",
   white: "Branco",
   black: "Preto",
@@ -51,6 +52,7 @@ const COLOR_TOKEN_CSS: Record<ColorToken, string> = {
   dark: "var(--site-dark)",
   onDark: "var(--site-on-dark)",
   onDarkMuted: "var(--site-on-dark-muted)",
+  accentOnDark: "var(--site-accent-on-dark)",
   // The WhatsApp button's green does not follow the theme (handoff V1.1): white on it reads at 4.6:1.
   whatsapp: "#0e8544",
   white: "#ffffff",

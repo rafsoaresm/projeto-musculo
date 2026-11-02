@@ -30,6 +30,7 @@ export const PALETTE_HINT: Record<PaletteKey, string> = {
 };
 
 const WHITE: Rgb = [255, 255, 255];
+const DARK_LABEL: Rgb = [16, 22, 28];
 const BLACK: Rgb = [0, 0, 0];
 const STEP = 0.025;
 const mix = (from: Rgb, to: Rgb, amount: number): Rgb => [0, 1, 2].map((at) => Math.round(from[at]! + (to[at]! - from[at]!) * amount)) as unknown as Rgb;
@@ -61,20 +62,26 @@ export interface PaletteVars {
   dark: string;
   onDark: string;
   onDarkMuted: string;
+  /** The primary as text on a dark block. */
+  accentOnDark: string;
 }
 
 /** The page's variables from a palette (every value `#rrggbb`). */
 export function paletteVars(palette: Palette): PaletteVars {
   const bg = parseHex(palette.background);
-  const surface = parseHex(palette.surface);
-  const grounds = [bg, surface];
-  const ink = readable(parseHex(palette.ink), grounds, 4.5, awayFrom(bg));
-  const muted = readable(parseHex(palette.muted), grounds, 4.5, awayFrom(bg));
   const primary = parseHex(palette.primary);
-  const accent = readable(primary, grounds, 4.5, awayFrom(bg));
+  const away = awayFrom(bg);
+  // The cards are read with the same text as the page: a card color on the other side of the page's (a dark card on a light page) is moved
+  // towards the page until the page's darkest or lightest text reads on both.
+  let surface = parseHex(palette.surface);
+  for (let step = 0; step * STEP <= 1 && contrast(away, surface) < 7; step++) surface = mix(parseHex(palette.surface), bg, step * STEP);
+  const soft = mix(bg, primary, 0.1);
+  const grounds = [bg, surface, soft];
+  const ink = readable(parseHex(palette.ink), grounds, 4.5, away);
+  const muted = readable(parseHex(palette.muted), grounds, 4.5, away);
+  const accent = readable(primary, grounds, 4.5, away);
   // The filled block keeps the primary when white reads on it. A dark or middle primary is darkened only as far as white does (the models put
   // white on their filled bands); a light one (a yellow) keeps its color and takes the dark label.
-  const DARK_LABEL: Rgb = [16, 22, 28];
   let solid = primary;
   let on: Rgb = WHITE;
   if (contrast(primary, WHITE) < 4.5) {
@@ -85,9 +92,14 @@ export function paletteVars(palette: Palette): PaletteVars {
         if (contrast(solid, WHITE) >= 4.5) break;
       }
   }
-  const dark = parseHex(palette.dark);
-  const onDark = awayFrom(dark) === WHITE ? WHITE : DARK_LABEL;
+  // The dark blocks: the label that reads better (white or the dark one); a middle grey where neither reaches 4.5 is moved until one does.
+  let dark = parseHex(palette.dark);
+  const label = (ground: Rgb): Rgb => (contrast(WHITE, ground) >= contrast(DARK_LABEL, ground) ? WHITE : DARK_LABEL);
+  for (let step = 0; step * STEP <= 1 && contrast(label(dark), dark) < 4.5; step++) dark = mix(parseHex(palette.dark), label(parseHex(palette.dark)) === WHITE ? BLACK : WHITE, step * STEP);
+  const onDark = label(dark);
   const onDarkMuted = readable(mix(onDark, dark, 0.25), [dark], 4.5, onDark);
+  // The primary as text on a dark block (a "most popular" label on a dark card).
+  const accentOnDark = readable(primary, [dark], 4.5, onDark);
   return {
     bg: toHex(bg),
     surface: toHex(surface),
@@ -98,11 +110,12 @@ export function paletteVars(palette: Palette): PaletteVars {
     solid: toHex(solid),
     on: toHex(on),
     accent: toHex(accent),
-    soft: toHex(mix(bg, primary, 0.1)),
+    soft: toHex(soft),
     softLine: toHex(mix(bg, primary, 0.3)),
     dark: toHex(dark),
     onDark: toHex(onDark),
     onDarkMuted: toHex(onDarkMuted),
+    accentOnDark: toHex(accentOnDark),
   };
 }
 
@@ -125,6 +138,7 @@ export function paletteRules(palette: Palette): string[] {
     `--site-dark:${v.dark}`,
     `--site-on-dark:${v.onDark}`,
     `--site-on-dark-muted:${v.onDarkMuted}`,
+    `--site-accent-on-dark:${v.accentOnDark}`,
   ].join(";");
   return [`.site[data-site-accent="palette"][data-site-mode]{${vars}}`];
 }
@@ -137,5 +151,7 @@ export function paletteAdjusted(palette: Palette): PaletteKey[] {
   if (v.accent !== palette.primary || v.solid !== palette.primary) out.push("primary");
   if (v.ink !== palette.ink) out.push("ink");
   if (v.muted !== palette.muted) out.push("muted");
+  if (v.surface !== palette.surface) out.push("surface");
+  if (v.dark !== palette.dark) out.push("dark");
   return out;
 }

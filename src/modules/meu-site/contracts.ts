@@ -583,11 +583,11 @@ export const siteContent = z
     pages: z.array(pageSchema).max(MAX_PAGES).optional(),
     /** Links of the header's menu to parts of the home page (a one-page site of a model): a name and the node it leads to. */
     menu: z
-      .array(z.object({ label: plain(BUTTON_MAX).pipe(z.string().min(1)), anchor: id }).strict())
+      .array(z.object({ label: plain(BUTTON_MAX), anchor: id }).strict())
       .max(MAX_MENU_LINKS)
       .optional(),
     /** The WhatsApp button at the end of the header (the site models): its label; it goes to the site's WhatsApp. */
-    headerCta: z.object({ label: plain(BUTTON_MAX).pipe(z.string().min(1)) }).strict().optional(),
+    headerCta: z.object({ label: plain(BUTTON_MAX) }).strict().optional(),
   })
   .strict()
   .refine((content) => new Set(documentNodes(content).map((b) => b.id)).size === documentNodes(content).length, { message: "block ids repeat" })

@@ -278,9 +278,8 @@ function hasContent(node: SiteNode, ctx: Ctx): boolean {
   if (node.type === "box")
     return (
       node.children.length === 0 ||
-      // A background picture is something to see, and a part a button or a link points to stays where they lead.
+      // A background picture is something to see. (A part with nothing to show is left out even when a link points to it: the link goes too.)
       [node.style, node.styleTablet, node.styleMobile].some((style) => style?.bgImage) ||
-      ctx.anchors.has(node.id) ||
       node.children.some((child) => hasContent(child, ctx))
     );
   if (node.type === "quote") return node.quote !== "" || node.author !== "";
@@ -641,10 +640,11 @@ interface MenuLink {
   label: string;
   href: string;
 }
-function menuLinks(content: SiteContent, existing: ReadonlySet<string>, nav: SiteNav, scope: string): MenuLink[] {
+function menuLinks(content: SiteContent, existing: ReadonlySet<string>, anchors: ReadonlySet<string>, nav: SiteNav, scope: string): MenuLink[] {
   const home = nav.items.find((item) => item.id === HOME);
   return (content.menu ?? []).flatMap((entry) => {
-    if (existing.has(entry.anchor)) return [{ label: entry.label, href: `#${scope}${anchorDomId(entry.anchor)}` }];
+    if (!entry.label.trim()) return [];
+    if (existing.has(entry.anchor)) return anchors.has(entry.anchor) ? [{ label: entry.label, href: `#${scope}${anchorDomId(entry.anchor)}` }] : [];
     // On another page the part is on the home page; a part that is not there (or a home page with no address) leaves the link out.
     return home && !home.current && home.href ? [{ label: entry.label, href: `${home.href}#${anchorDomId(entry.anchor)}` }] : [];
   });
@@ -759,11 +759,20 @@ export function SiteRenderer({
     list.flatMap((entry) => (published && hiddenEverywhere(entry) ? [] : [entry, ...(entry.type === "box" ? shownTrees(entry.children) : [])]));
   const nodes = shownTrees(content.blocks);
   const existing = new Set(nodes.map((entry) => entry.id));
-  const anchors = new Set([
-    ...nodes.flatMap((entry): string[] => ((entry.type === "button" || entry.type === "link") && entry.anchor && existing.has(entry.anchor) ? [entry.anchor] : [])),
-    // The header's links to parts of the page: those parts get the id the links go to.
-    ...(content.menu ?? []).flatMap((entry) => (existing.has(entry.anchor) ? [entry.anchor] : [])),
-  ]);
+  // A part a link goes to, on the published page, only when it is drawn: an empty band is left out, and so are the links to it.
+  const probe: Ctx = { content, edit, images, anchors: new Set(), firstHero: null, scope, nav, marks, forms, demoFolder, locate: locate ? { sections: new Set(), selected: null } : undefined };
+  const drawn = (id: string) => {
+    if (!leavesOutEmpty(probe)) return true;
+    const node = nodes.find((entry) => entry.id === id);
+    return node !== undefined && hasContent(node, probe);
+  };
+  const anchors = new Set(
+    [
+      ...nodes.flatMap((entry): string[] => ((entry.type === "button" || entry.type === "link") && entry.anchor && existing.has(entry.anchor) ? [entry.anchor] : [])),
+      // The header's links to parts of the page: those parts get the id the links go to.
+      ...(content.menu ?? []).flatMap((entry) => (existing.has(entry.anchor) && entry.label.trim() ? [entry.anchor] : [])),
+    ].filter(drawn),
+  );
   const firstHero = nodes.find((entry) => entry.type === "hero")?.id ?? null;
   const ctx: Ctx = {
     content,
@@ -803,8 +812,8 @@ export function SiteRenderer({
               {content.title}
             </p>
           )}
-          {nav && <SiteMenu nav={nav} edit={edit !== undefined} scope={scope} links={menuLinks(content, existing, nav, scope)} />}
-          {content.headerCta && <HeaderCta label={content.headerCta.label} whatsapp={content.contact.whatsapp} edit={edit !== undefined || Boolean(demoFolder)} />}
+          {nav && <SiteMenu nav={nav} edit={edit !== undefined} scope={scope} links={menuLinks(content, existing, anchors, nav, scope)} />}
+          {content.headerCta?.label.trim() && <HeaderCta label={content.headerCta.label} whatsapp={content.contact.whatsapp} edit={edit !== undefined || Boolean(demoFolder)} />}
         </header>
       )}
       <main className="site-main" data-page-root={edit ? "" : undefined}>

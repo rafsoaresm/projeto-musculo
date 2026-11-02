@@ -30,7 +30,11 @@ describe("the header's links to sections and its WhatsApp button", () => {
       { label: "Como funciona", anchor: second!.id },
     ]);
     expect(addMenuLink(content, "nada", "X")).toBe(content);
-    expect(withMenuLabel(content, 0, "")).toBe(content);
+    // A name being typed may be empty for a moment: the link stays, and the page leaves it out until it has one.
+    const unnamed = withMenuLabel(content, 0, "");
+    expect(unnamed.menu![0]!.label).toBe("");
+    expect(() => siteContent.parse(unnamed)).not.toThrow();
+    expect(render(unnamed)).not.toContain(`>Início</a></li><li><a class="site-menu-link" href="#${anchorDomId(first!.id)}"`);
     expect(withMenuLabel(content, 0, "Topo").menu![0]!.label).toBe("Topo");
     expect(withMenuAnchor(content, 0, second!.id).menu![0]!.anchor).toBe(second!.id);
     expect(withMenuAnchor(content, 0, "nada")).toBe(content);
@@ -58,7 +62,7 @@ describe("the header's links to sections and its WhatsApp button", () => {
     expect(html).toMatch(/class="button site-whatsapp site-header-cta site-has-icon" href="https:\/\/wa\.me\/5531999990000"/);
     expect(html).toContain('<svg class="site-button-icon"');
     expect(withHeaderCta(content, null).headerCta).toBeUndefined();
-    expect(withHeaderCta(content, "  ")).toBe(content);
+    expect(render(withHeaderCta(content, ""))).not.toContain("site-header-cta");
     expect(() => siteContent.parse(content)).not.toThrow();
   });
   it("draws the WhatsApp mark before a button's label, in the editor too", () => {
@@ -68,5 +72,18 @@ describe("the header's links to sections and its WhatsApp button", () => {
     expect(siteContent.safeParse({ ...content, blocks: [{ ...button, icon: "phone" }] }).success).toBe(false);
     expect(render(content)).toMatch(/site-has-icon[^>]*><svg class="site-button-icon"/);
     expect(render(content, true)).toContain('<svg class="site-button-icon"');
+  });
+});
+
+describe("a link to a part with nothing to show", () => {
+  it("is left out of the published page with the part (the header's menu and a link of the page)", () => {
+    const empty = { id: "vazia", type: "box", tag: "section", children: [{ id: "t", type: "heading", level: 2, text: "" }] } as unknown as SiteContent["blocks"][number];
+    const link = { id: "l", type: "link", label: "Ir", anchor: "vazia" } as unknown as SiteContent["blocks"][number];
+    const content = addMenuLink({ ...base, blocks: [link, ...base.blocks, empty] } as SiteContent, "vazia", "Vazia");
+    const html = render(content);
+    expect(html).not.toContain(`#${anchorDomId("vazia")}`);
+    expect(html).not.toContain(">Vazia<");
+    // While the site is being made it is all there.
+    expect(render(content, true)).toContain(">Vazia<");
   });
 });
