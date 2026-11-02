@@ -189,8 +189,11 @@ test("models V1: four models of the handoff as cards with a picture, each seen w
   expect(html).not.toMatch(/R\$ \d|★/);
   const nav = visitor.getByRole("navigation", { name: "Páginas do site" });
   await expect(nav.getByRole("link", { name: "Contato" })).toHaveAttribute("href", /^#s-/);
-  await expect(visitor.locator("header .site-header-cta")).toHaveAttribute("href", "https://wa.me/5531999990000");
-  await expect(visitor.locator("main a.site-has-icon").first()).toHaveAttribute("href", "https://wa.me/5531999990000");
+  // The site is not receiving messages, so the buttons go straight to WhatsApp, with the model's opening message (0.66).
+  const straight = `https://wa.me/5531999990000?text=${encodeURIComponent("Olá! Gostaria de conhecer seus treinos.")}`;
+  await expect(visitor.locator("header .site-header-cta")).toHaveAttribute("href", straight);
+  await expect(visitor.locator("main a.site-has-icon").first()).toHaveAttribute("href", straight);
+  await expect(visitor.locator("#site-whatsapp-form")).toHaveCount(0);
   await visit.context.close();
 });
 
