@@ -8,7 +8,7 @@ import { canEditSite } from "@/modules/meu-site/access";
 import { EditorError, call, type Params } from "@/modules/frappe-editor/protocol";
 import { standardTemplates } from "@/modules/frappe-editor/standard-templates";
 import { pageModels } from "@/modules/frappe-editor/page-models";
-import { whatsappUrl } from "@/modules/meu-site/contracts";
+import { emailUrl, instagramUrl, whatsappUrl } from "@/modules/meu-site/contracts";
 import { UPLOAD_METHODS, handleUpload, mountOf } from "@/modules/frappe-editor/upload";
 
 export const dynamic = "force-dynamic";
@@ -86,14 +86,18 @@ async function answer(request: Request, { params }: { params: Promise<{ path: st
       hash,
       siteReady: async () => (await sitesFor(session.db, session.context).slug()) !== null,
       builtin: (doctype: string) => (doctype === "Block Template" ? standardTemplates(`${mountOf(request)}/frappe-editor/`) : []),
-      // The four site models (0.67). The name in the header is the space's; the WhatsApp number is the one written in the site's Editor Guiado,
-      // when there is a valid one, read only when a page is made.
+      // The four site models (0.67). The name in the header is the space's; the contacts are those written in the site's Editor Guiado,
+      // each when valid, read only when a page is made.
       pageModels: pageModels({
         files: `${mountOf(request)}/`,
         siteTitle: session.workspace.name,
-        whatsapp: async () => {
-          const number = (await sitesFor(session.db, session.context).overview())?.draft.content.contact.whatsapp ?? "";
-          return whatsappUrl(number) ? number : null;
+        contacts: async () => {
+          const contact = (await sitesFor(session.db, session.context).overview())?.draft.content.contact;
+          return {
+            whatsapp: contact && whatsappUrl(contact.whatsapp) ? contact.whatsapp : null,
+            email: contact && emailUrl(contact.email) ? contact.email : null,
+            instagram: contact && instagramUrl(contact.instagram) ? contact.instagram : null,
+          };
         },
       }),
     };

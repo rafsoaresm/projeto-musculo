@@ -106,17 +106,30 @@ describe.each(SITE_MODELS_V1.map((model) => [model.key, model] as const))("the s
     expect(texts).toContain("[Depoimento de um aluno, com autorização]");
   });
 
-  it("sends the WhatsApp buttons to the contact part without a number, and to the number with the opening message when there is one", () => {
+  it("sends the contact buttons to the organization's contacts, and without one says what is missing and goes nowhere (never a made-up number)", () => {
     expect(json).not.toContain("wa.me");
+    expect(json).not.toContain("mailto:");
+    expect(json).not.toContain("instagram.com");
     const whatsappLinks = (page: FrappeBlock) => [...blocksOf(page)].filter((block) => block.innerHTML?.includes("<svg") && block.element === "a");
     expect(whatsappLinks(root).length).toBeGreaterThan(2);
-    for (const link of whatsappLinks(root)) expect(link.attributes.href).toBe("#contato");
+    for (const link of whatsappLinks(root)) {
+      expect(link.attributes.href).toBeUndefined();
+      expect(link.innerHTML).toContain("[Seu WhatsApp]");
+    }
     expect(JSON.stringify(siteModelPage(model, TITLE, { whatsapp: "123" }))).not.toContain("wa.me");
 
-    const withNumber = siteModelPage(model, TITLE, { whatsapp: NUMBER });
+    const withContacts = siteModelPage(model, TITLE, { whatsapp: NUMBER, email: "marina@example.test", instagram: "@marina.treinos" });
     const expected = whatsappUrl(NUMBER, "Olá! Gostaria de conhecer seus treinos.");
     expect(expected).toMatch(/^https:\/\/wa\.me\/5531988887777\?text=/);
-    for (const link of whatsappLinks(withNumber)) expect(link.attributes).toMatchObject({ href: expected, target: "_blank" });
+    for (const link of whatsappLinks(withContacts)) {
+      expect(link.attributes).toMatchObject({ href: expected, target: "_blank" });
+      expect(link.innerHTML).not.toContain("[Seu WhatsApp]");
+    }
+    const written = JSON.stringify(withContacts);
+    // The footer's e-mail and Instagram, where the model has them, go to the organization's.
+    if (json.includes("[Seu e-mail]")) expect(written).toContain("mailto:marina@example.test");
+    if (json.includes("[Seu Instagram]")) expect(written).toContain("https://www.instagram.com/marina.treinos/");
+    expect(written).not.toMatch(/\[Seu (WhatsApp|e-mail|Instagram)\]/);
   });
 
   it("is drawn by the public page's renderer with its anchors, questions, WhatsApp mark and form", () => {

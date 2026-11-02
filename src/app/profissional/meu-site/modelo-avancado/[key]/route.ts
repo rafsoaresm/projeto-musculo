@@ -15,7 +15,7 @@ type Params = { params: Promise<{ key: string }> };
 /**
  * A model of the Editor Avançado's "Novo" gallery, drawn as the page it becomes (the "Pré-visualizar" of the gallery shows it in a frame of
  * the editor). The same converter as the page that is made, with the same renderer and policy as a published page, except that the editor
- * may frame it. Only for those who edit the site; nothing of the organization is read (the WhatsApp buttons go to the contact part here).
+ * may frame it. Only for those who edit the site; nothing of the organization is read (the contact buttons say what is missing here).
  */
 export async function GET(_request: Request, { params }: Params) {
   const { key } = await params;
@@ -36,8 +36,8 @@ export async function GET(_request: Request, { params }: Params) {
     component: () => null,
     fontToken: () => null,
     url,
-    // A sample: the contact form is drawn, and sends nowhere.
-    forms: { route: "", send: null },
+    // A sample: the contact form is drawn as it will be once the site receives messages, and is sent nowhere (this address answers no POST).
+    forms: { route: "", send: { action: "#", noticeUrl: "#" } },
   });
   const html = buildDocument({
     rendered,

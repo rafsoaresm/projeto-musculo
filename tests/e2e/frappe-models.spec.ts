@@ -60,7 +60,7 @@ test("frappe models: the four site models are in the editor's 'Novo' gallery wit
   expect(draft).toContain("TREINE PARA SER");
   expect(draft).not.toContain("/site-models/");
   expect(draft).not.toContain("var(--site-");
-  // No number of WhatsApp was written anywhere for this site: the buttons go to the contact part of the page, never to a made-up number.
+  // No number of WhatsApp was written anywhere for this site: the buttons say what is missing, never a made-up number.
   expect(draft).not.toContain("wa.me");
   expect(draft).not.toMatch(/R\$ ?\d/);
 
@@ -73,7 +73,8 @@ test("frappe models: the four site models are in the editor's 'Novo' gallery wit
   expect(answer.status()).toBe(200);
   const html = await answer.text();
   expect(html).toContain("TREINE PARA SER");
-  expect(html).toContain('href="#contato"');
+  // No WhatsApp written for this site: the buttons say so, and go nowhere.
+  expect(html).toContain("[Seu WhatsApp]");
   expect(html).toContain("<details");
   expect(html).not.toContain("<script");
   expect(html).not.toContain("site-models/");

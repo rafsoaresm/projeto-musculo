@@ -22,7 +22,7 @@
  * instances of components, `illustration` drawings and photos of the library (`assetId`); they are left out of the page.
  */
 import type { SiteModelDef } from "@/modules/meu-site/models";
-import { whatsappUrl, type SiteContent, type SiteNode } from "@/modules/meu-site/contracts";
+import { emailUrl, instagramUrl, whatsappUrl, type SiteContent, type SiteNode } from "@/modules/meu-site/contracts";
 import { SCREENS, resolveStyle, type Screen } from "@/modules/meu-site/screens";
 import { paletteVars, type PaletteVars } from "@/modules/meu-site/site-palette";
 import { cssDeclarations, type Style } from "@/modules/meu-site/style";
@@ -46,9 +46,18 @@ export interface FrappeBlock {
 }
 
 export interface SiteModelPageOptions {
-  /** The number the WhatsApp buttons go to (the organization's), or null: they then go to the contact part of the page. */
+  /**
+   * The organization's contacts, as written in its Editor Guiado, each or null. A button or a link to a contact the organization has not
+   * written keeps its look and says so in brackets ("[Seu WhatsApp]"), with nowhere to go, for the person to point it in the editor: never a
+   * made-up number, and never a part of the page with no way to reach anyone.
+   */
   whatsapp: string | null;
+  email?: string | null;
+  instagram?: string | null;
 }
+
+/** What a button to a contact the organization has not written says, in place of its label. */
+const CONTACT_MARKER = { whatsapp: "[Seu WhatsApp]", email: "[Seu e-mail]", instagram: "[Seu Instagram]" } as const;
 
 /** The text a marker puts where the model leaves a fact of the person empty, by the name the model gives that node. */
 const MARKERS: Record<string, string> = {
@@ -176,7 +185,8 @@ interface Build {
   site: Map<SiteNode, SiteNode>;
   /** The node that holds the page's only h1. */
   firstHeading: SiteNode | null;
-  whatsapp: { href: string; external: boolean };
+  /** Where each contact goes (an address outside the page), or null when the organization has not written it. */
+  contacts: Record<"whatsapp" | "email" | "instagram", string | null>;
 }
 
 const nextId = (build: Build) => `${build.key}-${(build.count += 1)}`;
@@ -243,19 +253,6 @@ function anchorIds(content: SiteContent): Map<string, string> {
     out.set(id, name);
   }
   return out;
-}
-
-/** The part of the page that holds the contact form (where the WhatsApp buttons go without a number): its DOM id, given one if it has none. */
-function contactAnchor(content: SiteContent, anchors: Map<string, string>): string | null {
-  const part = content.blocks.find((entry) => [...walk([entry])].some((node) => node.type === "contactForm"));
-  if (!part) return null;
-  if (!anchors.has(part.id)) {
-    const taken = new Set(anchors.values());
-    let name = "contato";
-    for (let n = 2; taken.has(name); n += 1) name = `contato-${n}`;
-    anchors.set(part.id, name);
-  }
-  return anchors.get(part.id)!;
 }
 
 // ---- the rules of the guided page's sheet (globals.css), per kind of node ----
@@ -337,11 +334,16 @@ function convert(node: SiteNode, build: Build, inherited: Inherited, top: boolea
     case "link": {
       const label = textOf(node.label, twin?.type === node.type ? twin.label : undefined, markerFor(node.name, "[Texto do link]"));
       if (!label) return null;
-      let href = "#";
+      let href: string | null = "#";
       let external = false;
-      if (node.channel === "whatsapp") ({ href, external } = build.whatsapp);
-      else if (node.anchor && build.anchors.has(node.anchor)) href = `#${build.anchors.get(node.anchor)!}`;
-      // A page of the site, an e-mail or an Instagram the model does not know: "#", for the person to point it in the editor.
+      let text = label.text;
+      if (node.channel) {
+        // A contact: its address when the organization has written it; else the label says what is missing, and the link goes nowhere.
+        href = build.contacts[node.channel];
+        external = href !== null && href.startsWith("https://");
+        if (href === null) text = CONTACT_MARKER[node.channel];
+      } else if (node.anchor && build.anchors.has(node.anchor)) href = `#${build.anchors.get(node.anchor)!}`;
+      // A page of the site (the models have one page): "#", for the person to point it in the editor.
       const icon = node.type === "button" && node.icon === "whatsapp";
       const implicit: CssMap =
         node.type === "link"
@@ -350,8 +352,8 @@ function convert(node: SiteNode, build: Build, inherited: Inherited, top: boolea
             ? whatsappLook()
             : { ...BUTTON_BASE, backgroundColor: vars.solid, color: vars.on };
       const made = block(build, "a", sizedStyles(node, { base: implicit }, vars), {
-        attributes: { href, ...(external ? { target: "_blank", rel: "noopener noreferrer" } : null) },
-        innerHTML: `${icon ? WHATSAPP_SVG : ""}${escapeHtml(label.text)}`,
+        attributes: { ...(href !== null ? { href } : null), ...(external ? { target: "_blank", rel: "noopener noreferrer" } : null) },
+        innerHTML: `${icon ? WHATSAPP_SVG : ""}${escapeHtml(text)}`,
       });
       if (icon || node.style?.background === "whatsapp") made.baseStyles["hover:backgroundColor"] = WHATSAPP_HOVER;
       return withAnchor(made);
@@ -570,8 +572,8 @@ function header(content: SiteContent, build: Build): FrappeBlock {
   if (cta)
     bar.children.push(
       block(build, "a", plainStyles({ ...whatsappLook(), fontSize: "15px", order: "3" }, {}, { display: "none" }), {
-        attributes: { href: build.whatsapp.href, ...(build.whatsapp.external ? { target: "_blank", rel: "noopener noreferrer" } : null) },
-        innerHTML: `${WHATSAPP_SVG}${escapeHtml(cta)}`,
+        attributes: build.contacts.whatsapp ? { href: build.contacts.whatsapp, target: "_blank", rel: "noopener noreferrer" } : {},
+        innerHTML: `${WHATSAPP_SVG}${escapeHtml(build.contacts.whatsapp ? cta : CONTACT_MARKER.whatsapp)}`,
         blockName: "Botão do WhatsApp",
       }),
     );
@@ -588,7 +590,6 @@ export function siteModelPage(model: SiteModelDef, title: string, options: SiteM
   pairTrees(content.blocks, model.build(title, "site").blocks, site);
   const vars = paletteVars(model.palette);
   const anchors = anchorIds(content);
-  const contact = contactAnchor(content, anchors);
   const direct = options.whatsapp ? whatsappUrl(options.whatsapp, content.whatsappCta?.message ?? "") : null;
   const first = content.blocks[0];
   const build: Build = {
@@ -598,7 +599,11 @@ export function siteModelPage(model: SiteModelDef, title: string, options: SiteM
     anchors,
     site,
     firstHeading: first ? ([...walk([first])].find((node) => node.type === "heading") ?? null) : null,
-    whatsapp: direct ? { href: direct, external: true } : { href: contact ? `#${contact}` : "#", external: false },
+    contacts: {
+      whatsapp: direct,
+      email: options.email ? emailUrl(options.email) : null,
+      instagram: options.instagram ? instagramUrl(options.instagram) : null,
+    },
   };
   const children = [header(content, build), ...content.blocks.flatMap((node) => convert(node, build, { ink: vars.ink }, true) ?? [])];
   return {

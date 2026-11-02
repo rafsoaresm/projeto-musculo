@@ -510,9 +510,13 @@ export async function call(env: Env, method: string, params: Params): Promise<{ 
       // A group of the gallery is one model with one page: "use all pages" makes that page.
       const group = (env.pageModels?.groups() ?? []).find((entry) => entry.name === text(params.template_group));
       if (!group) return fail(404, "DoesNotExistError", "Este modelo não existe.");
+      // As the editor's own server does: the pages of a group go to a folder named after it (made if there is none), which the editor opens.
+      const folder = group.title;
+      if (!(await env.store.list("Builder Project Folder")).some((entry) => entry.folder_name === folder))
+        await insert(env, { doc: { doctype: "Builder Project Folder", folder_name: folder } });
       const pages: string[] = [];
-      for (const page of group.pages) pages.push(text((await pageFromModel(env, page.name, params.project_folder)).name));
-      return { message: { folder: text(params.project_folder), pages } };
+      for (const page of group.pages) pages.push(text((await pageFromModel(env, page.name, folder)).name));
+      return { message: { folder, pages } };
     }
     default:
       return fail(501, "NotImplementedError", `A função “${method}” do editor não está disponível aqui.`);

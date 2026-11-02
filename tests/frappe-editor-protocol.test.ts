@@ -416,11 +416,15 @@ describe("the page models of the gallery (0.67)", () => {
     const again = (await withModels("builder.api.create_page_from_template", { template_page: "modelo-trainix" })).message as string;
     expect(store.rows.get(`Builder Page\u0000${again}`)!.page_title).toBe("Energia (Copy)");
   });
-  it("makes the page of a group with 'use all pages', and says the folder and the pages", async () => {
+  it("makes the page of a group with 'use all pages' in a folder named after the model, made once, and says the folder and the pages", async () => {
     const answer = (await withModels("builder.api.import_template_group", { template_group: "trainix" })).message as { folder: string; pages: string[] };
-    expect(answer.folder).toBe("");
+    expect(answer.folder).toBe("Energia");
     expect(answer.pages).toHaveLength(1);
-    expect(store.rows.get(`Builder Page\u0000${answer.pages[0]}`)!.page_title).toBe("Energia");
+    const made = store.rows.get(`Builder Page\u0000${answer.pages[0]}`)!;
+    expect(made.page_title).toBe("Energia");
+    expect(made.project_folder).toBe("Energia");
+    await withModels("builder.api.import_template_group", { template_group: "trainix" });
+    expect([...store.rows.values()].filter((doc) => doc.doctype === "Builder Project Folder").map((doc) => doc.folder_name)).toEqual(["Energia"]);
   });
   it("refuses a model that does not exist, and blocks the editor would send instead of a name, without writing anything", async () => {
     for (const params of [{ template_page: "modelo-outro" }, { template_page: "" }, { template_page: JSON.stringify([root("evil")]) }, {}]) {
