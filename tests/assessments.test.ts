@@ -141,7 +141,7 @@ describe("recording an assessment", () => {
     expect(started.status).toBe("started");
     if (started.status !== "started") return;
     // Asking again returns the open draft instead of opening a parallel one.
-    expect(await api.startDraft("st-1", day(10))).toEqual({ status: "draft_open", id: started.id });
+    expect(await api.startDraft("st-1", day(10))).toEqual({ status: "draft_open", id: started.id, formatVersion: null });
 
     expect(
       await api.saveDraft(started.id, { ...ALL_NO, assessedOn: "2026-11-10", exertionPain: true, screeningNotes: "Dor no joelho ao subir escada", metrics: [{ metricType: "RESTING_HEART_RATE", value: "62" }, bp] },

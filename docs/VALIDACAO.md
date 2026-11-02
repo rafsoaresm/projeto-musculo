@@ -2,6 +2,31 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.68: Avaliação Física V2, o modelo e as fórmulas (handoff "Avaliação Física V2"; PENDENCIAS B47)
+
+**Migration 0033 (aditiva).** Nenhuma tela muda nesta fatia: ela prepara a avaliação do formato novo e as contas, que as próximas fatias põem na tela.
+
+- **No banco (`0033_assessment_v2.sql`):**
+  - `assessments`: `format_version` (NULL nas avaliações de antes, 2 no formato novo), `revision` (a versão do rascunho em que um salvamento se baseia), `amends_assessment_id` e `amend_reason` (a retificação aponta para a avaliação gravada e diz por quê; a gravada nunca muda) e `student_snapshot` (os dados do aluno como a avaliação os usou: nascimento, altura, peso, objetivo; nunca o gênero, decisão do usuário).
+  - `assessment_sections`: um módulo por linha (perfil, triagem, composição, postura, movimento, testes, conclusão), com o estado e os dados em JSON.
+  - `assessment_results`: o que foi calculado, com o método, a versão da fórmula, os insumos e os avisos.
+  - **Legado:** a gordura corporal digitada nas avaliações de antes vira um resultado de método `legacy_formula_unknown`; a avaliação não é tocada. O mesmo vale para as avaliações do formato anterior gravadas daqui em diante.
+  - **Gatilhos:** seções e resultados só mudam enquanto a avaliação é rascunho e só da mesma organização; as colunas novas congelam com a avaliação gravada, e também `screening_answered`, que a 0031 tinha deixado fora do congelamento; a retificação só vale para uma avaliação gravada do mesmo aluno, com motivo, e não muda depois.
+- **No repositório:** abrir o rascunho do formato novo com a fotografia do aluno; ler as seções; salvar um módulo **contra a revisão lida**: um salvamento de uma revisão antiga (outra aba, outra pessoa) é recusado como conflito e não muda nada.
+- **Fórmulas (`src/modules/avaliacoes/formulas/`, puras e versionadas `av2-2026-11`):**
+  - Faulkner 4 dobras, Guedes 3, Jackson e Pollock 7 e 3 (variantes masculina e feminina com os sítios e as faixas de validação de cada uma), Siri;
+  - massa gorda e massa livre de gordura, IMC, RCQ, diferença bilateral, idade na data da avaliação, número com vírgula decimal, altura em m ou cm;
+  - Cooper (velocidade e VO₂ estimado), Flexiteste (total só com os 15 movimentos).
+  - Nada vira zero: o que falta deixa o cálculo **pendente** (com o que falta); valor impossível é **inválido**, nunca encaixado à força. Fora da faixa de validação, o cálculo sai com o aviso. Sem a equação escolhida, o cálculo espera.
+- **Verificado localmente:**
+  - `npm run check`: lint, tipos e 1649 testes, entre eles `assessment-formulas` (a tabela inteira da seção 8 do handoff: JP7 122 mm e 17,27% e 11,94 kg, JP3 63 mm e 18,44%, Guedes 55 mm e 19,35%, Faulkner 66 mm e 15,88%, IMC 23,63, RCQ 0,644, Flexiteste 32, Cooper 11,0 km/h e VO₂ 37,90, e não 37,69; mais os casos de borda) e `assessment-v2-model` (D1 local: o legado antes e depois da 0033, a fotografia sem o gênero, conflito de revisão, outra organização, congelamento e retificação pelo próprio banco);
+  - as avaliações de antes continuam como eram (`assessments`, `assessment-photos`, `data-requests`);
+  - navegador, nas duas montagens: `assessments`, `photos`, `plans` e `student-tabs`, 16 cenários passaram em cada uma (o fluxo de hoje de avaliação, fotos e aprovação do plano, inalterado);
+  - revisão independente da migration e do repositório: 1 problema confirmado e corrigido (pedir um rascunho do formato novo com um do formato antigo aberto devolvia o antigo sem dizer o formato; agora diz). Os outros apontamentos foram refutados;
+  - conferência independente das fórmulas: os coeficientes e os sítios batem com a matriz do handoff e com as equações publicadas; o único ponto, um limite de 70% de gordura escolhido sem fonte, foi trocado pelos limites naturais (entre 0 e 100%), e a faixa plausível fica com o técnico.
+- **Não feito (próximas fatias):** as telas (etapa Medidas, triagem com PAR-Q, finalizar e retificar, histórico), o salvamento automático, o relatório e a evolução por protocolo.
+- **Não verificado:** a migration no D1 do Webflow (depois do deploy, C37).
+
 ## Fatia 0.67: Os quatro modelos de site no Editor Avançado (Frappe) (pedido do usuário de 02/11/2026; PENDENCIAS B46)
 
 **Sem migration.** Os modelos não são guardados em lugar nenhum: a página é feita na hora, a partir do mesmo documento do Editor Guiado.
@@ -35,6 +60,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
   - no canvas do editor, uma imagem ainda sem foto aparece como imagem quebrada com o texto "Troque pela sua foto" (na página publicada é uma caixa vazia);
   - se editar o texto de um botão no editor mantém a marca do WhatsApp;
   - o editor num tablet, Safari e leitor de tela.
+- **CI e deploy:** o CI da PR #69 passou nas duas montagens no commit `8ec0c46`. Merge `57515e5`. Implantada: deploy `e7983322`, build de 17:49 a 17:51 e deploy até 17:52 de 02/11/2026, status `success`. Sem migration. Nada foi lido ao vivo.
 
 ## Fatia 0.66: Formulário antes do WhatsApp (handoff "Templates de Sites — CMS V1", seção 12; PENDENCIAS B46)
 
