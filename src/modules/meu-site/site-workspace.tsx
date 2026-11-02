@@ -502,15 +502,29 @@ export function SiteWorkspace({ slug, initial, live, releases, services, images,
       {canEdit && editorOpen && engineFixed && (
         <GuidedEditor
           content={content}
-          onEdit={(next) => edit(next)}
+          onEdit={edit}
+          undo={() => {
+            dispatch({ type: "undo" });
+            afterChange();
+          }}
+          redo={() => {
+            dispatch({ type: "redo" });
+            afterChange();
+          }}
+          canUndo={history.past.length > 0}
+          canRedo={history.future.length > 0}
           services={services}
-          library={library}
+          images={{ available: images.available, library, upload: uploadImage, remove: removeImage }}
+          slug={slug}
           dirty={dirty}
           pending={pending}
           live={live !== null}
           onSave={() => save(editorNote)}
-          onClose={() => setEditorOpen(false)}
+          onPublish={() => publish(editorNote)}
+          onPublishAnyway={() => publish(editorNote, true)}
+          issues={issues}
           note={editorNote.element}
+          onClose={() => setEditorOpen(false)}
         />
       )}
       {canEdit && editorOpen && !engineFixed && (

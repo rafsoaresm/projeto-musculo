@@ -36,7 +36,7 @@ import {
 } from "./contracts";
 import { ancestorsOf, locate, updateBlock, updateBlocks } from "./editor-model";
 import { nodeText, nodeTitle } from "./node-label";
-import { ACCENTS, ACCENT_LABEL, FONTS, FONT_LABEL, MODES, MODE_LABEL, WIDTHS, WIDTH_LABEL, type Accent, type Font, type Mode, type Theme, type Width } from "./site-theme";
+import { ACCENTS, ACCENT_LABEL, BRAND_START, FONTS, FONT_LABEL, MODES, MODE_LABEL, WIDTHS, WIDTH_LABEL, withFont, withoutBrand, type Accent, type Mode, type Width } from "./site-theme";
 import { brandPalette } from "./brand-color";
 import { ownStyle, type Screen } from "./screens";
 import { clearStyles, patchSide, patchStyle, resetScreen, setHidden, withScreenStyle } from "./style-model";
@@ -92,21 +92,6 @@ function ChannelSelect({ label = "O botão leva a", value, onChange }: { label?:
     </label>
   );
 }
-
-/** Where the color of "Minha cor" starts when it is chosen (the person changes it at once). */
-const BRAND_START = "#0077b6";
-/** The theme with an accent of the list in place of the brand color. */
-const withoutBrand = (theme: Theme, accent: Accent): Theme => {
-  const { brand: _dropped, ...rest } = theme;
-  void _dropped;
-  return { ...rest, accent };
-};
-/** The theme with a font (or none, for the page's own). */
-const withFont = (theme: Theme, font: Font | undefined): Theme => {
-  const { font: _dropped, ...rest } = theme;
-  void _dropped;
-  return font ? { ...rest, font } : rest;
-};
 
 /** The settings of the page itself: title, search description, contacts and look. What nothing selected shows. */
 export function PageSettings({ content, onChange, images }: { content: SiteContent; onChange: Change; images: ImageSupport }) {

@@ -56,3 +56,18 @@ export const themeAttributes = (theme: Theme) =>
     "data-site-width": theme.width,
     ...(theme.font ? { "data-site-font": theme.font } : null),
   }) as { "data-site-accent": string; "data-site-mode": Mode; "data-site-width": Width; "data-site-font"?: Font };
+
+/** Where the color of "Minha cor" starts when it is chosen (the person changes it at once). */
+export const BRAND_START = "#0077b6";
+/** The theme with an accent of the list in place of the brand color. */
+export const withoutBrand = (theme: Theme, accent: Accent): Theme => {
+  const { brand: _dropped, ...rest } = theme;
+  void _dropped;
+  return { ...rest, accent };
+};
+/** The theme with a font (or none, for the page's own). */
+export const withFont = (theme: Theme, font: Font | undefined): Theme => {
+  const { font: _dropped, ...rest } = theme;
+  void _dropped;
+  return font ? { ...rest, font } : rest;
+};

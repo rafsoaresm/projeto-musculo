@@ -18,6 +18,9 @@ import {
   SUBHEADING_MAX,
   TEXT_MAX,
   TITLE_MAX,
+  HOME,
+  pageContent,
+  swapPage,
   type SiteContent,
   type SiteNode,
 } from "./contracts";
@@ -39,9 +42,9 @@ export interface Field {
   value: string;
 }
 
-/** The sections of the page, in order: what the left column lists. A box with the header or footer tag is called so. */
-export function sectionsOf(content: SiteContent): Section[] {
-  return content.blocks.map((entry) => ({
+/** The sections of a page (the home page by default), in order: what the list shows. A box with the header or footer tag is called so. */
+export function sectionsOf(content: SiteContent, pageId: string = HOME): Section[] {
+  return pageContent(content, pageId).blocks.map((entry) => ({
     id: entry.id,
     label: entry.name || (entry.type === "box" && entry.tag === "header" ? "Cabeçalho" : entry.type === "box" && entry.tag === "footer" ? "Rodapé" : nodeTitle(entry)),
   }));
@@ -185,4 +188,17 @@ export function withField(content: SiteContent, key: string, raw: string): SiteC
   });
   if (blocks !== content.blocks) result = { ...content, blocks };
   return result;
+}
+
+/** The fields of one section of a page; none when the page or the section is not there. */
+export function sectionFields(content: SiteContent, pageId: string, sectionId: string): Field[] {
+  const section = pageContent(content, pageId).blocks.find((entry) => entry.id === sectionId);
+  return section ? fieldsOf(section) : [];
+}
+
+/** `withField` on any page: the page's blocks are edited in the place of the home page's and put back. The same object when nothing changes. */
+export function withPageField(content: SiteContent, pageId: string, key: string, raw: string): SiteContent {
+  const swapped = swapPage(content, pageId);
+  const changed = withField(swapped, key, raw);
+  return changed === swapped ? content : swapPage(changed, pageId);
 }

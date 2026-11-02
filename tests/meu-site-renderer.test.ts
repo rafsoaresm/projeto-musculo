@@ -108,7 +108,9 @@ describe("the public page", () => {
     const html = render(page({ contact: { whatsapp: "javascript:alert(1)", email: "https://evil.test", instagram: "https://evil.test/x" } }));
     expect(html).not.toContain("javascript:");
     expect(html).not.toContain("evil.test");
-    expect(html).not.toContain("<footer");
+    // The footer has only the name of the site: no contact made a link.
+    expect(html).not.toContain("Contato:");
+    expect(html).toContain('<footer class="site-footer"><p class="site-footer-brand">Marina Treinos</p></footer>');
     expect(html).not.toContain("Falar comigo");
     expect(html).not.toContain("Escrever por e-mail");
   });
