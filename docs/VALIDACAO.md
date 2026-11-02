@@ -23,7 +23,8 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Abrir pelo endereço:** `?editar=1` passou a abrir o editor depois que a página está no navegador (antes ele seria desenhado no servidor, que não tem o endereço da montagem).
 - **Verificado localmente:** `npm run check`; captura do Editor Guiado a 1280 px comparada com o quadro `10:162`; navegador na montagem raiz, cenário novo `site-guided` (abrir, escolher a seção, digitar o título e vê-lo na prévia, SEO, salvar, recarregar, publicar e o visitante ver o título e a descrição) e a suíte completa.
 - **Não feito / limites:** acrescentar, tirar ou reordenar seções no Editor Guiado (hoje o site nasce com as seções do modelo escolhido); as páginas além da inicial não aparecem no Editor Guiado; enviar imagens novas é pela biblioteca (o campo escolhe entre as enviadas).
-- **Não verificado:** nada no ar antes do deploy.
+- **Não verificado:** o ambiente de desenvolvimento não alcança o site publicado.
+- **CI e deploy:** o CI da PR #60 falhou uma vez em `/treinador` no commit `e2f7ec8` (o teste marcava o site anterior com `wrangler d1 execute`, lento com muitos testes ao mesmo tempo); corrigido em `091a9f5` (SQLite do Node e espera de 15 s no cadastro) e passou nas duas montagens. Merge `bf49f11`. Implantada: deploy `c8a3ebb8`, build de 02:34 a 02:36 e deploy até 02:36 de 02/11/2026, status `success`.
 
 ## Fatia 0.58: Editor Avançado — moldura, prévia e português (Figma `10:218`; defeito 1 da revisão V4; AC19.1, AC19.4, AC19.5)
 
