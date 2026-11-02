@@ -5192,3 +5192,104 @@ button.ve-layer-toggle {
     gap: 0;
   }
 }
+/* ---------- Meu Site: the Editor Guiado (Figma 10:162) ---------- */
+.guided {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  overflow: auto;
+  background: var(--color-background);
+  padding: 20px;
+}
+.guided-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--color-line);
+}
+.guided-head h1 {
+  font-size: var(--font-size-2xl);
+  margin: 0;
+}
+.guided-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(0, 2.2fr) minmax(240px, 1.2fr);
+  gap: 16px;
+  align-items: start;
+}
+.guided-grid > .panel {
+  margin: 0;
+}
+.guided-grid h2 {
+  font-size: var(--font-size-lg);
+}
+.guided-sections ul {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.guided-sections button {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-radius: var(--radius-button);
+  padding: 10px 14px;
+  font: inherit;
+  font-size: var(--font-size-sm);
+  background: var(--color-neutral-100);
+  color: var(--color-text);
+  cursor: pointer;
+}
+.guided-sections button[aria-pressed="true"] {
+  background: var(--color-brand-subtle);
+  color: var(--color-primary-strong);
+  font-weight: 700;
+}
+.guided-sections button:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+.guided-frame {
+  margin-top: 12px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  max-height: 70vh;
+  overflow-y: auto;
+  container-type: inline-size;
+  background: #fff;
+}
+.guided-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.guided-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+.guided-form h3 {
+  margin: 8px 0 0;
+  font-size: var(--font-size-base);
+}
+.guided-thumb {
+  max-width: 100%;
+  max-height: 120px;
+  object-fit: cover;
+  border-radius: var(--radius-card);
+}
+@media (max-width: 1000px) {
+  .guided-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

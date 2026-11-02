@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { createProfessional, localIP, newActor } from "./helpers";
-import { addAtEnd, closeEditor, editor, inspector, openEditor, panel, selectLayer, state, showTab } from "./site-helpers";
+import { addAtEnd, closeEditor, editor, inspector, openEditor, panel, selectLayer, state, showTab, asLegacySite } from "./site-helpers";
 
 test("warnings do not stop a publication: the page goes live with 'Publicar mesmo assim'; only what protects a person still stops it", async ({ page, browser, baseURL }) => {
   await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
@@ -11,6 +11,8 @@ test("warnings do not stop a publication: the page goes live with 'Publicar mesm
   await page.goto("./profissional/meu-site");
   await page.getByRole("button", { name: "Escolher Editor Guiado" }).click();
   await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Confirmar e criar site" }).click();
+  await expect(page.getByRole("heading", { name: "Meu Site", level: 1 })).toBeVisible();
+  await asLegacySite(page, slug);
   await showTab(page, "Publicação");
   await expect(state(page).getByText("Fora do ar")).toBeVisible();
 

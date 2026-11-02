@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { expect, type Page } from "@playwright/test";
 import { createProfessional, localIP } from "./helpers";
 
@@ -17,6 +18,15 @@ export async function showTab(page: Page, name: "Páginas" | "Publicação" | "F
   const tab = page.getByRole("tablist", { name: "Gestão do site" }).getByRole("tab", { name, exact: true });
   if ((await tab.getAttribute("aria-selected")) !== "true") await tab.click();
   await expect(tab).toHaveAttribute("aria-selected", "true");
+}
+/**
+ * Makes a site stand for one created before the editor became fixed (migration 0030), the only kind that still opens the visual builder:
+ * a site created now opens the Editor Guiado. Written straight into the local database the preview serves (tests only).
+ */
+export async function asLegacySite(page: Page, slug: string) {
+  if (!/^[a-z0-9-]{3,40}$/.test(slug)) throw new Error(`not an address: ${slug}`);
+  execFileSync("npx", ["wrangler", "d1", "execute", "DB", "--local", "--command", `UPDATE sites SET engine_fixed = 0 WHERE slug = '${slug}'`], { stdio: "ignore" });
+  await page.reload();
 }
 export async function openEditor(page: Page) {
   await showTab(page, "Páginas");
@@ -65,6 +75,7 @@ export async function startEditor(page: Page, name = "Marina Editor") {
   await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Confirmar e criar site" }).click();
   await showTab(page, "Publicação");
   await expect(state(page).getByText("Fora do ar")).toBeVisible();
+  await asLegacySite(page, `estudio-${unique}`);
   await openEditor(page);
   return `estudio-${unique}`;
 }

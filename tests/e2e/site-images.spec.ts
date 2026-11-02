@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { openEditor, showTab } from "./site-helpers";
+import { openEditor, showTab, asLegacySite } from "./site-helpers";
 import { createProfessional, localIP, newActor, png } from "./helpers";
 
 const state = (page: Page) => page.getByRole("region", { name: "Estado do site" });
@@ -50,6 +50,8 @@ test("images: sent in the editor, shown on the page, public only through the pub
   await page.goto("./profissional/meu-site");
   await page.getByRole("button", { name: "Escolher Editor Guiado" }).click();
   await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Confirmar e criar site" }).click();
+  await expect(page.getByRole("heading", { name: "Meu Site", level: 1 })).toBeVisible();
+  await asLegacySite(page, slug);
   await showTab(page, "Publicação");
   await expect(state(page).getByText("Fora do ar")).toBeVisible();
   await openEditor(page);
