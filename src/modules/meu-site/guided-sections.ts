@@ -5,6 +5,7 @@
  */
 import { MAX_BLOCKS, MAX_SITE_NODES, allNodes, hiddenEverywhere, pageContent, siteNodeCount, swapPage, type SiteContent, type SiteNode } from "./contracts";
 import { GUIDED_SECTIONS } from "./site-kits";
+import { pruneMenu } from "./guided-menu";
 
 export type SectionRefusal = "unknown" | "page-full" | "site-full";
 export const SECTION_REFUSAL_MESSAGE: Record<SectionRefusal, string> = {
@@ -48,7 +49,9 @@ export function moveSection(content: SiteContent, pageId: string, id: string, by
 
 /** Out of the page (undo brings it back); the same document when it is not there. */
 export function removeSection(content: SiteContent, pageId: string, id: string): SiteContent {
-  return onPage(content, pageId, (list) => (list.some((entry) => entry.id === id) ? list.filter((entry) => entry.id !== id) : null));
+  const next = onPage(content, pageId, (list) => (list.some((entry) => entry.id === id) ? list.filter((entry) => entry.id !== id) : null));
+  // A link of the header's menu to it goes with it.
+  return next === content ? content : pruneMenu(next);
 }
 
 /** Whether a section is hidden from the site: hidden on the computer and not shown again on a smaller size. */

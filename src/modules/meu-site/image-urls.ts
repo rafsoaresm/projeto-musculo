@@ -1,3 +1,4 @@
+import { demoKeyOf, demoPhotoUrl } from "./models/demo-photos";
 import type { ImageResolver } from "./renderer";
 import type { CssContext } from "./style";
 
@@ -77,5 +78,12 @@ export const publicCssImages = (images: Record<string, Dimensions>): CssContext 
 });
 /** Same for the library: the editor's sheet (absolute, `base`) or the preview's (`null`: relative to the page it is written into). */
 export const libraryCssImages = (base: string | null, library: ReadonlyArray<{ id: string }>): CssContext => ({
-  imageUrl: (assetId) => (library.some((asset) => asset.id === assetId) ? (base === null ? previewImageUrl(assetId) : editorImageUrl(base, assetId)) : null),
+  imageUrl: (assetId) => {
+    // A sample photo of a model is drawn while the site is being made (the editor), never on the preview of the published look.
+    const demo = demoKeyOf(assetId);
+    if (demo) return base === null ? null : demoPhotoUrl(demoFolder(base), demo);
+    return library.some((asset) => asset.id === assetId) ? (base === null ? previewImageUrl(assetId) : editorImageUrl(base, assetId)) : null;
+  },
 });
+/** The folder of the sample photos of the models, under the app's mount path. */
+export const demoFolder = (base: string) => `${base}/site-models/`;

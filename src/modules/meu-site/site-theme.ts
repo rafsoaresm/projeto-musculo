@@ -9,6 +9,7 @@
  * tests/meu-site-theme.test.ts reads those rules and checks every pair for WCAG AA (4.5:1).
  */
 import { FONT_FAMILIES } from "./style";
+import type { Palette } from "./site-palette";
 
 export const ACCENTS = ["blue", "green", "orange", "purple", "red", "graphite"] as const;
 export type Accent = (typeof ACCENTS)[number];
@@ -31,7 +32,7 @@ export const MODE_LABEL: Record<Mode, string> = { light: "Claro", dark: "Escuro"
 /** The font of the whole page: the system's own fonts, nothing is downloaded. Without a choice the page keeps the tool's font. */
 export { FONT_FAMILIES as FONTS } from "./style";
 export type Font = (typeof FONT_FAMILIES)[number];
-export const FONT_LABEL: Record<Font | "default", string> = { default: "Padrão da página", sans: "Sem serifa", serif: "Com serifa", mono: "Monoespaçada" };
+export const FONT_LABEL: Record<Font | "default", string> = { default: "Padrão da página", sans: "Sem serifa", serif: "Com serifa", mono: "Monoespaçada", inter: "Inter" };
 export const WIDTH_LABEL: Record<Width, string> = { narrow: "Estreita (leitura)", wide: "Larga", full: "Largura total" };
 
 export interface Theme {
@@ -42,6 +43,8 @@ export interface Theme {
   font?: Font;
   /** The color of the person's brand as `#rrggbb`; when there is one it takes the place of `accent`. */
   brand?: string;
+  /** The six colors of a site model (site-palette.ts); when there are, they are the whole look and take the place of `accent` and `brand`. */
+  palette?: Palette;
 }
 export const DEFAULT_THEME: Theme = { accent: "blue", mode: "light", width: "narrow" };
 
@@ -51,7 +54,7 @@ export const DEFAULT_THEME: Theme = { accent: "blue", mode: "light", width: "nar
  */
 export const themeAttributes = (theme: Theme) =>
   ({
-    "data-site-accent": theme.brand ? "custom" : theme.accent,
+    "data-site-accent": theme.palette ? "palette" : theme.brand ? "custom" : theme.accent,
     "data-site-mode": theme.mode,
     "data-site-width": theme.width,
     ...(theme.font ? { "data-site-font": theme.font } : null),

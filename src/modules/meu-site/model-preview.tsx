@@ -2,10 +2,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { HOME, pageContent, pagesOf } from "./contracts";
-import { starterOf } from "./page-model";
+import { previewOf } from "./page-model";
 import { SITE_MODEL_LABEL, type SiteModel } from "./page-models";
 import { SiteRenderer } from "./renderer";
 import { buildSiteCss } from "./site-css";
+import { demoFolder } from "./image-urls";
+import { demoKeyOf, demoPhotoUrl } from "./models/demo-photos";
+import { useMountPath } from "@/components/use-mount-path";
 import { InlineSiteStyles } from "./site-styles";
 import { siteNav } from "./site-nav";
 
@@ -14,7 +17,7 @@ import { siteNav } from "./site-nav";
  * it is the starting document drawn in the browser, with the name typed in the form. Links and buttons go nowhere here.
  */
 export function ModelPreview({ model, title, onUse, onClose }: { model: SiteModel; title: string; onUse: () => void; onClose: () => void }) {
-  const content = useMemo(() => starterOf(model, title.trim() || "Seu nome"), [model, title]);
+  const content = useMemo(() => previewOf(model, title.trim() || "Seu nome"), [model, title]);
   const [pageId, setPageId] = useState(HOME);
   const [width, setWidth] = useState<"computador" | "celular">("computador");
   const closeButton = useRef<HTMLButtonElement>(null);
@@ -26,7 +29,19 @@ export function ModelPreview({ model, title, onUse, onClose }: { model: SiteMode
   }, [onClose]);
   const page = useMemo(() => pageContent(content, pageId), [content, pageId]);
   const nav = useMemo(() => siteNav(content, pageId, () => "#", setPageId), [content, pageId]);
-  const css = useMemo(() => buildSiteCss(content, { container: true, imageUrl: () => null }), [content]);
+  // Shown only after a click (never drawn on the server), so the mount path of the window is read here.
+  const folder = demoFolder(useMountPath()());
+  const css = useMemo(
+    () =>
+      buildSiteCss(content, {
+        container: true,
+        imageUrl: (id) => {
+          const demo = demoKeyOf(id);
+          return demo ? demoPhotoUrl(folder, demo) : null;
+        },
+      }),
+    [content, folder],
+  );
 
   useEffect(() => {
     // Opened over the form: the focus goes to "Fechar", stays inside while it is open (Tab goes round), and goes back to "Ver o modelo" after.
@@ -104,7 +119,7 @@ export function ModelPreview({ model, title, onUse, onClose }: { model: SiteMode
           }}
         >
           <InlineSiteStyles css={css} />
-          <SiteRenderer content={page} images={() => null} nav={nav} />
+          <SiteRenderer content={page} images={() => null} nav={nav} demoFolder={folder} />
         </div>
       </div>
       <div className="persist-actions model-preview-actions">

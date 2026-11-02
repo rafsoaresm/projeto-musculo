@@ -89,12 +89,13 @@ describe("what an empty container keeps on the public page", () => {
   it("leaves out a band whose texts are all empty", () => {
     expect(html([box({})])).not.toContain('class="site-box');
   });
-  it("keeps one with a background picture, and one a button points to", () => {
+  it("keeps one with a background picture; one a button points to is left out with the button's link", () => {
     expect(html([box({ style: { bgImage: "a1" } })])).toContain("site-box");
     expect(html([box({ styleMobile: { bgImage: "a1" } })])).toContain("site-box");
     const button = { id: "b", type: "button", label: "Ver", channel: "anchor", anchor: "caixa" } as unknown as SiteNode;
     const out = html([button, box({})]);
-    expect(out).toContain("site-box");
+    expect(out).not.toContain("site-box");
+    expect(out).not.toContain('href="#');
   });
   it("leaves out one holding only an unanswered question list", () => {
     const faq = { id: "f", type: "faq", eyebrow: "", heading: "Perguntas", items: [{ question: "Como?", answer: "" }] } as unknown as SiteNode;

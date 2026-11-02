@@ -1,6 +1,9 @@
 import { type ReactNode } from "react";
 import { IllustrationView } from "./illustrations";
+import { WhatsAppIcon } from "./whatsapp-icon";
+import { DEMO_PHOTOS, demoPhotoUrl } from "./models/demo-photos";
 import {
+  HOME,
   allNodes,
   applyOverrides,
   channelUrl,
@@ -82,6 +85,8 @@ interface Ctx {
   anchors: ReadonlySet<string>;
   /** The first highlight of the page, which holds its only first-level heading. */
   firstHero: string | null;
+  /** Where the models' sample photos are (`<mount>/site-models/`): given while the site is being made, never on the published page. */
+  demoFolder?: string;
   /** In front of the DOM id of an anchor, so a page drawn more than once in one window (the frames of the editor) does not repeat an id. */
   scope: string;
   /** The pages of the site: where a button or a link that goes to a page leads. Absent where there is no site around the page (a page drawn alone). */
@@ -187,8 +192,9 @@ const visiting = (ctx: Ctx, where: { visit?: string }) =>
 /** Whether an element has anything to show on the public page: a text, a button or a link with a label and a place to go, an image of the library. */
 function visible(item: ElementNode, ctx: Ctx): boolean {
   if (ctx.edit) return true;
-  if (item.type === "image") return Boolean((item.assetId && ctx.images?.(item.assetId)) || item.illustration);
-  if (item.type === "button" || item.type === "link") return Boolean(item.label && destinationOf(item, ctx));
+  if (item.type === "image") return Boolean((item.assetId && ctx.images?.(item.assetId)) || item.illustration || (item.demo && ctx.demoFolder));
+  // While the site is being made (a sample photo folder is given) a button with nowhere to go yet is shown, as it will be once it has.
+  if (item.type === "button" || item.type === "link") return Boolean(item.label && (destinationOf(item, ctx) || ctx.demoFolder));
   return item.text !== "";
 }
 
@@ -211,6 +217,10 @@ function ElementView({ item, ctx }: { item: ElementNode; ctx: Ctx }) {
         {image ? (
           // eslint-disable-next-line @next/next/no-img-element -- served by this app from a private bucket; the size is known
           <img src={image.src} width={image.width} height={image.height} alt={item.alt} loading="lazy" decoding="async" />
+        ) : item.demo && ctx.demoFolder ? (
+          // A sample photo of the model, while the site is being made (never on the published page: no folder is given there).
+          // eslint-disable-next-line @next/next/no-img-element -- a file of the app; the size is known
+          <img src={demoPhotoUrl(ctx.demoFolder, item.demo)} width={DEMO_PHOTOS[item.demo].width} height={DEMO_PHOTOS[item.demo].height} alt={item.alt} loading="lazy" decoding="async" />
         ) : item.illustration ? (
           // The model's drawing, until a photo is chosen: decorative, so it says nothing to a screen reader.
           <IllustrationView name={item.illustration} className="site-illustration" />
@@ -234,17 +244,27 @@ function ElementView({ item, ctx }: { item: ElementNode; ctx: Ctx }) {
   }
   // A button or a link: in the editor a stand-in that does not navigate, on the page an anchor made from the destination.
   const link = item.type === "link";
-  const classes = link ? "site-link site-leaf" : "button primary site-leaf";
+  const icon = item.type === "button" && item.icon === "whatsapp";
+  const classes = link ? "site-link site-leaf" : `button primary site-leaf${icon ? " site-has-icon" : ""}`;
   if (ctx.edit) {
     return (
       <span {...attrsOf(item, ctx, `${classes}${link ? "" : " site-button-stand-in"}`)}>
+        {icon && <WhatsAppIcon />}
         <T ctx={ctx} id={item.id} path="label" value={item.label} placeholder={link ? "Texto do link" : "Texto do botão"} max={40} />
       </span>
     );
   }
-  const where = destinationOf(item, ctx)!;
+  const where = destinationOf(item, ctx);
+  if (!where)
+    return (
+      <span {...attrsOf(item, ctx, classes)}>
+        {icon && <WhatsAppIcon />}
+        {item.label}
+      </span>
+    );
   return (
     <a {...attrsOf(item, ctx, classes)} href={where.href} {...(where.external ? { target: "_blank", rel: "noopener noreferrer" } : {})} {...visiting(ctx, where)}>
+      {icon && <WhatsAppIcon />}
       {item.label}
     </a>
   );
@@ -258,9 +278,8 @@ function hasContent(node: SiteNode, ctx: Ctx): boolean {
   if (node.type === "box")
     return (
       node.children.length === 0 ||
-      // A background picture is something to see, and a part a button or a link points to stays where they lead.
+      // A background picture is something to see. (A part with nothing to show is left out even when a link points to it: the link goes too.)
       [node.style, node.styleTablet, node.styleMobile].some((style) => style?.bgImage) ||
-      ctx.anchors.has(node.id) ||
       node.children.some((child) => hasContent(child, ctx))
     );
   if (node.type === "quote") return node.quote !== "" || node.author !== "";
@@ -274,7 +293,7 @@ function hasContent(node: SiteNode, ctx: Ctx): boolean {
  * Whether empty parts are left out: on the published page and the previews of it, not in the editors. The Editor Guiado's preview (`locate`) keeps
  * them, so the section being written can be outlined and chosen there before it has anything in it.
  */
-const leavesOutEmpty = (ctx: Ctx) => !ctx.edit && !ctx.locate;
+const leavesOutEmpty = (ctx: Ctx) => !ctx.edit && !ctx.locate && !ctx.demoFolder;
 
 function BoxView({ node, ctx }: { node: BoxNode; ctx: Ctx }) {
   const Tag = node.tag;
@@ -456,7 +475,8 @@ function NodeView({ node, ctx }: { node: SiteNode; ctx: Ctx }) {
       );
     }
     case "faq": {
-      const items = node.items.filter((item) => item.question && item.answer);
+      // While the site is being made a question still to be answered is shown (its answer is what the person writes); published, only answered ones.
+      const items = node.items.filter((item) => item.question && (item.answer || !leavesOutEmpty(ctx)));
       // No question answered yet: on the public page the section would be a title with nothing under it.
       if (leavesOutEmpty(ctx) && items.length === 0) return null;
       return (
@@ -615,8 +635,42 @@ function SiteLogo({ logo }: { logo: ResolvedImage }) {
  * does the same) it folds into a "Menu" button that opens the list under the header. The button is a hidden checkbox and its label, so it
  * works with no script and with the keyboard (Space), and the links are in the page once.
  */
-function SiteMenu({ nav, edit, scope }: { nav: SiteNav; edit: boolean; scope: string }) {
-  if (nav.items.length < 2) return null;
+/** A link of the header to a part of the page: on the home page the part itself, on another page the home page at that part. */
+interface MenuLink {
+  label: string;
+  href: string;
+}
+function menuLinks(content: SiteContent, existing: ReadonlySet<string>, anchors: ReadonlySet<string>, nav: SiteNav, scope: string): MenuLink[] {
+  const home = nav.items.find((item) => item.id === HOME);
+  return (content.menu ?? []).flatMap((entry) => {
+    if (!entry.label.trim()) return [];
+    if (existing.has(entry.anchor)) return anchors.has(entry.anchor) ? [{ label: entry.label, href: `#${scope}${anchorDomId(entry.anchor)}` }] : [];
+    // On another page the part is on the home page; a part that is not there (or a home page with no address) leaves the link out.
+    return home && !home.current && home.href ? [{ label: entry.label, href: `${home.href}#${anchorDomId(entry.anchor)}` }] : [];
+  });
+}
+
+/** The WhatsApp button of the header (the site models): to the site's WhatsApp, and left out of the page while there is no number. */
+function HeaderCta({ label, whatsapp, edit }: { label: string; whatsapp: string; edit: boolean }) {
+  const href = whatsappUrl(whatsapp);
+  if (edit)
+    return (
+      <span className="button site-whatsapp site-header-cta site-has-icon">
+        <WhatsAppIcon />
+        {label}
+      </span>
+    );
+  if (!href) return null;
+  return (
+    <a className="button site-whatsapp site-header-cta site-has-icon" href={href} target="_blank" rel="noopener noreferrer">
+      <WhatsAppIcon />
+      {label}
+    </a>
+  );
+}
+
+function SiteMenu({ nav, edit, scope, links = [] }: { nav: SiteNav; edit: boolean; scope: string; links?: MenuLink[] }) {
+  if (nav.items.length < 2 && links.length === 0) return null;
   const toggle = `${scope}site-menu-toggle`;
   return (
     <nav className="site-menu" aria-label="Páginas do site">
@@ -654,6 +708,17 @@ function SiteMenu({ nav, edit, scope }: { nav: SiteNav; edit: boolean; scope: st
             )}
           </li>
         ))}
+        {links.map((link) => (
+          <li key={`${link.label}${link.href}`}>
+            {edit ? (
+              <span className="site-menu-link">{link.label}</span>
+            ) : (
+              <a className="site-menu-link" href={link.href}>
+                {link.label}
+              </a>
+            )}
+          </li>
+        ))}
       </ul>
     </nav>
   );
@@ -669,6 +734,7 @@ export function SiteRenderer({
   marks,
   forms,
   locate,
+  demoFolder,
 }: {
   content: SiteContent;
   edit?: EditHooks;
@@ -684,6 +750,8 @@ export function SiteRenderer({
   bare?: boolean;
   /** The Editor Guiado's preview: which section is being edited (a node id, or `header` and `footer` for the site's own). */
   locate?: { selected: string | null };
+  /** Where the models' sample photos are: given by the editors and "Ver o modelo", never by the published page or its preview. */
+  demoFolder?: string;
 }) {
   // On the published page a part hidden on every size is not there: it takes no title, no footer's place, and no button leads to it.
   const published = !edit && !locate;
@@ -691,8 +759,19 @@ export function SiteRenderer({
     list.flatMap((entry) => (published && hiddenEverywhere(entry) ? [] : [entry, ...(entry.type === "box" ? shownTrees(entry.children) : [])]));
   const nodes = shownTrees(content.blocks);
   const existing = new Set(nodes.map((entry) => entry.id));
+  // A part a link goes to, on the published page, only when it is drawn: an empty band is left out, and so are the links to it.
+  const probe: Ctx = { content, edit, images, anchors: new Set(), firstHero: null, scope, nav, marks, forms, demoFolder, locate: locate ? { sections: new Set(), selected: null } : undefined };
+  const drawn = (id: string) => {
+    if (!leavesOutEmpty(probe)) return true;
+    const node = nodes.find((entry) => entry.id === id);
+    return node !== undefined && hasContent(node, probe);
+  };
   const anchors = new Set(
-    nodes.flatMap((entry): string[] => ((entry.type === "button" || entry.type === "link") && entry.anchor && existing.has(entry.anchor) ? [entry.anchor] : [])),
+    [
+      ...nodes.flatMap((entry): string[] => ((entry.type === "button" || entry.type === "link") && entry.anchor && existing.has(entry.anchor) ? [entry.anchor] : [])),
+      // The header's links to parts of the page: those parts get the id the links go to.
+      ...(content.menu ?? []).flatMap((entry) => (existing.has(entry.anchor) && entry.label.trim() ? [entry.anchor] : [])),
+    ].filter(drawn),
   );
   const firstHero = nodes.find((entry) => entry.type === "hero")?.id ?? null;
   const ctx: Ctx = {
@@ -705,6 +784,7 @@ export function SiteRenderer({
     nav,
     marks,
     forms,
+    demoFolder,
     locate: locate ? { sections: new Set(content.blocks.map((entry) => entry.id)), selected: locate.selected } : undefined,
   };
   const part = (name: "header" | "footer") =>
@@ -732,7 +812,8 @@ export function SiteRenderer({
               {content.title}
             </p>
           )}
-          {nav && <SiteMenu nav={nav} edit={edit !== undefined} scope={scope} />}
+          {nav && <SiteMenu nav={nav} edit={edit !== undefined} scope={scope} links={menuLinks(content, existing, anchors, nav, scope)} />}
+          {content.headerCta?.label.trim() && <HeaderCta label={content.headerCta.label} whatsapp={content.contact.whatsapp} edit={edit !== undefined || Boolean(demoFolder)} />}
         </header>
       )}
       <main className="site-main" data-page-root={edit ? "" : undefined}>

@@ -1,5 +1,7 @@
 import { kitContent } from "./site-kits";
-import { LAYOUT_SITES, pageModel, section, type PageModel, type SiteModel } from "./page-models";
+import { LAYOUT_SITES, isModelV1, pageModel, section, type PageModel, type SiteModel } from "./page-models";
+import { SITE_MODELS_V1 } from "./models";
+import type { SiteModelKey } from "./models/types";
 import {
   DESCRIPTION_MAX,
   HOME,
@@ -121,11 +123,17 @@ function titled(node: SiteNode, title: string): SiteNode {
   })[0];
 }
 
+const modelOf = (key: SiteModelKey) => SITE_MODELS_V1.find((entry) => entry.key === key)!;
+/** What "Ver o modelo" shows: a model of the handoff V1 as the Figma has it (with its samples and photos); the others as they start. */
+export const previewOf = (model: SiteModel, title: string): SiteContent => (isModelV1(model) ? modelOf(model).build(title, "preview") : starterOf(model, title));
+
 /**
  * The starter of a site model: the single page, the home page with four more (the menu is made from their titles, in this order), or a home built
  * of the layouts of the library, with the pages and the look of its model (`LAYOUT_SITES`).
  */
 export function starterOf(model: SiteModel, title: string): SiteContent {
+  // A model of the handoff V1: the site starts with the model's look and generic copy, and what only the person can say left to write.
+  if (isModelV1(model)) return modelOf(model).build(title, "site");
   if (model === "personal" || model === "studio" || model === "online") return kitContent(model, title);
   const single = starterContent(title);
   if (model === "single") return single;

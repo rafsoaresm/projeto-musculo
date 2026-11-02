@@ -46,7 +46,15 @@ test("guided editor: tabs, every page of the site, the section outlined on the p
   browser,
   baseURL,
 }) => {
-  const { guided, slug } = await createGuided(page, /^Personal trainer/);
+  const { guided, slug } = await createGuided(page, /^Uma página só/);
+  // A page from a model, made in the tab Páginas (the single page has only the home page).
+  await tab(guided, "Páginas").click();
+  const models = guided.locator("details.ve-models");
+  if (!(await models.evaluate((node) => (node as HTMLDetailsElement).open))) await models.locator("summary").click();
+  await models.getByRole("button", { name: "Nova página a partir do modelo Sobre mim", exact: true }).click();
+  await tab(guided, "Conteúdo").click();
+  if (isPhone(page) && (await guided.getByRole("button", { name: "Seções", exact: true }).isVisible())) await guided.getByRole("button", { name: "Seções", exact: true }).click();
+  await guided.getByLabel("Página em edição").selectOption({ label: "Página inicial" });
   await expect(guided.getByRole("tablist", { name: "Partes do Editor Guiado" }).getByRole("tab")).toHaveText(["Páginas", "Conteúdo", "Marca", "SEO", "Publicar"]);
   await expect(tab(guided, "Conteúdo")).toHaveAttribute("aria-selected", "true");
   await expect(guided.getByLabel("Onde você está")).toContainText("Página inicial › Cabeçalho do site");
@@ -67,8 +75,8 @@ test("guided editor: tabs, every page of the site, the section outlined on the p
 
   // Another page of the site, chosen in the same place on a phone and on a computer: its sections are listed and its title is edited.
   if (isPhone(page)) await guided.getByRole("button", { name: "Seções", exact: true }).click();
-  await guided.getByLabel("Página em edição").selectOption({ label: "Sobre" });
-  await expect(guided.getByLabel("Onde você está")).toContainText("Sobre");
+  await guided.getByLabel("Página em edição").selectOption({ label: "Sobre mim" });
+  await expect(guided.getByLabel("Onde você está")).toContainText("Sobre mim");
   const sections = guided.getByRole("navigation", { name: "Seções do site" }).locator(".guided-section-pick");
   const names = (await sections.allTextContents()).filter((entry) => entry !== "Cabeçalho do site" && entry !== "Rodapé do site");
   let typed = false;
@@ -78,11 +86,11 @@ test("guided editor: tabs, every page of the site, the section outlined on the p
     if (await title.count()) {
       await title.fill("Quem eu sou e como trabalho");
       typed = true;
-      await expect(guided.getByLabel("Onde você está")).toContainText(`Sobre › ${section}`);
+      await expect(guided.getByLabel("Onde você está")).toContainText(`Sobre mim › ${section}`);
       break;
     }
   }
-  expect(typed, "the page Sobre has a section with a title").toBe(true);
+  expect(typed, "the page Sobre mim has a section with a title").toBe(true);
   preview = await openPreview(page);
   await expect(preview.getByText("Quem eu sou e como trabalho")).toBeVisible();
   await expect(preview.locator("[data-guided-current]")).toBeInViewport();
@@ -91,14 +99,14 @@ test("guided editor: tabs, every page of the site, the section outlined on the p
   await preview.locator("header.site-header").click();
   if (isPhone(page)) await expect(guided.getByRole("region", { name: "Prévia da página" })).toBeHidden();
   else await closePreview(page);
-  await expect(guided.getByLabel("Onde você está")).toContainText("Sobre › Cabeçalho do site");
+  await expect(guided.getByLabel("Onde você está")).toContainText("Sobre mim › Cabeçalho do site");
   await expect(guided.getByRole("region", { name: "Cabeçalho do site" }).getByLabel("Nome do site")).toHaveValue(name);
 
   // SEO of that page, with the preview of a search result.
   await tab(guided, "SEO").click();
   await guided.getByLabel("Descrição para buscadores (opcional)").fill("Como é o acompanhamento, passo a passo");
   await expect(guided.getByRole("group", { name: "Prévia no Google" })).toContainText("Como é o acompanhamento, passo a passo");
-  await expect(guided.getByRole("group", { name: "Prévia no Google" })).toContainText(`Sobre — ${name}`);
+  await expect(guided.getByRole("group", { name: "Prévia no Google" })).toContainText(`Sobre mim — ${name}`);
 
   // Saved and published from the editor itself.
   await guided.getByRole("button", { name: "Salvar rascunho" }).first().click();
@@ -113,7 +121,7 @@ test("guided editor: tabs, every page of the site, the section outlined on the p
   await guided.getByRole("button", { name: "Fechar o Editor Guiado" }).click();
 
   const visitor = await newActor(browser, baseURL);
-  await visitor.page.goto(`./s/${slug}/sobre`);
+  await visitor.page.goto(`./s/${slug}/sobre-mim`);
   await expect(visitor.page.getByText("Quem eu sou e como trabalho")).toBeVisible();
   await expect(visitor.page.locator('meta[name="description"]')).toHaveAttribute("content", "Como é o acompanhamento, passo a passo");
   await expect(visitor.page.locator("footer.site-footer")).toContainText(name);
@@ -124,13 +132,13 @@ test("guided editor: tabs, every page of the site, the section outlined on the p
 });
 
 test("guided editor: the brand (logo sent from the editor, color, look and font) and an image of a section sent from its own field", async ({ page, browser, baseURL }) => {
-  const { guided, slug } = await createGuided(page, /^Estúdio \/ assessoria/);
+  const { guided, slug } = await createGuided(page, /^Uma página só/);
 
   await tab(guided, "Marca").click();
   const logo = guided.getByRole("group", { name: "Logotipo" });
   await logo.getByLabel("Escolher o arquivo da imagem").setInputFiles({ name: "logo.png", mimeType: "image/png", buffer: png(200, 80) });
   await expect(logo.getByText("Imagem enviada.")).toBeVisible();
-  // The model Estúdio starts dark; on the light look a yellow has to be darkened to stay readable, and the editor says so.
+  // On the light look a yellow has to be darkened to stay readable, and the editor says so.
   await guided.getByRole("radio", { name: "Claro" }).check();
   await guided.getByRole("radio", { name: "Minha cor" }).check();
   await guided.getByLabel("Cor da sua marca").fill("#ffff00");
@@ -142,8 +150,12 @@ test("guided editor: the brand (logo sent from the editor, color, look and font)
   await expect(preview.locator(".site[data-site-mode='dark'][data-site-font='serif']")).toHaveCount(1);
   await closePreview(page);
 
-  // A section with an image: a new banner is sent from the field itself and chosen at once; its description is written next to it.
+  // A section with an image (added from the short list): a new banner is sent from the field itself and chosen at once; its description next to it.
   await tab(guided, "Conteúdo").click();
+  if (isPhone(page) && (await guided.getByRole("button", { name: "Seções", exact: true }).isVisible())) await guided.getByRole("button", { name: "Seções", exact: true }).click();
+  await guided.getByRole("button", { name: "Acrescentar seção" }).click();
+  await guided.getByRole("group", { name: "Acrescentar seção" }).getByRole("button", { name: /^Imagem e texto/ }).click();
+  if (isPhone(page)) await guided.getByRole("button", { name: "Seções", exact: true }).click();
   const names = (await guided.getByRole("navigation", { name: "Seções do site" }).locator(".guided-section-pick").allTextContents()).filter((entry) => !entry.endsWith("do site"));
   let sent = false;
   for (const section of names) {
@@ -158,7 +170,7 @@ test("guided editor: the brand (logo sent from the editor, color, look and font)
       break;
     }
   }
-  expect(sent, "the model Estúdio / assessoria has a section with an image").toBe(true);
+  expect(sent, "the site has a section with an image").toBe(true);
   preview = await openPreview(page);
   await expect(preview.getByRole("img", { name: "Treino ao ar livre" })).toBeVisible();
   await closePreview(page);
@@ -185,43 +197,46 @@ test("guided editor: sections added from the short list, moved, hidden from the 
   browser,
   baseURL,
 }) => {
-  const { guided, slug } = await createGuided(page, /^Personal trainer/);
+  const { guided, slug } = await createGuided(page, /^Energia/);
   const nav = guided.getByRole("navigation", { name: "Seções do site" });
   const picks = () => nav.locator(".guided-section-pick").allTextContents();
-  expect(await picks()).toEqual(["Cabeçalho do site", "Destaque", "Como funciona", "Imagem e texto", "Chamada final", "Rodapé do site"]);
+  const start = await picks();
+  expect(start.slice(0, 6)).toEqual(["Cabeçalho do site", "Destaque", "Sobre a metodologia", "Apresentação com imagem", "Serviços e especialidades", "Como funciona"]);
+  expect(start.slice(-2)).toEqual(["Rodapé", "Rodapé do site"]);
   // Header and footer are the site's, the same on every page: they have no tools of their own; the first section cannot go up.
   await expect(nav.getByRole("button", { name: /seção Cabeçalho do site/ })).toHaveCount(0);
   await expect(nav.getByRole("button", { name: "Subir a seção Destaque" })).toBeDisabled();
-  await expect(nav.getByRole("button", { name: "Descer a seção Chamada final" })).toBeDisabled();
+  await expect(nav.getByRole("button", { name: "Descer a seção Rodapé" })).toBeDisabled();
 
   // ---- a section from the list goes after the one chosen and opens its fields (on a phone the fields are the next step) ----
-  await chooseSection(page, "Como funciona");
+  await chooseSection(page, "Sobre a metodologia");
   if (isPhone(page)) await guided.getByRole("button", { name: "Seções", exact: true }).click();
   await guided.getByRole("button", { name: "Acrescentar seção" }).click();
-  await expect(guided.getByRole("group", { name: "Acrescentar seção" })).toContainText("Entra depois de “Como funciona”.");
+  await expect(guided.getByRole("group", { name: "Acrescentar seção" })).toContainText("Entra depois de “Sobre a metodologia”.");
   await guided.getByRole("group", { name: "Acrescentar seção" }).getByRole("button", { name: /^Título e texto/ }).click();
   await expect(guided.getByRole("status").filter({ hasText: "Seção “Título e texto” acrescentada" })).toBeAttached();
   await expect(guided.getByLabel("Onde você está")).toContainText("Página inicial › Título e texto");
   await guided.getByRole("region", { name: "Título e texto" }).getByLabel("Título", { exact: true }).fill("Treino perto de você");
   if (isPhone(page)) await guided.getByRole("button", { name: "Seções", exact: true }).click();
-  expect(await picks()).toEqual(["Cabeçalho do site", "Destaque", "Como funciona", "Título e texto", "Imagem e texto", "Chamada final", "Rodapé do site"]);
+  const added = [...start.slice(0, 3), "Título e texto", ...start.slice(3)];
+  expect(await picks()).toEqual(added);
 
   // ---- moved up, a section hidden from the site, another deleted (and the deletion is said) ----
   await nav.getByRole("button", { name: "Subir a seção Título e texto" }).click();
-  expect(await picks()).toEqual(["Cabeçalho do site", "Destaque", "Título e texto", "Como funciona", "Imagem e texto", "Chamada final", "Rodapé do site"]);
+  expect(await picks()).toEqual([...start.slice(0, 2), "Título e texto", ...start.slice(2)]);
   await nav.getByRole("button", { name: "Esconder a seção Como funciona do site" }).click();
   await expect(nav.getByRole("button", { name: "Mostrar a seção Como funciona no site" })).toHaveAttribute("aria-pressed", "true");
   await expect(nav.locator(".guided-section-pick", { hasText: "Como funciona" })).toContainText("escondida");
-  await nav.getByRole("button", { name: "Excluir a seção Imagem e texto" }).click();
-  await expect(guided.getByRole("status").filter({ hasText: "Seção “Imagem e texto” excluída" })).toBeAttached();
-  expect(await picks()).toEqual(["Cabeçalho do site", "Destaque", "Título e texto", "Como funciona · escondida", "Chamada final", "Rodapé do site"]);
+  await nav.getByRole("button", { name: "Excluir a seção Apresentação com imagem" }).click();
+  await expect(guided.getByRole("status").filter({ hasText: "Seção “Apresentação com imagem” excluída" })).toBeAttached();
+  expect(await picks()).toEqual([...start.slice(0, 2), "Título e texto", start[2]!, ...start.slice(4).map((name) => (name === "Como funciona" ? "Como funciona · escondida" : name))]);
   // The fields of a hidden section say so, and nothing on the screen goes to the side on a phone.
   await chooseSection(page, "Como funciona · escondida");
   await expect(guided.getByText("Esta seção está escondida: não aparece no site.")).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
   const preview = await openPreview(page);
   await expect(preview.getByText("Treino perto de você")).toBeVisible();
-  await expect(preview.getByText("Como funciona o acompanhamento")).toBeHidden();
+  await expect(preview.getByText("Da primeira conversa à sua evolução")).toBeHidden();
   await closePreview(page);
 
   // ---- saved, published, and the visitor's page has the new section and neither the hidden nor the deleted one, not even in its HTML ----
@@ -239,7 +254,7 @@ test("guided editor: sections added from the short list, moved, hidden from the 
   await visitor.page.goto(`./s/${slug}`);
   await expect(visitor.page.getByRole("heading", { name: "Treino perto de você" })).toBeVisible();
   const html = await visitor.page.content();
-  expect(html).not.toContain("Como funciona o acompanhamento");
-  expect(html).not.toContain('data-illustration="weights"');
+  expect(html).not.toContain("Da primeira conversa à sua evolução");
+  expect(html).not.toContain("Uma estratégia sob medida para você.");
   await visitor.context.close();
 });

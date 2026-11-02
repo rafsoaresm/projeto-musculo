@@ -13,7 +13,7 @@ import { z } from "zod";
 
 // ---- colors: the theme's own names (they follow light and dark) and `#rrggbb` ----
 
-export const COLOR_TOKENS = ["ink", "text", "muted", "line", "bg", "accent", "solid", "on", "soft", "softLine", "white", "black", "transparent"] as const;
+export const COLOR_TOKENS = ["ink", "text", "muted", "line", "bg", "accent", "solid", "on", "soft", "softLine", "surface", "dark", "onDark", "onDarkMuted", "accentOnDark", "whatsapp", "white", "black", "transparent"] as const;
 export type ColorToken = (typeof COLOR_TOKENS)[number];
 export const COLOR_TOKEN_LABEL: Record<ColorToken, string> = {
   ink: "Título",
@@ -26,6 +26,12 @@ export const COLOR_TOKEN_LABEL: Record<ColorToken, string> = {
   on: "Sobre o destaque",
   soft: "Destaque suave",
   softLine: "Linha do destaque",
+  surface: "Fundo dos cartões",
+  dark: "Bloco escuro",
+  onDark: "Texto sobre o escuro",
+  onDarkMuted: "Texto suave sobre o escuro",
+  accentOnDark: "Destaque sobre o escuro",
+  whatsapp: "Verde do WhatsApp",
   white: "Branco",
   black: "Preto",
   transparent: "Transparente",
@@ -41,6 +47,14 @@ const COLOR_TOKEN_CSS: Record<ColorToken, string> = {
   on: "var(--site-on)",
   soft: "var(--site-soft)",
   softLine: "var(--site-soft-line)",
+  // A palette of a site model sets these; any other page has them from its base (globals.css).
+  surface: "var(--site-surface)",
+  dark: "var(--site-dark)",
+  onDark: "var(--site-on-dark)",
+  onDarkMuted: "var(--site-on-dark-muted)",
+  accentOnDark: "var(--site-accent-on-dark)",
+  // The WhatsApp button's green does not follow the theme (handoff V1.1): white on it reads at 4.6:1.
+  whatsapp: "#0e8544",
   white: "#ffffff",
   black: "#000000",
   transparent: "transparent",
@@ -101,7 +115,7 @@ export const WRAPS = ["nowrap", "wrap"] as const;
 export const ALIGNS = ["start", "center", "end", "stretch", "baseline"] as const;
 export const SELF_ALIGNS = ["auto", "start", "center", "end", "stretch"] as const;
 export const JUSTIFIES = ["start", "center", "end", "between", "around", "evenly"] as const;
-export const FONT_FAMILIES = ["sans", "serif", "mono"] as const;
+export const FONT_FAMILIES = ["sans", "serif", "mono", "inter"] as const;
 /** What the style of a block may use: the page's fonts and a condensed one for big titles ("display"). Only fonts the device already has. */
 export const STYLE_FONTS = [...FONT_FAMILIES, "display"] as const;
 export const TEXT_ALIGNS = ["left", "center", "right", "justify"] as const;
@@ -128,6 +142,8 @@ export const FONT_CSS: Record<(typeof STYLE_FONTS)[number], string> = {
   sans: "system-ui,-apple-system,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif",
   serif: "Georgia,Cambria,Times New Roman,Times,serif",
   mono: "ui-monospace,SFMono-Regular,Menlo,Consolas,Liberation Mono,monospace",
+  // The font of the site models (Inter, OFL): the file comes with the app (src/app/fonts), nothing is loaded from anyone else.
+  inter: "'Inter Site',Inter,system-ui,-apple-system,Segoe UI,Roboto,Helvetica Neue,Arial,sans-serif",
   // Condensed and heavy where the device has such a font (Impact, Haettenschweiler, Arial Narrow); a plain heavy sans where it has none.
   display: "Impact,Haettenschweiler,Arial Narrow Bold,Arial Narrow,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif",
 };
@@ -226,7 +242,8 @@ export type StyleKey = keyof Style;
 export const isEmptyStyle = (style: Style | undefined): boolean => !style || Object.keys(style).length === 0;
 
 /** The images of the library that a style uses. */
-export const styleAssetIds = (style: Style | undefined): string[] => (style?.bgImage ? [style.bgImage] : []);
+/** The images of the library a style uses; a sample photo of a model (`modelo:…`) is not one of them. */
+export const styleAssetIds = (style: Style | undefined): string[] => (style?.bgImage && !style.bgImage.startsWith("modelo:") ? [style.bgImage] : []);
 
 // ---- the declarations ----
 
@@ -292,8 +309,9 @@ export function cssDeclarations(input: unknown, context: CssContext): string[] {
     // The text, and the theme's names for text, so what is inside follows (a heading reads --site-ink, not `color`).
     const value = colorCss(s.color);
     add("color", value);
-    add("--site-ink", value);
-    add("--site-text", value);
+    // Not a name set to itself: `--site-ink: var(--site-ink)` is a cycle, which makes the value invalid (the text would fall back to the parent's).
+    if (value !== "var(--site-ink)") add("--site-ink", value);
+    if (value !== "var(--site-text)") add("--site-text", value);
   }
   if (s.background) add("background-color", colorCss(s.background));
   if (s.bgImage) {

@@ -2,8 +2,10 @@
 import { useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, ChevronLeft, Eye, EyeOff, Plus, Trash2 } from "lucide-react";
 import {
+  BUTTON_MAX,
   DESCRIPTION_MAX,
   HOME,
+  MAX_MENU_LINKS,
   PAGE_TITLE_MAX,
   TITLE_MAX,
   pageById,
@@ -18,11 +20,13 @@ import { PagesPanel, SubpageSettings, type PageActions } from "./pages-panel";
 import { PAGE_REFUSAL_MESSAGE, addPage, addPageFrom, deletePage, duplicatePage, linksTo, movePage, setInMenu, setTitle } from "./page-model";
 import { PublishIssues } from "./publish-issues";
 import { PublicAddress } from "./public-address";
-import { sectionFields, withPageField, type Field } from "./guided-model";
+import { sectionFields, sectionsOf, withPageField, type Field } from "./guided-model";
 import { FOOTER, HEADER, guidedSections, sectionOfNode, type GuidedState, type SectionRef } from "./guided-state";
 import { GUIDED_SECTIONS } from "./site-kits";
 import { SECTION_REFUSAL_MESSAGE, addSection, isHiddenSection, moveSection, removeSection, setSectionHidden } from "./guided-sections";
-import { brandNote, withAccent, withBrand, withFontChoice, withLogo, withMode, withSiteName } from "./guided-brand";
+import { brandNote, withAccent, withBrand, withFontChoice, withLogo, withMode, withPaletteColor, withSiteName } from "./guided-brand";
+import { PALETTE_HINT, PALETTE_KEYS, PALETTE_LABEL, paletteAdjusted } from "./site-palette";
+import { addMenuLink, moveMenuLink, removeMenuLink, withHeaderCta, withMenuAnchor, withMenuLabel } from "./guided-menu";
 import { seoPreview } from "./guided-seo";
 import { ACCENTS, ACCENT_LABEL, BRAND_START, FONTS, FONT_LABEL, MODES, MODE_LABEL, type Accent, type Mode } from "./site-theme";
 
@@ -314,6 +318,27 @@ function HeaderFields({ content, images, onEdit, onBrand }: { content: SiteConte
           </ul>
         )}
       </fieldset>
+      <SectionLinks content={content} onEdit={onEdit} />
+      <fieldset className="ve-choice">
+        <legend>Botão do WhatsApp no cabeçalho</legend>
+        <label className="check-row">
+          <input
+            type="checkbox"
+            checked={Boolean(content.headerCta)}
+            onChange={(event) => onEdit(withHeaderCta(content, event.target.checked ? "Falar no WhatsApp" : null))}
+          />
+          <span>Mostrar o botão no fim do cabeçalho</span>
+        </label>
+        {content.headerCta && (
+          <TextField
+            label="Texto do botão"
+            value={content.headerCta.label}
+            max={BUTTON_MAX}
+            onChange={(value) => onEdit(withHeaderCta(content, value), "guided:header-cta")}
+            hint={content.contact.whatsapp ? "Leva ao WhatsApp do site." : "Preencha o WhatsApp no rodapé do site: sem número, o botão não aparece na página publicada."}
+          />
+        )}
+      </fieldset>
       <p className="small">
         Cores, fonte e aparência ficam na aba{" "}
         <button type="button" className="link-button" onClick={onBrand}>
@@ -322,6 +347,58 @@ function HeaderFields({ content, images, onEdit, onBrand }: { content: SiteConte
         .
       </p>
     </div>
+  );
+}
+
+/** The menu's links to parts of the home page (a one-page site): a name and the section each one leads to. */
+function SectionLinks({ content, onEdit }: { content: SiteContent; onEdit: Edit }) {
+  const sections = sectionsOf(content, HOME);
+  const menu = content.menu ?? [];
+  const free = sections.find((entry) => !menu.some((link) => link.anchor === entry.id));
+  return (
+    <fieldset className="ve-choice">
+      <legend>Links para as seções da página inicial</legend>
+      {menu.length === 0 && <p className="small muted">Nenhum link: o menu mostra só as páginas do site.</p>}
+      <ul className="guided-menu-list">
+        {menu.map((link, index) => (
+          <li key={`${link.anchor}-${index}`}>
+            <TextField label={`Nome do link ${index + 1}`} value={link.label} max={BUTTON_MAX} onChange={(value) => onEdit(withMenuLabel(content, index, value), `guided:menu-link:${index}`)} />
+            <label>
+              Leva à seção
+              <select value={link.anchor} onChange={(event) => onEdit(withMenuAnchor(content, index, event.target.value))}>
+                {sections.map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {entry.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <span className="persist-actions">
+              <button type="button" className="button small secondary" disabled={index === 0} onClick={() => onEdit(moveMenuLink(content, index, -1))} aria-label={`Subir o link ${link.label}`}>
+                <ArrowUp size={16} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className="button small secondary"
+                disabled={index === menu.length - 1}
+                onClick={() => onEdit(moveMenuLink(content, index, 1))}
+                aria-label={`Descer o link ${link.label}`}
+              >
+                <ArrowDown size={16} aria-hidden="true" />
+              </button>
+              <button type="button" className="button small secondary" onClick={() => onEdit(removeMenuLink(content, index))} aria-label={`Tirar o link ${link.label}`}>
+                <Trash2 size={16} aria-hidden="true" />
+              </button>
+            </span>
+          </li>
+        ))}
+      </ul>
+      {menu.length < MAX_MENU_LINKS && free && (
+        <button type="button" className="button small secondary" onClick={() => onEdit(addMenuLink(content, free.id, free.label))}>
+          <Plus size={16} aria-hidden="true" /> Acrescentar link
+        </button>
+      )}
+    </fieldset>
   );
 }
 
@@ -370,8 +447,8 @@ function BlockFields({ content, pageId, sectionId, images, onEdit }: { content: 
             library={images.library}
             value={field.value}
             onChange={(assetId) => change(field, assetId)}
-            allowNone
-            noneLabel={field.illustration ? "Ilustração do modelo" : "Sem imagem"}
+            allowNone={!field.required}
+            noneLabel={field.demo ? "Foto de exemplo do modelo (não vai para o site publicado)" : field.illustration ? "Ilustração do modelo" : "Sem imagem"}
             usedIds={images.usedIds}
             available={images.available}
             src={images.src}
@@ -390,11 +467,34 @@ function BlockFields({ content, pageId, sectionId, images, onEdit }: { content: 
 
 export function BrandPanel({ content, images, onEdit }: { content: SiteContent; images: ImageSupport; onEdit: Edit }) {
   const note = content.theme.brand ? brandNote(content.theme.brand, content.theme.mode) : null;
+  const palette = content.theme.palette;
+  const adjusted = palette ? paletteAdjusted(palette) : [];
   return (
     <div className="guided-field-list">
       <h2>Marca do site</h2>
       <TextField label="Nome do site" value={content.title} max={TITLE_MAX} onChange={(value) => onEdit(withSiteName(content, value), "guided:title")} hint="Aparece no cabeçalho, no rodapé e no título da página inicial." />
       <LogoPicker content={content} images={images} onEdit={onEdit} />
+      {palette && (
+        <fieldset className="ve-choice guided-palette">
+          <legend>Cores do site</legend>
+          <p className="small muted">As seis cores do modelo. Troque qualquer uma: o botão do WhatsApp continua verde.</p>
+          {PALETTE_KEYS.map((key) => (
+            <label key={key} className="guided-palette-row">
+              <input type="color" value={palette[key]} onChange={(event) => onEdit(withPaletteColor(content, key, event.target.value), `guided:palette:${key}`)} />
+              <span>
+                <strong>{PALETTE_LABEL[key]}</strong> <code>{palette[key]}</code>
+                <span className="small muted"> {PALETTE_HINT[key]}</span>
+              </span>
+            </label>
+          ))}
+          <p className="small muted" role="status">
+            {adjusted.length === 0
+              ? "Todas as cores são usadas como estão."
+              : `Para o texto continuar legível, a página usa um tom mais escuro ou mais claro de: ${adjusted.map((key) => PALETTE_LABEL[key].toLowerCase()).join(", ")}.`}
+          </p>
+        </fieldset>
+      )}
+      {!palette && (
       <fieldset className="ve-choice">
         <legend>Cor da marca</legend>
         <div className="ve-swatches">
@@ -426,6 +526,8 @@ export function BrandPanel({ content, images, onEdit }: { content: SiteContent; 
           </>
         )}
       </fieldset>
+      )}
+      {!palette && (
       <fieldset className="ve-choice">
         <legend>Aparência</legend>
         <div className="ve-swatches">
@@ -437,6 +539,7 @@ export function BrandPanel({ content, images, onEdit }: { content: SiteContent; 
           ))}
         </div>
       </fieldset>
+      )}
       <fieldset className="ve-choice">
         <legend>Fonte</legend>
         <div className="ve-swatches">
@@ -447,7 +550,7 @@ export function BrandPanel({ content, images, onEdit }: { content: SiteContent; 
             </label>
           ))}
         </div>
-        <p className="small muted">São as fontes do próprio aparelho de quem visita: nada é baixado.</p>
+        <p className="small muted">Inter vem com o site; as outras são as do próprio aparelho de quem visita.</p>
       </fieldset>
     </div>
   );
