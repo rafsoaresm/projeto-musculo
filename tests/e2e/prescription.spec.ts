@@ -3,7 +3,7 @@ import {
   addStudent,
   createProfessional,
   localIP,
-  noHorizontalOverflow,
+  noHorizontalOverflow, showStudentTab
 } from "./helpers";
 
 // The page has two sets of phase tabs: the planner's and the prescription's.
@@ -20,6 +20,7 @@ test("a professional prescribes by hand, reorders, copies and revises without lo
   await addStudent(page, "Aluno da prescrição");
 
   // A plan with three phases (ABC, target 5 per workout).
+  await showStudentTab(page, "Periodização");
   await page.getByRole("link", { name: "Novo plano" }).click();
   await page.getByLabel("Nome do plano").fill("Ciclo com exercícios");
   await page.getByLabel("Data de início").fill("2026-11-02");

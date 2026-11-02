@@ -9,7 +9,7 @@ import {
   signIn,
   signOut,
   uniqueEmail,
-  acceptStudentTerms,
+  acceptStudentTerms, showStudentTab
 } from "./helpers";
 
 const next = "another-long-browser-password";
@@ -106,6 +106,7 @@ test("a student changes the password and sees what can be asked about their data
   await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
   await createProfessional(page, "Estúdio da conta do aluno");
   const studentURL = await addStudent(page, "Aluna da conta");
+  await showStudentTab(page, "Acesso e dados");
   await page.getByRole("button", { name: "Gerar link de convite" }).click();
   const link = await page.getByLabel("Link de convite (uso único)").inputValue();
   const client = await newActor(browser, baseURL);

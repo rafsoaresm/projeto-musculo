@@ -29,7 +29,7 @@ export default async function StudentAssessments({
         description="Triagem e indicadores registrados ao longo do tempo."
       />
       <AssessmentsPanel studentId={student.id} assessments={assessments} />
-      <Link href={`/profissional/alunos/${student.id}`} className="button secondary">
+      <Link href={`/profissional/alunos/${student.id}?aba=avaliacoes`} className="button secondary">
         <ArrowLeft size={17} /> Voltar ao aluno
       </Link>
     </>

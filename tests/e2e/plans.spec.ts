@@ -7,7 +7,7 @@ import {
   noHorizontalOverflow,
   password,
   uniqueEmail,
-  acceptProfessionalTerms,
+  acceptProfessionalTerms, showStudentTab
 } from "./helpers";
 
 test("a professional saves, revisits and revises a plan; nobody else reaches it", async ({
@@ -20,6 +20,7 @@ test("a professional saves, revisits and revises a plan; nobody else reaches it"
   const studentURL = await addStudent(page, "Aluno do plano");
 
   // New plan: a name and a valid date are required before anything is stored.
+  await showStudentTab(page, "Periodização");
   await page.getByRole("link", { name: "Novo plano" }).click();
   await expect(
     page.getByRole("heading", { name: "Novo plano de periodização" }),
@@ -61,6 +62,7 @@ test("a professional saves, revisits and revises a plan; nobody else reaches it"
   await expect(page.getByText("Revisão 2", { exact: false }).first()).toBeVisible();
   await expect(page.getByLabel("Quantidade de fases")).toHaveValue("6");
   await page.goto(studentURL);
+  await showStudentTab(page, "Periodização");
   await expect(page.getByRole("heading", { name: "Planos salvos" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Revisão 1" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Revisão 2" })).toBeVisible();

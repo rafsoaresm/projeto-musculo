@@ -7,7 +7,7 @@ import {
   noHorizontalOverflow,
   password,
   uniqueEmail,
-  acceptStudentTerms,
+  acceptStudentTerms, showStudentTab
 } from "./helpers";
 
 const workout = (page: Page, label: string) =>
@@ -21,6 +21,7 @@ const absolute = (page: Page, path: string) => new URL(path, page.url()).href;
 /** A delivered plan (one Full Body workout of three exercises in three phases) and a client with access. */
 async function deliveredPlanWithClient(page: Page, browser: Browser, baseURL: string | undefined, studentName: string) {
   const studentURL = await addStudent(page, studentName);
+  await showStudentTab(page, "Periodização");
   await page.getByRole("link", { name: "Novo plano" }).click();
   await page.getByLabel("Nome do plano").fill("Plano da execução");
   await page.getByLabel("Data de início").fill(yesterdayStart());
@@ -56,6 +57,7 @@ async function deliveredPlanWithClient(page: Page, browser: Browser, baseURL: st
   await expect(page.getByRole("heading", { name: "Entregue ao aluno" })).toBeVisible();
 
   await page.goto(studentURL);
+  await showStudentTab(page, "Acesso e dados");
   await page.getByRole("button", { name: "Gerar link de convite" }).click();
   const link = await page.getByLabel("Link de convite (uso único)").inputValue();
   const client = await newActor(browser, baseURL);
@@ -132,6 +134,7 @@ test("the student logs a workout, corrects it, reports pain, and the professiona
 
   // The professional sees it, with what was prescribed next to what was done.
   await page.goto(studentURL);
+  await showStudentTab(page, "Treinos");
   await expect(page.getByRole("heading", { name: /O que o aluno registrou/ })).toBeVisible();
   await expect(page.getByText("sem leitura")).toHaveCount(0);
   await page.getByRole("link", { name: "Ver todos os registros" }).click();
@@ -240,6 +243,7 @@ test("the student logs a workout, corrects it, reports pain, and the professiona
 
   // Revoking the access closes the log on the very next request.
   await page.goto(studentURL);
+  await showStudentTab(page, "Acesso e dados");
   await page.getByRole("button", { name: "Revogar acesso" }).click();
   await page.getByRole("button", { name: "Confirmar revogação" }).click();
   await expect(page.getByText("Acesso revogado.")).toBeVisible();

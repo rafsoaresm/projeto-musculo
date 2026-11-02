@@ -7,7 +7,7 @@ import {
   noHorizontalOverflow,
   password,
   uniqueEmail,
-  acceptStudentTerms,
+  acceptStudentTerms, showStudentTab
 } from "./helpers";
 
 test("a client enters only by invitation and reaches nothing but the own area", async ({
@@ -18,9 +18,10 @@ test("a client enters only by invitation and reaches nothing but the own area", 
   await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
   await createProfessional(page, "Estúdio convites", "Profissional Convites");
   const studentURL = await addStudent(page, "Cliente de convite");
-  await expect(page.getByText("Sem acesso ao portal")).toBeVisible();
+  await expect(page.getByText("Cliente de convite · Sem acesso ao portal")).toBeVisible();
 
   // The professional creates a one-use link; the raw token is shown once.
+  await showStudentTab(page, "Acesso e dados");
   await page.getByRole("button", { name: "Gerar link de convite" }).click();
   const link = await page.getByLabel("Link de convite (uso único)").inputValue();
   expect(link).toMatch(/\/convite\/[A-Za-z0-9_-]{43}$/);
@@ -76,6 +77,8 @@ test("a client enters only by invitation and reaches nothing but the own area", 
 
   // The professional sees the active access and can revoke it.
   await page.goto(studentURL);
+  await expect(page.getByText("Cliente de convite · Portal ativo")).toBeVisible();
+  await showStudentTab(page, "Acesso e dados");
   await expect(page.getByText("Acesso ativo", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Revogar acesso" }).click();
   await page.getByRole("button", { name: "Confirmar revogação" }).click();

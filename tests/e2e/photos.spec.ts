@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { addStudent, createProfessional, joinStudent, localIP, newActor, noHorizontalOverflow, png, signIn, answerScreening } from "./helpers";
+import { addStudent, createProfessional, joinStudent, localIP, newActor, noHorizontalOverflow, png, signIn, answerScreening, showStudentTab } from "./helpers";
 
 const todayBR = () => {
   const [year, month, day] = new Date().toISOString().slice(0, 10).split("-");
@@ -18,6 +18,7 @@ test("postural photos are sent as clean JPEGs to the private storage, shown only
   await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
   await createProfessional(page, "Estúdio das fotos");
   const studentURL = await addStudent(page, "Aluna das fotos");
+  await showStudentTab(page, "Avaliações");
   await page.getByRole("button", { name: "Iniciar avaliação" }).click();
   await expect(page.getByRole("heading", { name: "Avaliação inicial de Aluna das fotos" })).toBeVisible();
   const draftURL = page.url();
@@ -138,6 +139,7 @@ test("a student known to be under 18 is not photographed by the tool", async ({ 
   await expect(page.getByText("Ficha salva.")).toBeVisible();
 
   await page.goto(studentURL);
+  await showStudentTab(page, "Avaliações");
   await page.getByRole("button", { name: "Iniciar avaliação" }).click();
   const fieldset = page.locator("fieldset", { hasText: "Fotos da postura" });
   await expect(fieldset.getByText("Menor de idade.", { exact: false })).toBeVisible();
@@ -165,6 +167,7 @@ test("a student who did not authorize the photos is not photographed, and can au
   const email = await joinStudent(page, browser, baseURL, "Aluno que recusa as fotos"); // accepts the terms, leaves the photos unticked
 
   await page.goto(studentURL);
+  await showStudentTab(page, "Avaliações");
   await page.getByRole("button", { name: "Iniciar avaliação" }).click();
   const fieldset = page.locator("fieldset", { hasText: "Fotos da postura" });
   await expect(fieldset.getByText("Fotos ainda não autorizadas pelo aluno.")).toBeVisible();
@@ -204,6 +207,7 @@ test("a student who did not authorize the photos is not photographed, and can au
   await expect(page.getByText("Foto anterior enviada.")).toBeVisible();
   await expect(slot(page, "anterior").getByRole("img", { name: "Foto anterior do aluno" })).toBeVisible();
   await page.goto(studentURL);
+  await showStudentTab(page, "Acesso e dados");
   await expect(page.getByText(/Fotos da postura: autorizadas pelo aluno/)).toBeVisible();
 
   // Withdrawing stops new photos at once; the one already stored is not removed by it.

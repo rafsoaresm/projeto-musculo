@@ -9,7 +9,8 @@ import {
   noHorizontalOverflow,
   openInvitation,
   png,
-  signIn, answerScreening } from "./helpers";
+  signIn, answerScreening, showStudentTab
+} from "./helpers";
 
 const inBrazil = (date: Date) =>
   new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
@@ -109,6 +110,7 @@ test("a student asks about their data with a deadline, the professional sees it 
 
   // The student's page of the professional shows the cancellation, not as an open request.
   await page.goto(studentURL);
+  await showStudentTab(page, "Acesso e dados");
   await expect(page.locator("#pedidos").getByText(`Cancelado pelo aluno em ${today()}`)).toBeVisible();
   await client.context.close();
 });
@@ -121,6 +123,7 @@ test("on request, the professional erases the stored photos; the assessment keep
   await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
   await createProfessional(page, "Estúdio do apagar");
   const studentURL = await addStudent(page, "Aluna do apagar");
+  await showStudentTab(page, "Avaliações");
   await page.getByRole("button", { name: "Iniciar avaliação" }).click();
   await expect(page.getByRole("heading", { name: "Avaliação inicial de Aluna do apagar" })).toBeVisible();
   const draftURL = page.url();
@@ -151,6 +154,7 @@ test("on request, the professional erases the stored photos; the assessment keep
 
   // The professional sees how many photos there are, must confirm, and the erasure has no way back.
   await page.goto(studentURL);
+  await showStudentTab(page, "Acesso e dados");
   const panel = page.locator("#pedidos");
   await expect(panel.getByText("Há 1 foto deste aluno guardada.", { exact: false })).toBeVisible();
   await panel.getByRole("button", { name: "Apagar as fotos" }).click();

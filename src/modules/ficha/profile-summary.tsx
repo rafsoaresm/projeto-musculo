@@ -7,9 +7,17 @@ import { ageOn } from "./contracts";
 export function ProfileSummary({
   studentId,
   profile,
+  heading = "Ficha do aluno",
+  eyebrow = "FICHA",
+  note,
 }: {
   studentId: string;
   profile: StudentProfile | null;
+  /** On the "Resumo" of the record the card is "Informações relevantes" (Figma `1:111`). */
+  heading?: string;
+  eyebrow?: string;
+  /** A line under the heading. */
+  note?: string;
 }) {
   const today = new Date().toISOString().slice(0, 10);
   const age = profile?.birthDate ? ageOn(profile.birthDate, today) : null;
@@ -30,8 +38,9 @@ export function ProfileSummary({
   );
   return (
     <section className="panel" aria-labelledby="ficha-aluno">
-      <p className="eyebrow">FICHA</p>
-      <h2 id="ficha-aluno">Ficha do aluno</h2>
+      <p className="eyebrow">{eyebrow}</p>
+      <h2 id="ficha-aluno">{heading}</h2>
+      {note && <p className="small muted">{note}</p>}
       {profile ? (
         <>
           <p>{facts.length > 0 ? facts.join(" · ") : "Ficha salva, sem dados de contexto."}</p>
