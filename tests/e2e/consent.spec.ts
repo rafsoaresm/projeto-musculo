@@ -8,7 +8,7 @@ import {
   noHorizontalOverflow,
   openInvitation,
   signUp,
-  uniqueEmail,
+  uniqueEmail, showStudentTab
 } from "./helpers";
 
 /** Invites the student and returns the client signed up with the invitation page open, terms not yet accepted. */
@@ -78,9 +78,11 @@ test("a student accepts once with the invitation, chooses the photos apart, and 
 
   // The professional sees that it was accepted, when, and what was chosen about the photos.
   await page.goto(first.studentURL);
+  await showStudentTab(page, "Acesso e dados");
   await expect(page.getByText(/Aceite dos termos: feito em \d{2}\/\d{2}\/\d{4}\./)).toBeVisible();
   await expect(page.getByText("Fotos da postura: autorizadas pelo aluno.")).toBeVisible();
   await page.goto(second.studentURL);
+  await showStudentTab(page, "Acesso e dados");
   await expect(page.getByText("Fotos da postura: não autorizadas pelo aluno.")).toBeVisible();
   await first.client.context.close();
   await second.client.context.close();

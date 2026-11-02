@@ -34,7 +34,7 @@ export function attentionQueue(input: AttentionInput): AttentionItem[] {
       reason: row.overdue ? "pedido sobre os dados passou do prazo" : "pedido sobre os dados",
       detail: `${row.kindLabel} · ${row.overdue ? "venceu em" : "prazo"} ${row.dueOn}`,
       cta: "Responder pedido",
-      href: `${student(row.studentId)}#pedidos`,
+      href: `${student(row.studentId)}?aba=acesso#pedidos`,
       rank: row.overdue ? 0 : 4,
     });
   for (const row of input.alerts)
@@ -64,7 +64,7 @@ export function attentionQueue(input: AttentionInput): AttentionItem[] {
       reason: row.discomfort ? "check-in com relato de desconforto" : "check-in sem leitura",
       detail: `Check-in de ${row.checkedOn}`,
       cta: "Ler check-in",
-      href: `${student(row.studentId)}#checkins`,
+      href: `${student(row.studentId)}?aba=evolucao#checkins`,
       rank: row.discomfort ? 3 : 5,
     });
   for (const row of input.drafts)
@@ -84,7 +84,7 @@ export function attentionQueue(input: AttentionInput): AttentionItem[] {
       reason: "convite aguardando aceite",
       detail: "O link foi gerado; o aluno ainda não entrou no portal",
       cta: "Ver situação do acesso",
-      href: student(row.studentId),
+      href: `${student(row.studentId)}?aba=acesso`,
       rank: 7,
     });
   // Stable within a rank: the repositories already ordered each source (newest, nearest deadline first).

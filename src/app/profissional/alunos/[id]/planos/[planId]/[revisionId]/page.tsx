@@ -125,7 +125,7 @@ export default async function PlanRevision({
       )}
       {decision}
       {editor}
-      <Link href={`/profissional/alunos/${student.id}`} className="button secondary">
+      <Link href={`/profissional/alunos/${student.id}?aba=periodizacao`} className="button secondary">
         <ArrowLeft size={17} /> Voltar ao aluno
       </Link>
     </>

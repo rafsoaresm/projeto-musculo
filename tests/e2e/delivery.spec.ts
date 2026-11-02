@@ -8,7 +8,7 @@ import {
   noHorizontalOverflow,
   password,
   uniqueEmail,
-  acceptStudentTerms,
+  acceptStudentTerms, showStudentTab
 } from "./helpers";
 
 const editorTab = (page: Page, name: string) =>
@@ -27,6 +27,7 @@ test("a plan reaches the client only after the professional approves and deliver
   const studentURL = await addStudent(page, "Cliente da entrega");
 
   // A small plan: three phases of one Full Body workout with a target of three exercises.
+  await showStudentTab(page, "Periodização");
   await page.getByRole("link", { name: "Novo plano" }).click();
   await page.getByLabel("Nome do plano").fill("Plano entregue");
   await page.getByLabel("Data de início").fill(yesterday());
@@ -61,6 +62,7 @@ test("a plan reaches the client only after the professional approves and deliver
 
   // The client gets access, and sees nothing yet.
   await page.goto(studentURL);
+  await showStudentTab(page, "Acesso e dados");
   await page.getByRole("button", { name: "Gerar link de convite" }).click();
   const link = await page.getByLabel("Link de convite (uso único)").inputValue();
   const client = await newActor(browser, baseURL);
@@ -154,6 +156,7 @@ test("a plan reaches the client only after the professional approves and deliver
 
   // Revoking the access closes the training on the very next request.
   await page.goto(studentURL);
+  await showStudentTab(page, "Acesso e dados");
   await page.getByRole("button", { name: "Revogar acesso" }).click();
   await page.getByRole("button", { name: "Confirmar revogação" }).click();
   await expect(page.getByText("Acesso revogado.")).toBeVisible();

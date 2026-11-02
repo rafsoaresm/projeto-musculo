@@ -5176,9 +5176,22 @@ button.ve-layer-toggle {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
-.site-tabs [role="tabpanel"]:focus-visible {
+.tabs [role="tabpanel"]:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 4px;
+}
+.tab-badge {
+  display: inline-block;
+  min-width: 20px;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
 }
 .tab-grid {
   display: grid;
@@ -5308,5 +5321,33 @@ fieldset.yes-no legend {
   float: left;
   min-width: 14rem;
   padding: 0;
+  font-weight: 700;
+}
+
+/* ---------- The student's record: header line and the timeline of "Resumo" (Figma 1:111) ---------- */
+.student-status {
+  margin: -8px 0 16px;
+  color: var(--color-muted);
+}
+.student-steps {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.student-step {
+  padding: 8px 16px;
+  border-radius: var(--radius-button);
+  background: var(--color-neutral-100);
+  color: var(--color-muted);
+}
+.student-step.done {
+  background: var(--color-success-soft);
+  color: var(--color-text);
+}
+.student-step.current {
+  background: var(--color-brand-subtle);
+  color: var(--color-primary-strong);
   font-weight: 700;
 }

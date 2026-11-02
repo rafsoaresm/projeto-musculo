@@ -68,6 +68,13 @@ export async function createProfessional(
   return email;
 }
 
+/** Opens a tab of the student's record (Resumo, Avaliações, Periodização, Treinos, Evolução, Acesso e dados) unless it is already open. */
+export async function showStudentTab(page: Page, name: "Resumo" | "Avaliações" | "Periodização" | "Treinos" | "Evolução" | "Acesso e dados") {
+  const tab = page.getByRole("tablist", { name: "Ficha do aluno" }).getByRole("tab", { name: new RegExp(`^${name}`) });
+  if ((await tab.getAttribute("aria-selected")) !== "true") await tab.click();
+  await expect(tab).toHaveAttribute("aria-selected", "true");
+}
+
 export async function addStudent(page: Page, name: string) {
   await page.goto("./profissional/alunos/novo");
   await page.waitForLoadState("networkidle");
@@ -122,6 +129,7 @@ export async function acceptStudentTerms(page: Page, options: { photos?: boolean
 
 /** From a student's page: generates the invitation and signs the student up with it, terms not yet accepted. */
 export async function openInvitation(page: Page, browser: Browser, baseURL: string | undefined, studentName: string) {
+  await showStudentTab(page, "Acesso e dados");
   await page.getByRole("button", { name: "Gerar link de convite" }).click();
   const link = await page.getByLabel("Link de convite (uso único)").inputValue();
   const client = await newActor(browser, baseURL);

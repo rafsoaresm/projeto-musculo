@@ -71,7 +71,7 @@ export default async function StudentExecution({ params }: { params: Promise<{ i
           </div>
         )}
       </section>
-      <Link href={`/profissional/alunos/${student.id}`} className="button secondary">
+      <Link href={`/profissional/alunos/${student.id}?aba=treinos`} className="button secondary">
         <ArrowLeft size={17} /> Voltar ao aluno
       </Link>
     </>

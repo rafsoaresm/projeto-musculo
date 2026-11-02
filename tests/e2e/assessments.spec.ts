@@ -4,7 +4,8 @@ import {
   createProfessional,
   localIP,
   newActor,
-  noHorizontalOverflow, answerScreening } from "./helpers";
+  noHorizontalOverflow, answerScreening, showStudentTab
+} from "./helpers";
 
 const todayBR = () => {
   const [year, month, day] = new Date().toISOString().slice(0, 10).split("-");
@@ -20,6 +21,7 @@ const workout = (page: Page, label: string) =>
 /** A small READY plan for the student on the current page. Returns the revision address. */
 async function readyPlan(page: Page, studentURL: string, title: string) {
   await page.goto(studentURL);
+  await showStudentTab(page, "Periodização");
   await page.getByRole("link", { name: "Novo plano" }).click();
   await page.getByLabel("Nome do plano").fill(title);
   await page.getByLabel("Data de início").fill(yesterday());
@@ -55,6 +57,7 @@ test("screening and indicators are recorded once, reviewed on top, and stay insi
   await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
   await createProfessional(page, "Estúdio da triagem");
   const studentURL = await addStudent(page, "Aluna da triagem");
+  await showStudentTab(page, "Avaliações");
   await expect(page.getByRole("heading", { name: "Avaliações e triagem" })).toBeVisible();
   await expect(page.getByText("Este aluno ainda não tem avaliação.")).toBeVisible();
 
@@ -135,6 +138,7 @@ test("screening and indicators are recorded once, reviewed on top, and stay insi
     "Teste de sentar e levantar",
   );
   await page.goto(studentURL);
+  await showStudentTab(page, "Avaliações");
   await expect(page.getByRole("link", { name: /Rascunho de/ })).toBeVisible();
   await page.getByRole("link", { name: "Continuar o rascunho" }).click();
   await expect(page).toHaveURL(draftURL);
@@ -185,6 +189,7 @@ test("screening and indicators are recorded once, reviewed on top, and stay insi
   await expect(page.getByRole("row", { name: /Aluna da triagem/ })).toContainText("Alerta com revisão registrada");
   await expect(page.getByText("Nenhuma revisão obrigatória pendente")).toBeVisible();
   await page.goto(studentURL);
+  await showStudentTab(page, "Avaliações");
   await page.getByRole("button", { name: "Iniciar reavaliação" }).click();
   await expect(page.getByRole("heading", { name: "Reavaliação de Aluna da triagem" })).toBeVisible();
   await answerScreening(page);
@@ -216,6 +221,7 @@ test("an alert without a review holds the approval and the delivery until the pr
 
   // Record an alert.
   await page.goto(studentURL);
+  await showStudentTab(page, "Avaliações");
   await page.getByRole("button", { name: "Iniciar avaliação" }).click();
   await answerScreening(page, ["Tontura ou desmaio"]);
   await page.getByRole("button", { name: "Registrar avaliação" }).click();
@@ -243,6 +249,7 @@ test("an alert without a review holds the approval and the delivery until the pr
 
   // An alert recorded after the approval holds the delivery until it is reviewed too.
   await page.goto(studentURL);
+  await showStudentTab(page, "Avaliações");
   await page.getByRole("button", { name: "Iniciar reavaliação" }).click();
   await answerScreening(page, ["Dor durante esforço"]);
   await page.getByRole("button", { name: "Registrar avaliação" }).click();
@@ -278,6 +285,7 @@ test("the evolution shows each measure over time and what differs between two as
   const second = daysAgo(0);
 
   // The first assessment, dated two months ago.
+  await showStudentTab(page, "Avaliações");
   await page.getByRole("button", { name: "Iniciar avaliação" }).click();
   await page.getByLabel("Data da avaliação").fill(first);
   await page.getByRole("group", { name: "Vista anterior" }).getByLabel("Valgo aparente de joelhos").check();
@@ -305,6 +313,7 @@ test("the evolution shows each measure over time and what differs between two as
 
   // The reassessment, today.
   await page.goto(studentURL);
+  await showStudentTab(page, "Avaliações");
   await page.getByRole("button", { name: "Iniciar reavaliação" }).click();
   await page.getByRole("group", { name: "Agachamento" }).getByRole("combobox").selectOption("MILD");
   await page.getByRole("button", { name: "Adicionar indicador" }).click();

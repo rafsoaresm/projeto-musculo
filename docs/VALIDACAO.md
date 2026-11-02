@@ -2,6 +2,20 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.61: Ficha do aluno com abas (V4 T05, Figma `1:111`)
+
+**Sem migration.**
+
+- **Cabeçalho:** "Ficha do aluno", o nome, "Visão única de histórico, avaliação, plano e evolução", a linha "nome · estado do portal" (Portal ativo / Convite gerado, aguardando aceite / Sem acesso ao portal; um convite não é portal ativo) e **uma** próxima ação, só quando um estado real pede (`student-summary.ts`, regra pura com testes), nesta ordem: pedido sobre os dados em aberto → triagem que pede revisão → revisão de plano em rascunho, revisão obrigatória ou estrutura pronta ("Próxima ação: revisar plano", como no quadro) → plano aprovado e não entregue (aprovar não é entregar) → rascunho de avaliação → ficha não preenchida. Nada pendente: nenhum botão. A avaliação nunca é exigida antes do resto.
+- **Abas** (componente compartilhado `src/components/tabs.tsx`, o mesmo das abas do Meu Site): as cinco do Figma, na ordem e com os rótulos de lá (Resumo, Avaliações, Periodização, Treinos, Evolução), e **"Acesso e dados"**, do texto da V4, para o convite, o aceite e os pedidos sobre os dados não ficarem no topo (AC05.4). A aba aberta fica no endereço (`?aba=`; uma recarga ou um link a mantém, AC05.2); `#pedidos` e `#checkins` abrem a aba que os contém; a aba "Acesso e dados" mostra quantos pedidos estão em aberto. Todos os painéis continuam desenhados pelo servidor com os mesmos repositórios filtrados por organização e vínculo.
+- **Resumo:** "Linha do tempo" (Cadastro → avaliação → plano → entrega → acompanhamento) feita só dos dados: avaliação "em rascunho" ou "registrada em <data>" (nunca "aprovada"), o estado real da revisão mais nova do plano, a última entrega com a data dela, o último treino registrado; o que não aconteceu aparece como não feito, sem data. "Informações relevantes" é o resumo da ficha que já existia.
+- **Periodização** tem os planos e o planejador (prescrição); **Treinos**, o que o aluno registrou (execução): as duas coisas continuam separadas. **Evolução** tem os check-ins e o link para a evolução das avaliações.
+- **Voltar:** "Voltar ao aluno" das avaliações, dos planos e dos registros volta à aba de onde se veio (AC05.1). A fila da Visão geral leva direto à aba certa.
+- **Verificado localmente:** `npm run check`; navegador na montagem raiz, suíte completa, com o cenário novo `student-tabs` (cabeçalho, ordem das abas, linha do tempo sem dados inventados, teclado, `?aba=` após recarga, aba desconhecida, `#pedidos`, volta de uma subpágina, outra organização recebe 404, sem rolagem lateral).
+- **Diferenças do Figma:** "Acompanhamento ativo" não existe como estado e virou o estado do portal; o texto fixo "Próxima ação: revisar plano" só aparece quando há revisão aberta; os marcos "Avaliação aprovada" e "Periodização configurada" não existem nos dados e não foram desenhados; o quadro não tem conteúdo para as abas 2 a 5, que usam os painéis existentes; a aba "Acesso e dados" não está no quadro.
+- **Não feito / limites:** a V4 lista 7 abas (Resumo, Ficha, Avaliações, Plano e treinos, Evolução, Acompanhamento, Acesso e dados) e o Figma 5, com "Periodização", nome que a V4 aposenta: ficou o Figma mais "Acesso e dados", à espera da decisão (PENDENCIAS B44). Busca e filtros da lista de alunos (T03) continuam fora: a Entrega 2 não está completa.
+- **Não verificado:** nada no ar antes do deploy; zoom de 200% e 1440 px não foram conferidos.
+
 ## Fatia 0.60.1: Meu Site não cai com página publicada no Editor Avançado
 
 **Sem migration.** Defeito achado ao ler os erros do servidor local pelo explorador do Wrangler (a busca de `level = 'error'` mostrou `ReferenceError: window is not defined`).
@@ -10,7 +24,8 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **A correção:** o link passou a ser um `next/link` com o caminho do app (`/site/<endereço>/<página>`), que recebe a montagem também no servidor.
 - **Os outros usos do mesmo recurso** (`useMountPath`) foram revistos: os demais rodam só no navegador (ações, envios, depois de um clique, ou pelo valor do servidor em `useSyncExternalStore`).
 - **Verificado localmente:** `npm run check`; navegador na montagem raiz, testes do Frappe, com a busca de erros do servidor vazia no fim. O teste `frappe-site-flow` agora confere que a página recarregada com uma página publicada responde 200 e que o "ver" leva a `<montagem>/site/<endereço>/home` (antes da correção, a mesma recarga respondia 500).
-- **Não verificado:** nada no ar antes do deploy.
+- **Não verificado:** o ambiente de desenvolvimento não alcança o site publicado; os logs de execução do Webflow da última hora não mostram o erro (sem tráfego nesse caminho, isso não confirma nem descarta que ele acontecia no ar).
+- **CI e deploy:** o CI da PR #62 passou nas duas montagens no commit `ff908ca`. Merge `f2a9b19`. Implantada: deploy `c4e169b6`, build de 04:10 a 04:12 e deploy até 04:12 de 02/11/2026, status `success`.
 
 ## Fatia 0.60: Triagem Sim/Não obrigatória (decisão D4 do usuário, 01/11/2026; V4 T08, T09)
 
