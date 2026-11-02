@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { showTab } from "./site-helpers";
+import { openEditor, showTab } from "./site-helpers";
 import { createProfessional, localIP, newActor, png } from "./helpers";
 
 const state = (page: Page) => page.getByRole("region", { name: "Estado do site" });
@@ -52,9 +52,7 @@ test("images: sent in the editor, shown on the page, public only through the pub
   await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Confirmar e criar site" }).click();
   await showTab(page, "Publicação");
   await expect(state(page).getByText("Fora do ar")).toBeVisible();
-  await showTab(page, "Publicação");
-  await state(page).getByRole("button", { name: "Abrir o editor visual" }).click();
-  await expect(editor(page)).toBeVisible();
+  await openEditor(page);
 
   // The contact the starter page's button points to, so the page can be published.
   await panel(page, "Propriedades");

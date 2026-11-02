@@ -126,6 +126,7 @@ test("meu site, new editor: a site born in it, an image sent from the editor, th
   // the same address is free again, and the first editor can be chosen this time
   await page.getByRole("button", { name: "Escolher Editor Guiado" }).click();
   await page.getByRole("form", { name: "Criar o meu site" }).getByRole("button", { name: "Confirmar e criar site" }).click();
-  await expect(page.getByText("Fora do ar").first()).toBeVisible();
+  await showTab(page, "Publicação");
+  await expect(page.getByRole("region", { name: "Estado do site" }).getByText("Fora do ar")).toBeVisible();
   await stranger.close();
 });
