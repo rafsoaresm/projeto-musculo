@@ -35,6 +35,17 @@ test("a professional builds a page in the visual editor, previews it, publishes 
   await expect(state(page).getByText("Fora do ar")).toBeVisible();
   await noHorizontalOverflow(page);
 
+  // A site fixed in the guided editor shows nothing of the advanced one, in any tab (the user's report of 01/11/2026), and "Editar site" in the
+  // header opens the editor on the page already on the screen.
+  for (const tab of ["Páginas", "Publicação", "Formulários e mensagens", "Configurações"] as const) {
+    await showTab(page, tab);
+    await expect(page.getByRole("main").getByText(/Frappe/)).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "Código livre" })).toHaveCount(0);
+  }
+  await page.getByRole("link", { name: "Editar site" }).click();
+  await expect(editor(page)).toBeVisible();
+  await closeEditor(page);
+
   // A new site is not published at the first click: the call to action points to a WhatsApp that is not filled in. That is a warning, not a
   // blockade: it is shown with the way to publish anyway (which the next scenario takes).
   await showTab(page, "Publicação");

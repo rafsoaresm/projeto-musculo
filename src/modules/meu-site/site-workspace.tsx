@@ -9,7 +9,9 @@ import { useUnsavedGuard } from "@/components/use-unsaved-guard";
 import type { AssetRow } from "@/db/site-assets";
 import type { ReleaseRow, ServiceChoice } from "@/db/sites";
 import { PUBLIC_WARNING, pagesOf, type PublishIssue, type SiteContent } from "./contracts";
-import { SiteTabs, type SiteTab } from "./site-tabs";
+import { SiteTabs } from "./site-tabs";
+import type { SiteTab } from "./site-tab-names";
+import { EDIT_SITE_EVENT } from "./edit-site-button";
 import { PublishIssues } from "./publish-issues";
 import { historyReducer, startHistory } from "./editor-history";
 import { PREPARE_MESSAGE, prepareImage } from "./image-upload";
@@ -72,6 +74,12 @@ export function SiteWorkspace({ slug, initial, live, releases, services, images,
   const [revision, setRevision] = useState(initial.revision);
   const [editorOpen, setEditorOpen] = useState(startEditing && canEdit);
   const [confirmingUnpublish, setConfirmingUnpublish] = useState(false);
+  useEffect(() => {
+    if (!canEdit) return;
+    const open = () => setEditorOpen(true);
+    window.addEventListener(EDIT_SITE_EVENT, open);
+    return () => window.removeEventListener(EDIT_SITE_EVENT, open);
+  }, [canEdit]);
   const stateNote = useNote();
   const saveNote = useNote();
   const editorNote = useNote();

@@ -1,16 +1,7 @@
 "use client";
 import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
-export const SITE_TABS = ["paginas", "publicacao", "formularios", "configuracoes"] as const;
-export type SiteTab = (typeof SITE_TABS)[number];
-export const SITE_TAB_LABEL: Record<SiteTab, string> = {
-  paginas: "Páginas",
-  publicacao: "Publicação",
-  formularios: "Formulários e mensagens",
-  configuracoes: "Configurações",
-};
-
-export const siteTabFrom = (value: string | undefined): SiteTab => (SITE_TABS as readonly string[]).includes(value ?? "") ? (value as SiteTab) : "paginas";
+import { SITE_TABS, SITE_TAB_LABEL, type SiteTab } from "./site-tab-names";
 
 /**
  * The tabs of the management of the site (handoff V4, Figma `10:76` and `10:119`). Every panel stays mounted, so nothing typed in one tab is lost

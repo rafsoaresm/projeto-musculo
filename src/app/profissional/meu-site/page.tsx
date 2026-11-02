@@ -14,7 +14,8 @@ import { SiteWorkspace } from "@/modules/meu-site/site-workspace";
 import { NewEditorPanel } from "@/modules/meu-site/new-editor-panel";
 import { contentOnTheAir } from "@/modules/meu-site/new-editor-forms";
 import { SiteHeader } from "@/modules/meu-site/site-header";
-import { SiteTabs, siteTabFrom } from "@/modules/meu-site/site-tabs";
+import { SiteTabs } from "@/modules/meu-site/site-tabs";
+import { siteTabFrom } from "@/modules/meu-site/site-tab-names";
 import { publicStatus } from "@/modules/meu-site/public-status";
 import Link from "next/link";
 

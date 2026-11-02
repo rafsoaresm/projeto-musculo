@@ -165,7 +165,8 @@ export function NewEditorPanel({ slug, engine, engineFixed, published, pages, wa
         )}
       </section>
       )}
-      {part === "settings" && (
+      {/* The free code is a block of the advanced editor: a site fixed in the guided editor has none (the user's report of 01/11/2026). */}
+      {part === "settings" && (engine === "frappe" || !engineFixed) && (
       <section className="panel" aria-labelledby="codigo-livre">
         <h2 id="codigo-livre">Código livre</h2>
         <p className="small muted">
