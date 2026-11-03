@@ -2,21 +2,36 @@
 import { useMemo, useState } from "react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useUnsavedGuard } from "@/components/use-unsaved-guard";
-import { saveCompositionSection } from "./actions";
+import { saveCompositionSection, saveProfileSection, saveScreeningSection } from "./actions";
 import { DiscardDraftButton } from "./discard-button";
 import { COMPOSITION_MODULE, formFromPayload, payloadFromForm, problemsMessage, type CompositionForm, type CompositionPayload } from "./composition";
 import { CompositionStep } from "./composition-step";
 import { savedAtLabel } from "./autosave";
 import { useDraftAutosave, type DraftModule } from "./use-draft-autosave";
+import {
+  PROFILE_MODULE,
+  SCREENING_MODULE,
+  profileFromForm,
+  screeningFromForm,
+  triagemFormFrom,
+  triagemProblemsMessage,
+  type ProfilePayload,
+  type ScreeningPayload,
+  type TriagemForm,
+} from "./screening";
+import { TriagemStep } from "./triagem-step";
+import type { StepKey } from "./steps";
 
-/** The steps of the guided assessment, as in the Figma frames (AV-03, AV-04). Only "Medidas" exists in this version. */
+/**
+ * The steps of the guided assessment, as in the Figma frames (AV-02, AV-03, AV-04), with the modules of the draft each one edits. "Triagem" and
+ * "Medidas" exist in this version.
+ */
 const STEPS = [
-  { key: "triagem", label: "Triagem", title: "Triagem e segurança" },
-  { key: "medidas", label: "Medidas", title: "Composição corporal" },
-  { key: "movimento", label: "Movimento", title: "Postura e movimento" },
-  { key: "revisao", label: "Revisão", title: "Revisão e conclusão" },
-] as const;
-type StepKey = (typeof STEPS)[number]["key"];
+  { key: "triagem", label: "Triagem", title: "Triagem e segurança", description: "Objetivos, histórico de saúde e revisão profissional", modules: [PROFILE_MODULE, SCREENING_MODULE] },
+  { key: "medidas", label: "Medidas", title: "Composição corporal", description: "Medidas básicas, protocolo de dobras e prévia calculada", modules: [COMPOSITION_MODULE] },
+  { key: "movimento", label: "Movimento", title: "Postura e movimento", description: null, modules: [] },
+  { key: "revisao", label: "Revisão", title: "Revisão e conclusão", description: null, modules: [] },
+] as const satisfies readonly { key: StepKey; label: string; title: string; description: string | null; modules: readonly string[] }[];
 
 /**
  * The guided assessment of the new format (handoff V2): the step chips, the step on screen, and Voltar / Salvar rascunho / Próximo. What is typed
@@ -31,6 +46,9 @@ export function AssessmentShell({
   birthDate,
   revision: initialRevision,
   composition,
+  profile,
+  screening,
+  initialStep = "triagem",
 }: {
   studentId: string;
   assessmentId: string;
@@ -39,9 +57,14 @@ export function AssessmentShell({
   birthDate: string | null;
   revision: number;
   composition: CompositionPayload;
+  profile: ProfilePayload;
+  screening: ScreeningPayload;
+  /** The step in the address (?etapa=), so a reload stays where the person was; a new draft starts at step 1. */
+  initialStep?: StepKey;
 }) {
-  const [step, setStep] = useState<StepKey>("medidas");
+  const [step, setStep] = useState<StepKey>(initialStep);
   const [form, setForm] = useState<CompositionForm>(() => formFromPayload(composition));
+  const [triagem, setTriagem] = useState<TriagemForm>(() => triagemFormFrom(profile, screening));
   const [discardError, setDiscardError] = useState<string | null>(null);
   const index = STEPS.findIndex((item) => item.key === step);
   const current = STEPS[index];
@@ -58,7 +81,28 @@ export function AssessmentShell({
     }),
     [form, assessmentId],
   );
-  const draft = useDraftAutosave(initialRevision, { [COMPOSITION_MODULE]: compositionModule });
+  // The two modules of "Triagem" are read from one screen: each is sent only when its own part changed (its content).
+  const profileModule: DraftModule = {
+    content: JSON.stringify([triagem.goals, triagem.goalNotes]),
+    read: () => {
+      const read = profileFromForm(triagem);
+      return read.payload === null ? { problem: triagemProblemsMessage(read.problems) } : { payload: read.payload };
+    },
+    send: (payload, revision) => saveProfileSection(assessmentId, payload, revision),
+  };
+  const screeningModule: DraftModule = {
+    content: JSON.stringify([triagem.anamnesis, triagem.current, triagem.past, triagem.parq, triagem.decision, triagem.decisionNotes]),
+    read: () => {
+      const read = screeningFromForm(triagem);
+      return read.payload === null ? { problem: triagemProblemsMessage(read.problems) } : { payload: read.payload };
+    },
+    send: (payload, revision) => saveScreeningSection(assessmentId, payload, revision),
+  };
+  const draft = useDraftAutosave(initialRevision, {
+    [PROFILE_MODULE]: profileModule,
+    [SCREENING_MODULE]: screeningModule,
+    [COMPOSITION_MODULE]: compositionModule,
+  });
   const status = draft.status;
   const alert = discardError ?? draft.alert;
   useUnsavedGuard(draft.unsaved);
@@ -68,11 +112,17 @@ export function AssessmentShell({
     setDiscardError(null);
     setForm(next);
   };
+  const editTriagem = (next: TriagemForm) => {
+    setDiscardError(null);
+    setTriagem(next);
+  };
 
   /** Leaving a step saves what changed in it (never an invalid value: the problem is shown and the step still changes). */
   const goTo = (next: StepKey) => {
     if (next === step) return;
     setStep(next);
+    // The address keeps the step (a convenience for a reload), relative to the page so it holds under any mount.
+    window.history.replaceState(null, "", `?etapa=${next}`);
     void draft.request("step");
   };
 
@@ -97,10 +147,12 @@ export function AssessmentShell({
 
       <div className="av2-heading">
         <h2>{current.title}</h2>
-        {step === "medidas" && <p className="muted small">Medidas básicas, protocolo de dobras e prévia calculada</p>}
+        {current.description && <p className="muted small">{current.description}</p>}
       </div>
 
-      {step === "medidas" ? (
+      {step === "triagem" ? (
+        <TriagemStep form={triagem} onChange={editTriagem} />
+      ) : step === "medidas" ? (
         <CompositionStep form={form} onChange={edit} assessedOn={assessedOn} birthDate={birthDate} />
       ) : (
         <section className="panel av2-card">
@@ -147,7 +199,7 @@ export function AssessmentShell({
             onClick={() => {
               if (draft.stopped) return;
               setDiscardError(null);
-              void draft.request("button", COMPOSITION_MODULE);
+              void draft.request("button", current.modules);
             }}
           >
             Salvar rascunho

@@ -1,6 +1,7 @@
 import { test, expect, type Page, type Request } from "@playwright/test";
 import { addStudent, createProfessional, localIP, noHorizontalOverflow, showStudentTab } from "./helpers";
 import { AUTOSAVE_STOPPED, DRAFT_AUTOSAVE_DELAY_MS } from "../../src/modules/avaliacoes/v2/autosave";
+import { ANAMNESIS, PARQ } from "../../src/modules/avaliacoes/catalog";
 
 // The Avaliação Física (handoff V2; the only assessment since the user's decision of 03/11/2026), step "Medidas".
 // The figures are the handoff's example (section 8): a man of 27 on the assessment date, 69,1 kg, 1,71 m.
@@ -57,17 +58,19 @@ test("the Medidas step of the new format computes the preview, keeps values acro
   await showStudentTab(page, "Avaliação Física");
   await page.getByRole("button", { name: "Iniciar avaliação física" }).click();
   await expect(page.getByRole("heading", { name: "Avaliação física de Aluno das medidas" })).toBeVisible();
-  const draftURL = page.url();
 
+  // A new draft opens at step 1, the Triagem; the steps still to come are honest placeholders, with no field.
   const steps = page.getByRole("navigation", { name: "Etapas da avaliação física" });
   await expect(steps.getByRole("button")).toHaveText(["1 Triagem", "2 Medidas", "3 Movimento", "4 Revisão"]);
-  await expect(steps.getByRole("button", { name: "2 Medidas" })).toHaveAttribute("aria-current", "step");
+  await expect(steps.getByRole("button", { name: "1 Triagem" })).toHaveAttribute("aria-current", "step");
   await expect(page.getByText("Sem alterações desde que a página abriu.")).toBeVisible();
-  // The other steps are honest placeholders, with no field.
-  await steps.getByRole("button", { name: "1 Triagem" }).click();
+  await steps.getByRole("button", { name: "3 Movimento" }).click();
   await expect(page.getByText("Esta etapa chega numa próxima versão.")).toBeVisible();
-  await page.getByRole("button", { name: "Próximo" }).click();
+  await page.getByRole("button", { name: "Voltar" }).click();
   await expect(steps.getByRole("button", { name: "2 Medidas" })).toHaveAttribute("aria-current", "step");
+  // The address keeps the step, so a reload (and the other tab below) opens it again.
+  await expect(page).toHaveURL(/\?etapa=medidas$/);
+  const draftURL = page.url();
 
   // Nothing chosen yet: no number, it says what is missing.
   await expect(preview(page).getByText("Escolha o protocolo de dobras para calcular")).toBeVisible();
@@ -235,7 +238,7 @@ test("the Medidas step of the new format computes the preview, keeps values acro
   await page.goto(studentURL);
   await showStudentTab(page, "Avaliação Física");
   await page.getByRole("link", { name: "Continuar a avaliação física", exact: true }).click();
-  await expect(page).toHaveURL(draftURL);
+  await expect(page).toHaveURL(draftURL.replace(/\?etapa=medidas$/, ""));
   await expect(page.getByRole("navigation", { name: "Etapas da avaliação física" })).toBeVisible();
 });
 
@@ -245,6 +248,7 @@ test("a value that is not a number is named, never saved by itself, and nothing 
   await addStudent(page, "Aluna sem nascimento");
   await showStudentTab(page, "Avaliação Física");
   await page.getByRole("button", { name: "Iniciar avaliação física" }).click();
+  await page.getByRole("button", { name: "2 Medidas" }).click();
   // The long read-only value wraps in its box instead of being cut (user's report of 03/11/2026).
   await expect(page.getByLabel("Idade na avaliação")).toHaveText("Sem data de nascimento no cadastro");
   expect((await linesOf(page, "Protocolo de dobras cutâneas")).cut).toBe(0);
@@ -326,4 +330,127 @@ test("there is one assessment, the Avaliação Física: the earlier format is no
   await page.goto("./profissional/avaliacoes");
   await expect(page.getByRole("heading", { name: "Avaliação Física", exact: true })).toBeVisible();
   await expect(page.getByRole("row", { name: /Aluno da avaliação única/ }).getByRole("link", { name: "Continuar" })).toBeVisible();
+});
+
+/** The answers of a question (a radio group named by the question) start at the same x and have the same width on every line of a card. */
+async function answersAligned(page: Page, card: string) {
+  return page.getByRole("region", { name: card }).evaluate((region) => {
+    const boxes = [...region.querySelectorAll<HTMLElement>(".av2-answers")].map((box) => box.getBoundingClientRect());
+    return boxes.length > 0 && boxes.every((box) => Math.abs(box.left - boxes[0].left) <= 1 && Math.abs(box.width - boxes[0].width) <= 1);
+  });
+}
+const question = (page: Page, text: string) => page.getByRole("radiogroup", { name: text, exact: true });
+
+test("the Triagem step takes the goals, the anamnesis, the activity and the PAR-Q, asks for a decision on a Sim, and saves itself", async ({ page }) => {
+  await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
+  await createProfessional(page, "Estúdio da triagem");
+  await addStudent(page, "Aluno da triagem");
+  await showStudentTab(page, "Avaliação Física");
+  await page.getByRole("button", { name: "Iniciar avaliação física" }).click();
+  await expect(page.getByRole("heading", { name: "Triagem e segurança" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Decisão profissional" })).toHaveCount(0);
+
+  // Goals: several at once.
+  const goals = page.getByRole("group", { name: "Objetivos do treinamento" });
+  await expect(goals.getByRole("checkbox")).toHaveCount(7);
+  await goals.getByRole("checkbox", { name: "Hipertrofia" }).check();
+  await goals.getByRole("checkbox", { name: "Saúde e bem-estar" }).check();
+  await page.getByLabel("Objetivos adicionais e notas").fill("Voltar a correr 5 km");
+
+  // Anamnesis: ten questions, nothing answered by itself; a "Sim" opens its description.
+  const anamnesis = page.getByRole("region", { name: "Anamnese clínica" });
+  await expect(anamnesis.getByRole("radiogroup")).toHaveCount(10);
+  await expect(anamnesis.getByRole("radio", { checked: true })).toHaveCount(0);
+  await question(page, ANAMNESIS.injuries).getByRole("radio", { name: "Sim" }).check();
+  await page.getByLabel(`Descrição de “${ANAMNESIS.injuries}”`).fill("Entorse no tornozelo direito em 2024");
+  await question(page, ANAMNESIS.allergies).getByRole("radio", { name: "Não informado" }).check();
+  await question(page, ANAMNESIS.smoking).getByRole("radio", { name: "Não", exact: true }).check();
+
+  // Activity: the frequency is a number per week; text such as "3x" is named, never stored.
+  const current = page.getByRole("region", { name: "Atividade física atual" });
+  await current.getByLabel("Pratica?").selectOption("yes");
+  await current.getByLabel("Atividades").fill("Musculação");
+  await current.getByLabel("Frequência (por semana)").fill("3x");
+  await current.getByLabel("Duração/tempo de prática").fill("60 min, há 2 anos");
+  const quietProblem = page.getByRole("status").filter({ hasText: "Confira o campo Frequência (atual)" });
+  await expect(quietProblem).toBeVisible({ timeout: BY_ITSELF });
+  await current.getByLabel("Frequência (por semana)").fill("3");
+  await expect(quietProblem).toHaveCount(0);
+  await page.getByRole("region", { name: "Atividade física passada" }).getByLabel("Praticou?").selectOption("no");
+
+  // PAR-Q: seven questions, each "Não respondido" until answered, which is pending, never a "Não".
+  const parq = page.getByRole("region", { name: "PAR-Q • 7 perguntas" });
+  await expect(parq.getByRole("radiogroup")).toHaveCount(7);
+  await expect(parq.getByRole("radio", { name: "Não respondido", checked: true })).toHaveCount(7);
+  await expect(parq.getByText("7 de 7 perguntas sem resposta")).toBeVisible();
+  for (const text of Object.values(PARQ)) await question(page, text).getByRole("radio", { name: "Não", exact: true }).check();
+  await expect(parq.getByText("Todas as perguntas do PAR-Q respondidas.")).toBeVisible();
+  // A "Sim" is a flag that asks for the professional's decision: nothing is chosen for them.
+  await question(page, PARQ.dizziness).getByRole("radio", { name: "Sim" }).check();
+  const decision = page.getByRole("region", { name: "Decisão profissional" });
+  await expect(decision.getByText("Atenção: pelo menos uma resposta positiva. Registrar decisão profissional antes de finalizar.")).toBeVisible();
+  await expect(decision.getByRole("radio", { checked: true })).toHaveCount(0);
+  await decision.getByRole("radio", { name: "Precisa de liberação médica" }).check();
+  await decision.getByLabel("Nota da decisão").fill("Encaminhado ao cardiologista antes de treinos intensos.");
+
+  // Every line lines up: the answers of all questions in one column, the fields of the activity cards on one line each (a long note on its own).
+  for (const card of ["Anamnese clínica", "PAR-Q • 7 perguntas"]) expect(await answersAligned(page, card), card).toBe(true);
+  const wide = (page.viewportSize()?.width ?? 0) >= 1024;
+  for (const card of ["Atividade física atual", "Atividade física passada"]) {
+    const { lines } = await linesOf(page, card);
+    expect(lines.every((line) => line.aligned), card).toBe(true);
+    if (wide) expect(lines.map((line) => line.fields), card).toEqual([4, 1]);
+    else expect(lines.every((line) => line.fields === 1), card).toBe(true);
+  }
+  await noHorizontalOverflow(page);
+
+  // Nobody clicks "Salvar rascunho": it saves itself, and a reload brings everything back.
+  await expect(savedLine(page)).toBeVisible({ timeout: BY_ITSELF });
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Triagem e segurança" })).toBeVisible();
+  await expect(goals.getByRole("checkbox", { name: "Hipertrofia" })).toBeChecked();
+  await expect(goals.getByRole("checkbox", { name: "Saúde e bem-estar" })).toBeChecked();
+  await expect(goals.getByRole("checkbox", { checked: true })).toHaveCount(2);
+  await expect(page.getByLabel("Objetivos adicionais e notas")).toHaveValue("Voltar a correr 5 km");
+  await expect(question(page, ANAMNESIS.injuries).getByRole("radio", { name: "Sim" })).toBeChecked();
+  await expect(page.getByLabel(`Descrição de “${ANAMNESIS.injuries}”`)).toHaveValue("Entorse no tornozelo direito em 2024");
+  await expect(question(page, ANAMNESIS.allergies).getByRole("radio", { name: "Não informado" })).toBeChecked();
+  await expect(question(page, ANAMNESIS.surgeries).getByRole("radio", { checked: true })).toHaveCount(0);
+  await expect(current.getByLabel("Pratica?")).toHaveValue("yes");
+  await expect(current.getByLabel("Frequência (por semana)")).toHaveValue("3");
+  await expect(current.getByLabel("Duração/tempo de prática")).toHaveValue("60 min, há 2 anos");
+  await expect(question(page, PARQ.dizziness).getByRole("radio", { name: "Sim" })).toBeChecked();
+  await expect(question(page, PARQ.heart_condition).getByRole("radio", { name: "Não", exact: true })).toBeChecked();
+  await expect(decision.getByRole("radio", { name: "Precisa de liberação médica" })).toBeChecked();
+  await expect(decision.getByLabel("Nota da decisão")).toHaveValue("Encaminhado ao cardiologista antes de treinos intensos.");
+
+  // The button saves the step at once, before the pause would; the Medidas step is untouched by it.
+  await question(page, PARQ.other_reason).getByRole("radio", { name: "Não respondido" }).check();
+  await expect(parq.getByText("1 de 7 pergunta sem resposta")).toBeVisible();
+  await page.getByRole("button", { name: "Salvar rascunho" }).click();
+  await expect(savedLine(page)).toBeVisible({ timeout: BEFORE_THE_PAUSE });
+  await page.getByRole("button", { name: "Próximo" }).click();
+  await expect(page.getByLabel("Peso (kg)")).toHaveValue("");
+  await page.reload();
+  await expect(page.getByLabel("Peso (kg)")).toBeVisible();
+  await page.getByRole("button", { name: "1 Triagem" }).click();
+  await expect(question(page, PARQ.other_reason).getByRole("radio", { name: "Não respondido" })).toBeChecked();
+  // "Não respondido" chosen is drawn as no answer (an outline), not as the solid chip of a given answer.
+  const blankChip = question(page, PARQ.other_reason).locator("label", { has: page.getByRole("radio", { name: "Não respondido" }) }).locator("span");
+  const noChip = question(page, PARQ.heart_condition).locator("label", { has: page.getByRole("radio", { name: "Não", exact: true }) }).locator("span");
+  const background = (chip: typeof blankChip) => chip.evaluate((element) => getComputedStyle(element).backgroundColor);
+  expect(await background(blankChip)).not.toBe(await background(noChip));
+  await expect(parq.getByRole("radiogroup").first()).toHaveAttribute("aria-required", "true");
+
+  // An invalid value left in Triagem never holds back the Medidas step: its weight saves by itself, the Triagem value is still named.
+  await current.getByLabel("Frequência (por semana)").fill("3x");
+  await page.getByRole("button", { name: "Próximo" }).click();
+  await page.getByLabel("Peso (kg)").fill("69,1");
+  await expect(page.getByRole("status").filter({ hasText: "Confira o campo Frequência (atual)" })).toBeVisible({ timeout: BY_ITSELF });
+  const other = await page.context().newPage();
+  await other.goto(page.url());
+  await expect(other.getByLabel("Peso (kg)")).toHaveValue("69,1");
+  await other.getByRole("button", { name: "1 Triagem" }).click();
+  await expect(other.getByRole("region", { name: "Atividade física atual" }).getByLabel("Frequência (por semana)")).toHaveValue("3");
+  await other.close();
 });

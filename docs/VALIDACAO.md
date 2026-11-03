@@ -2,6 +2,20 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.76: Etapa Triagem da Avaliação Física (handoff 3.1, Figma AV-02)
+
+**Sem migration** (os dados vão nas linhas de `assessment_sections` da 0033). A etapa 1 deixa de ser marcador: o rascunho novo abre nela, e ela é salva pelo salvamento automático e pelo botão, como Medidas.
+
+- **Dois módulos, como no fluxo do handoff (seção 2):** `profile` (objetivos, da lista do catálogo, e "Objetivos adicionais e notas") e `screening` (anamnese, exercício atual e passado, PAR-Q). Cada um vai só quando muda, contra a revisão.
+- **Anamnese:** cada item Sim / Não / Não informado, com descrição; item sem resposta fica sem resposta, nunca "Não".
+- **Exercício atual e passado:** os campos da seção 3.1 (Pratica?/Praticou?, atividades, frequência em vezes por semana, duração ou tempo, observações). Frequência é número positivo; durações e tempos são texto livre (o handoff não dá unidade). Pratica?/Praticou? só Sim/Não (o handoff não dá opções) — escolha da ferramenta, a conferir.
+- **PAR-Q:** as 7 perguntas com **o texto do handoff, literal** (o PDF não está no repositório; ver B47); Sim / Não / Não respondido; guardado com o instrumento `parq_7_legacy` e a versão `pdf_2026_11`. Qualquer "Sim" mostra a faixa de atenção (texto do Figma AV-02) e o cartão "Decisão profissional": "Liberado para treinar", "Precisa de liberação médica" ou "Outra decisão", com nota (redação da ferramenta para a decisão do usuário de 02/11/2026). Quem e quando ficam para o finalizar (0.77). Nada vem marcado.
+- **O que vai impedir o finalizar (0.77), já calculado:** toda pergunta do PAR-Q com Sim ou Não; com algum Sim, decisão e nota. Objetivos, anamnese e atividade podem ficar parciais.
+- **Salvamento automático:** um valor inválido de uma etapa não impede mais o salvamento dos outros módulos (corrigido nesta fatia).
+- **Acessibilidade:** cada pergunta é um grupo com a pergunta como legenda; os campos exigidos para finalizar são marcados como obrigatórios; a faixa de atenção é anunciada quando aparece; "Não respondido" não parece uma resposta.
+- **Verificado localmente:** tipos, lint e `npm run check`; e2e nos dois mounts (raiz e `/treinador`): a triagem inteira preenchida, um Sim com descrição, frequência inválida recusada, PAR-Q com um Sim e a decisão, salvamento automático, recarregar e conferir tudo; capturas a 1440, 1280, 1024, 768 e 390.
+- **Não verificado:** leitor de tela real; o texto do PDF do PAR-Q. **Não feito (do handoff):** anexos da anamnese; a opção "avaliação física não realizada/adiada" (coberta por "Outra decisão" com nota); mostrar os dados pessoais do aluno na etapa 1. Nada bloqueia a aprovação do plano ainda (0.77).
+
 ## Fatia 0.75: Salvamento automático do rascunho da Avaliação Física
 
 **Sem migration.** O rascunho se salva sozinho cerca de 1,8 s depois que a pessoa para de digitar e ao trocar de etapa, contra a revisão (a mesma ação de "Salvar rascunho", que continua). Regra pura em `src/modules/avaliacoes/v2/autosave.ts` (o mesmo desenho do salvamento automático do site) e o gancho `use-draft-autosave.ts`.
@@ -12,6 +26,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Descarte:** o salvamento automático para quando o descarte é confirmado e volta se o descarte falhar; o erro do descarte fica num alerta próprio e some na próxima edição.
 - **Verificado localmente:** tipos, lint e `npm run check` (111 arquivos, 1761 testes, com 9 da regra); e2e nos dois mounts (raiz e `/treinador`), 24 passaram em cada: digitar, esperar e recarregar traz os valores sem clicar; trocar de etapa salva antes da pausa; o botão salva antes da pausa; a segunda aba recebe o conflito e não envia mais nada; o valor inválido não é guardado; dois cliques durante um salvamento lento enviam um de cada vez e fica o último valor.
 - **Não verificado:** leitor de tela real (NVDA, VoiceOver); só os papéis `status`/`alert` foram conferidos. O gancho não tem teste unitário (a fila é coberta pelos testes de navegador). A verificação "trocar de etapa salva antes da pausa" depende de tempo (1,5 s).
+- **CI e deploy:** o CI do PR #77 passou (`validate` e `validate (/treinador)`, no commit `22f8074`); merge `14b4de2`; deploy `cc81616c` com sucesso em 03/11/2026 (sem migration).
 
 ## Fatia 0.74: Avaliação Física única e alinhamento da etapa Medidas (pedido do usuário de 03/11/2026)
 

@@ -6420,6 +6420,119 @@ fieldset.yes-no legend {
   }
 }
 
+/* ---------- Avaliação Física: etapa Triagem (0.76) ---------- */
+/* A long text takes the whole line of the grid (its own line: the fields beside it never change height). */
+.av2-field-wide {
+  grid-column: 1 / -1;
+}
+.av2-field textarea {
+  min-height: 0;
+  resize: vertical;
+}
+/* A long unit ("por semana") keeps more room at the end of the field. */
+.av2-unit[data-long] input {
+  padding-right: 112px;
+}
+/* The questions of the anamnesis and of the PAR-Q: the text on the left, the answers in a column of the same width on every line (Figma AV-02),
+   so the answers of every question line up; a description, when there is one, takes the whole line under them. */
+.av2-questions {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.av2-question-item {
+  padding: 12px 0;
+  border-top: 1px solid var(--color-line);
+}
+.av2-question-item:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+/* Each question is a fieldset (its legend is the question): the browser's frame and padding go, and the legend floats so it is a grid item like
+   the answers instead of sitting in the fieldset's border. */
+.av2-question {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 24px;
+  row-gap: 10px;
+  align-items: center;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.av2-question-text {
+  float: left;
+  width: 100%;
+  padding: 0;
+  font-size: var(--font-size-base);
+  color: var(--color-ink);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.av2-answers {
+  display: grid;
+  grid-template-columns: repeat(3, 9.5rem);
+  gap: 8px;
+}
+.av2-answers .av2-chip span {
+  padding: 8px 12px;
+  white-space: normal;
+  text-align: center;
+}
+.av2-question-details {
+  grid-column: 1 / -1;
+  margin-top: 2px;
+}
+/* A "Sim" is a flag of attention (never a verdict): the chip takes the warning colours of the Figma frame. */
+/* Chosen, it must read as chosen next to the pale chips beside it: a firm border in the warning text colour. */
+.av2-chip[data-tone="attention"] input:checked + span {
+  background: var(--color-warning-soft);
+  color: var(--color-warning-text);
+  box-shadow: inset 0 0 0 2px var(--color-warning-text);
+}
+/* "Não respondido" chosen is no answer yet: a neutral outline on the card's own colour, never the solid chip of a given answer. */
+.av2-chip[data-tone="blank"] input:checked + span {
+  background: var(--color-surface);
+  color: var(--color-ink);
+  box-shadow: inset 0 0 0 2px var(--color-line-strong);
+}
+.av2-attention {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border-radius: var(--radius-card);
+  background: var(--color-warning-soft);
+  color: var(--color-warning-text);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+.av2-attention svg {
+  flex: none;
+  margin-top: 1px;
+}
+.av2-decisions {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+/* Below the width of the fields' grid, the answers go under the question: beside it, a fixed column of three chips left the question text only a
+   narrow column (four or five lines at 768 and 1024). */
+@container (max-width: 760px) {
+  .av2-question {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .av2-answers {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@container (max-width: 560px) {
+  .av2-decisions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* ---------- Meu Site: Rastreamento e conversões (0.71) ---------- */
 /* The table of events scrolls inside its own box; nothing in the panel widens the page on a phone. */
 .tracking-panel {

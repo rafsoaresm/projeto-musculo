@@ -9,8 +9,10 @@ import { Notice, PageHeading } from "@/components/ui";
 import { AssessmentView } from "@/modules/avaliacoes/assessment-view";
 import { formatCalendarDate } from "@/modules/training/format";
 import { AssessmentShell } from "@/modules/avaliacoes/v2/assessment-shell";
+import { isStepKey } from "@/modules/avaliacoes/v2/steps";
 import { DiscardDraftButton } from "@/modules/avaliacoes/v2/discard-button";
 import { COMPOSITION_MODULE, readComposition } from "@/modules/avaliacoes/v2/composition";
+import { PROFILE_MODULE, SCREENING_MODULE, readProfile, readScreening } from "@/modules/avaliacoes/v2/screening";
 import { ASSESSMENT_NAME, assessmentTitle } from "@/modules/avaliacoes/names";
 
 export const dynamic = "force-dynamic";
@@ -18,8 +20,10 @@ export const metadata: Metadata = { title: ASSESSMENT_NAME };
 
 export default async function Assessment({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string; assessmentId: string }>;
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   const { db, context, workspace } = await requireWorkspace();
   const { id, assessmentId } = await params;
@@ -37,7 +41,8 @@ export default async function Assessment({
 
   if (detail.state === "DRAFT" && detail.formatVersion === 2) {
     const [v2, snapshot] = await Promise.all([api.sections(assessmentId), api.studentSnapshot(assessmentId)]);
-    const composition = v2?.sections.find((section) => section.module === COMPOSITION_MODULE);
+    const section = (module: string) => v2?.sections.find((item) => item.module === module)?.payload;
+    const { etapa } = await searchParams;
     return (
       <>
         <PageHeading
@@ -51,7 +56,10 @@ export default async function Assessment({
           assessedOn={detail.assessedOn}
           birthDate={snapshot?.birthDate ?? null}
           revision={v2?.revision ?? 1}
-          composition={readComposition(composition?.payload)}
+          composition={readComposition(section(COMPOSITION_MODULE))}
+          profile={readProfile(section(PROFILE_MODULE))}
+          screening={readScreening(section(SCREENING_MODULE))}
+          initialStep={isStepKey(etapa) ? etapa : undefined}
         />
         {back}
       </>

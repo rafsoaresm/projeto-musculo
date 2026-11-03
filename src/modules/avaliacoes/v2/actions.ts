@@ -5,7 +5,9 @@ import { requireWorkspace } from "@/modules/auth/server";
 import { assessmentsFor } from "@/db/assessments";
 import { assessmentPhotosFor } from "@/db/assessment-photos";
 import { getPhotoBucket } from "@/db/binding";
+import type { AssessmentModule } from "../catalog";
 import { COMPOSITION_MODULE, FIELD_LABEL, SITE_LABEL, compositionSchema, problemsMessage } from "./composition";
+import { PROFILE_MODULE, SCREENING_MODULE, profileSchema, screeningSchema } from "./screening";
 
 export type SaveSectionResult = { saved: true; revision: number } | { conflict: string } | { error: string };
 
@@ -48,13 +50,22 @@ export async function discardAssessmentDraft(studentId: string, assessmentId: st
   redirect(`/profissional/alunos/${studentId}/avaliacoes`);
 }
 
+/** Stores one module of an open draft, already checked by its schema, against the revision the screen read. */
+async function storeSection(assessmentId: string, module: AssessmentModule, payload: unknown, revision: number, invalid: string): Promise<SaveSectionResult> {
+  const { db, context } = await requireWorkspace();
+  const outcome = await assessmentsFor(db, context).saveSection(assessmentId, { module, status: "IN_PROGRESS", payload, revision });
+  if (outcome.status === "saved") return { saved: true, revision: outcome.revision };
+  if (outcome.status === "conflict") return { conflict: CONFLICT_MESSAGE };
+  if (outcome.status === "invalid") return { error: invalid };
+  return { error: "Este rascunho não está mais aberto para edição." };
+}
+
 /**
  * Saves the "Medidas" step (module "composition") of an open draft, based on the revision the screen read. The payload is checked here with
  * the module's schema: the screen's own check is a convenience, this one is the rule. It stays in progress: a module is done only when the
  * assessment is finalized (a later step).
  */
 export async function saveCompositionSection(assessmentId: string, payload: unknown, revision: number): Promise<SaveSectionResult> {
-  const { db, context } = await requireWorkspace();
   const parsed = compositionSchema.safeParse(payload);
   if (!parsed.success) {
     const names = new Set<string>();
@@ -65,14 +76,24 @@ export async function saveCompositionSection(assessmentId: string, payload: unkn
     }
     return { error: names.size > 0 ? problemsMessage([...names]) : "Confira as medidas: algum valor não é aceito." };
   }
-  const outcome = await assessmentsFor(db, context).saveSection(assessmentId, {
-    module: COMPOSITION_MODULE,
-    status: "IN_PROGRESS",
-    payload: parsed.data,
-    revision,
-  });
-  if (outcome.status === "saved") return { saved: true, revision: outcome.revision };
-  if (outcome.status === "conflict") return { conflict: CONFLICT_MESSAGE };
-  if (outcome.status === "invalid") return { error: "Confira as medidas: algum valor não é aceito." };
-  return { error: "Este rascunho não está mais aberto para edição." };
+  return storeSection(assessmentId, COMPOSITION_MODULE, parsed.data, revision, "Confira as medidas: algum valor não é aceito.");
+}
+
+const TRIAGEM_INVALID = "Confira a triagem: alguma resposta não é aceita.";
+
+/** Saves the goals of the "Triagem" step (module "profile"), checked with the module's schema, like "Medidas". */
+export async function saveProfileSection(assessmentId: string, payload: unknown, revision: number): Promise<SaveSectionResult> {
+  const parsed = profileSchema.safeParse(payload);
+  if (!parsed.success) return { error: TRIAGEM_INVALID };
+  return storeSection(assessmentId, PROFILE_MODULE, parsed.data, revision, TRIAGEM_INVALID);
+}
+
+/**
+ * Saves the anamnesis, activity and PAR-Q of the "Triagem" step (module "screening"), checked with the module's schema. The PAR-Q is always
+ * stored with its instrument and version; the professional's decision is stored as typed, and who and when are recorded at finalize.
+ */
+export async function saveScreeningSection(assessmentId: string, payload: unknown, revision: number): Promise<SaveSectionResult> {
+  const parsed = screeningSchema.safeParse(payload);
+  if (!parsed.success) return { error: TRIAGEM_INVALID };
+  return storeSection(assessmentId, SCREENING_MODULE, parsed.data, revision, TRIAGEM_INVALID);
 }

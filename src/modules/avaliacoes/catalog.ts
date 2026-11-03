@@ -31,6 +31,9 @@ export const GOALS = {
   conditioning: "Preparação física",
 } as const;
 
+/** The free field next to the goals (handoff 3.1: "Campo de objetivos adicionais e notas"). */
+export const GOALS_NOTES_LABEL = "Objetivos adicionais e notas";
+
 /** The ten questions of the clinical anamnesis (page 1), each answered Yes, No or Not informed, with a description. */
 export const ANAMNESIS = {
   family_diseases: "Doenças na família nos últimos anos",
@@ -45,20 +48,55 @@ export const ANAMNESIS = {
   diet: "Dieta para perder ou ganhar peso",
 } as const;
 
+/** The answers of an anamnesis question (handoff 3.1: "Sim / Não / Não informado"). */
+export const ANAMNESIS_ANSWERS = { yes: "Sim", no: "Não", unknown: "Não informado" } as const;
+
+/**
+ * Current and past physical activity (handoff 3.1, with its words): practises?; activities; frequency as a value with the unit "por_semana",
+ * never free text such as "3x"; duration/time of practice; notes — and for the past, the total time of practice and the earlier frequency.
+ */
+export const ACTIVITY_CURRENT = {
+  practices: "Pratica?",
+  activities: "Atividades",
+  frequency: "Frequência",
+  duration: "Duração/tempo de prática",
+  notes: "Observações",
+} as const;
+export const ACTIVITY_PAST = {
+  practiced: "Praticou?",
+  activities: "Atividades",
+  totalTime: "Tempo total de prática",
+  frequency: "Frequência anterior",
+  notes: "Observações",
+} as const;
+export const FREQUENCY_UNITS = { por_semana: "por semana" } as const;
+
 /**
  * The PAR-Q of the document, seven questions (handoff 3.1): the legacy instrument as it is, identified with its version. A different
  * instrument (PAR-Q+) is another form with its own identifier, never this one replaced silently.
  */
 export const PARQ_INSTRUMENT = { id: "parq_7_legacy", version: "pdf_2026_11" } as const;
-// The wording of the handoff (section 3.1), which summarizes the PDF's; the PDF's own text replaces it if it differs (PENDENCIAS B47).
+// The handoff's own wording (section 3.1, items 1–7, verbatim). The PDF's text is not in the repository; when it arrives and differs, it
+// replaces this (PENDENCIAS B47).
 export const PARQ = {
-  heart_condition: "Algum médico informou que você tem um problema cardíaco e recomendou atividade física apenas supervisionada?",
-  chest_pain_activity: "Você sente dor no peito durante a atividade física?",
-  chest_pain_month: "No último mês, você sentiu dor no peito ao praticar atividade física?",
-  dizziness: "Você tem tontura, desequilíbrio e/ou perda de consciência?",
-  bone_joint: "Você tem algum problema ósseo ou articular que possa ser agravado pela atividade física?",
-  blood_pressure_medication: "Você toma medicação para pressão arterial e/ou problemas cardíacos?",
-  other_reason: "Você conhece outra razão para não realizar atividade física?",
+  heart_condition: "Algum médico informou problema cardíaco e recomendou atividade apenas supervisionada?",
+  chest_pain_activity: "Dor no peito durante atividade física?",
+  chest_pain_month: "Dor no peito no último mês ao praticar atividade física?",
+  dizziness: "Tontura, desequilíbrio e/ou perda de consciência?",
+  bone_joint: "Problema ósseo/articular potencialmente agravável por atividade física?",
+  blood_pressure_medication: "Medicação para pressão arterial e/ou problemas cardíacos?",
+  other_reason: "Outra razão conhecida para não realizar atividade física?",
+} as const;
+/** The answers of a PAR-Q question (handoff 3.1: "Sim / Não / Não respondido"): one not answered is pending, never a "Não". */
+export const PARQ_ANSWERS = { yes: "Sim", no: "Não", unanswered: "Não respondido" } as const;
+/**
+ * The professional's decision when any PAR-Q answer is "Sim" (handoff 3.1: a human decision is recorded, nothing is decided automatically;
+ * the three choices are the user's decision of 02/11/2026: cleared to train, needs medical clearance, other — always with a note).
+ */
+export const PARQ_DECISIONS = {
+  cleared: "Liberado para treinar",
+  medical_clearance: "Precisa de liberação médica",
+  other: "Outra decisão",
 } as const;
 
 // The nine skinfold sites of page 2 (mm) are with the protocols that use them: formulas/protocols.ts (SKINFOLD_SITES).

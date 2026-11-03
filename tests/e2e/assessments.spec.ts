@@ -18,6 +18,7 @@ test("without a recorded assessment the plan approval asks for the acknowledgeme
   await expect(page.getByRole("heading", { name: "Avaliação Física de Aluno do aviso de ciência" })).toBeVisible();
   await page.getByRole("button", { name: "Iniciar avaliação física" }).click();
   await expect(page.getByRole("heading", { name: "Avaliação física de Aluno do aviso de ciência" })).toBeVisible();
+  await page.getByRole("button", { name: "2 Medidas" }).click();
   await page.getByLabel("Peso (kg)").fill("70");
   await page.getByRole("button", { name: "Salvar rascunho" }).click();
   // Sooner than the pause of the autosave (1,8 s): it was the button.
