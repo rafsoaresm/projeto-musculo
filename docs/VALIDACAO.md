@@ -11,6 +11,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **O que faz:** desliga só a verificação em duas etapas, apaga os segredos e encerra todas as sessões da conta; senha, e-mail e papel não mudam. Num lote só com a linha da trilha (`PLATFORM_TWO_FACTOR_RECOVERED`, "…redefinida com o código de ativação"); uma mudança concorrente não grava nada. Limite de 5 tentativas por endereço a cada 15 minutos (escolha da ferramenta), contado antes de qualquer conferência. Um código errado não diz nada sobre a conta.
 - **Verificado localmente:** tipos, lint e `npm run check` (127 arquivos, 1947 testes; 5 D1 com a autenticação real); e2e completo nos dois mounts (raiz e `/treinador`): 168 passaram, 39 pulados, 0 falhas em cada (outro gestor redefine; com dois gestores a página recusa; com um só, código errado e senha errada recusados, o certo redefine, a sessão antiga cai, a entrada volta só com a senha, a trilha mostra); capturas a 1440, 1280, 1024, 768 e 390.
 - **Não verificado / não feito:** no Webflow Cloud com o segredo real e o endereço da borda (`CF-Connecting-IP`); aviso por e-mail (R1); vários gestores travados ao mesmo tempo, senha perdida sem e-mail e gestor bloqueado ainda exigem o banco (B2).
+- **CI e deploy:** o CI do PR #91 passou (`validate` e `validate (/treinador)`, no commit `6268a44`); merge `4b8d200`; deploy `927af991` com sucesso em 03/11/2026 (sem migration).
 
 ## Fatia 0.88: Trilha de leitura e falhas de login (PENDENCIAS B9)
 
