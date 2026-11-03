@@ -49,7 +49,12 @@ export default async function Settings() {
             </div>
           </dl>
         )}
-        <NameHistory id="espaco-historico" title="Nomes anteriores do espaço" changes={view.workspaceNames} />
+        <NameHistory
+          id="espaco-historico"
+          title="Nomes anteriores do espaço"
+          changes={view.workspaceNames}
+          truncated={view.workspaceNamesTruncated}
+        />
       </section>
       {view.displayName !== null && (
         <section className="panel" aria-labelledby="exibicao">
@@ -66,7 +71,12 @@ export default async function Settings() {
             save={renameSelf}
             savedText="Nome de exibição salvo."
           />
-          <NameHistory id="exibicao-historico" title="Seus nomes anteriores" changes={view.myNames} />
+          <NameHistory
+            id="exibicao-historico"
+            title="Seus nomes anteriores"
+            changes={view.myNames}
+            truncated={view.myNamesTruncated}
+          />
         </section>
       )}
       <section className="panel" aria-labelledby="acesso">

@@ -7,8 +7,9 @@
 --     was delivered to the student.
 --   assessments.recorded_by_name / recorded_organization_name: the same when the assessment was recorded ("registrada por").
 -- The triggers below write them in the same statement that delivers or records (any path that does it, the app or a direct UPDATE), and they
--- never change afterwards. delivered_by_name / recorded_by_name stay empty (NULL) when the person had no professional record then: the screens
--- say "Não informado", never an invented name.
+-- never change afterwards; a statement cannot bring its own names (it is refused). delivered_by_name / recorded_by_name stay empty (NULL) when
+-- the person had no professional record then: the screens leave the name out and the PDFs and the assessment report say "Não informado",
+-- never an invented name.
 --
 -- Existing rows: the names are filled in now from the CURRENT names. The name they had at the moment of the delivery before this migration is
 -- unknown (it was never stored); a rename made before this migration is therefore not reflected in older deliveries.
@@ -42,6 +43,8 @@ BEFORE UPDATE OF delivered_by_name, delivered_organization_name ON plan_revision
 WHEN (OLD.delivered_organization_name IS NOT NULL
        AND (NEW.delivered_by_name IS NOT OLD.delivered_by_name OR NEW.delivered_organization_name IS NOT OLD.delivered_organization_name))
   OR (NEW.delivered_at IS NULL AND (NEW.delivered_by_name IS NOT NULL OR NEW.delivered_organization_name IS NOT NULL))
+  -- The statement that delivers cannot bring its own names: only the trigger below writes them, once the row is already DELIVERED.
+  OR (OLD.state <> 'DELIVERED' AND (NEW.delivered_by_name IS NOT NULL OR NEW.delivered_organization_name IS NOT NULL))
 BEGIN
   SELECT RAISE(ABORT, 'PLAN_REVISION_FROZEN');
 END;
@@ -51,6 +54,23 @@ BEFORE UPDATE OF recorded_by_name, recorded_organization_name ON assessments
 WHEN (OLD.recorded_organization_name IS NOT NULL
        AND (NEW.recorded_by_name IS NOT OLD.recorded_by_name OR NEW.recorded_organization_name IS NOT OLD.recorded_organization_name))
   OR (NEW.recorded_at IS NULL AND (NEW.recorded_by_name IS NOT NULL OR NEW.recorded_organization_name IS NOT NULL))
+  -- The statement that records cannot bring its own names: only the trigger below writes them, once the row is already RECORDED.
+  OR (OLD.state <> 'RECORDED' AND (NEW.recorded_by_name IS NOT NULL OR NEW.recorded_organization_name IS NOT NULL))
+BEGIN
+  SELECT RAISE(ABORT, 'ASSESSMENT_FROZEN');
+END;
+
+-- Nor can a row be inserted with names already in it (the AFTER INSERT triggers below write them).
+CREATE TRIGGER plan_revisions_names_not_on_insert
+BEFORE INSERT ON plan_revisions
+WHEN NEW.delivered_by_name IS NOT NULL OR NEW.delivered_organization_name IS NOT NULL
+BEGIN
+  SELECT RAISE(ABORT, 'PLAN_REVISION_FROZEN');
+END;
+
+CREATE TRIGGER assessments_names_not_on_insert
+BEFORE INSERT ON assessments
+WHEN NEW.recorded_by_name IS NOT NULL OR NEW.recorded_organization_name IS NOT NULL
 BEGIN
   SELECT RAISE(ABORT, 'ASSESSMENT_FROZEN');
 END;

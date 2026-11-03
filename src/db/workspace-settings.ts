@@ -38,10 +38,18 @@ export interface SettingsView {
   members: WorkspaceMember[];
   /** Earlier names of the workspace, newest first. Empty: never renamed since 0.90. */
   workspaceNames: NameChange[];
+  /** True when the workspace had more renames than NAME_HISTORY_LIMIT: only the newest are listed. */
+  workspaceNamesTruncated: boolean;
   /** Earlier display names of the acting professional in this workspace, newest first. */
   myNames: NameChange[];
+  /** True when the professional had more renames than NAME_HISTORY_LIMIT: only the newest are listed. */
+  myNamesTruncated: boolean;
 }
-/** At most this many rows of the history are read at once (both subjects together). */
+interface NameHistoryList {
+  changes: NameChange[];
+  truncated: boolean;
+}
+/** At most this many rows of each history list (the workspace's, the professional's) are shown. */
 export const NAME_HISTORY_LIMIT = 100;
 export type RenameOutcome = { status: "renamed" } | { status: "unchanged" } | { status: "forbidden" };
 
@@ -83,25 +91,29 @@ export function workspaceSettingsFor(db: D1Database, context: AuthenticatedConte
       )
       .bind(organizationId, userId)
       .all<{ name: string | null; role: string; isYou: number }>();
-    // Only this workspace's rows, and among the professionals' only the acting person's own.
-    const history = await db
-      .prepare(
-        `SELECT h.subject, h.previous_name AS previousName, h.new_name AS newName, h.changed_at AS changedAt
-         FROM name_history h
-         WHERE h.organization_id = ?1 AND (h.subject = 'ORGANIZATION' OR (h.subject = 'PROFESSIONAL' AND h.subject_user_id = ?2))
-         ORDER BY h.changed_at DESC, h.rowid DESC
-         LIMIT ?3`,
-      )
-      .bind(organizationId, userId, NAME_HISTORY_LIMIT)
-      .all<NameChange & { subject: "ORGANIZATION" | "PROFESSIONAL" }>();
-    const pick = (subject: string) =>
-      history.results
-        .filter((row) => row.subject === subject)
-        .map(({ previousName, newName, changedAt }) => ({ previousName, newName, changedAt }));
+    // Only this workspace's rows, and among the professionals' only the acting person's own. Each list has its own limit, so many renames of
+    // the workspace never hide the person's own; one row more than the limit is read to know whether the list was cut.
+    const historyOf = async (subject: "ORGANIZATION" | "PROFESSIONAL"): Promise<NameHistoryList> => {
+      const rows = await db
+        .prepare(
+          `SELECT h.previous_name AS previousName, h.new_name AS newName, h.changed_at AS changedAt
+           FROM name_history h
+           WHERE h.organization_id = ?1 AND h.subject = ?3
+             AND (?3 = 'ORGANIZATION' OR h.subject_user_id = ?2)
+           ORDER BY h.changed_at DESC, h.rowid DESC
+           LIMIT ?4`,
+        )
+        .bind(organizationId, userId, subject, NAME_HISTORY_LIMIT + 1)
+        .all<NameChange>();
+      return { changes: rows.results.slice(0, NAME_HISTORY_LIMIT), truncated: rows.results.length > NAME_HISTORY_LIMIT };
+    };
+    const [workspaceHistory, myHistory] = await Promise.all([historyOf("ORGANIZATION"), historyOf("PROFESSIONAL")]);
     return {
       ...me,
-      workspaceNames: pick("ORGANIZATION"),
-      myNames: pick("PROFESSIONAL"),
+      workspaceNames: workspaceHistory.changes,
+      workspaceNamesTruncated: workspaceHistory.truncated,
+      myNames: myHistory.changes,
+      myNamesTruncated: myHistory.truncated,
       canRenameWorkspace: me.role === "OWNER",
       members: members.results.map((row) => ({ name: row.name ?? "Sem nome", role: row.role, isYou: Boolean(row.isYou) })),
     };

@@ -6,7 +6,7 @@ import { prescriptionFor } from "@/db/prescription";
 import { planDocumentsFor } from "@/db/plan-documents";
 import { studentTrainingFor } from "@/db/student-plan";
 import { assessmentsFor } from "@/db/assessments";
-import { workspaceSettingsFor } from "@/db/workspace-settings";
+import { NAME_HISTORY_LIMIT, workspaceSettingsFor } from "@/db/workspace-settings";
 import { deliveredByText } from "@/modules/configuracoes/delivered-by";
 import { ALL_MIGRATIONS, migrate } from "./helpers/migrate";
 
@@ -21,7 +21,7 @@ const at = (minute: number) => new Date(Date.UTC(2026, 10, 10, 10, 0, 0) + minut
 const run = (sql: string, ...binds: unknown[]) => db.prepare(sql).bind(...binds).run();
 const BEFORE_0039 = ALL_MIGRATIONS.slice(0, ALL_MIGRATIONS.indexOf("0039_delivery_names.sql"));
 
-async function delivered(student = "st-1", owner = "tech-a", minute = 0, raw = false) {
+async function delivered(student = "st-1", owner = "tech-a", minute = 0, raw = false, broughtName?: string) {
   const plans = plansFor(db, scope(owner));
   const rx = prescriptionFor(db, scope(owner));
   const created = (await plans.create(student, {
@@ -43,6 +43,14 @@ async function delivered(student = "st-1", owner = "tech-a", minute = 0, raw = f
       "UPDATE plan_revisions SET state = 'APPROVED', approved_at = ?2, approved_by_user_id = ?3, approval_screening = 'NOT_RECORDED' WHERE id = ?1",
       created.revisionId, at(minute + 1).toISOString(), owner,
     );
+    if (broughtName !== undefined) {
+      // A direct write that delivers and brings its own name in the same statement.
+      await run(
+        "UPDATE plan_revisions SET state = 'DELIVERED', delivered_at = ?2, delivered_by_user_id = ?3, delivered_by_name = ?4 WHERE id = ?1",
+        created.revisionId, at(minute + 2).toISOString(), owner, broughtName,
+      );
+      return created;
+    }
     await run(
       "UPDATE plan_revisions SET state = 'DELIVERED', delivered_at = ?2, delivered_by_user_id = ?3 WHERE id = ?1",
       created.revisionId, at(minute + 2).toISOString(), owner,
@@ -190,6 +198,39 @@ describe("names written at the moment of the delivery", () => {
     await expect(run("UPDATE assessments SET recorded_by_name = 'Inventado' WHERE id = 'rec-commercial'")).rejects.toThrow(/ASSESSMENT_FROZEN/);
     expect(await namesOf(early.revisionId)).toEqual({ byName: "Pro A antes", orgName: "Studio A antes" });
   });
+
+  it("refuses a delivery, a record or an insert that brings its own names", async () => {
+    await expect(delivered("st-1", "tech-a", 70, true, "Inventado")).rejects.toThrow(/PLAN_REVISION_FROZEN/);
+    await run(
+      `INSERT INTO assessments (id,organization_id,student_id,assessed_on,kind,state,risk_status,created_by_user_id,screening_answered)
+       VALUES ('draft-2','org-a','st-1','2026-11-03','REASSESSMENT','DRAFT','CLEAR','tech-a','[]')`,
+    );
+    for (const sql of [
+      "UPDATE assessments SET state = 'RECORDED', recorded_at = ?2, recorded_by_user_id = 'tech-a', recorded_by_name = 'Inventado' WHERE id = ?1",
+      "UPDATE assessments SET state = 'RECORDED', recorded_at = ?2, recorded_by_user_id = 'tech-a', recorded_organization_name = 'Outro' WHERE id = ?1",
+    ])
+      await expect(run(sql, "draft-2", at(71).toISOString()), sql).rejects.toThrow(/ASSESSMENT_FROZEN/);
+    expect(await assessmentNames("draft-2")).toEqual({ byName: null, orgName: null });
+    await run("DELETE FROM assessments WHERE id = 'draft-2'");
+    await expect(
+      run(
+        `INSERT INTO assessments (id,organization_id,student_id,assessed_on,kind,state,risk_status,created_by_user_id,screening_answered,
+           recorded_at,recorded_by_user_id,recorded_by_name)
+         VALUES ('ins-1','org-a','st-1','2026-11-03','REASSESSMENT','RECORDED','CLEAR','tech-a','[]',?1,'tech-a','Inventado')`,
+        at(72).toISOString(),
+      ),
+    ).rejects.toThrow(/ASSESSMENT_FROZEN/);
+    await expect(
+      run(
+        `INSERT INTO plan_revisions (id, organization_id, plan_id, revision_number, state, input_json, schedule_json, engine_version,
+             start_date, end_date, total_weeks, total_sessions, created_by_user_id, created_at, updated_at, delivered_organization_name)
+           SELECT 'ins-rev', organization_id, plan_id, 99, 'DRAFT', input_json, schedule_json, engine_version, start_date, end_date,
+             total_weeks, total_sessions, created_by_user_id, created_at, updated_at, 'Outro'
+           FROM plan_revisions WHERE id = ?1`,
+        early.revisionId,
+      ),
+    ).rejects.toThrow(/PLAN_REVISION_FROZEN/);
+  });
 });
 
 describe("history of names", () => {
@@ -236,6 +277,28 @@ describe("history of names", () => {
     expect(other.myNames).toEqual([]);
     // Someone outside the workspace reads nothing at all.
     expect(await workspaceSettingsFor(db, scope("owner-b", "org-a")).read()).toBeNull();
+  });
+
+  it("limits each list on its own and says when one was cut", async () => {
+    const stamp = (i: number) => at(100 + i).toISOString();
+    for (let i = 0; i <= NAME_HISTORY_LIMIT; i++)
+      await run(
+        `INSERT INTO name_history (id, organization_id, subject, subject_user_id, previous_name, new_name, changed_by_user_id, changed_at)
+         VALUES (?1, 'org-b', 'ORGANIZATION', NULL, ?2, ?3, 'owner-b', ?4)`,
+        `org-b-${i}`, `Espaço ${i}`, `Espaço ${i + 1}`, stamp(i + 1),
+      );
+    await run(
+      `INSERT INTO name_history (id, organization_id, subject, subject_user_id, previous_name, new_name, changed_by_user_id, changed_at)
+       VALUES ('owner-b-self', 'org-b', 'PROFESSIONAL', 'owner-b', 'Dono B antes', 'Dono B', 'owner-b', ?1)`,
+      stamp(0),
+    );
+    const view = (await workspaceSettingsFor(db, scope("owner-b", "org-b")).read())!;
+    expect(view.workspaceNames).toHaveLength(NAME_HISTORY_LIMIT);
+    expect(view.workspaceNames[0]!.newName).toBe(`Espaço ${NAME_HISTORY_LIMIT + 1}`);
+    expect(view.workspaceNamesTruncated).toBe(true);
+    // The oldest change of all, behind more than the limit of workspace renames, is still listed as the person's own.
+    expect(view.myNames).toEqual([{ previousName: "Dono B antes", newName: "Dono B", changedAt: stamp(0) }]);
+    expect(view.myNamesTruncated).toBe(false);
   });
 });
 

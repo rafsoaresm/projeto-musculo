@@ -7385,9 +7385,24 @@ fieldset.yes-no legend {
 }
 .name-history th,
 .name-history td {
+  vertical-align: top;
+}
+/* The two lists sit one above the other with the same three columns: fixed widths keep their columns aligned (a date column that fits the
+   date and time on one line, then two equal name columns). Only the names wrap. */
+.name-history th[scope="row"] {
+  white-space: nowrap;
+}
+@media (min-width: 701px) {
+  .name-history table {
+    table-layout: fixed;
+  }
+  .name-history thead th:first-child {
+    width: 12rem;
+  }
+}
+.name-history td {
   white-space: normal;
   overflow-wrap: anywhere;
-  vertical-align: top;
 }
 /* Stacked on a phone: the label of each line stays on one line and the value takes the rest. */
 .name-history table.stack td::before,
