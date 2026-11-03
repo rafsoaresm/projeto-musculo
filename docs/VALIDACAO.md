@@ -11,6 +11,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Resposta do profissional:** uma ou mais respostas em texto (até 1000 letras, escolha da ferramenta), com autor e hora; responder também marca o check-in como lido e fecha a correção pelo aluno; na trilha (`CHECKIN_REPLY`, `CHECKIN_FORM_CHANGED`). O aluno vê as respostas no histórico, com "Nova resposta" e um cartão no início, que some depois de vistas. Sem e-mail (R1). "Baixar meus dados" passa a trazer as respostas às perguntas e as respostas do profissional.
 - **Verificado localmente:** tipos, lint e `npm run check` (124 arquivos, 1928 testes; 10+ D1 de perguntas, versões, janela, respostas, isolamento); e2e nos dois mounts (raiz e `/treinador`): `checkin`, `checkin-replies` (novo), `export` e `student-tabs` passaram; capturas a 1440, 1280, 1024, 768 e 390.
 - **Não feito / não verificado:** aviso por e-mail (R1); perguntas padrão por organização; prazo de resposta (T6); Firefox e Safari; a migration no D1 de produção (será conferida no log).
+- **CI e deploy:** o CI do PR #89 passou (`validate` e `validate (/treinador)`, no commit `8c21da7`); merge `79d66fa`; deploy `4a38d34c` com sucesso em 03/11/2026, com `0037_checkin_forms_replies.sql ✅` no log.
 
 ## Fatia 0.86: Fotos posturais visíveis para o aluno (PENDENCIAS B50; decisão do usuário de 03/11/2026)
 
