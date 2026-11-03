@@ -8,6 +8,7 @@ import { getPhotoBucket } from "@/db/binding";
 import type { AssessmentModule } from "../catalog";
 import { COMPOSITION_MODULE, compositionSchema, issueNames, problemsMessage } from "./composition";
 import { PROFILE_MODULE, SCREENING_MODULE, draftScreening, profileSchema, screeningSchema } from "./screening";
+import { POSTURE_MODULE, issueNames as postureIssueNames, postureProblemsMessage, postureSchema } from "./posture";
 
 export type SaveSectionResult = { saved: true; revision: number } | { conflict: string } | { error: string };
 
@@ -91,6 +92,16 @@ export async function saveScreeningSection(assessmentId: string, payload: unknow
   const parsed = screeningSchema.safeParse(payload);
   if (!parsed.success) return { error: TRIAGEM_INVALID };
   return storeSection(assessmentId, SCREENING_MODULE, draftScreening(parsed.data), revision, TRIAGEM_INVALID);
+}
+
+/**
+ * Saves the posture and the somatotype of the "Movimento" step (module "posture"), checked with the module's schema like the other steps: every
+ * finding belongs to its region, a single choice has one, and a measure is a positive number or nothing.
+ */
+export async function savePostureSection(assessmentId: string, payload: unknown, revision: number): Promise<SaveSectionResult> {
+  const parsed = postureSchema.safeParse(payload);
+  if (!parsed.success) return { error: postureProblemsMessage(postureIssueNames(parsed.error.issues)) };
+  return storeSection(assessmentId, POSTURE_MODULE, parsed.data, revision, postureProblemsMessage([]));
 }
 
 export type FinalizeResult = { error: string; pending?: string[]; conflict?: boolean };

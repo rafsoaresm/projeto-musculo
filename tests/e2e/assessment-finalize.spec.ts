@@ -97,6 +97,13 @@ test("the Revisão step finalizes the Avaliação Física, the record shows the 
   await page.getByLabel("Coxa esquerda (cm)").fill("56,6");
   await page.getByLabel("Panturrilha direita (cm)").fill("40");
   await page.getByLabel("Biestiloide (cm)").fill("5,7");
+  // Slice 0.79: one lateral and one anterior finding, and the somatotype recorded by the professional.
+  await step(page, "3 Movimento").click();
+  const posture = page.getByRole("region", { name: "Avaliação postural" });
+  await posture.getByRole("radiogroup", { name: "Joelhos (visão lateral)" }).getByRole("radio", { name: "Recurvatum" }).check();
+  await posture.getByRole("tab", { name: /^Anterior/ }).click();
+  await posture.getByRole("radiogroup", { name: "EIAS (visão anterior)" }).getByRole("radio", { name: "Direita deprimida" }).check();
+  await page.getByRole("region", { name: "Somatotipo" }).getByRole("checkbox", { name: "Mesomorfo" }).check();
 
   await step(page, "4 Revisão").click();
   await expect(pending.getByText("Nada pendente: a avaliação pode ser finalizada.")).toBeVisible();
@@ -115,6 +122,8 @@ test("the Revisão step finalizes the Avaliação Física, the record shows the 
   await expect(page.getByText("Diferença bilateral da panturrilha: falta o lado esquerdo")).toBeVisible();
   await expect(checklist.getByText("Perímetros: 3 de 9 com medida · Panturrilha só com um lado")).toBeVisible();
   await expect(checklist.getByText("Diâmetros ósseos: 1 de 3 com medida")).toBeVisible();
+  await expect(checklist.getByText("Postura: 2 de 19 regiões observadas (lateral 1 de 8, posterior 0 de 7, anterior 1 de 4)")).toBeVisible();
+  await expect(checklist.getByText("Somatotipo (registro do profissional): Mesomorfo")).toBeVisible();
   await noHorizontalOverflow(page);
   await shots(page, "revisao", testInfo.project.name);
 
@@ -136,7 +145,13 @@ test("the Revisão step finalizes the Avaliação Física, the record shows the 
   const recordedDecision = page.getByRole("group", { name: "Decisão profissional" });
   await expect(recordedDecision).toContainText("Precisa de liberação médica");
   await expect(recordedDecision).toContainText(/Registrada por .+ em \d{2}\/\d{2}\/\d{4}/);
-  await expect(page.getByRole("region", { name: "Movimento" }).getByText("Não realizado.")).toBeVisible();
+  // The posture as recorded: the regions observed with their findings, the others named as not observed; the somatotype as the professional's.
+  const recordedMovement = page.getByRole("region", { name: "Postura e movimento" });
+  await expect(recordedMovement.getByRole("definition").filter({ hasText: /^Recurvatum$/ })).toBeVisible();
+  await expect(recordedMovement.getByRole("definition").filter({ hasText: /^Direita deprimida$/ })).toBeVisible();
+  await expect(recordedMovement.getByText("Nenhuma região observada.")).toBeVisible();
+  await expect(recordedMovement.getByRole("definition").filter({ hasText: /^Mesomorfo$/ })).toBeVisible();
+  await expect(recordedMovement).not.toContainText(/significativ|normal|\bbom\b|ruim/i);
   // Nothing of it is editable any more.
   await expect(page.getByRole("button", { name: "Salvar rascunho" })).toHaveCount(0);
   await expect(page.getByRole("textbox", { name: "Peso (kg)" })).toHaveCount(0);

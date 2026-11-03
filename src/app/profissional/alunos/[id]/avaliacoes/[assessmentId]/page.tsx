@@ -13,6 +13,7 @@ import { isStepKey } from "@/modules/avaliacoes/v2/steps";
 import { DiscardDraftButton } from "@/modules/avaliacoes/v2/discard-button";
 import { COMPOSITION_MODULE, readComposition } from "@/modules/avaliacoes/v2/composition";
 import { PROFILE_MODULE, SCREENING_MODULE, readProfile, readScreening } from "@/modules/avaliacoes/v2/screening";
+import { POSTURE_MODULE, readPosture } from "@/modules/avaliacoes/v2/posture";
 import { ASSESSMENT_NAME, assessmentTitle } from "@/modules/avaliacoes/names";
 import { RecordedAssessmentView } from "@/modules/avaliacoes/v2/recorded-view";
 
@@ -71,6 +72,7 @@ export default async function Assessment({
           composition={readComposition(section(COMPOSITION_MODULE))}
           profile={readProfile(section(PROFILE_MODULE))}
           screening={readScreening(section(SCREENING_MODULE))}
+          posture={readPosture(section(POSTURE_MODULE))}
           initialStep={isStepKey(etapa) ? etapa : undefined}
           suggestedEquation={suggestedEquation}
           amendment={
@@ -129,6 +131,7 @@ export default async function Assessment({
           profile={section(PROFILE_MODULE) === undefined ? null : readProfile(section(PROFILE_MODULE))}
           screening={screening}
           composition={section(COMPOSITION_MODULE) === undefined ? null : readComposition(section(COMPOSITION_MODULE))}
+          posture={section(POSTURE_MODULE) === undefined ? null : readPosture(section(POSTURE_MODULE))}
           decidedBy={decidedBy}
           amendedAt={amendedAt}
           canAmend={openDraft === null && detail.amendedById === null}

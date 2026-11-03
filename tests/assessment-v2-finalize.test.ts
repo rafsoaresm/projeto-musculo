@@ -406,3 +406,42 @@ describe("who decided, the finalize guard and the previous equation", () => {
     expect(await a().previousEquation(draft)).toBeNull();
   });
 });
+
+// Slice 0.79: the module "posture" (posture and somatotype, handoff 3.3) is checked at finalize, recorded as typed, frozen, and copied by an
+// amendment. It gives no result: nothing in it is computed (the somatotype is the professional's record; Heath-Carter is not computed).
+describe("the posture and the somatotype", () => {
+  const POSTURE = {
+    findings: { lateral_shoulders: ["protracted", "internal_rotation"], posterior_scapulae: ["left_winged"], anterior_asis: ["right_depressed"] },
+    notes: { lateral: "Ombro direito mais protuso", posterior: "", anterior: "" },
+    somatotype: { method: "manual", labels: ["endomorph", "mesomorph"], notes: "", heathCarter: { supraspinaleSkinfoldMm: 8.5, flexedArmGirthCm: null } },
+  };
+  beforeAll(async () => {
+    await db.batch([
+      db.prepare("INSERT INTO students(id,organization_id,display_name) VALUES ('st-5','org-a','Five')"),
+      db.prepare("INSERT INTO care_assignments(organization_id,student_id,professional_id) VALUES ('org-a','st-5','pro-a')"),
+    ]);
+  });
+  it("refuses to finalize a stored posture its schema does not take (a payload not from the screen), and writes nothing", async () => {
+    const draft = await started("st-5", day(26));
+    const revision = await fill(draft, { screening: parq(), posture: { findings: { anterior_knees: ["valgus", "varus"] } } });
+    expect(await a().finalize(draft, revision, day(26, 10))).toEqual({ status: "invalid" });
+    expect(await one("SELECT state FROM assessments WHERE id = ?1", draft)).toEqual({ state: "DRAFT" });
+    // Another organization does not reach the draft to save its posture.
+    expect(await assessmentsFor(db, scope("tech-b", "org-b")).saveSection(draft, { module: "posture", status: "IN_PROGRESS", payload: POSTURE, revision })).toEqual({ status: "not_found" });
+    expect(await a().discardDraft(draft)).toMatchObject({ status: "discarded" });
+  });
+  it("records the posture as typed, with no result, frozen, and an amendment copies it to correct", async () => {
+    const draft = await started("st-5", day(27));
+    const revision = await fill(draft, { screening: parq(), composition: JP7, posture: POSTURE });
+    expect(await a().finalize(draft, revision, day(27, 10))).toEqual({ status: "recorded" });
+    const stored = await one<{ status: string; payload: string }>("SELECT status, payload FROM assessment_sections WHERE assessment_id = ?1 AND module = 'posture'", draft);
+    expect(stored?.status).toBe("DONE");
+    expect(JSON.parse(stored!.payload)).toEqual(POSTURE);
+    expect((await a().results(draft)).map((row) => row.code)).toEqual(["bmi"]);
+    expect(await fails("UPDATE assessment_sections SET payload = '{}' WHERE assessment_id = ?1 AND module = 'posture'", draft)).toContain("ASSESSMENT_FROZEN");
+    const amended = await a().amend(draft, "Escápula do lado errado", day(28));
+    if (amended.status !== "started") throw new Error(amended.status);
+    const copy = (await a().sections(amended.id))!.sections.find((section) => section.module === "posture");
+    expect(copy).toMatchObject({ status: "IN_PROGRESS", payload: POSTURE });
+  });
+});

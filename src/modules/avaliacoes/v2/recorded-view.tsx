@@ -19,12 +19,18 @@ import {
   PERIMETERS_SINGLE,
   PERIMETER_SIDED_CODES,
   PERIMETER_SINGLE_CODES,
+  HEATH_CARTER_CODES,
+  HEATH_CARTER_MEASURES,
+  POSTURE_VIEWS,
+  POSTURE_VIEW_CODES,
+  postureRegionKey,
 } from "../catalog";
 import { SKINFOLD_SITE_CODES, selectedValue } from "../formulas";
 import { ScreeningPill } from "../screening-pill";
 import { AGGREGATION_LABEL, CONVERSION_LABEL, EQUATION_LABEL, PROTOCOL_CHIP, SITE_LABEL, requiredSites, type CompositionPayload } from "./composition";
 import { ANAMNESIS_CODES, PARQ_CODES, parqAnswer, type ProfilePayload, type ScreeningPayload } from "./screening";
 import { ResultsList } from "./results-list";
+import { HEATH_CARTER_NOTE, findingsText, postureEmpty, regionsOf, somatotypeText, type PosturePayload } from "./posture";
 import { AmendForm } from "./amend-form";
 
 const decimal = (value: number, digits = 2) => new Intl.NumberFormat("pt-BR", { maximumFractionDigits: digits }).format(value);
@@ -44,6 +50,7 @@ export function RecordedAssessmentView({
   profile,
   screening,
   composition,
+  posture = null,
   decidedBy,
   amendedAt = null,
   canAmend,
@@ -52,6 +59,8 @@ export function RecordedAssessmentView({
   profile: ProfilePayload | null;
   screening: ScreeningPayload | null;
   composition: CompositionPayload | null;
+  /** The "Movimento" step (module "posture"), or null when it was never saved. */
+  posture?: PosturePayload | null;
   /** The name of who recorded the PAR-Q decision, when there is one. */
   decidedBy: string | null;
   /** When the amendment that corrects this one was recorded (only for an amended one). */
@@ -262,8 +271,8 @@ export function RecordedAssessmentView({
       </section>
 
       <section className="panel av2-card" aria-labelledby="av2-r-movimento">
-        <h3 id="av2-r-movimento">Movimento</h3>
-        <p className="muted">Não realizado.</p>
+        <h3 id="av2-r-movimento">Postura e movimento</h3>
+        {posture && !postureEmpty(posture) ? <RecordedPosture posture={posture} /> : <p className="muted">Não realizado.</p>}
       </section>
 
       {canAmend && (
@@ -331,6 +340,67 @@ function RecordedPerimeters({ composition }: { composition: CompositionPayload }
           ))}
         </dl>
       )}
+    </>
+  );
+}
+
+/**
+ * The posture and the somatotype as recorded: for each view, the regions observed with their findings, how many were not observed (never shown as
+ * "alinhado"), and the view's note; the somatotype as the professional recorded it, and the Heath-Carter measures kept without a computation.
+ */
+function RecordedPosture({ posture }: { posture: PosturePayload }) {
+  const somatotype = somatotypeText(posture.somatotype.labels);
+  const measures = HEATH_CARTER_CODES.filter((code) => posture.somatotype.heathCarter[code] !== null);
+  return (
+    <>
+      <p className="muted small">Observações posturais, não diagnóstico clínico.</p>
+      {POSTURE_VIEW_CODES.map((view) => {
+        const regions = regionsOf(view);
+        const observed = regions.filter((region) => findingsText(region, posture.findings[postureRegionKey(region)]) !== null);
+        const note = posture.notes[view].trim();
+        return (
+          <div key={view}>
+            <h4 className="av2-subtitle">{POSTURE_VIEWS[view]}</h4>
+            {observed.length === 0 ? (
+              <p className="muted">Nenhuma região observada.</p>
+            ) : (
+              <dl className="av2-facts" aria-label={`Achados da ${POSTURE_VIEWS[view].toLowerCase()}`}>
+                {observed.map((region) => (
+                  <div key={region.region}>
+                    <dt>{region.label}</dt>
+                    <dd>{findingsText(region, posture.findings[postureRegionKey(region)])}</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+            {observed.length > 0 && observed.length < regions.length && (
+              <p className="small muted av2-recorded-line">
+                Não observadas: {regions.filter((region) => !observed.includes(region)).map((region) => region.label).join(", ")}.
+              </p>
+            )}
+            {note && <p className="av2-recorded-line">Observações: {note}</p>}
+          </div>
+        );
+      })}
+      <h4 className="av2-subtitle">Somatotipo</h4>
+      <dl className="av2-facts" aria-label="Somatotipo registrado">
+        <div>
+          <dt>Registro do profissional</dt>
+          <dd>{somatotype ?? "Não registrado"}</dd>
+        </div>
+        <div>
+          <dt>Observações</dt>
+          <dd>{orDash(posture.somatotype.notes)}</dd>
+        </div>
+        {measures.map((code) => (
+          <div key={code}>
+            <dt>{HEATH_CARTER_MEASURES[code].label}</dt>
+            <dd>{measured(posture.somatotype.heathCarter[code], HEATH_CARTER_MEASURES[code].unit)}</dd>
+          </div>
+        ))}
+      </dl>
+      {measures.length > 0 && <p className="small muted av2-recorded-line">{HEATH_CARTER_NOTE}</p>}
+      <p className="small muted av2-recorded-line">Flexiteste: não registrado nesta versão.</p>
     </>
   );
 }

@@ -119,3 +119,84 @@ export const PERIMETERS_SIDED_OF: Record<PerimeterSided, string> = { arm: "do br
 export const BONE_BREADTHS = { humerus: "Biepicondilar do úmero", femur: "Biepicondilar do fêmur", wrist: "Biestiloide" } as const;
 export type BoneBreadth = keyof typeof BONE_BREADTHS;
 export const BONE_BREADTH_CODES = ["humerus", "femur", "wrist"] as const satisfies readonly BoneBreadth[];
+
+/* ---------- Page 3: posture and somatotype (handoff 3.3) ---------- */
+
+/** The three views of the postural assessment, in the order of page 3. */
+export const POSTURE_VIEWS = { lateral: "Visão lateral", posterior: "Visão posterior", anterior: "Visão anterior" } as const;
+export type PostureView = keyof typeof POSTURE_VIEWS;
+export const POSTURE_VIEW_CODES = ["lateral", "posterior", "anterior"] as const satisfies readonly PostureView[];
+/** The short name of each view, for the tabs and the sentences that name them ("Lateral", "na visão lateral"). */
+export const POSTURE_VIEW_SHORT: Record<PostureView, string> = { lateral: "Lateral", posterior: "Posterior", anterior: "Anterior" };
+
+/**
+ * One region of a view (handoff 3.3: `view`, `region`, `findings[]`): its findings with their labels, in the handoff's order and words (only the
+ * capitalization changes). `multiple`: findings that may coexist are a multiple choice (handoff: "seleção múltipla apenas nos achados que possam
+ * coexistir"); the others are a single choice. `neutral`: the finding that says "nothing deviates" (alinhado, fisiológico, sem desvio observado),
+ * which never goes with another finding of the region. A region left without a finding was not observed: never "alinhado" by default.
+ * "Sem desvio observado" in the head tilt and the hip rotation is the option the handoff adds.
+ */
+export interface PostureRegion {
+  view: PostureView;
+  region: string;
+  label: string;
+  findings: Readonly<Record<string, string>>;
+  neutral: string | null;
+  multiple: boolean;
+}
+export const POSTURE_REGIONS = [
+  { view: "lateral", region: "cervical_lordosis", label: "Lordose cervical", findings: { physiological: "Fisiológica", increased: "Aumentada", decreased: "Diminuída" }, neutral: "physiological", multiple: false },
+  { view: "lateral", region: "shoulders", label: "Ombros", findings: { aligned: "Alinhados", protracted: "Protusos", internal_rotation: "Rotação interna" }, neutral: "aligned", multiple: true },
+  { view: "lateral", region: "abdomen", label: "Abdômen", findings: { physiological: "Fisiológico", protruding: "Protuso" }, neutral: "physiological", multiple: false },
+  { view: "lateral", region: "thoracic_kyphosis", label: "Cifose torácica", findings: { physiological: "Fisiológica", increased: "Aumentada", flattened: "Retificada" }, neutral: "physiological", multiple: false },
+  { view: "lateral", region: "lumbar_lordosis", label: "Lordose lombar", findings: { physiological: "Fisiológica", increased: "Aumentada", flattened: "Retificada" }, neutral: "physiological", multiple: false },
+  { view: "lateral", region: "hip", label: "Quadril", findings: { aligned: "Alinhado", anteversion: "Anteversão", retroversion: "Retroversão" }, neutral: "aligned", multiple: false },
+  { view: "lateral", region: "knees", label: "Joelhos", findings: { aligned: "Alinhados", recurvatum: "Recurvatum", flexed: "Flexo" }, neutral: "aligned", multiple: false },
+  { view: "lateral", region: "feet", label: "Pés", findings: { flat: "Plano", cavus: "Cavo", calcaneus: "Calcâneo", equinus: "Equino" }, neutral: null, multiple: true },
+  { view: "posterior", region: "shoulders", label: "Ombros", findings: { aligned: "Alinhados", left_depressed: "Esquerdo deprimido", right_depressed: "Direito deprimido" }, neutral: "aligned", multiple: false },
+  { view: "posterior", region: "spine", label: "Coluna", findings: { aligned: "Alinhada", lumbar_scoliosis: "Escoliose lombar", thoracic_scoliosis: "Escoliose torácica", s_curve: "Em “S”" }, neutral: "aligned", multiple: true },
+  {
+    view: "posterior",
+    region: "scapulae",
+    label: "Escápulas",
+    findings: { abducted: "Abduzida", left_winged: "Esquerda alada", right_winged: "Direita alada", downward_rotation: "Rodada inferior", upward_rotation: "Rodada superior" },
+    neutral: null,
+    multiple: true,
+  },
+  { view: "posterior", region: "feet", label: "Pés", findings: { aligned: "Alinhados", pronated: "Pronados", supinated: "Supinados" }, neutral: "aligned", multiple: false },
+  { view: "posterior", region: "tibia", label: "Tíbia", findings: { aligned: "Alinhada", varus: "Vara", valgus: "Valga" }, neutral: "aligned", multiple: false },
+  { view: "posterior", region: "head_tilt", label: "Inclinação da cabeça", findings: { none: "Sem desvio observado", right: "Direita", left: "Esquerda" }, neutral: "none", multiple: false },
+  { view: "posterior", region: "hip_rotation", label: "Rotação do quadril", findings: { none: "Sem desvio observado", internal: "Interna", external: "Externa" }, neutral: "none", multiple: false },
+  { view: "anterior", region: "knees", label: "Joelhos", findings: { aligned: "Alinhados", valgus: "Valgo", varus: "Varo" }, neutral: "aligned", multiple: false },
+  { view: "anterior", region: "patellae", label: "Patelas", findings: { aligned: "Alinhadas", lateralized: "Lateralizadas", medialized: "Medializadas" }, neutral: "aligned", multiple: false },
+  { view: "anterior", region: "asis", label: "EIAS", findings: { aligned: "Alinhada", left_depressed: "Esquerda deprimida", right_depressed: "Direita deprimida" }, neutral: "aligned", multiple: false },
+  { view: "anterior", region: "psis", label: "EIPS", findings: { aligned: "Alinhada", left_depressed: "Esquerda deprimida", right_depressed: "Direita deprimida" }, neutral: "aligned", multiple: false },
+] as const satisfies readonly PostureRegion[];
+/** The stored key of a region: its view and its region ("lateral_shoulders"), so the same region in two views never mixes. */
+type RegionKeyOf<R> = R extends { view: infer V extends string; region: infer G extends string } ? `${V}_${G}` : never;
+export type PostureRegionKey = RegionKeyOf<(typeof POSTURE_REGIONS)[number]>;
+export const postureRegionKey = (region: PostureRegion) => `${region.view}_${region.region}` as PostureRegionKey;
+export const POSTURE_REGION_KEYS = POSTURE_REGIONS.map(postureRegionKey) as [PostureRegionKey, ...PostureRegionKey[]];
+export const POSTURE_REGION_BY_KEY: Record<PostureRegionKey, PostureRegion> = Object.fromEntries(
+  POSTURE_REGIONS.map((region): [string, PostureRegion] => [postureRegionKey(region), region]),
+) as Record<PostureRegionKey, PostureRegion>;
+
+/**
+ * The somatotype as the professional records it (handoff 3.3: "seleção/registro profissional manual"), never inferred from a photo. The three
+ * components may be chosen together (the PDF's "endomorfo-mesomorfo"); "Misto" and "Não classificado" stand alone.
+ */
+export const SOMATOTYPES = { endomorph: "Endomorfo", mesomorph: "Mesomorfo", ectomorph: "Ectomorfo", mixed: "Misto", unclassified: "Não classificado" } as const;
+export type SomatotypeCode = keyof typeof SOMATOTYPES;
+export const SOMATOTYPE_CODES = ["endomorph", "mesomorph", "ectomorph", "mixed", "unclassified"] as const satisfies readonly SomatotypeCode[];
+export const SOMATOTYPE_ALONE: readonly SomatotypeCode[] = ["mixed", "unclassified"];
+
+/**
+ * Two measures of the Heath-Carter protocol that page 2 does not have (handoff 3.3 names them: the supraspinale skinfold — not the suprailiac — and
+ * the flexed arm girth). They are kept as measured; the somatotype is not computed in this version (handoff 10: P2), so no equation runs on them.
+ */
+export const HEATH_CARTER_MEASURES = {
+  supraspinaleSkinfoldMm: { label: "Dobra supraespinhal", unit: "mm" },
+  flexedArmGirthCm: { label: "Perímetro do braço flexionado e contraído", unit: "cm" },
+} as const;
+export type HeathCarterMeasure = keyof typeof HEATH_CARTER_MEASURES;
+export const HEATH_CARTER_CODES = ["supraspinaleSkinfoldMm", "flexedArmGirthCm"] as const satisfies readonly HeathCarterMeasure[];

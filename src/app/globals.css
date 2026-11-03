@@ -6546,6 +6546,83 @@ fieldset.yes-no legend {
   }
 }
 
+/* ---------- Avaliação Física: etapa Movimento, postura e somatotipo (0.79) ---------- */
+/* The three views of the posture are tabs drawn like the step chips (44px tall, the same colours); on a narrow card they share the line. */
+.av2-view-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+.av2-tab {
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+.av2-tab[aria-selected="true"] {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+.av2-tab:hover:not([aria-selected="true"]) {
+  background: var(--color-primary-line);
+}
+.av2-tab:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 3px;
+}
+/* A region: its name in a column of the same width on every line, its findings in a grid whose columns are the same on every line of the card
+   (auto-fill over the same width), so the findings of all regions start at the same x and have the same width, whatever their number. */
+.av2-finding {
+  grid-template-columns: 12rem minmax(0, 1fr);
+}
+.av2-finding-options {
+  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+}
+/* "Não observado" (the blank answer of a single choice) always takes the last column, so it sits in the same place on every line. */
+.av2-finding-options > .av2-chip[data-tone="blank"] {
+  grid-column: -2 / -1;
+}
+.av2-finding-hint {
+  display: block;
+  margin-top: 2px;
+  font-weight: 400;
+}
+.av2-view-notes {
+  margin-top: 16px;
+}
+.av2-somatotypes {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.av2-card-note {
+  margin-bottom: 12px;
+}
+.av2-recorded-line {
+  margin: 8px 0 0;
+  overflow-wrap: anywhere;
+}
+@container (max-width: 760px) {
+  .av2-finding {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .av2-finding-options {
+    grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+  }
+  .av2-somatotypes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@container (max-width: 560px) {
+  .av2-tab {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 8px 10px;
+    white-space: normal;
+    text-align: center;
+  }
+}
+
 /* ---------- Avaliação Física: Revisão, registro e retificação (0.77) ---------- */
 .av2-subtitle {
   margin: 20px 0 8px;

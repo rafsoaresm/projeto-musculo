@@ -9,6 +9,7 @@ const STATE_LABEL: Record<ModuleSummary["state"], string> = {
   pending: "Com pendências",
   partial: "Parcial",
   filled: "Com medidas",
+  observed: "Com registro",
   not_done: "Não realizado",
 };
 
