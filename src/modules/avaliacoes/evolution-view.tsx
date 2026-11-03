@@ -56,6 +56,8 @@ export function EvolutionView({
   const withResults = history.some((assessment) => assessment.formatVersion === 2);
   const measured = withResults ? history.map(withoutCopiedBodyFat) : history;
   const series = buildSeries(measured);
+  // Slice 0.84: two assessments of the same date are drawn side by side, each dated with the time it was recorded.
+  const recordedAt = new Map(history.map((assessment) => [assessment.id, assessment.recordedAt]));
   const withMetrics = !withResults || measured.some((assessment) => assessment.metrics.length > 0);
   const counted = `${history.length} ${history.length === 1 ? "avaliação registrada" : "avaliações registradas"}, de ${formatCalendarDate(history[0].assessedOn)} a ${formatCalendarDate(history[history.length - 1].assessedOn)}.`;
   return (
@@ -95,6 +97,7 @@ export function EvolutionView({
                     unit={item.unit}
                     points={item.numeric.map((point) => ({
                       assessedOn: point.assessedOn,
+                      recordedAt: recordedAt.get(point.assessmentId) ?? null,
                       value: point.valueNumber as number,
                       text: point.valueText,
                     }))}

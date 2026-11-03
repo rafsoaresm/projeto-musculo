@@ -1,6 +1,7 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { isModule } from "@/modules/avaliacoes/catalog";
 import type { ReportInput } from "@/modules/avaliacoes/v2/report";
+import type { EvolutionSource } from "@/modules/avaliacoes/v2/evolution";
 import { COMPOSITION_MODULE, readComposition } from "@/modules/avaliacoes/v2/composition";
 import { CONCLUSION_MODULE, readConclusion } from "@/modules/avaliacoes/v2/conclusion";
 import { MOVEMENT_MODULE, readMovement } from "@/modules/avaliacoes/v2/flexitest";
@@ -67,6 +68,12 @@ function parseJson(raw: string | null): unknown {
   }
 }
 
+/** The parse of the flags of a result (a JSON array of strings; anything else reads as none). */
+const flagsOf = (raw: string | null) => {
+  const parsed = parseJson(raw);
+  return Array.isArray(parsed) ? parsed.filter((flag): flag is string => typeof flag === "string") : [];
+};
+
 /** Sections, results and the PAR-Q decider of an assessment whose head came from a gated query (organization and reach already checked). */
 async function assemble(db: D1Database, head: HeadRow): Promise<ReportInput> {
   const [sections, results] = await Promise.all([
@@ -94,10 +101,6 @@ async function assemble(db: D1Database, head: HeadRow): Promise<ReportInput> {
           .first<{ name: string | null }>()
       )?.name ?? null)
     : null;
-  const flagsOf = (raw: string | null) => {
-    const parsed = parseJson(raw);
-    return Array.isArray(parsed) ? parsed.filter((flag): flag is string => typeof flag === "string") : [];
-  };
   return {
     assessment: {
       id: head.id,
@@ -163,7 +166,7 @@ const studentGate = `JOIN student_access sa ON sa.organization_id = a.organizati
   WHERE sa.user_id = ?1 AND sa.student_id = ?2 AND sa.revoked_at IS NULL AND ${activeUser("?1")}
     AND a.state = 'RECORDED' AND a.format_version = 2`;
 
-/** The recorded Avaliações Físicas of the student this login is linked to, and the report of one of them. */
+/** The recorded Avaliações Físicas of the student this login is linked to, the report of one of them, and the evolution of their results. */
 export function studentAssessmentsFor(db: D1Database, userId: string, studentId: string) {
   const blank = !userId?.trim() || !studentId?.trim();
   return {
@@ -195,6 +198,56 @@ export function studentAssessmentsFor(db: D1Database, userId: string, studentId:
         .bind(userId, studentId, assessmentId)
         .first<HeadRow>();
       return head ? assemble(db, head) : null;
+    },
+    /**
+     * Slice 0.84: the results of the student's recorded Avaliações Físicas, oldest first (two of one date in the order they were recorded), for
+     * the same comparable series the professional reads (0.82). Like the professional's history, an assessment corrected by a recorded
+     * amendment is left out (the amendment carries the values), and only the newest `limit` are read. Only the new format: the earlier one has
+     * no method and is not shown to the student. Both queries pass the student's gate (active link, login not blocked, organization).
+     */
+    async evolution(limit = 24): Promise<EvolutionSource[]> {
+      if (blank) return [];
+      const heads = (
+        await db
+          .prepare(
+            `SELECT a.id, a.assessed_on AS assessedOn, a.recorded_at AS recordedAt
+             FROM assessments a ${studentGate}
+               AND NOT EXISTS (SELECT 1 FROM assessments n WHERE n.organization_id = a.organization_id AND n.amends_assessment_id = a.id AND n.state = 'RECORDED')
+             ORDER BY a.assessed_on DESC, a.recorded_at DESC LIMIT ?3`,
+          )
+          .bind(userId, studentId, Math.max(1, Math.min(limit, 100)))
+          .all<{ id: string; assessedOn: string; recordedAt: string | null }>()
+      ).results.reverse();
+      if (heads.length === 0) return [];
+      const rows = await db
+        .prepare(
+          `SELECT r.assessment_id AS assessmentId, r.code, r.value, r.unit, r.method, r.formula_version AS formulaVersion, r.inputs, r.flags
+           FROM assessment_results r
+           JOIN assessments a ON a.organization_id = r.organization_id AND a.id = r.assessment_id
+           ${studentGate} AND a.id IN (SELECT value FROM json_each(?3))
+           ORDER BY r.rowid`,
+        )
+        .bind(userId, studentId, JSON.stringify(heads.map((head) => head.id)))
+        .all<{ assessmentId: string; code: string; value: number | null; unit: string | null; method: string; formulaVersion: string | null; inputs: string | null; flags: string | null }>();
+      return heads.map((head) => ({
+        id: head.id,
+        assessedOn: head.assessedOn,
+        recordedAt: head.recordedAt,
+        formatVersion: 2,
+        results: rows.results
+          .filter((row) => row.assessmentId === head.id)
+          .map(
+            (row): ResultRow => ({
+              code: row.code,
+              value: row.value,
+              unit: row.unit,
+              method: row.method,
+              formulaVersion: row.formulaVersion,
+              inputs: (parseJson(row.inputs) as Record<string, unknown> | null) ?? null,
+              flags: flagsOf(row.flags),
+            }),
+          ),
+      }));
     },
   };
 }

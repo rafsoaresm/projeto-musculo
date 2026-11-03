@@ -109,3 +109,22 @@ describe("comparable series of results", () => {
     expect(resultEvolution([])).toEqual([]);
   });
 });
+
+describe("two assessments of the same date (slice 0.84)", () => {
+  it("are in the order they were recorded, whatever order they come in, each with its time", () => {
+    const later = { ...at("late", "2026-11-03", [row("bmi", 24.1, "weight_over_height_squared")]), recordedAt: "2026-11-03T20:00:00.000Z" };
+    const earlier = { ...at("early", "2026-11-03", [row("bmi", 23.9, "weight_over_height_squared")]), recordedAt: "2026-11-03T13:00:00.000Z" };
+    const before = { ...at("before", "2026-11-01", [row("bmi", 23.6, "weight_over_height_squared")]), recordedAt: "2026-11-01T13:00:00.000Z" };
+    const [bmi] = resultEvolution([before, later, earlier]);
+    expect(bmi.timeline.map((point) => [point.assessmentId, point.recordedAt])).toEqual([
+      ["before", "2026-11-01T13:00:00.000Z"],
+      ["early", "2026-11-03T13:00:00.000Z"],
+      ["late", "2026-11-03T20:00:00.000Z"],
+    ]);
+    expect(bmi.series).toHaveLength(1);
+    expect(bmi.series[0].numeric.map((point) => point.value)).toEqual([23.6, 23.9, 24.1]);
+    // Without a recorded time, the order given is kept.
+    const [kept] = resultEvolution([at("x", "2026-11-03", [row("bmi", 1, "weight_over_height_squared")]), at("y", "2026-11-03", [row("bmi", 2, "weight_over_height_squared")])]);
+    expect(kept.timeline.map((point) => point.assessmentId)).toEqual(["x", "y"]);
+  });
+});

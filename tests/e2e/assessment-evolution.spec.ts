@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { addStudent, createProfessional, localIP, noHorizontalOverflow, showStudentTab } from "./helpers";
+import { addStudent, createProfessional, expectNoTermsBox, localIP, noHorizontalOverflow, openInvitation, showStudentTab } from "./helpers";
 import { PARQ } from "../../src/modules/avaliacoes/catalog";
 
 // Slice 0.82: the evolution of the results compares only values obtained the same way (handoff 4.3, 5, 9). Two Avaliações Físicas of the
@@ -45,7 +45,11 @@ async function shots(page: Page, name: string, projectName: string) {
   if (size) await page.setViewportSize(size);
 }
 
-test("the evolution compares a result only within the same method: a change of protocol is a separate series, marked where it happens", async ({ page }, testInfo) => {
+// Slice 0.84: both are recorded today, so they share the date: in the order recorded, side by side on the chart, each dated with its time;
+// the student reads the same series in their area (read only), and only their own.
+const sameDayTime = /^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}( \([12]ª de 2 no dia\))?$/;
+
+test("the evolution compares a result only within the same method: a change of protocol is a separate series, marked where it happens", async ({ page, browser, baseURL }, testInfo) => {
   test.setTimeout(240_000);
   await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
   await createProfessional(page, "Estúdio da evolução");
@@ -113,8 +117,47 @@ test("the evolution compares a result only within the same method: a change of p
   await expect(bmi).toContainText("Último: 23,94 kg/m² em");
   await expect(bmi.getByRole("group", { name: "Gráfico: IMC, peso ÷ altura². Use as setas para percorrer as medições." })).toBeVisible();
   await expect(results).not.toContainText(/\bnormal\b|\bbom\b|\bruim\b|excelente|sobrepeso|obesidade/i);
+  // Two of the same date: each value dated with the time it was recorded, oldest first, and two separate points on the chart.
+  await bmi.getByText("Ver os valores").click();
+  const bmiDates = bmi.getByRole("table").getByRole("rowheader");
+  await expect(bmiDates).toHaveCount(2);
+  const [firstAt, secondAt] = [await bmiDates.nth(0).innerText(), await bmiDates.nth(1).innerText()];
+  expect(firstAt).toMatch(sameDayTime);
+  expect(secondAt).toMatch(sameDayTime);
+  expect(firstAt < secondAt).toBe(true);
+  await expect(bmi.getByRole("table").getByRole("row").nth(1)).toContainText("23,63 kg/m²");
+  const dots = bmi.locator("circle.chart-dot");
+  await expect(dots).toHaveCount(2);
+  const xs = await dots.evaluateAll((items) => items.map((item) => Number(item.getAttribute("cx"))));
+  expect(xs[1] - xs[0]).toBeGreaterThanOrEqual(10);
   // The item-by-item comparison of the earlier format does not claim "no differences" for these.
   await expect(page.getByText("Sem diferenças")).toHaveCount(0);
   await noHorizontalOverflow(page);
   await shots(page, "evolucao", testInfo.project.name);
+
+  // The student, once linked, reads the same series in their area, read only.
+  await page.goto(studentURL);
+  const { client } = await openInvitation(page, browser, baseURL, "Aluno da evolução");
+  await expectNoTermsBox(client.page);
+  await client.page.getByRole("button", { name: "Aceitar convite" }).click();
+  await expect(client.page).toHaveURL(/\/aluno\/?$/);
+  await client.page.goto("./aluno/avaliacoes");
+  const mine = client.page.getByRole("region", { name: "Resultados ao longo do tempo" });
+  await expect(mine).toBeVisible();
+  const myFat = mine.getByRole("group", { name: "Gordura estimada", exact: true });
+  await expect(myFat.getByText("Metodologias diferentes; comparação de % de gordura pode não ser equivalente", { exact: false })).toBeVisible();
+  await expect(myFat.getByRole("group", { name: "Gordura estimada, Faulkner", exact: true })).toContainText("Um valor: 15,9% em");
+  await expect(myFat.getByRole("group", { name: /^Gráfico:/ })).toHaveCount(0);
+  const myBmi = mine.getByRole("group", { name: "IMC", exact: true });
+  await expect(myBmi).toContainText("2 valores. Primeiro: 23,63 kg/m² em");
+  await expect(myBmi.getByRole("group", { name: "Gráfico: IMC, peso ÷ altura². Use as setas para percorrer as medições." })).toBeVisible();
+  await myBmi.getByText("Ver os valores").click();
+  await expect(myBmi.getByRole("table").getByRole("rowheader")).toHaveText([firstAt, secondAt]);
+  await expect(mine).not.toContainText(/\bnormal\b|\bbom\b|\bruim\b|excelente|sobrepeso|obesidade/i);
+  // Read only: nothing to start, finalize or change from here, and no professional link.
+  await expect(client.page.getByRole("button", { name: /Iniciar|Finalizar|Retificar/ })).toHaveCount(0);
+  await expect(client.page.locator('a[href*="/profissional/"]')).toHaveCount(0);
+  await noHorizontalOverflow(client.page);
+  await shots(client.page, "aluno-evolucao", testInfo.project.name);
+  await client.context.close();
 });

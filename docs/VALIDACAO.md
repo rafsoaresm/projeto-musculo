@@ -2,6 +2,15 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.84: Evolução da Avaliação Física para o aluno e gráfico de mesmo dia
+
+**Sem migration.**
+
+- **Aluno:** abaixo da lista em `/aluno/avaliacoes`, o mesmo painel "Resultados ao longo do tempo" da 0.82, só leitura (sem botões nem links para a área do profissional), com as mesmas regras de série (nunca mistura protocolos). Mostra só as avaliações registradas do formato novo; uma retificação registrada substitui a original, como no histórico do profissional; as 24 mais recentes. O acesso passa pela mesma verificação do PDF do aluno (0.81): vínculo ativo, login não bloqueado, mesma organização (D1: outro login, outro aluno, vínculo revogado e o id do profissional usado como login não recebem nada). Com mais de um vínculo, o título leva a organização e o nome. Os alertas dos resultados aparecem como no PDF do aluno.
+- **Gráfico de mesmo dia (profissional, aluno e as demais telas que usam o mesmo gráfico):** valores do mesmo dia ficam lado a lado, ordenados pela hora do registro, sem cair em cima de um dia vizinho; o rótulo leva a hora ("03/11/2026 14:05", fuso de São Paulo) só quando outro valor do mesmo resultado tem a mesma data, e "(1ª de 2 no dia)" se a hora também coincide. O gráfico e a tabela usam a mesma data. Os links "Baixar PDF" do aluno têm nomes distintos.
+- **Verificado localmente:** tipos, lint e `npm run check` (120 arquivos, 1883 testes); e2e nos dois mounts (raiz e `/treinador`): 28 passaram em cada; capturas a 1440, 1280, 1024, 768 e 390 (profissional e aluno).
+- **Não verificado / não feito:** a página de evolução do formato anterior e a de execução (que também usam o gráfico) não foram vistas no navegador; a lista do aluno e a linha do tempo do profissional ainda mostram só a data para duas avaliações no mesmo dia; o fuso é fixo em São Paulo (o da organização existe e não é usado).
+
 ## Fatia 0.83: Fotos posturais da Avaliação Física (PENDENCIAS B48; handoff 3.3 e 6)
 
 **Sem migration** (tabela `assessment_photos` da 0011). Fotos opcionais em cada vista da postura, no cartão da etapa Movimento do rascunho: **lateral com duas (esquerda e direita), posterior e anterior com uma** — o mesmo limite de uma foto por vista guardada do formato anterior (escolha da ferramenta; o handoff só diz "fotos opcionais em cada vista").
@@ -12,6 +21,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Ao registrar:** as fotos congelam com a avaliação (gatilhos da 0011, conferidos para o formato novo); "Excluir foto" continua apagando o arquivo de uma avaliação registrada ("Foto apagada em …"). **A retificação começa sem fotos** (a original mantém as dela). Descartar o rascunho apaga as fotos dele. A avaliação registrada mostra as miniaturas por vista.
 - **Verificado localmente:** tipos, lint e `npm run check` (120 arquivos, 1877 testes; 4 D1 e 3 unitários novos); e2e nos dois mounts (raiz e `/treinador`): 30 passaram em cada (enviar, substituir, remover, recarregar, congelar, excluir na registrada, aluno sem acesso); capturas a 1440, 1280, 1024, 768 e 390.
 - **Não verificado / não feito:** envio para o bucket de produção (só o R2 local); **controle de visibilidade** das fotos pedido no handoff 6 (hoje fixo: só o profissional; ver B50); descartar durante um envio não tem teste de navegador.
+- **CI e deploy:** o CI do PR #85 passou (`validate` e `validate (/treinador)`, no commit `d4b2421`); merge `ab168ad`; deploy `e1cf6727` com sucesso em 03/11/2026 (sem migration).
 
 ## Fatia 0.82: Evolução comparável por protocolo da Avaliação Física (handoff 1, 4.3, 6 e 9; fecha a P1)
 

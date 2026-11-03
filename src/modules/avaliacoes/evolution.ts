@@ -7,6 +7,7 @@ import {
   SCREENING_ITEMS,
   SIDE_LABEL,
 } from "./contracts";
+import { formatCalendarDate } from "@/modules/training/format";
 
 /**
  * Reading the history of a student's assessments: the same measure over time, and what differs
@@ -155,11 +156,20 @@ export function niceStep(raw: number): number {
   return nice * 10 ** exponent;
 }
 
+/** The least horizontal distance between two values of the same day (slice 0.84), in units of the drawing (360 wide). */
+export const SAME_DAY_GAP = 14;
+
 /**
  * Where each point goes inside a plot area. X follows the real distance in days between the
  * assessments, so two close dates are close on the chart. The y axis is padded and snapped to
  * round guides, so the line never touches the frame and the ticks are numbers a person would
  * write. A flat series is not stretched.
+ *
+ * Two values of the same day (two assessments recorded on one date; slice 0.84) are never drawn on top of each other: the caller gives them in
+ * the order they were recorded, and they are spread side by side around their day, SAME_DAY_GAP apart, inside the frame. The same gap keeps
+ * them clear of the value just before and just after the run, even when that value is of a neighbouring day. When every value is of one day,
+ * they are spread over the whole width. X never goes back: a value is never left of the one recorded before it. When the gaps do not fit in the
+ * width, they shrink together.
  */
 export function chartGeometry(
   points: Array<{ assessedOn: string; value: number }>,
@@ -180,14 +190,78 @@ export function chartGeometry(
     const rounded = Math.round(value * 1e6) / 1e6;
     ticks.push({ y: yOf(rounded), value: rounded });
   }
+  const right = area.left + area.width;
+  const xs = points.map((point) => (span === 0 ? area.left + area.width / 2 : area.left + ((dayOf(point.assessedOn) - first) / span) * area.width));
+  if (span === 0 && points.length > 1) {
+    points.forEach((_, index) => (xs[index] = area.left + (index / (points.length - 1)) * area.width));
+  } else if (points.length > 1) {
+    // A value shares its day with another: it and its neighbours on either side keep SAME_DAY_GAP. Other neighbours keep the distance in days.
+    const shared = points.map(
+      (point, index) => points[index - 1]?.assessedOn === point.assessedOn || points[index + 1]?.assessedOn === point.assessedOn,
+    );
+    const need = points.map((_, index): number => (index > 0 && (shared[index] || shared[index - 1]) ? SAME_DAY_GAP : 0));
+    const total = need.reduce((sum, gap) => sum + gap, 0);
+    const scale = total > area.width ? area.width / total : 1;
+    // Each run of one day starts centred on its day.
+    for (let start = 0; start < points.length; ) {
+      let end = start;
+      while (end + 1 < points.length && points[end + 1].assessedOn === points[start].assessedOn) end += 1;
+      const width = need.slice(start + 1, end + 1).reduce((sum, gap) => sum + gap * scale, 0);
+      for (let index = start; index <= end; index += 1) xs[index] -= width / 2;
+      start = end + 1;
+    }
+    // Pushed right to keep the gaps, then pulled back inside the frame; the gaps fit, so both bounds hold.
+    xs[0] = Math.max(xs[0], area.left);
+    for (let index = 1; index < xs.length; index += 1) xs[index] = Math.max(xs[index], xs[index - 1] + need[index] * scale);
+    xs[xs.length - 1] = Math.min(xs[xs.length - 1], right);
+    for (let index = xs.length - 2; index >= 0; index -= 1) xs[index] = Math.min(xs[index], xs[index + 1] - need[index + 1] * scale);
+    // Only rounding can leave one a hair outside the frame.
+    for (let index = 0; index < xs.length; index += 1) xs[index] = Math.min(Math.max(xs[index], area.left), right);
+  }
   return {
     min,
     max,
-    points: points.map((point, index) => ({
-      index,
-      x: area.left + (span === 0 ? area.width / 2 : ((dayOf(point.assessedOn) - first) / span) * area.width),
-      y: yOf(point.value),
-    })),
+    points: points.map((point, index) => ({ index, x: xs[index], y: yOf(point.value) })),
     ticks,
   };
+}
+
+const clock = new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Sao_Paulo" });
+const calendarDay = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" });
+const shortDay = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo" });
+
+/** The place of a value among the assessments of its day. */
+const nth = (order: number, total: number, compact = false) => (compact ? `(${order}ª)` : `(${order}ª de ${total} no dia)`);
+
+/**
+ * How each value's date is written (slice 0.84). A date alone ("03/11/2026") when no other value shares it; when two or more share it, the time
+ * each was recorded, in the app's clock (America/Sao_Paulo): "03/11/2026 14:05". If it was recorded on another day than the date of the
+ * assessment, that day is written too ("03/11/2026, registrada 04/11/2026 09:10"), so a time is never read as of the wrong day. Without a
+ * recorded time, the values of one date are numbered in the order given ("03/11/2026 (1ª de 2 no dia)": the place among the assessments of that day,
+ * so a series with one value does not read as "value 1 of 2"). `compact` (the ends of the chart's axis)
+ * numbers them instead of writing the other day, in short ("03/11/2026 (2ª)"), so the two ends of the axis fit side by side. Two recorded in the same minute get their number too ("03/11/2026 11:09 (2ª de 2 no dia)"), so no two
+ * labels of a date are equal.
+ */
+export function dateLabels(points: ReadonlyArray<{ assessedOn: string; recordedAt?: string | null }>, compact = false): string[] {
+  const counts = new Map<string, number>();
+  for (const point of points) counts.set(point.assessedOn, (counts.get(point.assessedOn) ?? 0) + 1);
+  const seen = new Map<string, number>();
+  const positions: number[] = [];
+  const labels = points.map((point) => {
+    const date = formatCalendarDate(point.assessedOn);
+    const total = counts.get(point.assessedOn) ?? 1;
+    const order = (seen.get(point.assessedOn) ?? 0) + 1;
+    seen.set(point.assessedOn, order);
+    positions.push(order);
+    if (total === 1) return date;
+    const at = point.recordedAt ? new Date(point.recordedAt) : null;
+    const sameDay = at !== null && !Number.isNaN(at.getTime()) && calendarDay.format(at) === point.assessedOn;
+    if (at === null || Number.isNaN(at.getTime()) || (compact && !sameDay)) return `${date} ${nth(order, total, compact)}`;
+    return sameDay ? `${date} ${clock.format(at)}` : `${date}, registrada ${shortDay.format(at)} ${clock.format(at)}`;
+  });
+  const repeated = new Map<string, number>();
+  for (const label of labels) repeated.set(label, (repeated.get(label) ?? 0) + 1);
+  return labels.map((label, index) =>
+    (repeated.get(label) ?? 1) === 1 || label.endsWith(")") ? label : `${label} ${nth(positions[index], counts.get(points[index].assessedOn) ?? 1, compact)}`,
+  );
 }

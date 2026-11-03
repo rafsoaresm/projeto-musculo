@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AssessmentSnapshot } from "@/db/assessments";
-import { buildSeries, changesBetween, chartGeometry, niceStep, seriesTitle } from "@/modules/avaliacoes/evolution";
+import { SAME_DAY_GAP, buildSeries, changesBetween, chartGeometry, dateLabels, niceStep, seriesTitle } from "@/modules/avaliacoes/evolution";
 
 const noFlags = {
   exertionPain: false, dizzinessFainting: false, chestPain: false,
@@ -11,7 +11,7 @@ const metric = (metricType: string, name: string, valueText: string, extra: Reco
   unit: null, side: null as "LEFT" | "RIGHT" | "BOTH" | null, notes: null, ...extra,
 });
 const snapshot = (id: string, assessedOn: string, extra: Partial<AssessmentSnapshot> = {}): AssessmentSnapshot => ({
-  id, assessedOn, kind: "REASSESSMENT", formatVersion: null, riskStatus: "CLEAR", reviewed: false, flags: { ...noFlags },
+  id, assessedOn, recordedAt: null, kind: "REASSESSMENT", formatVersion: null, riskStatus: "CLEAR", reviewed: false, flags: { ...noFlags },
   posture: { findings: [], notes: null }, movement: [], metrics: [], photos: [], results: [], ...extra,
 });
 
@@ -133,7 +133,111 @@ describe("chart geometry", () => {
     expect(flat.points[0].y).toBeLessThan(110);
     const sameDay = chartGeometry([{ assessedOn: "2026-01-01", value: 1 }, { assessedOn: "2026-01-01", value: 2 }], area);
     expect(sameDay.points.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y))).toBe(true);
+    // Slice 0.84: every value of one day, spread over the width in the order given, never on top of each other.
+    expect(sameDay.points.map((p) => p.x)).toEqual([40, 340]);
     const zero = chartGeometry([{ assessedOn: "2026-01-01", value: 0 }, { assessedOn: "2026-02-01", value: 0 }], area);
     expect(zero.points.every((p) => Number.isFinite(p.y))).toBe(true);
+  });
+});
+
+describe("two values of the same day (slice 0.84)", () => {
+  const area = { left: 40, top: 10, width: 300, height: 100 };
+  it("draws them side by side around their day, in the order given, inside the frame, never going back", () => {
+    const g = chartGeometry(
+      [{ assessedOn: "2026-01-01", value: 70 }, { assessedOn: "2026-03-01", value: 68 }, { assessedOn: "2026-03-01", value: 66 }, { assessedOn: "2026-03-02", value: 65 }],
+      area,
+    );
+    const xs = g.points.map((p) => p.x);
+    expect(xs[0]).toBe(40);
+    expect(xs[2] - xs[1]).toBeCloseTo(SAME_DAY_GAP, 5);
+    // Around the day of 01/03 (59 of 60 days), pushed back inside the frame.
+    expect(xs[2]).toBeLessThanOrEqual(340);
+    for (let i = 1; i < xs.length; i += 1) expect(xs[i]).toBeGreaterThanOrEqual(xs[i - 1]);
+    expect(new Set(xs.slice(0, 3)).size).toBe(3);
+    // The y still follows the values: the second of the day is drawn at its own value.
+    expect(g.points[2].y).toBeGreaterThan(g.points[1].y);
+    // At the start of the frame too.
+    const early = chartGeometry([{ assessedOn: "2026-01-01", value: 1 }, { assessedOn: "2026-01-01", value: 2 }, { assessedOn: "2026-06-01", value: 3 }], area);
+    expect(early.points.map((p) => p.x).slice(0, 2)).toEqual([40, 40 + SAME_DAY_GAP]);
+    // Three of one day in the middle: centred on the day.
+    const middle = chartGeometry(
+      [{ assessedOn: "2026-01-01", value: 1 }, ...[2, 3, 4].map((value) => ({ assessedOn: "2026-01-11", value })), { assessedOn: "2026-01-21", value: 5 }],
+      area,
+    );
+    expect(middle.points.slice(1, 4).map((p) => p.x)).toEqual([190 - SAME_DAY_GAP, 190, 190 + SAME_DAY_GAP]);
+  });
+
+  it("keeps a run of one day clear of a value of the day before or after, also when a year makes a day less than one unit", () => {
+    const chart = { left: 46, top: 14, width: 296, height: 88 };
+    const xsOf = (dates: string[]) => chartGeometry(dates.map((assessedOn, value) => ({ assessedOn, value })), chart).points.map((p) => p.x);
+    const apart = (xs: number[]) => {
+      for (let i = 1; i < xs.length; i += 1) expect(xs[i] - xs[i - 1]).toBeGreaterThanOrEqual(SAME_DAY_GAP - 1e-9);
+      expect(xs[0]).toBeGreaterThanOrEqual(46);
+      expect(xs[xs.length - 1]).toBeLessThanOrEqual(342 + 1e-9);
+    };
+    // One the day before a pair (before the fix: 46, 46, 60, 342).
+    const a = xsOf(["2025-11-03", "2025-11-04", "2025-11-04", "2026-11-03"]);
+    apart(a);
+    expect(a[0]).toBe(46);
+    expect(a[3]).toBe(342);
+    // Two pairs on following days (before the fix the second of 01/06 and the first of 02/06 shared x).
+    const b = xsOf(["2025-11-03", "2026-06-01", "2026-06-01", "2026-06-02", "2026-06-02", "2026-11-03"]);
+    apart(b);
+    // A pair the day before the last value, against the right edge.
+    apart(xsOf(["2025-11-03", "2026-11-02", "2026-11-02", "2026-11-03"]));
+    // Values of different days, none shared, still follow the days (unchanged from 0.82).
+    expect(xsOf(["2026-01-01", "2026-01-02", "2026-12-31"]).slice(0, 2)).toEqual([46, 46 + 296 / 364]);
+    // More than fit: the gaps shrink together, never below zero, inside the frame.
+    const many = xsOf(Array.from({ length: 30 }, () => "2026-03-01").concat("2026-03-02"));
+    for (let i = 1; i < many.length; i += 1) expect(many[i]).toBeGreaterThan(many[i - 1]);
+    expect(many[0]).toBeGreaterThanOrEqual(46);
+    expect(many[many.length - 1]).toBeLessThanOrEqual(342 + 1e-9);
+  });
+
+  it("dates a value with the time it was recorded only when another shares its date", () => {
+    expect(
+      dateLabels([
+        { assessedOn: "2026-11-02", recordedAt: "2026-11-02T13:00:00.000Z" },
+        { assessedOn: "2026-11-03", recordedAt: "2026-11-03T13:05:00.000Z" },
+        { assessedOn: "2026-11-03", recordedAt: "2026-11-03T20:40:00.000Z" },
+      ]),
+    ).toEqual(["02/11/2026", "03/11/2026 10:05", "03/11/2026 17:40"]);
+    // Recorded on another day than the date of the assessment (an amendment, a draft finished later): that day is written too.
+    expect(
+      dateLabels([
+        { assessedOn: "2026-11-03", recordedAt: "2026-11-03T13:05:00.000Z" },
+        { assessedOn: "2026-11-03", recordedAt: "2026-11-04T12:10:00.000Z" },
+      ]),
+    ).toEqual(["03/11/2026 10:05", "03/11/2026, registrada 04/11/2026 09:10"]);
+    // On the axis, numbered instead; without a recorded time, numbered in the order given.
+    expect(
+      dateLabels(
+        [
+          { assessedOn: "2026-11-03", recordedAt: "2026-11-03T13:05:00.000Z" },
+          { assessedOn: "2026-11-03", recordedAt: "2026-11-04T12:10:00.000Z" },
+        ],
+        true,
+      ),
+    ).toEqual(["03/11/2026 10:05", "03/11/2026 (2ª)"]);
+    expect(dateLabels([{ assessedOn: "2026-11-03" }, { assessedOn: "2026-11-03", recordedAt: null }])).toEqual(["03/11/2026 (1ª de 2 no dia)", "03/11/2026 (2ª de 2 no dia)"]);
+    expect(dateLabels([{ assessedOn: "2026-11-03", recordedAt: "2026-11-03T13:05:00.000Z" }])).toEqual(["03/11/2026"]);
+    // Two recorded in the same minute are numbered, never two equal labels.
+    expect(
+      dateLabels([
+        { assessedOn: "2026-11-03", recordedAt: "2026-11-03T13:05:10.000Z" },
+        { assessedOn: "2026-11-03", recordedAt: "2026-11-03T13:05:50.000Z" },
+        { assessedOn: "2026-11-03", recordedAt: "2026-11-03T15:00:00.000Z" },
+      ]),
+    ).toEqual(["03/11/2026 10:05 (1ª de 3 no dia)", "03/11/2026 10:05 (2ª de 3 no dia)", "03/11/2026 12:00"]);
+    // On the axis the number is short, so both ends fit.
+    expect(
+      dateLabels(
+        [
+          { assessedOn: "2026-11-03", recordedAt: "2026-11-03T13:05:10.000Z" },
+          { assessedOn: "2026-11-03", recordedAt: "2026-11-03T13:05:50.000Z" },
+        ],
+        true,
+      ),
+    ).toEqual(["03/11/2026 10:05 (1ª)", "03/11/2026 10:05 (2ª)"]);
   });
 });
