@@ -12,6 +12,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Também:** a soma das dobras deixa de aparecer como "estimativa" (tela, evolução e PDF); a linha do tempo diz "PAR-Q sem “Sim”" nas avaliações novas; a comparação item a item fica só para o formato anterior (ela não lê os módulos novos).
 - **Verificado localmente:** tipos, lint e `npm run check` (119 arquivos, 1870 testes); e2e nos dois mounts (raiz e `/treinador`): 26 passaram em cada (Jackson & Pollock 7 e depois Faulkner, exemplo do handoff 8: duas séries, aviso, valores), mais `assessments-legacy` (2); capturas a 1440, 1280, 1024, 768 e 390.
 - **Não feito:** evolução para o aluno; medidas brutas (peso etc.) como série; o cartão-resumo "Evolução" do Figma AV-01. Duas avaliações no mesmo dia aparecem como dois pontos na mesma data. As páginas só com formato anterior e mistas são cobertas por teste de renderização, não no navegador.
+- **CI e deploy:** o CI do PR #84 passou (`validate` e `validate (/treinador)`, no commit `b93e0e4`); merge `d6d5282`; deploy `2b04f292` com sucesso em 03/11/2026 (sem migration).
 
 ## Fatia 0.81: Relatório em PDF da Avaliação Física, para o profissional e o aluno (handoff 3.5, 4.3, 6 e 9; Figma AV-06; decisão de 02/11/2026)
 
