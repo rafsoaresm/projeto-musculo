@@ -14,8 +14,8 @@ export interface ManagerRecoveryState {
 const messages: Record<Exclude<ManagerRecoveryResult, "reset">, string> = {
   unavailable:
     "A recuperação não está configurada neste ambiente. Defina PLATFORM_SETUP_TOKEN (32 caracteres ou mais) no ambiente privado.",
-  rate_limited: "Muitas tentativas. Aguarde 15 minutos e tente novamente.",
-  invalid_token: "Código do ambiente inválido. Confira o valor configurado no ambiente privado.",
+  rate_limited: "Muitas tentativas. Aguarde até 15 minutos e tente novamente.",
+  invalid_token: "Código de ativação inválido. Confira o valor configurado no ambiente privado.",
   invalid_credentials: "E-mail ou senha não conferem.",
   not_applicable:
     "Esta conta não é de um gestor ativo com a verificação em duas etapas ligada. Nada foi alterado.",

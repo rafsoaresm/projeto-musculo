@@ -198,7 +198,7 @@ export function AccountForm({
           <>
             <p className="small account-help">
               Perdeu também os códigos? Um gestor da plataforma redefine a verificação de profissionais e de outros
-              gestores. O último gestor ativo usa o código do ambiente.
+              gestores. O último gestor ativo usa o código de ativação do ambiente.
             </p>
             <Link className="account-link" href="/gestor/recuperar">
               Sou o último gestor e perdi os códigos

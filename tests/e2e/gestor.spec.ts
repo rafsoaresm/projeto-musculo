@@ -199,7 +199,7 @@ test("the platform manager is activated once and manages organizations without s
   const recoverWith = async (secret: string, secretPassword = password) => {
     await stranded.page.getByLabel("E-mail da conta de gestor").fill(managerEmail);
     await stranded.page.getByLabel("Senha da conta").fill(secretPassword);
-    await stranded.page.getByLabel("Código do ambiente").fill(secret);
+    await stranded.page.getByLabel("Código de ativação").fill(secret);
     await stranded.page.getByRole("button", { name: "Redefinir a verificação em duas etapas" }).click();
   };
   await recoverWith(setupToken());
@@ -229,7 +229,7 @@ test("the platform manager is activated once and manages organizations without s
   // Now the only active manager: the environment secret, with the person's own e-mail and password, turns off only the
   // second step and ends every session. A wrong secret or a wrong password changes nothing.
   await recoverWith("x".repeat(40));
-  await expect(stranded.page.locator("p.form-error")).toContainText("Código do ambiente inválido.");
+  await expect(stranded.page.locator("p.form-error")).toContainText("Código de ativação inválido.");
   await recoverWith(setupToken(), "not-the-password-of-this-account");
   await expect(stranded.page.locator("p.form-error")).toContainText("E-mail ou senha não conferem.");
   await recoverWith(setupToken());
@@ -240,7 +240,7 @@ test("the platform manager is activated once and manages organizations without s
   await signIn(manager.page, managerEmail);
   await expect(manager.page.getByRole("heading", { name: "Quem contratou a ferramenta." })).toBeVisible();
   await manager.page.goto("./gestor/auditoria");
-  await expect(manager.page.getByText("Verificação em duas etapas redefinida com o código do ambiente").first()).toBeVisible();
+  await expect(manager.page.getByText("Verificação em duas etapas redefinida com o código de ativação").first()).toBeVisible();
 
   // The terms: the text in force is the approved one, and the manager can change it on a page of its own.
   // This is the last thing the scenario does: publishing a text asks everyone to accept again.

@@ -2,6 +2,16 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.89: Recuperar o acesso do último gestor (PENDENCIAS B16; parte de B2)
+
+**Sem migration.** Nova página pública `/gestor/recuperar`, ligada a partir da tela do código de recuperação ("Sou o último gestor e perdi os códigos").
+
+- **O que pede:** o código de ativação do ambiente (`PLATFORM_SETUP_TOKEN`) **e** o e-mail e a senha do próprio gestor (escolha da ferramenta: um código de ativação vazado sozinho não tira a etapa de ninguém).
+- **Quando vale:** só para um gestor ativo, não bloqueado, com a verificação em duas etapas ligada, **e sem outro gestor ativo** (com outro, a página recusa e manda para Gestor > Gestores, onde um gestor já redefinia a etapa de outro desde a 0.31 — agora com teste de navegador).
+- **O que faz:** desliga só a verificação em duas etapas, apaga os segredos e encerra todas as sessões da conta; senha, e-mail e papel não mudam. Num lote só com a linha da trilha (`PLATFORM_TWO_FACTOR_RECOVERED`, "…redefinida com o código de ativação"); uma mudança concorrente não grava nada. Limite de 5 tentativas por endereço a cada 15 minutos (escolha da ferramenta), contado antes de qualquer conferência. Um código errado não diz nada sobre a conta.
+- **Verificado localmente:** tipos, lint e `npm run check` (127 arquivos, 1947 testes; 5 D1 com a autenticação real); e2e completo nos dois mounts (raiz e `/treinador`): 168 passaram, 39 pulados, 0 falhas em cada (outro gestor redefine; com dois gestores a página recusa; com um só, código errado e senha errada recusados, o certo redefine, a sessão antiga cai, a entrada volta só com a senha, a trilha mostra); capturas a 1440, 1280, 1024, 768 e 390.
+- **Não verificado / não feito:** no Webflow Cloud com o segredo real e o endereço da borda (`CF-Connecting-IP`); aviso por e-mail (R1); vários gestores travados ao mesmo tempo, senha perdida sem e-mail e gestor bloqueado ainda exigem o banco (B2).
+
 ## Fatia 0.88: Trilha de leitura e falhas de login (PENDENCIAS B9)
 
 **Migration `0038_read_trail_sign_in_failures.sql`** (aditiva, duas tabelas novas): `sign_in_failures` (o usuário, quando o e-mail é de alguém com perfil; senão só um HMAC-SHA256 do e-mail com `AUTH_SECRET`; motivo grosso: senha, código da verificação em duas etapas, bloqueio; hora — nunca senha, código, IP ou navegador) e `student_data_reads` (organização, aluno, quem abriu, o tipo e a hora — nunca o conteúdo).

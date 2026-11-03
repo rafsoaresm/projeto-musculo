@@ -54,7 +54,7 @@ export function ManagerRecoveryForm() {
           />
         </label>
         <label>
-          Código do ambiente
+          Código de ativação
           <input
             name="token"
             type="password"
@@ -67,8 +67,8 @@ export function ManagerRecoveryForm() {
           />
         </label>
         <span className="small" id="recovery-token-help">
-          O valor de PLATFORM_SETUP_TOKEN no ambiente privado, o mesmo da
-          ativação do primeiro gestor.
+          O valor de PLATFORM_SETUP_TOKEN no ambiente privado, o mesmo código
+          usado para ativar o primeiro gestor.
         </span>
         {state.error && (
           <p role="alert" className="form-error">
