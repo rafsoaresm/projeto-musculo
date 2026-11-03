@@ -10,6 +10,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Aviso:** "A cópia tem dados de saúde: guarde-a em um lugar seguro." na página e no rodapé de cada página do PDF.
 - **Verificado localmente:** tipos, lint e `npm run check`; e2e nos dois mounts (raiz e `/treinador`) com `export`; capturas a 1440, 1280, 1024, 768 e 390 e o PDF renderizado (3 páginas).
 - **Não verificado:** o PDF com um histórico muito longo (centenas de check-ins) no Worker; leitores de tela no PDF (sem marcação de acessibilidade).
+- **CI e deploy:** o CI do PR #93 passou (`validate` e `validate (/treinador)`, no commit `48b956f`); merge `394a523`; deploy `594667d5` com sucesso em 03/11/2026 (sem migration).
 
 ## Fatia 0.90: Nome de quem entregou no momento da entrega (PENDENCIAS B15)
 
