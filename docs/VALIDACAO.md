@@ -11,6 +11,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Textos:** as notas que diziam "só o profissional vê" e "fora do PDF" foram atualizadas; "apagada" em todas as notas.
 - **Verificado localmente:** tipos, lint e `npm run check` (123 arquivos, 1911 testes; D1 e R2 de acesso do aluno e do PDF com fotos); e2e nos dois mounts (raiz e `/treinador`): 26 passaram em cada; capturas a 1440, 1280, 1024, 768 e 390.
 - **Não verificado:** R2 de produção; uma foto real de câmera (JPEG progressivo ou com perfil de cor) no PDF (as que o app grava são redesenhadas pelo navegador); memória de um PDF com quatro fotos grandes no Worker.
+- **CI e deploy:** o CI do PR #88 passou (`validate` e `validate (/treinador)`, no commit `1a7bb68`); merge `cd7d3fb`; deploy `512989fd` com sucesso em 03/11/2026 (sem migration).
 
 ## Fatia 0.85: Modelos de avaliação (handoff 2 e 6)
 
