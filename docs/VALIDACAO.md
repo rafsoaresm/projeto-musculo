@@ -22,6 +22,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Continuam lidos na hora (escolha):** quem aprovou uma revisão, quem decidiu o PAR-Q, o cabeçalho do aluno e "Quem acessou os meus dados".
 - **Verificado localmente:** tipos, lint e `npm run check` (128 arquivos, 1958 testes; 11 D1 com o banco montado até a 0038 e a 0039 aplicada por cima); e2e nos dois mounts (raiz e `/treinador`): 17 passaram e 1 pulado em cada (`delivery`, `settings`, `assessment-finalize`, `assessment-report`, `assessments`, `plans`, `export`); capturas a 1440, 1280, 1024, 768 e 390.
 - **Não verificado:** a migration e o preenchimento no D1 de produção (será conferido no log); o texto dos PDFs com uma entrega real.
+- **CI e deploy:** o CI do PR #92 passou (`validate` e `validate (/treinador)`, no commit `544eb5a`); merge `c3509e0`; deploy `3f580c91` com sucesso em 03/11/2026, com `0039_delivery_names.sql ✅` no log.
 
 ## Fatia 0.89: Recuperar o acesso do último gestor (PENDENCIAS B16; parte de B2)
 

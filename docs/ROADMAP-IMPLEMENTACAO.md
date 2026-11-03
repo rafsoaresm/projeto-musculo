@@ -60,7 +60,7 @@ As pendências de todas as frentes (o que depende do responsável, do advogado e
   - **0.87 Check-ins configuráveis (implantada: deploy `4a38d34c`, commit `79d66fa`; migration 0037 aplicada no log):** perguntas por aluno com versões, dias anteriores (14), respostas do profissional com marcador para o aluno.
   - **0.88 Trilha de leitura e falhas de login (implantada: deploy `53e583dc`, commit `df3c181`; migration 0038 aplicada no log):** falhas de login sem dado sensível, leituras dos dados do aluno pelo profissional, "Quem acessou os meus dados" para o aluno e "Acessos aos dados do aluno" para OWNER/MANAGER.
   - **0.89 Recuperar o último gestor (implantada: deploy `927af991`, commit `4b8d200`; sem migration):** `/gestor/recuperar` com o código de ativação e a própria senha, só sem outro gestor ativo.
-  - **0.90 Nome de quem entregou (deploy pendente; migration 0039):** nomes do profissional e do espaço congelados na entrega do plano e no registro da avaliação; histórico de nomes em Configurações.
+  - **0.90 Nome de quem entregou (implantada: deploy `3f580c91`, commit `c3509e0`; migration 0039 aplicada no log):** nomes do profissional e do espaço congelados na entrega do plano e no registro da avaliação; histórico de nomes em Configurações.
   - **0.91 Cópia dos dados legível (deploy pendente; sem migration):** página e PDF de "Baixar meus dados", além do JSON.
   - **Próximas:** 0.92 classificações pelas tabelas de referência enviadas pelo usuário (gordura, IMC, Cooper 12 min, RCQ e, se confirmado, Flexiteste), 0.93 leads: tarefas e paginação (B19).
   - **P2 (restante, fora do código):** fora do código: biblioteca de referências, tabelas classificatórias homologadas (técnico), Heath-Carter completo.
