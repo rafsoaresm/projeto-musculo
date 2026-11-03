@@ -11,6 +11,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **No rascunho e depois:** parte desligada some da etapa (etapa sem nada some), aparece como **"Não incluído neste modelo"** na Revisão, na avaliação registrada e no PDF (diferente de "Não realizado") e nunca impede finalizar; nenhum resultado sai de parte desligada. Salvar dado numa parte desligada é recusado com o nome da parte; foto postural também, quando a postura está desligada. A retificação copia o modelo e a versão da original. O PDF mostra a linha "Modelo".
 - **Verificado localmente:** tipos, lint e `npm run check` (122 arquivos, 1907 testes; 11 unitários e 10 D1 de modelos: papéis e organização, versões, conflitos, salvamentos recusados, finalizar, gatilhos, retificação, arquivamento, foto recusada); e2e nos dois mounts (raiz e `/treinador`): 30 passaram em cada, com o fluxo inteiro de modelo; capturas a 1440, 1280, 1024, 768 e 390.
 - **Não feito / não verificado:** a migration no D1 de produção (só local); modelos no modo demonstração; ordem dos cartões dentro de uma etapa; as mensagens de "modelo mudou" e "rascunho com outro modelo" só têm teste D1.
+- **CI e deploy:** o CI do PR #87 passou (`validate` e `validate (/treinador)`, no commit `e91a6d0`); merge `6b96e78`; deploy `2d14ce81` com sucesso em 03/11/2026, com `0036_assessment_templates.sql ✅` no log.
 
 ## Fatia 0.84: Evolução da Avaliação Física para o aluno e gráfico de mesmo dia
 
