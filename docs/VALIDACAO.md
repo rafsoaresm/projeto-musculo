@@ -12,6 +12,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Finalizar** grava `waist_hip_ratio` e `bilateral_difference_<braço|antebraço|coxa|panturrilha>` com a versão da fórmula; o que falta não é gravado e a Revisão diz o motivo. A Revisão conta "Perímetros: N de 9 com medida" (um par conta só com os dois lados) e "Diâmetros ósseos: N de 3". RCQ, diferenças e IMC deixam de aparecer como "estimativa" (são conta direta); os cabeçalhos dizem quais são estimativa de estudo. O histórico não muda.
 - **Verificado localmente:** tipos, lint e `npm run check`; e2e nos dois mounts (raiz e `/treinador`): 20 passaram em cada (preencher, salvamento automático e recarregar, alinhamento 4+4+2 e 3 no computador e um por linha no celular, Revisão e avaliação registrada); capturas a 1440, 1280, 1024, 768 e 390.
 - **Não feito (do handoff 3.2):** local anatômico, condição relaxado/contraído e instrumento por perímetro; áreas musculares e massas muscular, óssea e residual; faixa plausível das medidas (fica com o técnico). Uma nota escrita pelo profissional por par não existe (a "observação" é a linha automática).
+- **CI e deploy:** o CI do PR #80 passou (`validate` e `validate (/treinador)`, no commit `3dd2271`); merge `06c7d06`; deploy `e7081d51` com sucesso em 03/11/2026 (sem migration).
 
 ## Fatia 0.77: Finalizar, retificar e histórico da Avaliação Física (decisões do usuário de 02/11/2026, 1 a 3)
 
