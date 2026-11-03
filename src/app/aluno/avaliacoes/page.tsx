@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Fragment } from "react";
 import Link from "next/link";
-import { Download } from "lucide-react";
+import { Download, Eye } from "lucide-react";
 import { requireStudent } from "@/modules/auth/server";
 import { studentAssessmentsFor } from "@/db/assessment-reports";
 import { PageHeading, Pill } from "@/components/ui";
@@ -17,7 +17,8 @@ export const metadata: Metadata = { title: `${ASSESSMENT_NAME} · Área do aluno
 /**
  * The recorded Avaliações Físicas of the student, each with its report in PDF (user's decision of 02/11/2026: the report goes to the professional
  * and to the student; no lock, decision of 03/11/2026). Drafts never appear; the earlier format has no report. Slice 0.84: below the list, the
- * results of those assessments over time, in the same comparable series as the professional's page (0.82), read only.
+ * results of those assessments over time, in the same comparable series as the professional's page (0.82), read only. Slice 0.86: each one
+ * opens on its own page, with its posture photos (user's decision of 03/11/2026: "o aluno pode ver as próprias fotos").
  */
 /** Which assessment a report link downloads, in words, so two of one date never share a name ("da reavaliação de 03/11/2026 14:05"). */
 const pdfOf = (item: { kind: string; amendsAssessmentId: string | null }) =>
@@ -41,7 +42,7 @@ export default async function StudentAssessmentsPage() {
       <PageHeading
         eyebrow="ÁREA DO ALUNO"
         title={ASSESSMENT_NAME}
-        description="As avaliações que o seu profissional registrou, com o relatório em PDF e os resultados ao longo do tempo."
+        description="As avaliações que o seu profissional registrou, com as fotos da postura, o relatório em PDF e os resultados ao longo do tempo."
       />
       {!any && (
         <section className="panel">
@@ -65,6 +66,7 @@ export default async function StudentAssessmentsPage() {
                       <th scope="col">Data</th>
                       <th scope="col">Tipo</th>
                       <th scope="col">Situação</th>
+                      <th scope="col">Avaliação</th>
                       <th scope="col">Relatório</th>
                     </tr>
                   </thead>
@@ -77,6 +79,15 @@ export default async function StudentAssessmentsPage() {
                         <td data-label="Tipo">{assessmentKindLabel({ kind: item.kind, formatVersion: 2, amendsAssessmentId: item.amendsAssessmentId })}</td>
                         <td data-label="Situação">
                           {item.amendedById ? <Pill tone="warning">Retificada</Pill> : <Pill tone="neutral">Registrada</Pill>}
+                        </td>
+                        <td data-label="Avaliação">
+                          <Link
+                            className="button secondary small av2-report-button"
+                            href={`/aluno/avaliacoes/${link.studentId}/${item.id}`}
+                            aria-label={`Ver fotos e resultados ${pdfOf(item)} de ${dates[index]}`}
+                          >
+                            <Eye size={16} /> Ver fotos e resultados
+                          </Link>
                         </td>
                         <td data-label="Relatório">
                           <Link

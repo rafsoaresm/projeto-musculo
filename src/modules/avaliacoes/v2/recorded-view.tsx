@@ -472,8 +472,8 @@ function RecordedPerimeters({ composition, perimeters = true, breadths: breadths
 
 /**
  * The posture photos of a recorded assessment (handoff 3.3), by view of the posture, as thumbnails read through the private route (only the
- * professional who attends the student reaches it). An erased one says when; each stored one can still be erased ("Excluir foto": the file
- * leaves the storage, the frozen record stays). They are not in the PDF.
+ * professional who attends the student reaches it; since 0.86 the student sees them too, through their own route). An erased one says when;
+ * each stored one can still be erased ("Excluir foto": the file leaves the storage, the frozen record stays). Since 0.86 they are in the PDF.
  */
 function RecordedPhotos({ detail }: { detail: AssessmentDetail }) {
   return (
@@ -481,7 +481,7 @@ function RecordedPhotos({ detail }: { detail: AssessmentDetail }) {
       <h4 className="av2-subtitle" id="av2-r-fotos">
         Fotos da postura
       </h4>
-      <p className="muted small av2-card-note">Registro visual, não diagnóstico. Só quem atende o aluno vê as fotos; elas não entram no relatório em PDF.</p>
+      <p className="muted small av2-card-note">Registro visual, não diagnóstico. Quem atende o aluno e o próprio aluno, na área dele, veem as fotos; elas entram no relatório em PDF. Uma foto excluída sai da área do aluno e do PDF.</p>
       <div className="av2-grid av2-photo-grid" role="group" aria-labelledby="av2-r-fotos">
         {recordedPhotoGroups(detail.photos).flatMap((group) =>
           group.photos.map((photo) => (
