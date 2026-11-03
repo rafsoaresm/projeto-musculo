@@ -2,6 +2,17 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.75: Salvamento automático do rascunho da Avaliação Física
+
+**Sem migration.** O rascunho se salva sozinho cerca de 1,8 s depois que a pessoa para de digitar e ao trocar de etapa, contra a revisão (a mesma ação de "Salvar rascunho", que continua). Regra pura em `src/modules/avaliacoes/v2/autosave.ts` (o mesmo desenho do salvamento automático do site) e o gancho `use-draft-autosave.ts`.
+
+- **Estados:** linha discreta ("Alterações não salvas.", "Salvando…", "Salvo às HH:MM.") e um alerta separado para o que precisa ser dito na hora (erro do servidor, problema achado pelo botão, conflito). Um valor inválido nunca é salvo: o problema aparece e a pessoa continua digitando; corrigido, salva.
+- **Um salvamento por vez:** um pedido feito durante outro espera, e vai só o conteúdo mais recente. O botão não é desabilitado durante o salvamento (o foco não se perde); o clique espera o salvamento em curso.
+- **Conflito:** se outra aba salvou antes, aparece "…Recarregue para ver a versão atual. Até lá, o salvamento automático fica parado." e nada mais é enviado dessa aba.
+- **Descarte:** o salvamento automático para quando o descarte é confirmado e volta se o descarte falhar; o erro do descarte fica num alerta próprio e some na próxima edição.
+- **Verificado localmente:** tipos, lint e `npm run check` (111 arquivos, 1761 testes, com 9 da regra); e2e nos dois mounts (raiz e `/treinador`), 24 passaram em cada: digitar, esperar e recarregar traz os valores sem clicar; trocar de etapa salva antes da pausa; o botão salva antes da pausa; a segunda aba recebe o conflito e não envia mais nada; o valor inválido não é guardado; dois cliques durante um salvamento lento enviam um de cada vez e fica o último valor.
+- **Não verificado:** leitor de tela real (NVDA, VoiceOver); só os papéis `status`/`alert` foram conferidos. O gancho não tem teste unitário (a fila é coberta pelos testes de navegador). A verificação "trocar de etapa salva antes da pausa" depende de tempo (1,5 s).
+
 ## Fatia 0.74: Avaliação Física única e alinhamento da etapa Medidas (pedido do usuário de 03/11/2026)
 
 **Sem migration.** O usuário: "Vamos usar somente o formato novo, então não faz sentido manter o antigo. Se necessário vamos apagar o que já foi feito. E chame de 'Avaliação Física'", e "Revise visualmente, vários itens desalinhados" (etapa Medidas).
