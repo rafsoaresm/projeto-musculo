@@ -19,6 +19,8 @@ import { TESTS_MODULE, readTests } from "@/modules/avaliacoes/v2/physical-tests"
 import { CONCLUSION_MODULE, readConclusion } from "@/modules/avaliacoes/v2/conclusion";
 import { ASSESSMENT_NAME, assessmentTitle } from "@/modules/avaliacoes/names";
 import { RecordedAssessmentView } from "@/modules/avaliacoes/v2/recorded-view";
+import { storedPhotos } from "@/modules/avaliacoes/v2/posture-photos";
+import { photoStorageAvailable } from "@/db/binding";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: ASSESSMENT_NAME };
@@ -45,12 +47,13 @@ export default async function Assessment({
   );
 
   if (detail.state === "DRAFT" && detail.formatVersion === 2) {
-    const [v2, snapshot, suggestedEquation, original] = await Promise.all([
+    const [v2, snapshot, suggestedEquation, original, photoStorage] = await Promise.all([
       api.sections(assessmentId),
       api.studentSnapshot(assessmentId),
       // A reassessment suggests the reference of the previous one (decision 2); an amendment already carries its own.
       detail.kind === "REASSESSMENT" && !detail.amendsAssessmentId ? api.previousEquation(assessmentId) : Promise.resolve(null),
       detail.amendsAssessmentId ? api.sections(detail.amendsAssessmentId) : Promise.resolve(null),
+      photoStorageAvailable(),
     ]);
     const section = (module: string) => v2?.sections.find((item) => item.module === module)?.payload;
     const originalScreening = original?.sections.find((item) => item.module === SCREENING_MODULE)?.payload;
@@ -80,6 +83,8 @@ export default async function Assessment({
           tests={readTests(section(TESTS_MODULE))}
           conclusion={readConclusion(section(CONCLUSION_MODULE))}
           initialStep={isStepKey(etapa) ? etapa : undefined}
+          photos={storedPhotos(detail.photos)}
+          photoStorage={photoStorage}
           suggestedEquation={suggestedEquation}
           amendment={
             detail.amendsAssessmentId

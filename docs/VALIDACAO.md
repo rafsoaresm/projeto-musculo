@@ -2,6 +2,17 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.83: Fotos posturais da Avaliação Física (PENDENCIAS B48; handoff 3.3 e 6)
+
+**Sem migration** (tabela `assessment_photos` da 0011). Fotos opcionais em cada vista da postura, no cartão da etapa Movimento do rascunho: **lateral com duas (esquerda e direita), posterior e anterior com uma** — o mesmo limite de uma foto por vista guardada do formato anterior (escolha da ferramenta; o handoff só diz "fotos opcionais em cada vista").
+
+- **Mesma infraestrutura:** envio pela rota privada de fotos (endereço montado a partir do mount), imagem redesenhada como JPEG de até 1600 px no navegador e dados do aparelho (EXIF/XMP) removidos no servidor. **Sem trava de consentimento, autorização ou idade** (decisão de 03/11/2026).
+- **Quem vê:** só quem atende o aluno na organização (organização da sessão e vínculo técnico ativo; outro profissional e outra organização recusados, teste D1). **O aluno não vê as fotos** (não há página de avaliação individual no portal do aluno). **As fotos não entram no PDF.**
+- **Salvamento:** cada foto é enviada ou removida na hora, sem mexer na revisão do rascunho; finalizar e descartar esperam um envio em andamento.
+- **Ao registrar:** as fotos congelam com a avaliação (gatilhos da 0011, conferidos para o formato novo); "Excluir foto" continua apagando o arquivo de uma avaliação registrada ("Foto apagada em …"). **A retificação começa sem fotos** (a original mantém as dela). Descartar o rascunho apaga as fotos dele. A avaliação registrada mostra as miniaturas por vista.
+- **Verificado localmente:** tipos, lint e `npm run check` (120 arquivos, 1877 testes; 4 D1 e 3 unitários novos); e2e nos dois mounts (raiz e `/treinador`): 30 passaram em cada (enviar, substituir, remover, recarregar, congelar, excluir na registrada, aluno sem acesso); capturas a 1440, 1280, 1024, 768 e 390.
+- **Não verificado / não feito:** envio para o bucket de produção (só o R2 local); **controle de visibilidade** das fotos pedido no handoff 6 (hoje fixo: só o profissional; ver B50); descartar durante um envio não tem teste de navegador.
+
 ## Fatia 0.82: Evolução comparável por protocolo da Avaliação Física (handoff 1, 4.3, 6 e 9; fecha a P1)
 
 **Sem migration.** Painel "Resultados ao longo do tempo" no topo da página de evolução do aluno (profissional).

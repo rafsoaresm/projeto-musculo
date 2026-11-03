@@ -113,8 +113,25 @@ const findingColumns = (view: PostureView) =>
  * anterior"), and the somatotype recorded by the professional. Observations, never a diagnosis; a region with no finding is not observed, never
  * "alinhado". Nothing is computed here: the somatotype is the professional's record, and the Heath-Carter measures are kept as typed.
  */
-export function PostureStep({ form, onChange, after = null }: { form: PostureForm; onChange: (form: PostureForm) => void; /** The cards after it in the step (the Flexiteste). */ after?: ReactNode }) {
-  const [view, setView] = useState<PostureView>("lateral");
+export function PostureStep({
+  form,
+  onChange,
+  after = null,
+  photos = null,
+}: {
+  form: PostureForm;
+  onChange: (form: PostureForm) => void;
+  /** The cards after it in the step (the Flexiteste). */
+  after?: ReactNode;
+  /** The optional photos (handoff 3.3): the field of each view, under its notes, and the one line that says what happened to the last one
+   * (onView drops that line when another view is shown, so it is never read under the wrong view). */
+  photos?: { field: (view: PostureView) => ReactNode; status: ReactNode; onView?: () => void } | null;
+}) {
+  const [view, setViewState] = useState<PostureView>("lateral");
+  const setView = (next: PostureView) => {
+    if (next !== view) photos?.onView?.();
+    setViewState(next);
+  };
   const tabs = useRef<Record<string, HTMLButtonElement | null>>({});
   const baseId = useId();
   const set = (patch: Partial<PostureForm>) => onChange({ ...form, ...patch });
@@ -202,8 +219,10 @@ export function PostureStep({ form, onChange, after = null }: { form: PostureFor
                 note="Grau, um lado diferente do outro ou o que os achados não dizem."
               />
             </div>
+            {photos?.field(code)}
           </div>
         ))}
+        {photos?.status}
       </section>
 
       <section className="panel av2-card" aria-labelledby="av2-somatotipo">
