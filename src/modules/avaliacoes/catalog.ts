@@ -31,6 +31,9 @@ export const GOALS = {
   conditioning: "Preparação física",
 } as const;
 
+/** The free field next to the goals (handoff 3.1: "Campo de objetivos adicionais e notas"). */
+export const GOALS_NOTES_LABEL = "Objetivos adicionais e notas";
+
 /** The ten questions of the clinical anamnesis (page 1), each answered Yes, No or Not informed, with a description. */
 export const ANAMNESIS = {
   family_diseases: "Doenças na família nos últimos anos",
@@ -44,6 +47,29 @@ export const ANAMNESIS = {
   smoking: "Hábito atual ou anterior de fumar",
   diet: "Dieta para perder ou ganhar peso",
 } as const;
+
+/** The answers of an anamnesis question (handoff 3.1: "Sim / Não / Não informado"). */
+export const ANAMNESIS_ANSWERS = { yes: "Sim", no: "Não", unknown: "Não informado" } as const;
+
+/**
+ * Current and past physical activity (handoff 3.1, with its words): practises?; activities; frequency as a value with the unit "por_semana",
+ * never free text such as "3x"; duration/time of practice; notes — and for the past, the total time of practice and the earlier frequency.
+ */
+export const ACTIVITY_CURRENT = {
+  practices: "Pratica?",
+  activities: "Atividades",
+  frequency: "Frequência",
+  duration: "Duração/tempo de prática",
+  notes: "Observações",
+} as const;
+export const ACTIVITY_PAST = {
+  practiced: "Praticou?",
+  activities: "Atividades",
+  totalTime: "Tempo total de prática",
+  frequency: "Frequência anterior",
+  notes: "Observações",
+} as const;
+export const FREQUENCY_UNITS = { por_semana: "por semana" } as const;
 
 /**
  * The PAR-Q of the document, seven questions (handoff 3.1): the legacy instrument as it is, identified with its version. A different
@@ -59,6 +85,17 @@ export const PARQ = {
   bone_joint: "Você tem algum problema ósseo ou articular que possa ser agravado pela atividade física?",
   blood_pressure_medication: "Você toma medicação para pressão arterial e/ou problemas cardíacos?",
   other_reason: "Você conhece outra razão para não realizar atividade física?",
+} as const;
+/** The answers of a PAR-Q question (handoff 3.1: "Sim / Não / Não respondido"): one not answered is pending, never a "Não". */
+export const PARQ_ANSWERS = { yes: "Sim", no: "Não", unanswered: "Não respondido" } as const;
+/**
+ * The professional's decision when any PAR-Q answer is "Sim" (handoff 3.1: a human decision is recorded, nothing is decided automatically;
+ * the three choices are the user's decision of 02/11/2026: cleared to train, needs medical clearance, other — always with a note).
+ */
+export const PARQ_DECISIONS = {
+  cleared: "Liberado para treinar",
+  medical_clearance: "Precisa de liberação médica",
+  other: "Outra decisão",
 } as const;
 
 // The nine skinfold sites of page 2 (mm) are with the protocols that use them: formulas/protocols.ts (SKINFOLD_SITES).

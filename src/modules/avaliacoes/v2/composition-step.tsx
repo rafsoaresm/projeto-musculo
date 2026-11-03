@@ -18,58 +18,7 @@ import {
   requiredSites,
   type CompositionForm,
 } from "./composition";
-
-/**
- * The fields of a step sit in `.av2-grid`, a grid whose rows are shared by every field of a line (CSS subgrid): the labels of a line take the
- * same height, the controls start on the same line, and a note under a control never moves its neighbours. Each field is three rows: label,
- * control, note (empty when there is none).
- */
-
-/** A number field with its unit drawn inside, as in the Figma frames; the unit is also in the field's name for screen readers. */
-function UnitInput({ label, unit, value, onChange, placeholder }: { label: string; unit: string; value: string; onChange: (value: string) => void; placeholder?: string }) {
-  const id = useId();
-  // The unit is drawn inside the field and stays out of the visible label, so the field's name is exactly "Peso (kg)".
-  return (
-    <span className="av2-unit">
-      <label htmlFor={id} className="sr-only">
-        {label} ({unit})
-      </label>
-      <input id={id} inputMode="decimal" autoComplete="off" value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
-      <span aria-hidden="true">{unit}</span>
-    </span>
-  );
-}
-
-function UnitField({ label, unit, value, onChange, placeholder }: { label: string; unit: string; value: string; onChange: (value: string) => void; placeholder?: string }) {
-  const id = useId();
-  return (
-    <div className="av2-field">
-      <label htmlFor={id} className="av2-label">
-        {label}
-        <span className="sr-only"> ({unit})</span>
-      </label>
-      <span className="av2-unit">
-        <input id={id} inputMode="decimal" autoComplete="off" value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
-        <span aria-hidden="true">{unit}</span>
-      </span>
-    </div>
-  );
-}
-
-/** A value the step shows but does not take (age, conversion): it wraps instead of being cut, and is read with its label. */
-function ReadOnlyField({ label, value }: { label: string; value: string }) {
-  const id = useId();
-  return (
-    <div className="av2-field">
-      <span id={id} className="av2-label">
-        {label}
-      </span>
-      <output className="av2-readonly" aria-labelledby={id} aria-live="off">
-        {value}
-      </output>
-    </div>
-  );
-}
+import { ReadOnlyField, UnitField, UnitInput } from "./fields";
 
 /**
  * One skinfold site: up to three readings, none of them a 0 when not measured. "+ leitura" sits right under the site's own readings (in the

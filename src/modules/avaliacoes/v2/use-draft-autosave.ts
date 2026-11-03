@@ -67,7 +67,7 @@ export function useDraftAutosave(initialRevision: number, modules: Record<string
     latest.current = { modules, saved, stand, content };
   });
 
-  const request = useCallback(async function request(trigger: SaveTrigger, only?: string): Promise<void> {
+  const request = useCallback(async function request(trigger: SaveTrigger, only: readonly string[] = []): Promise<void> {
     if (halted.current) return;
     const now = latest.current;
     const changed = Object.keys(now.modules).filter((key) => now.modules[key].content !== now.saved[key]);
@@ -78,8 +78,8 @@ export function useDraftAutosave(initialRevision: number, modules: Record<string
       if (queued.current !== "button") queued.current = trigger;
       return;
     }
-    // The button with nothing changed still sends the step on screen, as before the draft saved itself.
-    const keys = changed.length > 0 ? changed : only ? [only] : [];
+    // The button with nothing changed still sends the modules of the step on screen, as before the draft saved itself.
+    const keys = changed.length > 0 ? changed : only.filter((key) => key in now.modules);
     if (keys.length === 0) return;
     busy.current = true;
     setInFlight(true);
