@@ -6,7 +6,7 @@ import { PageHeading } from "@/components/ui";
 import { AssessmentTable } from "@/modules/avaliacoes/assessment-table";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "Avaliações" };
+export const metadata: Metadata = { title: "Avaliação Física" };
 
 export default async function Assessments() {
   const { db, context, workspace } = await requireWorkspace();
@@ -16,13 +16,13 @@ export default async function Assessments() {
     <>
       <PageHeading
         eyebrow={workspace.name}
-        title="Avaliações"
-        description="A triagem e os indicadores de cada aluno, como registros com data. Alertas sem revisão aparecem primeiro. A ferramenta descreve o que foi relatado e medido; não diagnostica nem libera ninguém para treinar."
+        title="Avaliação Física"
+        description="A avaliação física de cada aluno, como registros com data. Alertas sem revisão aparecem primeiro. A ferramenta descreve o que foi relatado e medido; não diagnostica nem libera ninguém para treinar."
       />
       {rows.length === 0 ? (
         <section className="panel">
           <h2>Nenhum aluno ainda.</h2>
-          <p>Cadastre um aluno para registrar a primeira avaliação.</p>
+          <p>Cadastre um aluno para registrar a primeira avaliação física.</p>
           <Link className="button primary" href="/profissional/alunos">
             Ver alunos
           </Link>

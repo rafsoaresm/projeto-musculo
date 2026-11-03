@@ -30,7 +30,7 @@ export default async function StudentEvolution({
       />
       <EvolutionView studentId={student.id} history={history} />
       <Link href={`/profissional/alunos/${student.id}/avaliacoes`} className="button secondary">
-        <ArrowLeft size={17} /> Voltar às avaliações
+        <ArrowLeft size={17} /> Voltar à avaliação física
       </Link>
     </>
   );

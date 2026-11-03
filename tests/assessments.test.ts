@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { assessmentsFor, screeningStanding } from "@/db/assessments";
 import { GRADE_KEYS, MOVEMENT_KEYS, parseAssessment, POSTURE_KEYS } from "@/modules/avaliacoes/contracts";
 import { ALL_MIGRATIONS, migrate } from "./helpers/migrate";
+import { withLegacy } from "./helpers/legacy-assessments";
 import { ALL_NO } from "./helpers/screening";
 
 // Real local D1. Identities are rows, as the server derives them from a verified session.
@@ -56,9 +57,9 @@ afterAll(async () => {
   await mf.dispose();
 });
 
-const a = () => assessmentsFor(db, scope("tech-a"));
+const a = () => withLegacy(db, scope("tech-a"));
 async function recordedFor(student: string, input: Record<string, unknown>, when: Date, user = "tech-a") {
-  const api = assessmentsFor(db, scope(user));
+  const api = withLegacy(db, scope(user));
   const started = await api.startDraft(student, when);
   if (started.status !== "started") throw new Error(`could not start: ${started.status}`);
   await api.saveDraft(started.id, { ...ALL_NO, ...(input as object) }, when);
@@ -134,7 +135,7 @@ describe("posture and movement in the instrument", () => {
   });
 });
 
-describe("recording an assessment", () => {
+describe("records of the earlier format (written by the test fixture, as the application did until 0.73)", () => {
   it("starts an initial draft, saves screening and metrics, and records it once", async () => {
     const api = a();
     const started = await api.startDraft("st-1", day(10));
@@ -165,46 +166,16 @@ describe("recording an assessment", () => {
     expect((await api.get(started.id))?.flags.exertionPain).toBe(true);
   });
 
-  it("does not turn an untouched form into 'no alert': every question needs a Yes or a No before recording (decision D4)", async () => {
-    const api = a();
-    const started = await api.startDraft("st-3", day(10));
-    if (started.status !== "started") throw new Error("expected draft");
-    await api.saveDraft(started.id, { assessedOn: "2026-11-10", chestPain: false }, day(10));
-    const draft = await api.get(started.id);
-    expect(draft?.earlierFormat).toBe(false);
-    expect(draft?.flags).toMatchObject({ chestPain: false, exertionPain: null });
-    const refused = await api.record(started.id, { screeningAsked: true }, day(10));
-    expect(refused.status).toBe("screening_incomplete");
-    expect(refused.status === "screening_incomplete" && refused.missing).toEqual(["exertionPain", "dizzinessFainting", "injuryInTreatment", "recentSurgery", "medicalRestriction"]);
-    expect((await api.get(started.id))?.state).toBe("DRAFT");
-    await api.saveDraft(started.id, { ...ALL_NO, assessedOn: "2026-11-10" }, day(10));
-    expect(await api.record(started.id, { screeningAsked: false }, day(10))).toEqual({ status: "recorded", riskStatus: "CLEAR" });
-    const recorded = await api.get(started.id);
-    expect(recorded?.flags).toEqual(ALL_NO);
-  });
-
-  it("keeps the earlier format of a draft started before every answer was required: only a confirmed clear form is recorded", async () => {
-    const api = a();
-    const started = await api.startDraft("st-3", day(10));
-    if (started.status !== "started") throw new Error("expected draft");
-    // A draft from before migration 0031 has no list of answered questions.
-    await db.prepare("UPDATE assessments SET screening_answered = NULL WHERE id = ?1").bind(started.id).run();
-    await api.saveDraft(started.id, { assessedOn: "2026-11-10" }, day(10));
-    const draft = await api.get(started.id);
-    expect(draft?.earlierFormat).toBe(true);
-    expect(draft?.flags.exertionPain).toBeNull();
-    expect(await api.record(started.id, { screeningAsked: false }, day(10))).toEqual({ status: "confirmation_required" });
-    expect(await api.record(started.id, { screeningAsked: true }, day(10))).toEqual({ status: "recorded", riskStatus: "CLEAR" });
-    expect((await api.get(started.id))?.earlierFormat).toBe(true);
-  });
-
-  it("makes the next one a reassessment linked to the previous recorded one", async () => {
-    const api = a();
+  it("makes the next one an Avaliação Física reassessment linked to the previous recorded one, even of the earlier format", async () => {
+    const api = assessmentsFor(db, scope("tech-a"));
     const first = (await api.listForStudent("st-1")).find((x) => x.state === "RECORDED");
     const next = await api.startDraft("st-1", day(20));
     if (next.status !== "started") throw new Error("expected draft");
-    const draft = await api.get(next.id);
-    expect(draft).toMatchObject({ kind: "REASSESSMENT", previousAssessmentId: first?.id });
+    expect(await api.get(next.id)).toMatchObject({ kind: "REASSESSMENT", previousAssessmentId: first?.id, formatVersion: 2 });
+    expect(await api.discardDraft(next.id)).toEqual({ status: "discarded" });
+    // The next tests build one more record of the earlier format, as production has them.
+    const legacy = await a().startDraft("st-1", day(20));
+    expect(legacy.status).toBe("started");
   });
 
   it("keeps screening standing on the newest recorded assessment only", async () => {
@@ -220,7 +191,7 @@ describe("recording an assessment", () => {
 describe("reviewing an alert", () => {
   it("adds the professional's basis as a separate record and never clears the status", async () => {
     const id = await recordedFor("st-2", { assessedOn: "2026-11-10", chestPain: true }, day(10), "tech-a2");
-    const api = assessmentsFor(db, scope("tech-a2"));
+    const api = withLegacy(db, scope("tech-a2"));
     expect(await screeningStanding(db, "org-a", "st-2")).toMatchObject({ risk: "REVIEW_REQUIRED", reviewed: false });
     await expect(api.addReview(id, "   ", day(11))).rejects.toThrow("REVIEW_BASIS_INVALID");
     expect(await api.addReview(id, "Liberação médica anexada pelo aluno em 2026-11-11", day(11))).toBe(true);
@@ -263,7 +234,7 @@ describe("who can reach an assessment", () => {
       ["tech-b", "org-a"],
       ["stranger", "org-a"],
     ]) {
-      const api = assessmentsFor(db, scope(user, org));
+      const api = withLegacy(db, scope(user, org));
       expect(await api.get(target.id), `${user}/${org} get`).toBeNull();
       expect(await api.listForStudent("st-1"), `${user}/${org} list`).toEqual([]);
       expect(await api.standing("st-1"), `${user}/${org} standing`).toBeNull();
@@ -281,7 +252,7 @@ describe("who can reach an assessment", () => {
     const started = draft ? { status: "draft_open" as const, id: draft.id } : await a().startDraft("st-1", day(26));
     const id = "id" in started ? started.id : "";
     const before = await a().get(id);
-    expect(await assessmentsFor(db, scope("tech-a2")).saveDraft(id, { ...ALL_NO, assessedOn: "2026-11-10", chestPain: true, metrics: [bp] }, day(26))).toBe(false);
+    expect(await withLegacy(db, scope("tech-a2")).saveDraft(id, { ...ALL_NO, assessedOn: "2026-11-10", chestPain: true, metrics: [bp] }, day(26))).toBe(false);
     expect(await a().get(id)).toEqual(before);
   });
 
@@ -304,7 +275,7 @@ describe("who can reach an assessment", () => {
     const rows = await a().overview();
     expect(rows.map((row) => row.studentId).sort()).toEqual(["st-1", "st-3"]);
     expect(rows.find((row) => row.studentId === "st-1")).toMatchObject({ riskStatus: "CLEAR", assessedOn: "2026-11-20" });
-    const other = await assessmentsFor(db, scope("tech-b", "org-b")).overview();
+    const other = await withLegacy(db, scope("tech-b", "org-b")).overview();
     expect(other.map((row) => row.studentId)).toEqual(["st-b"]);
     expect(other[0]).toMatchObject({ assessmentId: null, riskStatus: null });
   });
@@ -358,7 +329,7 @@ describe("what the database itself refuses", () => {
   });
 
   it("keeps reviews append-only and only for a recorded alert", async () => {
-    const alert = (await assessmentsFor(db, scope("tech-a2")).listForStudent("st-2")).find((x) => x.riskStatus === "REVIEW_REQUIRED")!;
+    const alert = (await withLegacy(db, scope("tech-a2")).listForStudent("st-2")).find((x) => x.riskStatus === "REVIEW_REQUIRED")!;
     await expect(sql(`UPDATE assessment_reviews SET basis = 'reescrito' WHERE assessment_id = '${alert.id}'`)).rejects.toThrow(/APPEND_ONLY/);
     await expect(sql(`DELETE FROM assessment_reviews WHERE assessment_id = '${alert.id}'`)).rejects.toThrow(/APPEND_ONLY/);
     const clear = (await a().listForStudent("st-3")).find((x) => x.riskStatus === "CLEAR" && x.state === "RECORDED")!;
@@ -370,7 +341,7 @@ describe("what the database itself refuses", () => {
 
 describe("posture and movement of an assessment", () => {
   const owner = "tech-a2"; // professional of st-2
-  const api = () => assessmentsFor(db, scope(owner));
+  const api = () => withLegacy(db, scope(owner));
   const rows = async (assessmentId: string) =>
     (await db.prepare("SELECT area, item, grade, notes FROM assessment_findings WHERE assessment_id = ?1 ORDER BY rowid").bind(assessmentId).all<{ area: string; item: string; grade: string | null; notes: string | null }>()).results;
 
@@ -420,7 +391,7 @@ describe("posture and movement of an assessment", () => {
     const before = await rows(draft.id);
     expect(before).toHaveLength(2);
     for (const user of ["tech-a", "owner-a", "commercial-a", "client-1", "mgr-1"])
-      expect(await assessmentsFor(db, scope(user)).saveDraft(draft.id, { ...ALL_NO, assessedOn: "2026-11-28", posture: { findings: ["LATERAL.LORDOSIS"] }, movement: [] }, day(28)), user).toBe(false);
+      expect(await withLegacy(db, scope(user)).saveDraft(draft.id, { ...ALL_NO, assessedOn: "2026-11-28", posture: { findings: ["LATERAL.LORDOSIS"] }, movement: [] }, day(28)), user).toBe(false);
     expect(await rows(draft.id)).toEqual(before);
     await expect(api().saveDraft(draft.id, { ...ALL_NO, assessedOn: "2026-11-28", posture: { findings: ["NOPE"] } }, day(28))).rejects.toThrow();
     expect(await rows(draft.id)).toEqual(before);
@@ -462,7 +433,7 @@ describe("posture and movement of an assessment", () => {
 describe("the history of a student's assessments", () => {
   const owner = "tech-a2";
   it("lists the recorded ones, oldest first, with metrics, posture and movement, and never a draft", async () => {
-    const api = assessmentsFor(db, scope(owner));
+    const api = withLegacy(db, scope(owner));
     await recordedFor("st-2", { assessedOn: "2026-11-29", metrics: [{ metricType: "WAIST", value: "88,5" }, { metricType: "CUSTOM", name: "Sentar e levantar", value: "14 reps", side: "BOTH" }] }, day(29), owner);
     const draft = await api.startDraft("st-2", day(30));
     if (draft.status !== "started") throw new Error(draft.status);
@@ -489,12 +460,12 @@ describe("the history of a student's assessments", () => {
 
   it("is empty for anyone without an active technical assignment", async () => {
     for (const [user, org] of [["tech-a", "org-a"], ["owner-a", "org-a"], ["commercial-a", "org-a"], ["client-1", "org-a"], ["mgr-1", "org-a"], ["tech-b", "org-b"], ["tech-b", "org-a"], ["stranger", "org-a"]])
-      expect(await assessmentsFor(db, scope(user, org)).history("st-2"), `${user}/${org}`).toEqual([]);
-    expect(await assessmentsFor(db, scope(owner)).history("st-1")).toEqual([]);
-    expect(await assessmentsFor(db, scope(owner)).history("st-b")).toEqual([]);
+      expect(await withLegacy(db, scope(user, org)).history("st-2"), `${user}/${org}`).toEqual([]);
+    expect(await withLegacy(db, scope(owner)).history("st-1")).toEqual([]);
+    expect(await withLegacy(db, scope(owner)).history("st-b")).toEqual([]);
     await db.prepare("UPDATE care_assignments SET revoked_at = '2026-12-01T00:00:00.000Z' WHERE student_id = 'st-2'").run();
-    expect(await assessmentsFor(db, scope(owner)).history("st-2")).toEqual([]);
+    expect(await withLegacy(db, scope(owner)).history("st-2")).toEqual([]);
     await db.prepare("UPDATE care_assignments SET revoked_at = NULL WHERE student_id = 'st-2'").run();
-    expect((await assessmentsFor(db, scope(owner)).history("st-2")).length).toBe(3);
+    expect((await withLegacy(db, scope(owner)).history("st-2")).length).toBe(3);
   });
 });

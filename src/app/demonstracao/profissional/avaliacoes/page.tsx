@@ -8,13 +8,12 @@ export default async function DemoAssessments() {
   return (
     <ModulePreview
       eyebrow="PRINCIPAL"
-      title="Avaliações"
-      description="Triagem, indicadores, postura e movimento de cada aluno."
+      title="Avaliação Física"
+      description="Triagem, medidas, movimento e revisão de cada aluno."
     >
       Na demonstração não há avaliações fictícias: a ferramenta não inventa respostas de triagem nem medidas. Na
-      área real, cada avaliação registra a triagem de seis itens, os indicadores que você
-      escolher, a postura e o movimento, e depois de registrada ela não muda. Um item de triagem marcado pede a sua
-      revisão antes de aprovar ou entregar um plano.
+      área real, a avaliação física é guiada em etapas (triagem, medidas, movimento e revisão), salva como rascunho e,
+      depois de registrada, não muda.
     </ModulePreview>
   );
 }

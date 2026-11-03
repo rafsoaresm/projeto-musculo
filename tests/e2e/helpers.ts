@@ -68,8 +68,8 @@ export async function createProfessional(
   return email;
 }
 
-/** Opens a tab of the student's record (Resumo, Avaliações, Periodização, Treinos, Evolução, Acesso e dados) unless it is already open. */
-export async function showStudentTab(page: Page, name: "Resumo" | "Avaliações" | "Periodização" | "Treinos" | "Evolução" | "Acesso e dados") {
+/** Opens a tab of the student's record (Resumo, Avaliação Física, Periodização, Treinos, Evolução, Acesso e dados) unless it is already open. */
+export async function showStudentTab(page: Page, name: "Resumo" | "Avaliação Física" | "Periodização" | "Treinos" | "Evolução" | "Acesso e dados") {
   const tab = page.getByRole("tablist", { name: "Ficha do aluno" }).getByRole("tab", { name: new RegExp(`^${name}`) });
   if ((await tab.getAttribute("aria-selected")) !== "true") await tab.click();
   await expect(tab).toHaveAttribute("aria-selected", "true");
@@ -234,9 +234,51 @@ export async function policyRefusals(page: Page): Promise<string[]> {
   return all.filter((entry) => !/^script-src eval \S+\/frappe-editor\/assets\/PageBuilder-[\w-]+\.js\s*$/.test(entry));
 }
 
-/** The six questions of the screening, each answered: "Sim" for the ones named, "Não" for the others (decision D4: an answer is required). */
-export const SCREENING_QUESTIONS = ["Dor durante esforço", "Tontura ou desmaio", "Dor torácica relatada", "Lesão em tratamento", "Pós-operatório recente", "Restrição médica relatada"] as const;
-export async function answerScreening(page: import("@playwright/test").Page, yes: readonly string[] = []) {
-  for (const question of SCREENING_QUESTIONS)
-    await page.getByRole("group", { name: question, exact: true }).getByLabel(yes.includes(question) ? "Sim" : "Não", { exact: true }).check();
+/** A small JPEG drawn by the browser itself (as the photo field of the earlier form did before sending), for the photo route. */
+export async function browserJpeg(page: Page): Promise<Buffer> {
+  const bytes = await page.evaluate(async () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 120;
+    canvas.height = 160;
+    const context = canvas.getContext("2d")!;
+    context.fillStyle = "#2f6fa3";
+    context.fillRect(0, 0, 120, 160);
+    context.fillStyle = "#f3c14b";
+    context.fillRect(30, 40, 60, 80);
+    const blob = await new Promise<Blob>((resolve) => canvas.toBlob((made) => resolve(made!), "image/jpeg", 0.9));
+    return Array.from(new Uint8Array(await blob.arrayBuffer()));
+  });
+  return Buffer.from(bytes);
+}
+
+const yesterday = () => new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+/** A small READY plan for the student at `studentURL`, waiting on the approval step. Returns the revision address. */
+export async function readyPlan(page: Page, studentURL: string, title: string) {
+  await page.goto(studentURL);
+  await showStudentTab(page, "Periodização");
+  await page.getByRole("link", { name: "Novo plano" }).click();
+  await page.getByLabel("Nome do plano").fill(title);
+  await page.getByLabel("Data de início").fill(yesterday());
+  for (const phase of ["Fase 01", "Fase 02", "Fase 03"]) {
+    await page.getByRole("group", { name: "Selecionar fase" }).getByRole("button", { name: phase }).click();
+    await page.getByLabel("Divisão de treinos").selectOption("Full Body");
+    await page.getByLabel("Alvo de exercícios por treino").selectOption("3");
+  }
+  await page.getByRole("button", { name: "Salvar rascunho" }).click();
+  await expect(page.getByRole("heading", { name: title })).toBeVisible();
+  const fullBody = page.getByRole("region", { name: "Treino Full Body" });
+  for (const name of ["Agachamento da triagem", "Remada da triagem", "Prancha da triagem"]) {
+    await fullBody.getByLabel("Ou um exercício com nome próprio").fill(name);
+    await fullBody.getByRole("button", { name: "Adicionar com nome próprio" }).click();
+    await expect(fullBody.locator(".exercise-list").getByText(name)).toBeVisible();
+  }
+  for (const phase of ["Fase 02", "Fase 03"]) {
+    await page.getByRole("group", { name: "Selecionar mesociclo" }).getByRole("button", { name: phase }).click();
+    await page.getByLabel("Copiar o mesociclo de outra fase").selectOption({ index: 1 });
+    await page.getByRole("button", { name: "Copiar mesociclo" }).click();
+    await expect(page.getByText("Mesociclo copiado.")).toBeVisible();
+  }
+  await page.getByRole("button", { name: "Marcar estrutura como pronta" }).click();
+  await expect(page.getByRole("heading", { name: "Aprovar esta revisão" })).toBeVisible();
+  return page.url();
 }

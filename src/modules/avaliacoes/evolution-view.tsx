@@ -27,7 +27,7 @@ export function EvolutionView({
         <h2>Nenhuma avaliação registrada.</h2>
         <p>A evolução aparece depois da primeira avaliação registrada.</p>
         <Link className="button primary" href={`/profissional/alunos/${studentId}/avaliacoes`}>
-          Abrir as avaliações
+          Abrir a avaliação física
         </Link>
       </section>
     );

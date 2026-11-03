@@ -7,8 +7,8 @@ import {
   newActor,
   noHorizontalOverflow,
   openInvitation,
-  png,
-  signIn, answerScreening, showStudentTab
+  browserJpeg,
+  signIn, showStudentTab
 } from "./helpers";
 
 const inBrazil = (date: Date) =>
@@ -112,32 +112,27 @@ test("a student asks about their data with a deadline, the professional sees it 
   await client.context.close();
 });
 
-test("on request, the professional erases the stored photos; the assessment keeps the rest and says they were erased", async ({
+test("on request, the professional erases the stored photos, and the files are gone", async ({
   page,
   browser,
   baseURL,
 }) => {
+  // The photo field went away with the earlier form (user's decision of 03/11/2026); until the posture step of the Avaliação Física takes
+  // photos again, the photo is sent straight to the private route of an open draft. How a recorded assessment shows an erased photo is
+  // covered against the real D1 and R2 in tests/data-requests.test.ts.
   await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
   await createProfessional(page, "Estúdio do apagar");
   const studentURL = await addStudent(page, "Aluna do apagar");
-  await showStudentTab(page, "Avaliações");
-  await page.getByRole("button", { name: "Iniciar avaliação" }).click();
-  await expect(page.getByRole("heading", { name: "Avaliação inicial de Aluna do apagar" })).toBeVisible();
+  await showStudentTab(page, "Avaliação Física");
+  await page.getByRole("button", { name: "Iniciar avaliação física" }).click();
+  await expect(page.getByRole("heading", { name: "Avaliação física de Aluna do apagar" })).toBeVisible();
   const draftURL = page.url();
+  const src = new URL(`${new URL(draftURL).pathname}/fotos/ANTERIOR`, draftURL).href;
+  const stored = await page.request.put(src, { headers: { "x-photo-request": "1", "content-type": "image/jpeg" }, data: await browserJpeg(page) });
+  expect(stored.status()).toBe(200);
+  expect((await page.request.get(src)).status()).toBe(200);
   await page.goto(studentURL);
   const email = await joinStudent(page, browser, baseURL, "Aluna do apagar");
-  await page.goto(draftURL);
-  await page.locator("#foto-ANTERIOR").setInputFiles({ name: "foto.png", mimeType: "image/png", buffer: png() });
-  await expect(page.getByText("Foto anterior enviada.")).toBeVisible();
-  const photo = page.getByRole("group", { name: "Foto anterior" }).getByRole("img", { name: "Foto anterior do aluno" });
-  await photo.scrollIntoViewIfNeeded();
-  const src = new URL((await photo.getAttribute("src"))!, page.url()).href;
-  expect((await page.request.get(src)).status()).toBe(200);
-  await answerScreening(page);
-  await page.getByRole("button", { name: "Registrar avaliação" }).click();
-  await expect(page.getByRole("heading", { name: /Avaliação de \d{2}\/\d{2}\/\d{4}/ })).toBeVisible();
-  const recordedURL = page.url();
-  await expect(page.getByRole("img", { name: "Foto anterior do aluno" })).toBeVisible();
 
   // The student asks for the photos to be erased; the screen says what that does and does not do.
   const student = await newActor(browser, baseURL);
@@ -164,15 +159,10 @@ test("on request, the professional erases the stored photos; the assessment keep
   await expect(panel.getByText(`Atendido em ${today()}`)).toBeVisible();
   await expect(panel.getByText("Resposta registrada: 1 foto apagada do armazenamento.")).toBeVisible();
 
-  // The bytes are gone; the recorded assessment keeps its content and says what happened to the photo.
+  // The bytes are gone, and the draft is still there to be filled.
   expect((await page.request.get(src)).status()).toBe(404);
-  await page.goto(recordedURL);
-  await expect(page.getByRole("img", { name: "Foto anterior do aluno" })).toHaveAttribute("aria-label", /apagada/);
-  await expect(page.getByText(`Foto apagada em ${today()}.`)).toBeVisible();
-  await expect(page.locator("img.posture-photo")).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Fotos da postura" })).toBeVisible();
-  await page.goto(`${studentURL}/evolucao`);
-  await expect(page.getByText(`Foto apagada em ${today()}.`)).toBeVisible();
+  await page.goto(draftURL);
+  await expect(page.getByRole("navigation", { name: "Etapas da avaliação física" })).toBeVisible();
 
   // The student reads the answer.
   await student.page.reload();

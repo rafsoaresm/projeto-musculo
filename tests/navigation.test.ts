@@ -45,7 +45,7 @@ describe("navigation by area (handoff V2, section 3)", () => {
   );
   it("gives the professional the V4 menu: three groups, ten destinations, in that order and with those names", () => {
     expect(navigationFor("profissional").map((group) => [group.label, group.items.map((item) => item.label)])).toEqual([
-      ["PRINCIPAL", ["Visão geral", "Alunos", "Avaliações", "Planos e treinos", "Biblioteca de exercícios"]],
+      ["PRINCIPAL", ["Visão geral", "Alunos", "Avaliação Física", "Planos e treinos", "Biblioteca de exercícios"]],
       ["COMERCIAL", ["Meu Site", "Leads", "Serviços"]],
       ["CONTA E EQUIPE", ["Configurações", "Minha conta"]],
     ]);

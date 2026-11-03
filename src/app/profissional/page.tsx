@@ -73,12 +73,12 @@ export default async function ProfessionalHome() {
     },
     {
       done: assessed,
-      title: "Registrar a avaliação e a triagem",
-      text: "A triagem e os indicadores ficam como registros com data. Qualquer sinal marcado pede a sua revisão antes da entrega.",
+      title: "Registrar a avaliação física",
+      text: "Triagem, medidas, movimento e revisão ficam como registros com data. Um alerta da triagem pede a sua revisão antes da entrega.",
       href: firstStudent
         ? `/profissional/alunos/${firstStudent.id}/avaliacoes`
         : "/profissional/avaliacoes",
-      cta: "Abrir avaliações",
+      cta: "Abrir a avaliação física",
     },
     {
       done: delivered,

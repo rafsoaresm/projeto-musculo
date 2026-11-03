@@ -6,6 +6,7 @@ import { PhotoImage } from "./photo-image";
 import { PHOTO_VIEWS } from "./photos";
 import { ReviewForm } from "./review-form";
 import { ScreeningPill } from "./screening-pill";
+import { assessmentTitle } from "./names";
 import {
   CLEAR_TEXT,
   MOVEMENT_GRADES,
@@ -24,8 +25,7 @@ export function AssessmentView({ detail }: { detail: AssessmentDetail }) {
       <section className="panel" aria-labelledby="triagem-titulo">
         <p className="eyebrow">TRIAGEM</p>
         <h2 id="triagem-titulo">
-          {detail.kind === "INITIAL" ? "Avaliação inicial" : "Reavaliação"} de{" "}
-          {formatCalendarDate(detail.assessedOn)}
+          {assessmentTitle(detail)} de {formatCalendarDate(detail.assessedOn)}
         </h2>
         <p>
           <ScreeningPill risk={detail.riskStatus} reviewed={detail.reviewed} />{" "}

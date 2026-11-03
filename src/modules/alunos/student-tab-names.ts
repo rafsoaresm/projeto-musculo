@@ -8,7 +8,7 @@ export const STUDENT_TABS = ["resumo", "avaliacoes", "periodizacao", "treinos", 
 export type StudentTab = (typeof STUDENT_TABS)[number];
 export const STUDENT_TAB_LABEL: Record<StudentTab, string> = {
   resumo: "Resumo",
-  avaliacoes: "Avaliações",
+  avaliacoes: "Avaliação Física",
   periodizacao: "Periodização",
   treinos: "Treinos",
   evolucao: "Evolução",

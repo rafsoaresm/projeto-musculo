@@ -19,27 +19,32 @@ import {
   type CompositionForm,
 } from "./composition";
 
+/**
+ * The fields of a step sit in `.av2-grid`, a grid whose rows are shared by every field of a line (CSS subgrid): the labels of a line take the
+ * same height, the controls start on the same line, and a note under a control never moves its neighbours. Each field is three rows: label,
+ * control, note (empty when there is none).
+ */
+
 /** A number field with its unit drawn inside, as in the Figma frames; the unit is also in the field's name for screen readers. */
-function UnitField({
-  label,
-  unit,
-  value,
-  onChange,
-  placeholder,
-  hideLabel = false,
-}: {
-  label: string;
-  unit: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  hideLabel?: boolean;
-}) {
+function UnitInput({ label, unit, value, onChange, placeholder }: { label: string; unit: string; value: string; onChange: (value: string) => void; placeholder?: string }) {
   const id = useId();
-  // The unit is drawn inside the field and stays out of the label, so the field's name is exactly "Peso (kg)".
+  // The unit is drawn inside the field and stays out of the visible label, so the field's name is exactly "Peso (kg)".
+  return (
+    <span className="av2-unit">
+      <label htmlFor={id} className="sr-only">
+        {label} ({unit})
+      </label>
+      <input id={id} inputMode="decimal" autoComplete="off" value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
+      <span aria-hidden="true">{unit}</span>
+    </span>
+  );
+}
+
+function UnitField({ label, unit, value, onChange, placeholder }: { label: string; unit: string; value: string; onChange: (value: string) => void; placeholder?: string }) {
+  const id = useId();
   return (
     <div className="av2-field">
-      <label htmlFor={id} className={hideLabel ? "sr-only" : undefined}>
+      <label htmlFor={id} className="av2-label">
         {label}
         <span className="sr-only"> ({unit})</span>
       </label>
@@ -51,41 +56,62 @@ function UnitField({
   );
 }
 
-/** One skinfold site: up to three readings, none of them a 0 when not measured. */
+/** A value the step shows but does not take (age, conversion): it wraps instead of being cut, and is read with its label. */
+function ReadOnlyField({ label, value }: { label: string; value: string }) {
+  const id = useId();
+  return (
+    <div className="av2-field">
+      <span id={id} className="av2-label">
+        {label}
+      </span>
+      <output className="av2-readonly" aria-labelledby={id} aria-live="off">
+        {value}
+      </output>
+    </div>
+  );
+}
+
+/** One skinfold site: up to three readings, none of them a 0 when not measured; "+ leitura" sits on the line of the grid below the readings. */
 function SiteReadings({ site, readings, onChange }: { site: SkinfoldSite; readings: string[]; onChange: (readings: string[]) => void }) {
+  const id = useId();
   const shown = readings.length === 0 ? [""] : readings;
   const name = SITE_LABEL[site];
   return (
-    <fieldset className="av2-site">
-      <legend>{name}</legend>
-      {shown.map((value, position) => (
-        <div key={position} className="av2-reading">
-          <UnitField
-            label={position === 0 ? name : `${name}, leitura ${position + 1}`}
-            hideLabel
-            unit="mm"
-            value={value}
-            placeholder="Sem aferição"
-            onChange={(text) => onChange(shown.map((item, at) => (at === position ? text : item)))}
-          />
-          {position > 0 && (
-            <button
-              type="button"
-              className="av2-icon-button"
-              aria-label={`Remover leitura ${position + 1} de ${name}`}
-              onClick={() => onChange(shown.filter((_, at) => at !== position))}
-            >
-              <X size={16} />
-            </button>
-          )}
-        </div>
-      ))}
-      {shown.length < MAX_READINGS && (
+    <div className="av2-field av2-site" role="group" aria-labelledby={id}>
+      <span id={id} className="av2-label">
+        {name}
+      </span>
+      <div className="av2-readings">
+        {shown.map((value, position) => (
+          <div key={position} className="av2-reading">
+            <UnitInput
+              label={position === 0 ? name : `${name}, leitura ${position + 1}`}
+              unit="mm"
+              value={value}
+              placeholder="Sem aferição"
+              onChange={(text) => onChange(shown.map((item, at) => (at === position ? text : item)))}
+            />
+            {position > 0 && (
+              <button
+                type="button"
+                className="av2-icon-button"
+                aria-label={`Remover leitura ${position + 1} de ${name}`}
+                onClick={() => onChange(shown.filter((_, at) => at !== position))}
+              >
+                <X size={16} />
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+      {shown.length < MAX_READINGS ? (
         <button type="button" className="av2-add" aria-label={`Adicionar leitura de ${name}`} onClick={() => onChange([...shown, ""])}>
           <Plus size={14} /> leitura
         </button>
+      ) : (
+        <span className="av2-note">Até {MAX_READINGS} leituras por dobra.</span>
       )}
-    </fieldset>
+    </div>
   );
 }
 
@@ -120,14 +146,16 @@ export function CompositionStep({
         <div className="av2-grid">
           <UnitField label="Peso" unit="kg" value={form.weight} onChange={(weight) => set({ weight })} placeholder="Sem aferição" />
           <UnitField label="Altura" unit="m" value={form.height} onChange={(height) => set({ height })} placeholder="Sem aferição" />
-          <fieldset className="av2-pair">
-            <legend>PAS / PAD</legend>
-            <span className="av2-pair-fields">
-              <UnitField label="PAS" unit="mmHg" hideLabel value={form.systolic} onChange={(systolic) => set({ systolic })} />
-              <span aria-hidden="true" className="av2-slash">/</span>
-              <UnitField label="PAD" unit="mmHg" hideLabel value={form.diastolic} onChange={(diastolic) => set({ diastolic })} />
+          <div className="av2-field" role="group" aria-labelledby="av2-pressao">
+            <span id="av2-pressao" className="av2-label">
+              PAS / PAD
             </span>
-          </fieldset>
+            <span className="av2-pair-fields">
+              <UnitInput label="PAS" unit="mmHg" value={form.systolic} onChange={(systolic) => set({ systolic })} />
+              <span aria-hidden="true" className="av2-slash">/</span>
+              <UnitInput label="PAD" unit="mmHg" value={form.diastolic} onChange={(diastolic) => set({ diastolic })} />
+            </span>
+          </div>
           <UnitField label="FC repouso" unit="bpm" value={form.heartRate} onChange={(heartRate) => set({ heartRate })} placeholder="Sem aferição" />
         </div>
       </section>
@@ -145,7 +173,9 @@ export function CompositionStep({
         </div>
         <div className="av2-grid">
           <div className="av2-field">
-            <label htmlFor="av2-equacao">Equação de referência para o cálculo</label>
+            <label htmlFor="av2-equacao" className="av2-label">
+              Referência da equação
+            </label>
             <select id="av2-equacao" value={form.equation} onChange={(event) => set({ equation: event.target.value as EquationSelection })} aria-describedby="av2-equacao-nota">
               {EQUATIONS.map((equation) => (
                 <option key={equation} value={equation}>
@@ -153,26 +183,24 @@ export function CompositionStep({
                 </option>
               ))}
             </select>
-            <span id="av2-equacao-nota" className="av2-note">É a referência da equação, não o gênero da pessoa.</span>
+            <span id="av2-equacao-nota" className="av2-note">
+              É a referência da equação, não o gênero da pessoa.
+            </span>
           </div>
-          <label className="av2-field">
-            Idade na avaliação
-            <input readOnly value={age === null ? "Sem data de nascimento no cadastro" : `${age} ${age === 1 ? "ano" : "anos"}`} />
-          </label>
-          <label className="av2-field">
-            Fórmula de conversão
-            <input readOnly value={CONVERSION_LABEL.siri_1961} />
-          </label>
-          <label className="av2-field">
-            Leituras por dobra
-            <select value={form.aggregation} onChange={(event) => set({ aggregation: event.target.value as AggregationRule })}>
+          <ReadOnlyField label="Idade na avaliação" value={age === null ? "Sem data de nascimento no cadastro" : `${age} ${age === 1 ? "ano" : "anos"}`} />
+          <ReadOnlyField label="Fórmula de conversão" value={CONVERSION_LABEL.siri_1961} />
+          <div className="av2-field">
+            <label htmlFor="av2-leituras" className="av2-label">
+              Leituras por dobra
+            </label>
+            <select id="av2-leituras" value={form.aggregation} onChange={(event) => set({ aggregation: event.target.value as AggregationRule })}>
               {AGGREGATIONS.map((rule) => (
                 <option key={rule} value={rule}>
                   {AGGREGATION_LABEL[rule]}
                 </option>
               ))}
             </select>
-          </label>
+          </div>
         </div>
       </section>
 
