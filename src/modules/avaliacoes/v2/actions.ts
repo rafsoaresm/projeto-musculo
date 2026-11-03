@@ -25,6 +25,18 @@ export async function startAssessmentV2(studentId: string): Promise<{ error?: st
 }
 
 /**
+ * Discards an open draft of the new format and goes back to the student's assessments, where a new one can be started. A recorded assessment is
+ * never discarded.
+ */
+export async function discardAssessmentV2(studentId: string, assessmentId: string): Promise<{ error?: string }> {
+  const { db, context } = await requireWorkspace();
+  const gone = await assessmentsFor(db, context).discardDraftV2(assessmentId);
+  if (!gone) return { error: "Este rascunho não está mais aberto." };
+  revalidatePath("/profissional", "layout");
+  redirect(`/profissional/alunos/${studentId}/avaliacoes`);
+}
+
+/**
  * Saves the "Medidas" step (module "composition") of an open draft of the new format, based on the revision the screen read. The payload is
  * checked here with the module's schema: the screen's own check is a convenience, this one is the rule. It stays in progress: a module is done
  * only when the assessment is finalized (a later step).

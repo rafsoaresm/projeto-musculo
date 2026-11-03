@@ -130,6 +130,20 @@ describe("a draft of the new format", () => {
     expect(await other.saveSection(id, { module: "tests", status: "DONE", payload: {}, revision: 3 })).toEqual({ status: "not_found" });
     expect((await a().sections(id))?.revision).toBe(3);
   });
+  it("is discarded with its sections (only by its organization, never a recorded one), and the student can start another", async () => {
+    const other = assessmentsFor(db, scope("tech-b", "org-b"));
+    expect(await other.discardDraftV2(id)).toBe(false);
+    const earlier = await one<{ id: string }>("SELECT id FROM assessments WHERE student_id = 'st-2' AND state = 'RECORDED' LIMIT 1");
+    expect(await a().discardDraftV2(earlier!.id)).toBe(false);
+    expect(await a().discardDraftV2(id)).toBe(true);
+    expect(await one("SELECT count(*) AS n FROM assessment_sections WHERE assessment_id = ?1", id)).toEqual({ n: 0 });
+    expect(await one("SELECT count(*) AS n FROM assessments WHERE id = ?1", id)).toEqual({ n: 0 });
+    expect(await one("SELECT count(*) AS n FROM access_audit_events WHERE action = 'ASSESSMENT_DRAFT_DISCARDED' AND subject_id = ?1", id)).toEqual({ n: 1 });
+    expect(await a().discardDraftV2(id)).toBe(false);
+    const again = await a().startDraft("st-1", day(5), { format: 2 });
+    expect(again.status).toBe("started");
+    if (again.status === "started") id = again.id;
+  });
   it("is not where a section of the earlier format goes", async () => {
     const earlier = await one<{ id: string }>("SELECT id FROM assessments WHERE student_id = 'st-2' AND state = 'RECORDED' LIMIT 1");
     expect(await a().saveSection(earlier!.id, { module: "tests", status: "DONE", payload: {}, revision: 1 })).toEqual({ status: "not_found" });

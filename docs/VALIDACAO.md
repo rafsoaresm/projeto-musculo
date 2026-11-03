@@ -2,6 +2,15 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.72: Avaliação nova aberta a todos e rascunho descartável (pedido do usuário de 03/11/2026)
+
+**Sem migration.** O usuário não achava a avaliação nova em produção: ela estava atrás da chave `ASSESSMENT_V2_ENABLED`, desligada. A chave existia porque um rascunho do formato novo ainda não podia ser finalizado e cada aluno só tem um rascunho aberto; em vez de esconder a tela, o rascunho agora pode ser descartado.
+
+- **A avaliação nova aparece para todos:** "Nova avaliação (formato novo)" ao lado de "Iniciar avaliação" na aba Avaliações do aluno. O ambiente ainda pode fechá-la, só com `ASSESSMENT_V2_ENABLED="false"`, como volta atrás. Os testes locais e o CI deixaram de definir a chave (o padrão é aberta).
+- **"Descartar rascunho"** (com confirmação): apaga o rascunho do formato novo, as seções e os resultados calculados, registra na trilha de acesso, e volta às avaliações, onde se pode começar outra. Nunca apaga uma avaliação gravada nem um rascunho de outra organização (recusa no repositório; o banco também não apaga uma avaliação gravada).
+- **Verificado localmente:** tipos e lint; `assessment-v2-model` (D1: descarta com as seções e a trilha, recusa outra organização, recusa avaliação gravada, e o aluno começa outra), `assessment-v2-composition` (a chave aberta por padrão e fechada só com `"false"`) e `assessments`: 56 testes; navegador nas duas montagens: ver abaixo.
+- **Não verificado:** produção (depois do deploy, a avaliação nova deve aparecer sem configurar nada).
+
 ## Fatia 0.71: Sites, tagueamento e conversões (GA4, Google Ads, Meta Pixel) com aviso de cookies (pedido do usuário de 02/11/2026; PENDENCIAS J16 e C39)
 
 **Migration 0034 (aditiva):** `site_tracking`, uma linha por organização, com os IDs conferidos também no banco.
