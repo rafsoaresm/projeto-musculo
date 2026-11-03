@@ -15,7 +15,9 @@ test("the owner corrects the workspace name and their own display name, and the 
   const members = page.getByRole("table", { name: "Pessoas com acesso ao espaço" });
   await expect(members.getByRole("row", { name: /Marina Configuradora.*Você.*Proprietário/ })).toBeVisible();
   await expect(page.getByText("ainda não está disponível", { exact: false })).toBeVisible();
-  await expect(page.getByText("muda também como os treinos já entregues dizem quem os entregou", { exact: false })).toBeVisible();
+  await expect(page.getByText("continuam com o nome que você tinha naquele momento", { exact: false })).toBeVisible();
+  // Nothing renamed yet: both histories say so instead of showing an empty table.
+  await expect(page.getByText("Nenhuma mudança registrada.", { exact: false })).toHaveCount(2);
   await noHorizontalOverflow(page);
 
   // A name that is not plain text is refused with a plain message, and what was typed stays.
@@ -42,6 +44,15 @@ test("the owner corrects the workspace name and their own display name, and the 
   await expect(page.getByText("Nome de exibição salvo.")).toBeVisible();
   await page.reload();
   await expect(members.getByRole("row", { name: /Marina Renomeada.*Você.*Proprietário/ })).toBeVisible();
+  // Slice 0.90: each rename is kept, newest first; the same name again (above) left no row.
+  await expect(page.getByRole("table", { name: "Nomes anteriores do espaço" }).getByRole("row")).toHaveCount(2);
+  await expect(
+    page.getByRole("table", { name: "Nomes anteriores do espaço" }).getByRole("row", { name: /Estúdio das configurações.*Estúdio Renomeado/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("table", { name: "Seus nomes anteriores" }).getByRole("row", { name: /Marina Configuradora.*Marina Renomeada/ }),
+  ).toBeVisible();
+  await noHorizontalOverflow(page);
 
   // The student sees the new names in their own area.
   const student = await newActor(browser, baseURL);

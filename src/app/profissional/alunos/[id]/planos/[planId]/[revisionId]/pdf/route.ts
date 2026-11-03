@@ -25,7 +25,8 @@ export async function GET(
   const now = new Date();
   const bytes = await renderPlanPdf({
     studentName: source.studentName,
-    organizationName: source.organizationName,
+    // The workspace as it was named when this revision was delivered (slice 0.90), not as it is named now.
+    organizationName: source.plan.deliveredOrganizationName,
     plan: source.plan,
     generatedAt: now,
   });

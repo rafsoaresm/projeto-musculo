@@ -26,6 +26,7 @@ const plan = (extra: Partial<StudentTrainingPlan> = {}): StudentTrainingPlan => 
   revisionNumber: 2,
   deliveredAt: "2026-11-10T13:00:00.000Z",
   deliveredBy: "Profissional Teste",
+  deliveredOrganizationName: "Espaço Teste",
   startDate: "2026-11-02",
   endDate: "2027-01-24",
   phases: [1, 2, 3].map((index) => ({

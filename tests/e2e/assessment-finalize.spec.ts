@@ -132,6 +132,8 @@ test("the Revisão step finalizes the Avaliação Física, the record shows the 
   await page.getByRole("button", { name: "Confirmar e finalizar" }).click();
   await expect(page.getByRole("heading", { name: /^Avaliação física de \d{2}\/\d{2}\/\d{4}$/, level: 1 })).toBeVisible();
   const recordedURL = page.url();
+  // Slice 0.90: who recorded it and the workspace, as named at that moment.
+  await expect(page.getByRole("region", { name: "Registro" })).toContainText("por Profissional E2E (Estúdio da finalização). Não muda mais.");
   await expect(page.getByText("PAR-Q com “Sim”, decisão registrada")).toBeVisible();
   const results = page.getByRole("list", { name: "Resultados" });
   await expect(results.getByRole("listitem").filter({ hasText: "Gordura estimada" })).toContainText("17,3%");

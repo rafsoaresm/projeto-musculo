@@ -1,5 +1,6 @@
 import { Notice, Pill, formatDateTime } from "@/components/ui";
 import type { AssessmentDetail } from "@/db/assessments";
+import { deliveredByText } from "@/modules/configuracoes/delivered-by";
 import { formatCalendarDate } from "@/modules/training/format";
 import { PhotoEraseButton } from "./photo-erase-button";
 import { PhotoImage } from "./photo-image";
@@ -30,7 +31,8 @@ export function AssessmentView({ detail }: { detail: AssessmentDetail }) {
         <p>
           <ScreeningPill risk={detail.riskStatus} reviewed={detail.reviewed} />{" "}
           <span className="small muted">
-            Registrada em {detail.recordedAt ? formatDateTime(detail.recordedAt) : "—"}. Não muda mais.
+            Registrada em {detail.recordedAt ? formatDateTime(detail.recordedAt) : "—"}
+            {deliveredByText(detail.recordedByName, detail.recordedOrganizationName)}. Não muda mais.
           </span>
         </p>
         {detail.earlierFormat ? (

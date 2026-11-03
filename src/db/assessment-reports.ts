@@ -36,7 +36,7 @@ type HeadRow = {
   id: string;
   organizationId: string;
   studentName: string;
-  organizationName: string;
+  organizationName: string | null;
   assessedOn: string;
   kind: "INITIAL" | "REASSESSMENT";
   recordedAt: string | null;
@@ -53,9 +53,9 @@ type HeadRow = {
   enabled: string | null;
 };
 
-const headColumns = `a.id, a.organization_id AS organizationId, s.display_name AS studentName, o.name AS organizationName,
-  a.assessed_on AS assessedOn, a.kind, a.recorded_at AS recordedAt,
-  (SELECT p.display_name FROM professionals p WHERE p.organization_id = a.organization_id AND p.user_id = a.recorded_by_user_id) AS recordedByName,
+// Who recorded it and the workspace are the names as they were at the moment of the record (slice 0.90, migration 0039), never the current ones.
+const headColumns = `a.id, a.organization_id AS organizationId, s.display_name AS studentName, a.recorded_organization_name AS organizationName,
+  a.assessed_on AS assessedOn, a.kind, a.recorded_at AS recordedAt, a.recorded_by_name AS recordedByName,
   ${riskSql("a")} AS riskStatus, ${reviewedSql("a")} AS reviewed,
   a.amends_assessment_id AS amendsAssessmentId, a.amend_reason AS amendReason,
   (SELECT n.id FROM assessments n WHERE n.organization_id = a.organization_id AND n.amends_assessment_id = a.id AND n.state = 'RECORDED'

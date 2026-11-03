@@ -8,7 +8,7 @@ export async function GET() {
     const db = await getDatabase();
     const schema = await db
       .prepare("SELECT version FROM app_schema_versions WHERE version = ?")
-      .bind("0038_read_trail_sign_in_failures")
+      .bind("0039_delivery_names")
       .first();
     if (schema) persistence = "available";
   } catch {

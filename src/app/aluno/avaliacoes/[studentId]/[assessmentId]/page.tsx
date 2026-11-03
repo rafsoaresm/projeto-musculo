@@ -7,6 +7,7 @@ import { studentAssessmentsFor } from "@/db/assessment-reports";
 import { PageHeading } from "@/components/ui";
 import { formatCalendarDate } from "@/modules/training/format";
 import { ASSESSMENT_NAME, assessmentTitle } from "@/modules/avaliacoes/names";
+import { deliveredByText } from "@/modules/configuracoes/delivered-by";
 import { PhotoImage } from "@/modules/avaliacoes/photo-image";
 import { photoViewLabel } from "@/modules/avaliacoes/photos";
 import {
@@ -59,7 +60,7 @@ export default async function StudentAssessmentPage({ params }: Params) {
         }
         title={`${assessmentTitle({ kind: assessment.kind, formatVersion: 2, amendsAssessmentId: assessment.amendsAssessmentId })} de ${date}`}
         description={`Registrada${assessment.recordedAt ? ` em ${reportDateTime(assessment.recordedAt)}` : ""}${
-          assessment.recordedByName ? ` por ${assessment.recordedByName}` : ""
+          deliveredByText(assessment.recordedByName, source.organizationName)
         }. Só leitura: o que foi medido e registrado pelo seu profissional.`}
       />
       <div className="student-assessment-actions">

@@ -9,8 +9,10 @@ import { activeUser, assertContext, type AuthenticatedContext } from "./students
  * change is applied only if the membership is active and the login is not blocked, in the very
  * statement that writes it, and leaves a row in the audit trail (who and when, never the names).
  *
- * Both names are read live wherever they are shown, so a change also changes how deliveries already
- * made name who delivered them. The content of a delivered revision does not change.
+ * A delivery (plan revision) and a record (assessment) keep the names as they were at that moment (slice 0.90, migration 0039), so a
+ * change here does not change how deliveries already made name who made them. Each change also leaves a row in name_history (the
+ * name before, the name after, who and when), written in the same batch as the change and shown here: the workspace's to every
+ * member, each professional's own to them. Renames made before 0.90 left no such row (the earlier names are unknown).
  */
 export const WORKSPACE_RENAMED = "WORKSPACE_RENAMED";
 export const PROFESSIONAL_RENAMED = "PROFESSIONAL_RENAMED";
@@ -20,6 +22,12 @@ export interface WorkspaceMember {
   role: string;
   isYou: boolean;
 }
+/** One rename: the name before, the name after and when. */
+export interface NameChange {
+  previousName: string;
+  newName: string;
+  changedAt: string;
+}
 export interface SettingsView {
   workspaceName: string;
   role: string;
@@ -28,7 +36,21 @@ export interface SettingsView {
   displayName: string | null;
   createdAt: string;
   members: WorkspaceMember[];
+  /** Earlier names of the workspace, newest first. Empty: never renamed since 0.90. */
+  workspaceNames: NameChange[];
+  /** True when the workspace had more renames than NAME_HISTORY_LIMIT: only the newest are listed. */
+  workspaceNamesTruncated: boolean;
+  /** Earlier display names of the acting professional in this workspace, newest first. */
+  myNames: NameChange[];
+  /** True when the professional had more renames than NAME_HISTORY_LIMIT: only the newest are listed. */
+  myNamesTruncated: boolean;
 }
+interface NameHistoryList {
+  changes: NameChange[];
+  truncated: boolean;
+}
+/** At most this many rows of each history list (the workspace's, the professional's) are shown. */
+export const NAME_HISTORY_LIMIT = 100;
 export type RenameOutcome = { status: "renamed" } | { status: "unchanged" } | { status: "forbidden" };
 
 export function workspaceSettingsFor(db: D1Database, context: AuthenticatedContext | null) {
@@ -69,8 +91,29 @@ export function workspaceSettingsFor(db: D1Database, context: AuthenticatedConte
       )
       .bind(organizationId, userId)
       .all<{ name: string | null; role: string; isYou: number }>();
+    // Only this workspace's rows, and among the professionals' only the acting person's own. Each list has its own limit, so many renames of
+    // the workspace never hide the person's own; one row more than the limit is read to know whether the list was cut.
+    const historyOf = async (subject: "ORGANIZATION" | "PROFESSIONAL"): Promise<NameHistoryList> => {
+      const rows = await db
+        .prepare(
+          `SELECT h.previous_name AS previousName, h.new_name AS newName, h.changed_at AS changedAt
+           FROM name_history h
+           WHERE h.organization_id = ?1 AND h.subject = ?3
+             AND (?3 = 'ORGANIZATION' OR h.subject_user_id = ?2)
+           ORDER BY h.changed_at DESC, h.rowid DESC
+           LIMIT ?4`,
+        )
+        .bind(organizationId, userId, subject, NAME_HISTORY_LIMIT + 1)
+        .all<NameChange>();
+      return { changes: rows.results.slice(0, NAME_HISTORY_LIMIT), truncated: rows.results.length > NAME_HISTORY_LIMIT };
+    };
+    const [workspaceHistory, myHistory] = await Promise.all([historyOf("ORGANIZATION"), historyOf("PROFESSIONAL")]);
     return {
       ...me,
+      workspaceNames: workspaceHistory.changes,
+      workspaceNamesTruncated: workspaceHistory.truncated,
+      myNames: myHistory.changes,
+      myNamesTruncated: myHistory.truncated,
       canRenameWorkspace: me.role === "OWNER",
       members: members.results.map((row) => ({ name: row.name ?? "Sem nome", role: row.role, isYou: Boolean(row.isYou) })),
     };
@@ -86,18 +129,24 @@ export function workspaceSettingsFor(db: D1Database, context: AuthenticatedConte
       if (!current?.canRenameWorkspace) return { status: "forbidden" };
       if (current.workspaceName === name) return { status: "unchanged" };
       const stamp = now.toISOString();
+      const ownerActive = `${activeMember}
+               AND EXISTS (SELECT 1 FROM memberships m WHERE m.organization_id = ?1 AND m.user_id = ?2
+                 AND m.role = 'OWNER' AND m.revoked_at IS NULL)`;
       const results = await db.batch([
+        // The name before, under exactly the conditions of the change below (same batch, so both or neither).
         db
           .prepare(
-            `UPDATE organizations SET name = ?3
-             WHERE id = ?1 AND name <> ?3 AND ${activeMember}
-               AND EXISTS (SELECT 1 FROM memberships m WHERE m.organization_id = ?1 AND m.user_id = ?2
-                 AND m.role = 'OWNER' AND m.revoked_at IS NULL)`,
+            `INSERT INTO name_history (id, organization_id, subject, subject_user_id, previous_name, new_name, changed_by_user_id, changed_at)
+             SELECT ?4, o.id, 'ORGANIZATION', NULL, o.name, ?3, ?2, ?5 FROM organizations o
+             WHERE o.id = ?1 AND o.name <> ?3 AND ${ownerActive}`,
           )
+          .bind(organizationId, userId, name, crypto.randomUUID(), stamp),
+        db
+          .prepare(`UPDATE organizations SET name = ?3 WHERE id = ?1 AND name <> ?3 AND ${ownerActive}`)
           .bind(organizationId, userId, name),
         audit(WORKSPACE_RENAMED, "?1", stamp),
       ]);
-      return results[0].meta.changes > 0 ? { status: "renamed" } : { status: "forbidden" };
+      return results[1].meta.changes > 0 ? { status: "renamed" } : { status: "forbidden" };
     },
 
     /** A professional corrects their own display name. Nobody else's. */
@@ -110,6 +159,13 @@ export function workspaceSettingsFor(db: D1Database, context: AuthenticatedConte
       const results = await db.batch([
         db
           .prepare(
+            `INSERT INTO name_history (id, organization_id, subject, subject_user_id, previous_name, new_name, changed_by_user_id, changed_at)
+             SELECT ?4, p.organization_id, 'PROFESSIONAL', p.user_id, p.display_name, ?3, ?2, ?5 FROM professionals p
+             WHERE p.organization_id = ?1 AND p.user_id = ?2 AND p.display_name <> ?3 AND ${activeMember}`,
+          )
+          .bind(organizationId, userId, name, crypto.randomUUID(), stamp),
+        db
+          .prepare(
             `UPDATE professionals SET display_name = ?3
              WHERE organization_id = ?1 AND user_id = ?2 AND display_name <> ?3 AND ${activeMember}`,
           )
@@ -120,7 +176,7 @@ export function workspaceSettingsFor(db: D1Database, context: AuthenticatedConte
           stamp,
         ),
       ]);
-      return results[0].meta.changes > 0 ? { status: "renamed" } : { status: "forbidden" };
+      return results[1].meta.changes > 0 ? { status: "renamed" } : { status: "forbidden" };
     },
   };
 }

@@ -2,6 +2,18 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.90: Nome de quem entregou no momento da entrega (PENDENCIAS B15)
+
+**Migration `0039_delivery_names.sql`** (aditiva): `plan_revisions.delivered_by_name` e `delivered_organization_name`; `assessments.recorded_by_name` e `recorded_organization_name`; tabela `name_history` (nome antigo, novo, quem mudou e quando; nunca alterada nem apagada).
+
+- **Nomes gravados pelo banco:** gatilhos preenchem os nomes quando uma revisão passa a ENTREGUE ou uma avaliação a REGISTRADA, por qualquer caminho; depois não mudam mais, não existem em rascunho e não podem vir de fora (uma instrução que traga os próprios nomes é recusada). Sem cadastro de profissional, o nome fica vazio: as telas o omitem e os PDFs dizem "Não informado".
+- **Linhas existentes:** preenchidas com os nomes atuais no momento da migration. O nome que tinham antes não é conhecido (nunca foi guardado).
+- **Onde aparecem:** página do plano do profissional, treino e início do aluno ("Entregue em … por Nome (Espaço)"), os dois PDFs do plano, a avaliação registrada (formato novo e anterior), a página da avaliação do aluno, o relatório da avaliação e "Baixar meus dados" (`entreguePor`, `espacoNaEntrega`).
+- **Configurações:** "Nomes anteriores do espaço" (todos os membros) e "Seus nomes anteriores" (só o próprio profissional), até 100 cada, avisando quando cortou; vazio diz que mudanças anteriores ao histórico não aparecem.
+- **Continuam lidos na hora (escolha):** quem aprovou uma revisão, quem decidiu o PAR-Q, o cabeçalho do aluno e "Quem acessou os meus dados".
+- **Verificado localmente:** tipos, lint e `npm run check` (128 arquivos, 1958 testes; 11 D1 com o banco montado até a 0038 e a 0039 aplicada por cima); e2e nos dois mounts (raiz e `/treinador`): 17 passaram e 1 pulado em cada (`delivery`, `settings`, `assessment-finalize`, `assessment-report`, `assessments`, `plans`, `export`); capturas a 1440, 1280, 1024, 768 e 390.
+- **Não verificado:** a migration e o preenchimento no D1 de produção (será conferido no log); o texto dos PDFs com uma entrega real.
+
 ## Fatia 0.89: Recuperar o acesso do último gestor (PENDENCIAS B16; parte de B2)
 
 **Sem migration.** Nova página pública `/gestor/recuperar`, ligada a partir da tela do código de recuperação ("Sou o último gestor e perdi os códigos").
@@ -11,6 +23,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **O que faz:** desliga só a verificação em duas etapas, apaga os segredos e encerra todas as sessões da conta; senha, e-mail e papel não mudam. Num lote só com a linha da trilha (`PLATFORM_TWO_FACTOR_RECOVERED`, "…redefinida com o código de ativação"); uma mudança concorrente não grava nada. Limite de 5 tentativas por endereço a cada 15 minutos (escolha da ferramenta), contado antes de qualquer conferência. Um código errado não diz nada sobre a conta.
 - **Verificado localmente:** tipos, lint e `npm run check` (127 arquivos, 1947 testes; 5 D1 com a autenticação real); e2e completo nos dois mounts (raiz e `/treinador`): 168 passaram, 39 pulados, 0 falhas em cada (outro gestor redefine; com dois gestores a página recusa; com um só, código errado e senha errada recusados, o certo redefine, a sessão antiga cai, a entrada volta só com a senha, a trilha mostra); capturas a 1440, 1280, 1024, 768 e 390.
 - **Não verificado / não feito:** no Webflow Cloud com o segredo real e o endereço da borda (`CF-Connecting-IP`); aviso por e-mail (R1); vários gestores travados ao mesmo tempo, senha perdida sem e-mail e gestor bloqueado ainda exigem o banco (B2).
+- **CI e deploy:** o CI do PR #91 passou (`validate` e `validate (/treinador)`, no commit `6268a44`); merge `4b8d200`; deploy `927af991` com sucesso em 03/11/2026 (sem migration).
 
 ## Fatia 0.88: Trilha de leitura e falhas de login (PENDENCIAS B9)
 

@@ -138,8 +138,13 @@ export interface AssessmentDetail extends AssessmentSummary {
   previousAssessmentId: string | null;
   /** Why this amendment was made (only for an amendment). */
   amendReason: string | null;
-  /** The name of the professional who recorded it, when known. */
+  /**
+   * The name of the professional who recorded it, as it was at the moment of the record (slice 0.90); null when not recorded yet or when they had
+   * no professional record then.
+   */
   recordedByName: string | null;
+  /** The name of the workspace at the moment of the record (slice 0.90); null while it is a draft. */
+  recordedOrganizationName: string | null;
   /** Yes, No, or null for a question not answered (in a draft) or not recorded as an answer (in the earlier format). */
   flags: Record<ScreeningKey, boolean | null>;
   /** The assessment was made before every question had to be answered (decision D4): only a "yes" of it is a recorded answer. */
@@ -400,7 +405,7 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
           `SELECT ${summaryColumns}, a.previous_assessment_id AS previousAssessmentId,
              ${SCREENING_ITEMS.map((item) => `a.${item.column} AS ${item.key}`).join(", ")},
              a.screening_notes AS screeningNotes, a.notes, a.screening_answered AS screeningAnswered, a.amend_reason AS amendReason,
-             (SELECT p.display_name FROM professionals p WHERE p.organization_id = a.organization_id AND p.user_id = a.recorded_by_user_id) AS recordedByName
+             a.recorded_by_name AS recordedByName, a.recorded_organization_name AS recordedOrganizationName
            FROM assessments a
            WHERE a.organization_id = ?1 AND a.id = ?3 AND ${reachAssessment("a")}`,
         )
@@ -408,6 +413,7 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
         .first<Omit<AssessmentSummary, "results"> & Record<ScreeningKey, number> & {
           amendReason: string | null;
           recordedByName: string | null;
+          recordedOrganizationName: string | null;
           previousAssessmentId: string | null;
           screeningNotes: string | null;
           notes: string | null;
@@ -473,6 +479,7 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
         amendedById: row.amendedById,
         amendReason: row.amendReason,
         recordedByName: row.recordedByName,
+        recordedOrganizationName: row.recordedOrganizationName,
         results: results.map(asResult),
         previousAssessmentId: row.previousAssessmentId,
         flags,

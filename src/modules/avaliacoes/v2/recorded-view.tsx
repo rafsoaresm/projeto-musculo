@@ -3,6 +3,7 @@ import { Download } from "lucide-react";
 import { Fragment } from "react";
 import { Notice, formatDateTime } from "@/components/ui";
 import type { AssessmentDetail, ResultRow } from "@/db/assessments";
+import { deliveredByText } from "@/modules/configuracoes/delivered-by";
 import { formatCalendarDate } from "@/modules/training/format";
 import { PhotoImage } from "../photo-image";
 import { PhotoEraseButton } from "../photo-erase-button";
@@ -115,7 +116,7 @@ export function RecordedAssessmentView({
           <ScreeningPill risk={detail.riskStatus} reviewed={detail.reviewed} parq />{" "}
           <span className="small muted">
             Registrada em {detail.recordedAt ? formatDateTime(detail.recordedAt) : "—"}
-            {detail.recordedByName ? ` por ${detail.recordedByName}` : ""}. Não muda mais.
+            {deliveredByText(detail.recordedByName, detail.recordedOrganizationName)}. Não muda mais.
           </span>
         </p>
         <p className="small muted">{templateLine(template)}</p>
