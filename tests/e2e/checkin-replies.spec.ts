@@ -31,7 +31,7 @@ test("the professional chooses the questions, the student answers a previous day
   // The professional turns the effort off and adds a question of their own (text answers only).
   await page.goto(`${studentURL}?aba=evolucao`);
   const setup = page.getByRole("region", { name: "Perguntas do check-in" });
-  await expect(setup.getByText("Hoje o aluno responde as perguntas padrão.", { exact: false })).toBeVisible();
+  await expect(setup.getByText("Hoje o aluno responde às perguntas padrão.", { exact: false })).toBeVisible();
   await expect(setup.getByLabel("Dor ou desconforto (sempre perguntado)")).toBeDisabled();
   await setup.getByLabel("Esforço percebido nos últimos dias (0 a 10)").uncheck();
   await setup.getByRole("button", { name: "Adicionar pergunta" }).click();

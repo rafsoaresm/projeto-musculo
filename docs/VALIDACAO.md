@@ -2,6 +2,16 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.87: Check-ins configuráveis, dias anteriores e resposta do profissional (PENDENCIAS B8)
+
+**Migration `0037_checkin_forms_replies.sql`** (aditiva): `checkin_form_versions` (as perguntas de um aluno, por versão, nunca alteradas nem apagadas); em `student_checkins`, `form_version_id` (vazio = as perguntas padrão, as de todo check-in anterior) e `answers` (respostas em texto às perguntas próprias), com versão de outro aluno recusada e versão imutável depois; `checkin_replies` (respostas do profissional, nunca alteradas nem apagadas; com resposta, o check-in não muda mais); `checkin_reply_seen` (marcador "nova resposta").
+
+- **Perguntas por aluno:** painel "Perguntas do check-in" na aba Evolução do aluno, só para quem atende o aluno (vínculo técnico ativo). O profissional desliga esforço, recuperação e observações (o **desconforto é sempre perguntado**, ver T5) e acrescenta até 5 perguntas próprias, só de texto (até 200 letras cada; resposta até 500). Nenhuma escala nova. Cada check-in guarda a versão das perguntas com que foi respondido. Editor desatualizado ou perguntas trocadas no meio do preenchimento: nada é salvo e a tela avisa.
+- **Dias anteriores:** o aluno registra hoje ou até 14 dias antes (a mesma janela `MAX_DAYS_BACK` já usada na execução, T2); um check-in por dia. Corrigir ou apagar só no dia em que foi feito (dia do Brasil, não 24 horas; ver T2).
+- **Resposta do profissional:** uma ou mais respostas em texto (até 1000 letras, escolha da ferramenta), com autor e hora; responder também marca o check-in como lido e fecha a correção pelo aluno; na trilha (`CHECKIN_REPLY`, `CHECKIN_FORM_CHANGED`). O aluno vê as respostas no histórico, com "Nova resposta" e um cartão no início, que some depois de vistas. Sem e-mail (R1). "Baixar meus dados" passa a trazer as respostas às perguntas e as respostas do profissional.
+- **Verificado localmente:** tipos, lint e `npm run check` (124 arquivos, 1928 testes; 10+ D1 de perguntas, versões, janela, respostas, isolamento); e2e nos dois mounts (raiz e `/treinador`): `checkin`, `checkin-replies` (novo), `export` e `student-tabs` passaram; capturas a 1440, 1280, 1024, 768 e 390.
+- **Não feito / não verificado:** aviso por e-mail (R1); perguntas padrão por organização; prazo de resposta (T6); Firefox e Safari; a migration no D1 de produção (será conferida no log).
+
 ## Fatia 0.86: Fotos posturais visíveis para o aluno (PENDENCIAS B50; decisão do usuário de 03/11/2026)
 
 **Sem migration.**
