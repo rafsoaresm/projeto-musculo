@@ -183,6 +183,8 @@ describe("what a student's copy holds", () => {
           observacoes: "cansada",
           registradoEm: NOW.toISOString(),
           lidoPeloProfissional: false,
+          perguntasDoProfissional: [],
+          respostasDoProfissional: [],
         },
       ],
     });

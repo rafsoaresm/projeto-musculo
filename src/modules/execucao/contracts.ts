@@ -58,7 +58,7 @@ const exerciseSchema = z
   })
   .strict();
 
-const daysBetween = (from: string, to: string) =>
+export const daysBetween = (from: string, to: string) =>
   Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
 
 const sessionSchema = z

@@ -66,6 +66,10 @@ export interface ExportCheckin {
   notes: string | null;
   createdAt: string;
   read: boolean;
+  /** The professional's own questions of the version the check-in was answered with; an unanswered one is null, never "0". */
+  questions: Array<{ question: string; answer: string | null }>;
+  /** The professional's replies, oldest first. */
+  replies: Array<{ author: string | null; body: string; createdAt: string }>;
 }
 export interface ExportSession {
   performedOn: string;
@@ -164,6 +168,8 @@ export function buildExport(source: ExportSource) {
           observacoes: item.notes,
           registradoEm: item.createdAt,
           lidoPeloProfissional: item.read,
+          perguntasDoProfissional: item.questions.map((entry) => ({ pergunta: entry.question, resposta: entry.answer })),
+          respostasDoProfissional: item.replies.map((entry) => ({ autor: entry.author, texto: entry.body, em: entry.createdAt })),
         })),
       },
       treinosRegistrados: {

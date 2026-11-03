@@ -14,6 +14,22 @@ import {
 import { portalLinksFor, type PortalLink } from "./student-access";
 import { studentTrainingFor } from "./student-plan";
 import { activeUser } from "./students";
+import { readAnswers, readQuestions } from "@/modules/checkin/contracts";
+
+function readReplies(json: string | null): ExportCheckin["replies"] {
+  if (!json) return [];
+  try {
+    const value: unknown = JSON.parse(json);
+    if (!Array.isArray(value)) return [];
+    return value.flatMap((item) =>
+      item && typeof item === "object" && typeof item.body === "string" && typeof item.createdAt === "string"
+        ? [{ author: typeof item.author === "string" ? item.author : null, body: item.body, createdAt: item.createdAt }]
+        : [],
+    );
+  } catch {
+    return [];
+  }
+}
 
 /**
  * "Baixar meus dados": what the tool shows the student, collected for the login that asks and for no
@@ -73,18 +89,43 @@ export function studentExportFor(db: D1Database, userId: string) {
       .prepare(
         `SELECT c.checked_on AS checkedOn, c.effort, c.recovery, c.discomfort_reported AS discomfort,
            c.discomfort_notes AS discomfortNotes, c.notes, c.created_at AS createdAt,
-           EXISTS (SELECT 1 FROM checkin_acknowledgements a WHERE a.checkin_id = c.id) AS read
+           EXISTS (SELECT 1 FROM checkin_acknowledgements a WHERE a.checkin_id = c.id) AS read,
+           c.answers AS answersJson, f.questions AS questionsJson,
+           (SELECT json_group_array(json_object('author', r.author, 'body', r.body, 'createdAt', r.created_at))
+              FROM (SELECT COALESCE(
+                       (SELECT p.display_name FROM professionals p WHERE p.organization_id = r0.organization_id AND p.user_id = r0.author_user_id),
+                       (SELECT au.name FROM auth_user au WHERE au.id = r0.author_user_id)) AS author,
+                     r0.body, r0.created_at
+                    FROM checkin_replies r0 WHERE r0.checkin_id = c.id ORDER BY r0.created_at, r0.id) r) AS repliesJson
          FROM student_checkins c
+         LEFT JOIN checkin_form_versions f ON f.id = c.form_version_id AND f.organization_id = c.organization_id
+           AND f.student_id = c.student_id
          WHERE c.student_id = ?2 AND ${linked("c")}
          ORDER BY c.checked_on DESC, c.created_at DESC LIMIT ?3`,
       )
       .bind(userId, studentId, EXPORT_CHECKIN_LIMIT + 1)
-      .all<Omit<ExportCheckin, "discomfort" | "read"> & { discomfort: number; read: number }>();
-    const rows = result.results.slice(0, EXPORT_CHECKIN_LIMIT).map((row) => ({
-      ...row,
-      discomfort: Boolean(row.discomfort),
-      read: Boolean(row.read),
-    }));
+      .all<
+        Omit<ExportCheckin, "discomfort" | "read" | "questions" | "replies"> & {
+          discomfort: number;
+          read: number;
+          answersJson: string | null;
+          questionsJson: string | null;
+          repliesJson: string | null;
+        }
+      >();
+    const rows = result.results.slice(0, EXPORT_CHECKIN_LIMIT).map(({ answersJson, questionsJson, repliesJson, ...row }) => {
+      const answers = readAnswers(answersJson);
+      return {
+        ...row,
+        discomfort: Boolean(row.discomfort),
+        read: Boolean(row.read),
+        questions: readQuestions(questionsJson).map((question) => ({
+          question: question.text,
+          answer: answers.find((item) => item.questionId === question.id)?.answer ?? null,
+        })),
+        replies: readReplies(repliesJson),
+      };
+    });
     return { rows, cut: result.results.length > EXPORT_CHECKIN_LIMIT };
   }
 

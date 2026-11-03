@@ -1,5 +1,15 @@
 import type { D1Database, D1PreparedStatement } from "@cloudflare/workers-types";
-import { parseCheckin } from "@/modules/checkin/contracts";
+import {
+  DEFAULT_CHECKIN_FORM,
+  checkinDayAllowed,
+  parseCheckin,
+  parseCheckinForm,
+  readAnswers,
+  readQuestions,
+  sameCheckinForm,
+  type CheckinAnswer,
+  type CheckinFormShape,
+} from "@/modules/checkin/contracts";
 import { todayInBrazil } from "@/modules/execucao/contracts";
 import { activeUser, assertContext, technicalAccessExists, type AuthenticatedContext } from "./students";
 
@@ -24,9 +34,33 @@ export interface CheckinRow {
   createdAt: string;
   /** When the professional first read it; null while unread. */
   acknowledgedAt: string | null;
+  /** What this check-in was asked: the version it was answered with (default: everything, as before 0.87). Never the current one. */
+  form: CheckinFormShape;
+  /** The number of that version; null for the default. */
+  formVersion: number | null;
+  /** Text answers to the professional's own questions of that version. */
+  answers: CheckinAnswer[];
+  /** The professional's replies, oldest first. */
+  replies: CheckinReply[];
+}
+export interface CheckinReply {
+  id: string;
+  body: string;
+  /** The professional's display name in the organization (or the account name); null when neither exists. */
+  authorName: string | null;
+  createdAt: string;
 }
 export interface StudentCheckin extends CheckinRow {
   editable: boolean;
+  /** A reply the student login has not seen yet (the in-app "nova resposta" marker). */
+  newReply: boolean;
+}
+/** The form a check-in is asked with today: the latest version, or the default when the professional never configured one. */
+export interface CurrentCheckinForm {
+  id: string | null;
+  version: number | null;
+  createdAt: string | null;
+  form: CheckinFormShape;
 }
 export interface PendingCheckinRow {
   checkinId: string;
@@ -38,18 +72,128 @@ export interface PendingCheckinRow {
 export type SaveCheckinOutcome =
   | { status: "saved"; id: string; created: boolean; discomfort: boolean }
   | { status: "locked" }
+  | { status: "out_of_range" }
   | { status: "conflict" }
   | { status: "not_found" };
 export type RemoveCheckinOutcome = { status: "removed" } | { status: "locked" } | { status: "not_found" };
 export type AcknowledgeCheckinOutcome = { status: "recorded" } | { status: "not_found" };
+export type ReplyCheckinOutcome = { status: "recorded"; id: string } | { status: "not_found" };
+export type SaveCheckinFormOutcome =
+  | { status: "saved"; version: number }
+  | { status: "unchanged" }
+  | { status: "conflict" }
+  | { status: "not_found" };
 
 export const CHECKIN_READ = "CHECKIN_READ";
+export const CHECKIN_REPLY = "CHECKIN_REPLY";
+export const CHECKIN_FORM_CHANGED = "CHECKIN_FORM_CHANGED";
+export const REPLY_MAX = 1000;
 
 const columns = `c.id, c.checked_on AS checkedOn, c.effort, c.recovery, c.discomfort_reported AS discomfort,
-  c.discomfort_notes AS discomfortNotes, c.notes, c.created_at AS createdAt,
-  (SELECT MIN(a.created_at) FROM checkin_acknowledgements a WHERE a.checkin_id = c.id) AS acknowledgedAt`;
-type RawRow = Omit<CheckinRow, "discomfort"> & { discomfort: number };
-const shape = ({ discomfort, ...row }: RawRow): CheckinRow => ({ ...row, discomfort: Boolean(discomfort) });
+  c.discomfort_notes AS discomfortNotes, c.notes, c.created_at AS createdAt, c.answers AS answersJson,
+  (SELECT MIN(a.created_at) FROM checkin_acknowledgements a WHERE a.checkin_id = c.id) AS acknowledgedAt,
+  f.version AS formVersion, f.ask_effort AS askEffort, f.ask_recovery AS askRecovery, f.ask_notes AS askNotes,
+  f.questions AS questionsJson`;
+const formJoin = `LEFT JOIN checkin_form_versions f ON f.id = c.form_version_id AND f.organization_id = c.organization_id
+  AND f.student_id = c.student_id`;
+interface RawRow {
+  id: string;
+  checkedOn: string;
+  effort: number | null;
+  recovery: number | null;
+  discomfort: number;
+  discomfortNotes: string | null;
+  notes: string | null;
+  createdAt: string;
+  answersJson: string | null;
+  acknowledgedAt: string | null;
+  formVersion: number | null;
+  askEffort: number | null;
+  askRecovery: number | null;
+  askNotes: number | null;
+  questionsJson: string | null;
+}
+interface RawForm {
+  id: string;
+  version: number;
+  createdAt: string;
+  askEffort: number;
+  askRecovery: number;
+  askNotes: number;
+  questionsJson: string;
+}
+const formOf = (row: { formVersion: number | null; askEffort: number | null; askRecovery: number | null; askNotes: number | null; questionsJson: string | null }): CheckinFormShape =>
+  row.formVersion === null
+    ? DEFAULT_CHECKIN_FORM
+    : {
+        askEffort: Boolean(row.askEffort),
+        askRecovery: Boolean(row.askRecovery),
+        askNotes: Boolean(row.askNotes),
+        questions: readQuestions(row.questionsJson),
+      };
+const shape = (row: RawRow, replies: CheckinReply[]): CheckinRow => ({
+  id: row.id,
+  checkedOn: row.checkedOn,
+  effort: row.effort,
+  recovery: row.recovery,
+  discomfort: Boolean(row.discomfort),
+  discomfortNotes: row.discomfortNotes,
+  notes: row.notes,
+  createdAt: row.createdAt,
+  acknowledgedAt: row.acknowledgedAt,
+  form: formOf(row),
+  formVersion: row.formVersion,
+  answers: readAnswers(row.answersJson),
+  replies,
+});
+const currentOf = (row: RawForm | null): CurrentCheckinForm =>
+  row
+    ? {
+        id: row.id,
+        version: row.version,
+        createdAt: row.createdAt,
+        form: formOf({ ...row, formVersion: row.version }),
+      }
+    : { id: null, version: null, createdAt: null, form: DEFAULT_CHECKIN_FORM };
+const formColumns = `f.id, f.version, f.created_at AS createdAt, f.ask_effort AS askEffort, f.ask_recovery AS askRecovery,
+  f.ask_notes AS askNotes, f.questions AS questionsJson`;
+/** Who wrote a reply: the display name of the professional in the organization, or the account name. */
+const replyAuthor = `COALESCE(
+  (SELECT p.display_name FROM professionals p WHERE p.organization_id = r.organization_id AND p.user_id = r.author_user_id),
+  (SELECT au.name FROM auth_user au WHERE au.id = r.author_user_id))`;
+/** The day a check-in was made, in Brazil: the correction window is that day, whatever day the check-in is about. */
+const madeOn = (createdAt: string) => todayInBrazil(new Date(createdAt));
+
+/**
+ * The replies of the given check-ins, grouped by check-in. `allowed` is the authorization condition over alias c (the same as the
+ * query that listed the check-ins), so a reply never leaves its check-in's scope.
+ */
+async function repliesOf(
+  db: D1Database,
+  ids: string[],
+  allowed: string,
+  binds: unknown[],
+): Promise<Map<string, CheckinReply[]>> {
+  const grouped = new Map<string, CheckinReply[]>();
+  if (ids.length === 0) return grouped;
+  const position = binds.length + 1;
+  const result = await db
+    .prepare(
+      `SELECT r.id, r.checkin_id AS checkinId, r.body, r.created_at AS createdAt, ${replyAuthor} AS authorName
+       FROM checkin_replies r
+       JOIN student_checkins c ON c.organization_id = r.organization_id AND c.id = r.checkin_id
+       WHERE r.checkin_id IN (SELECT value FROM json_each(?${position})) AND ${allowed}
+       ORDER BY r.created_at ASC, r.id ASC`,
+    )
+    .bind(...binds, JSON.stringify(ids))
+    .all<CheckinReply & { checkinId: string }>();
+  for (const { checkinId, ...reply } of result.results) {
+    const list = grouped.get(checkinId) ?? [];
+    list.push(reply);
+    grouped.set(checkinId, list);
+  }
+  return grouped;
+}
 
 /** The student's side, through the verified link of their own login. */
 export function studentCheckinsFor(db: D1Database, userId: string) {
@@ -60,38 +204,97 @@ export function studentCheckinsFor(db: D1Database, userId: string) {
       AND sa.user_id = ?1 AND sa.revoked_at IS NULL AND ${activeUser("?1")})`;
   const owned = (checkinParam: string) => `EXISTS (SELECT 1 FROM student_checkins c
     WHERE c.id = ${checkinParam} AND c.logged_by_user_id = ?1 AND ${linked("c")})`;
+  const frozen = (alias: string) => `(${alias}.discomfort_reported = 1
+    OR EXISTS (SELECT 1 FROM checkin_acknowledgements a WHERE a.checkin_id = ${alias}.id)
+    OR EXISTS (SELECT 1 FROM checkin_replies r WHERE r.checkin_id = ${alias}.id))`;
+
+  async function currentForm(studentId: string): Promise<CurrentCheckinForm> {
+    const row = await db
+      .prepare(
+        `SELECT ${formColumns} FROM checkin_form_versions f
+         WHERE f.student_id = ?2 AND ${linked("f")}
+         ORDER BY f.version DESC LIMIT 1`,
+      )
+      .bind(userId, studentId)
+      .first<RawForm>();
+    return currentOf(row);
+  }
 
   const api = {
-    /** The student's own check-ins, newest first. */
+    /** The form the student is asked today (the latest version the professional saved, or the default). */
+    currentForm,
+
+    /** The student's own check-ins, newest first, each with the questions it was answered with and the professional's replies. */
     async recent(studentId: string, limit = 14, now = new Date()): Promise<StudentCheckin[]> {
       const result = await db
         .prepare(
           `SELECT ${columns}, c.logged_by_user_id AS loggedBy
-           FROM student_checkins c
+           FROM student_checkins c ${formJoin}
            WHERE c.student_id = ?2 AND ${linked("c")}
            ORDER BY c.checked_on DESC, c.created_at DESC LIMIT ?3`,
         )
         .bind(userId, studentId, Math.max(1, Math.min(limit, 60)))
         .all<RawRow & { loggedBy: string }>();
+      const replies = await repliesOf(db, result.results.map((row) => row.id), linked("c"), [userId]);
+      const seen = await db
+        .prepare(`SELECT seen_at AS seenAt FROM checkin_reply_seen WHERE student_id = ?2 AND user_id = ?1`)
+        .bind(userId, studentId)
+        .first<{ seenAt: string }>();
+      const today = todayInBrazil(now);
       return result.results.map(({ loggedBy, ...row }) => {
-        const shaped = shape(row);
+        const shaped = shape(row, replies.get(row.id) ?? []);
         return {
           ...shaped,
-          // Only the check-in of today is open to correction, and only while nothing froze it.
+          // Open to correction only on the day it was made, and only while nothing froze it.
           editable:
-            loggedBy === userId && !shaped.discomfort && shaped.acknowledgedAt === null && shaped.checkedOn === todayInBrazil(now),
+            loggedBy === userId &&
+            !shaped.discomfort &&
+            shaped.acknowledgedAt === null &&
+            shaped.replies.length === 0 &&
+            madeOn(shaped.createdAt) === today,
+          newReply: shaped.replies.some((reply) => !seen || reply.createdAt > seen.seenAt),
         };
       });
     },
 
+    /** How many replies of the professional the login has not seen yet (the marker on the student's home). */
+    async unseenReplies(studentId: string): Promise<number> {
+      const row = await db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM checkin_replies r
+           JOIN student_checkins c ON c.organization_id = r.organization_id AND c.id = r.checkin_id
+           WHERE c.student_id = ?2 AND ${linked("c")}
+             AND r.created_at > COALESCE((SELECT s.seen_at FROM checkin_reply_seen s WHERE s.student_id = ?2 AND s.user_id = ?1), '')`,
+        )
+        .bind(userId, studentId)
+        .first<{ n: number }>();
+      return row?.n ?? 0;
+    },
+
+    /** The login has seen the replies up to now. Only for a student it is linked to. */
+    async markRepliesSeen(studentId: string, now = new Date()): Promise<void> {
+      await db
+        .prepare(
+          `INSERT INTO checkin_reply_seen (organization_id, student_id, user_id, seen_at)
+           SELECT sa.organization_id, sa.student_id, ?1, ?3 FROM student_access sa
+           WHERE sa.student_id = ?2 AND sa.user_id = ?1 AND sa.revoked_at IS NULL AND ${activeUser("?1")}
+           ON CONFLICT (student_id, user_id) DO UPDATE SET seen_at = excluded.seen_at WHERE excluded.seen_at > checkin_reply_seen.seen_at`,
+        )
+        .bind(userId, studentId, now.toISOString())
+        .run();
+    },
+
     /**
-     * Creates the check-in of today, or corrects it while it is still editable. Throws a ZodError for a
-     * malformed or empty check-in, which nothing is written for.
+     * Creates the check-in of a day (today, or one of the last days of the window), or corrects it on the day it was made while it is
+     * still editable. The answers are read against the form of that check-in: the current one for a new check-in, the one it was
+     * answered with for a correction. Throws a ZodError for a malformed or empty check-in, which nothing is written for.
      */
     async save(studentId: string, raw: unknown, now = new Date()): Promise<SaveCheckinOutcome> {
-      const input = parseCheckin(raw);
+      const { checkedOn, ...rest } = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
       const stamp = now.toISOString();
       const today = todayInBrazil(now);
+      const day = checkedOn === undefined || checkedOn === null ? today : checkedOn;
+      if (typeof day !== "string" || !checkinDayAllowed(day, today)) return { status: "out_of_range" };
 
       const target = await db
         .prepare(
@@ -106,41 +309,50 @@ export function studentCheckinsFor(db: D1Database, userId: string) {
 
       const existing = await db
         .prepare(
-          `SELECT c.id, c.discomfort_reported AS discomfort, c.logged_by_user_id AS loggedBy,
-             EXISTS (SELECT 1 FROM checkin_acknowledgements a WHERE a.checkin_id = c.id) AS acknowledged
-           FROM student_checkins c WHERE c.student_id = ?1 AND c.checked_on = ?2`,
+          `SELECT c.id, c.logged_by_user_id AS loggedBy, c.created_at AS createdAt, ${frozen("c")} AS frozen,
+             f.version AS formVersion, f.ask_effort AS askEffort, f.ask_recovery AS askRecovery, f.ask_notes AS askNotes,
+             f.questions AS questionsJson
+           FROM student_checkins c ${formJoin}
+           WHERE c.organization_id = ?3 AND c.student_id = ?1 AND c.checked_on = ?2`,
         )
-        .bind(studentId, today)
-        .first<{ id: string; discomfort: number; loggedBy: string; acknowledged: number }>();
-      if (existing && (existing.loggedBy !== userId || existing.discomfort || existing.acknowledged))
+        .bind(studentId, day, target.organizationId)
+        .first<Pick<RawRow, "id" | "createdAt" | "formVersion" | "askEffort" | "askRecovery" | "askNotes" | "questionsJson"> & { loggedBy: string; frozen: number }>();
+      if (existing && (existing.loggedBy !== userId || existing.frozen || madeOn(existing.createdAt) !== today))
         return { status: "locked" };
 
       try {
         if (existing) {
+          const input = parseCheckin(rest, formOf(existing));
           const result = await db
             .prepare(
               `UPDATE student_checkins SET effort = ?3, recovery = ?4, discomfort_reported = ?5,
-                 discomfort_notes = ?6, notes = ?7, updated_at = ?8
+                 discomfort_notes = ?6, notes = ?7, answers = ?8, updated_at = ?9
                WHERE id = ?2 AND ${owned("?2")}`,
             )
-            .bind(userId, existing.id, input.effort, input.recovery, input.discomfort ? 1 : 0, input.discomfortNotes, input.notes, stamp)
+            .bind(
+              userId, existing.id, input.effort, input.recovery, input.discomfort ? 1 : 0, input.discomfortNotes, input.notes,
+              input.answers.length > 0 ? JSON.stringify(input.answers) : null, stamp,
+            )
             .run();
           if (result.meta.changes === 0) return { status: "locked" };
           return { status: "saved", id: existing.id, created: false, discomfort: input.discomfort };
         }
+        const current = await currentForm(studentId);
+        const input = parseCheckin(rest, current.form);
         const id = crypto.randomUUID();
         const result = await db
           .prepare(
             `INSERT INTO student_checkins
                (id, organization_id, student_id, checked_on, effort, recovery, discomfort_reported,
-                discomfort_notes, notes, logged_by_user_id, created_at, updated_at)
-             SELECT ?3, ?4, ?2, ?5, ?6, ?7, ?8, ?9, ?10, ?1, ?11, ?11
+                discomfort_notes, notes, logged_by_user_id, created_at, updated_at, form_version_id, answers)
+             SELECT ?3, ?4, ?2, ?5, ?6, ?7, ?8, ?9, ?10, ?1, ?11, ?11, ?12, ?13
              WHERE ${activeUser("?1")} AND EXISTS (SELECT 1 FROM student_access sa
                WHERE sa.organization_id = ?4 AND sa.student_id = ?2 AND sa.user_id = ?1 AND sa.revoked_at IS NULL)`,
           )
           .bind(
-            userId, studentId, id, target.organizationId, today, input.effort, input.recovery,
-            input.discomfort ? 1 : 0, input.discomfortNotes, input.notes, stamp,
+            userId, studentId, id, target.organizationId, day, input.effort, input.recovery,
+            input.discomfort ? 1 : 0, input.discomfortNotes, input.notes, stamp, current.id,
+            input.answers.length > 0 ? JSON.stringify(input.answers) : null,
           )
           .run();
         if (result.meta.changes === 0) return { status: "not_found" };
@@ -156,14 +368,13 @@ export function studentCheckinsFor(db: D1Database, userId: string) {
     async remove(checkinId: string, now = new Date()): Promise<RemoveCheckinOutcome> {
       const row = await db
         .prepare(
-          `SELECT c.discomfort_reported AS discomfort, c.checked_on AS checkedOn,
-             EXISTS (SELECT 1 FROM checkin_acknowledgements a WHERE a.checkin_id = c.id) AS acknowledged
+          `SELECT c.created_at AS createdAt, ${frozen("c")} AS frozen
            FROM student_checkins c WHERE c.id = ?2 AND ${owned("?2")}`,
         )
         .bind(userId, checkinId)
-        .first<{ discomfort: number; checkedOn: string; acknowledged: number }>();
+        .first<{ createdAt: string; frozen: number }>();
       if (!row) return { status: "not_found" };
-      if (row.discomfort || row.acknowledged || row.checkedOn !== todayInBrazil(now)) return { status: "locked" };
+      if (row.frozen || madeOn(row.createdAt) !== todayInBrazil(now)) return { status: "locked" };
       try {
         const result = await db
           .prepare(`DELETE FROM student_checkins WHERE id = ?2 AND ${owned("?2")}`)
@@ -187,19 +398,93 @@ export function checkinsFor(db: D1Database, context: AuthenticatedContext | null
     WHERE s.organization_id = ${alias}.organization_id AND s.id = ${alias}.student_id
       AND ${activeUser("?2")} AND ${technicalAccessExists("s", "?2")})`;
 
+  async function currentForm(studentId: string): Promise<CurrentCheckinForm> {
+    const row = await db
+      .prepare(
+        `SELECT ${formColumns} FROM checkin_form_versions f
+         WHERE f.organization_id = ?1 AND f.student_id = ?3 AND ${reach("f")}
+         ORDER BY f.version DESC LIMIT 1`,
+      )
+      .bind(organizationId, userId, studentId)
+      .first<RawForm>();
+    return currentOf(row);
+  }
+
+  /** What the student's check-in asks today. Null when the professional does not reach the student. */
+  async function form(studentId: string): Promise<CurrentCheckinForm | null> {
+    const student = await db
+      .prepare(
+        `SELECT 1 AS ok FROM students s
+         WHERE s.organization_id = ?1 AND s.id = ?3 AND ${activeUser("?2")} AND ${technicalAccessExists("s", "?2")}`,
+      )
+      .bind(organizationId, userId, studentId)
+      .first<{ ok: number }>();
+    if (!student) return null;
+    return currentForm(studentId);
+  }
+
   return {
-    /** The check-ins of one student, newest first. */
+    /** The check-ins of one student, newest first, each with the questions it was answered with and the replies. */
     async list(studentId: string, limit = 30): Promise<CheckinRow[]> {
       const result = await db
         .prepare(
           `SELECT ${columns}
-           FROM student_checkins c
+           FROM student_checkins c ${formJoin}
            WHERE c.organization_id = ?1 AND c.student_id = ?3 AND ${reach("c")}
            ORDER BY c.checked_on DESC, c.created_at DESC LIMIT ?4`,
         )
         .bind(organizationId, userId, studentId, Math.max(1, Math.min(limit, 100)))
         .all<RawRow>();
-      return result.results.map(shape);
+      const replies = await repliesOf(
+        db,
+        result.results.map((row) => row.id),
+        `c.organization_id = ?1 AND ${reach("c")}`,
+        [organizationId, userId],
+      );
+      return result.results.map((row) => shape(row, replies.get(row.id) ?? []));
+    },
+
+    /** What the student's check-in asks today. Null when the professional does not reach the student. */
+    form,
+
+    /**
+     * Saves what the student's check-in asks as a new version. Past check-ins keep the version they were answered with; a save that
+     * asks the same as the current version writes nothing. Throws a ZodError for a malformed form.
+     */
+    async saveForm(studentId: string, raw: unknown, now = new Date()): Promise<SaveCheckinFormOutcome> {
+      const current = await form(studentId);
+      if (!current) return { status: "not_found" };
+      const next = parseCheckinForm(raw);
+      if (sameCheckinForm(next, current.form)) return { status: "unchanged" };
+      const version = (current.version ?? 0) + 1;
+      const id = crypto.randomUUID();
+      const stamp = now.toISOString();
+      try {
+        const results = await db.batch([
+          db
+            .prepare(
+              `INSERT INTO checkin_form_versions
+                 (id, organization_id, student_id, version, ask_effort, ask_recovery, ask_notes, questions, created_by_user_id, created_at)
+               SELECT ?4, s.organization_id, s.id, ?5, ?6, ?7, ?8, ?9, ?2, ?10
+               FROM students s
+               WHERE s.organization_id = ?1 AND s.id = ?3 AND ${activeUser("?2")} AND ${technicalAccessExists("s", "?2")}`,
+            )
+            .bind(
+              organizationId, userId, studentId, id, version, next.askEffort ? 1 : 0, next.askRecovery ? 1 : 0,
+              next.askNotes ? 1 : 0, JSON.stringify(next.questions), stamp,
+            ),
+          db
+            .prepare(
+              `INSERT INTO access_audit_events (id, organization_id, actor_user_id, action, subject_id, created_at)
+               SELECT ?1, ?2, ?3, ?4, ?5, ?6 WHERE EXISTS (SELECT 1 FROM checkin_form_versions WHERE id = ?7)`,
+            )
+            .bind(crypto.randomUUID(), organizationId, userId, CHECKIN_FORM_CHANGED, studentId, stamp, id),
+        ]);
+        return results[0].meta.changes > 0 ? { status: "saved", version } : { status: "not_found" };
+      } catch (error) {
+        if (String(error).includes("UNIQUE")) return { status: "conflict" };
+        throw error;
+      }
     },
 
     /**
@@ -228,6 +513,44 @@ export function checkinsFor(db: D1Database, context: AuthenticatedContext | null
       ];
       const results = await db.batch(statements);
       return results[0].meta.changes > 0 ? { status: "recorded" } : { status: "not_found" };
+    },
+
+    /**
+     * A reply to the student, in text. It is shown to the student with who wrote it and when; it is never changed nor deleted. A reply
+     * means the check-in was read: when nobody had registered the reading, it is registered with it (without a note). It changes no
+     * plan and sends no e-mail.
+     */
+    async reply(checkinId: string, body: unknown, now = new Date()): Promise<ReplyCheckinOutcome> {
+      const text = typeof body === "string" ? body.trim() : "";
+      if (!text) throw new Error("REPLY_EMPTY");
+      if (text.length > REPLY_MAX) throw new Error("REPLY_TOO_LONG");
+      const stamp = now.toISOString();
+      const id = crypto.randomUUID();
+      const results = await db.batch([
+        db
+          .prepare(
+            `INSERT INTO checkin_replies (id, organization_id, checkin_id, author_user_id, body, created_at)
+             SELECT ?4, c.organization_id, c.id, ?2, ?5, ?6
+             FROM student_checkins c
+             WHERE c.organization_id = ?1 AND c.id = ?3 AND ${reach("c")}`,
+          )
+          .bind(organizationId, userId, checkinId, id, text, stamp),
+        db
+          .prepare(
+            `INSERT INTO checkin_acknowledgements (id, organization_id, checkin_id, user_id, note, created_at)
+             SELECT ?1, ?2, ?3, ?4, NULL, ?5
+             WHERE EXISTS (SELECT 1 FROM checkin_replies WHERE id = ?6)
+               AND NOT EXISTS (SELECT 1 FROM checkin_acknowledgements a WHERE a.checkin_id = ?3)`,
+          )
+          .bind(crypto.randomUUID(), organizationId, checkinId, userId, stamp, id),
+        db
+          .prepare(
+            `INSERT INTO access_audit_events (id, organization_id, actor_user_id, action, subject_id, created_at)
+             SELECT ?1, ?2, ?3, ?4, ?5, ?6 WHERE EXISTS (SELECT 1 FROM checkin_replies WHERE id = ?7)`,
+          )
+          .bind(crypto.randomUUID(), organizationId, userId, CHECKIN_REPLY, checkinId, stamp, id),
+      ]);
+      return results[0].meta.changes > 0 ? { status: "recorded", id } : { status: "not_found" };
     },
 
     /**
