@@ -8,6 +8,7 @@ const actionLabel: Record<string, string> = {
   TERMS_PUBLISHED_STUDENT: "Termos do aluno publicados",
   TERMS_PUBLISHED_PROFESSIONAL: "Termos do profissional publicados",
   PLATFORM_TWO_FACTOR_RESET: "Verificação em duas etapas redefinida",
+  PLATFORM_TWO_FACTOR_RECOVERED: "Verificação em duas etapas redefinida com o código do ambiente",
   TERMS_DRAFT_DISCARDED_STUDENT: "Rascunho dos termos do aluno descartado",
   TERMS_DRAFT_DISCARDED_PROFESSIONAL: "Rascunho dos termos do profissional descartado",
   PLATFORM_ADMIN_INVITED: "Convite de gestor criado",

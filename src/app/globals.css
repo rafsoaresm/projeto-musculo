@@ -1098,6 +1098,9 @@ main {
   font-weight: 700;
   text-decoration: underline;
 }
+.account-card .account-help {
+  margin: 18px 0 0;
+}
 button.account-link {
   padding: 0;
   border: 0;
