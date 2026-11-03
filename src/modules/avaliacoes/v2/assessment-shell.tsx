@@ -2,7 +2,7 @@
 import { useState, useTransition } from "react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useUnsavedGuard } from "@/components/use-unsaved-guard";
-import { saveCompositionSection } from "./actions";
+import { discardAssessmentV2, saveCompositionSection } from "./actions";
 import { formFromPayload, payloadFromForm, problemsMessage, type CompositionForm, type CompositionPayload } from "./composition";
 import { CompositionStep } from "./composition-step";
 
@@ -23,12 +23,14 @@ type Status = { kind: "clean" } | { kind: "dirty" } | { kind: "saved" } | { kind
  * stale screen (another tab, another person) is refused and said, never silently written over.
  */
 export function AssessmentShell({
+  studentId,
   assessmentId,
   assessedOn,
   birthDate,
   revision: initialRevision,
   composition,
 }: {
+  studentId: string;
   assessmentId: string;
   assessedOn: string;
   /** From the snapshot the draft took of the student's file; null when the file had none. */
@@ -108,6 +110,20 @@ export function AssessmentShell({
           {(status.kind === "conflict" || status.kind === "error") && status.text}
         </p>
         <div className="av2-actions">
+          <button
+            type="button"
+            className="button secondary"
+            disabled={pending}
+            onClick={() => {
+              if (!window.confirm("Descartar este rascunho? O que foi digitado nele será apagado.")) return;
+              startTransition(async () => {
+                const result = await discardAssessmentV2(studentId, assessmentId);
+                if (result?.error) setStatus({ kind: "error", text: result.error });
+              });
+            }}
+          >
+            Descartar rascunho
+          </button>
           <button type="button" className="button secondary" disabled={index === 0} onClick={() => setStep(STEPS[index - 1].key)}>
             <ArrowLeft size={17} /> Voltar
           </button>

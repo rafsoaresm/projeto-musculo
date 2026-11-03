@@ -584,6 +584,27 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
     },
 
     /**
+     * Discards an open draft of the new format: its sections, its computed results and the draft itself go, in one batch, and the student can
+     * start another assessment (one draft per student). Only a draft of the new format, reachable by this professional; a recorded assessment
+     * is never deleted (also a trigger of 0009). True when the draft was there and is gone.
+     */
+    async discardDraftV2(assessmentId: string, now = new Date()): Promise<boolean> {
+      const open = `EXISTS (SELECT 1 FROM assessments a WHERE a.organization_id = ?1 AND a.id = ?3 AND a.state = 'DRAFT' AND a.format_version = 2
+        AND ${reachAssessment("a")})`;
+      const results = await db.batch([
+        db.prepare(`DELETE FROM assessment_sections WHERE organization_id = ?1 AND assessment_id = ?3 AND ${open}`).bind(organizationId, userId, assessmentId),
+        db.prepare(`DELETE FROM assessment_results WHERE organization_id = ?1 AND assessment_id = ?3 AND ${open}`).bind(organizationId, userId, assessmentId),
+        db
+          .prepare(
+            `DELETE FROM assessments WHERE organization_id = ?1 AND id = ?3 AND state = 'DRAFT' AND format_version = 2 AND ${reachAssessment("assessments")}`,
+          )
+          .bind(organizationId, userId, assessmentId),
+        audit("ASSESSMENT_DRAFT_DISCARDED", assessmentId, now.toISOString()),
+      ]);
+      return results[2].meta.changes > 0;
+    },
+
+    /**
      * Saves one module of an open draft of the new format, based on the revision the screen read: a save from an older revision (another tab,
      * another person) is refused as a conflict and changes nothing, never the last one silently winning. The payload is checked by the
      * module's own schema before it gets here (`validate`); here only its size.

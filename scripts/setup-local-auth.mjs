@@ -15,14 +15,11 @@ const generated = {
 // application only honours it on localhost or 127.0.0.1.
 // PUBLIC_FORMS_ENABLED and PRIVACY_NOTICE_URL open the contact form of the public pages, for the local browser tests only: the committed config and
 // the production environment do not have them, so there the form stays closed until the platform opens it on purpose (see PENDENCIAS, J8 and J12).
-// ASSESSMENT_V2_ENABLED opens the new format of the assessment for the local browser tests (and CI, which runs this script); production does not
-// have it, so there the professional sees only the current assessment.
 const fixed = {
   DEMO_MODE: "true",
   EMAIL_TRANSPORT: "capture",
   PUBLIC_FORMS_ENABLED: "true",
   PRIVACY_NOTICE_URL: "http://127.0.0.1:8787/aviso-de-privacidade-de-teste",
-  ASSESSMENT_V2_ENABLED: "true",
 };
 
 async function read(file) {

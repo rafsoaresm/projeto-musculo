@@ -45,10 +45,11 @@ export default async function Assessment({
         <PageHeading
           eyebrow={workspace.name}
           title={`${detail.kind === "INITIAL" ? "Avaliação inicial" : "Reavaliação"} de ${student.displayName}`}
-          description={`Formato novo, em teste. Rascunho de ${formatCalendarDate(detail.assessedOn)}.`}
+          description={`Rascunho de ${formatCalendarDate(detail.assessedOn)}.`}
         />
         {open ? (
           <AssessmentShell
+            studentId={student.id}
             assessmentId={assessmentId}
             assessedOn={detail.assessedOn}
             birthDate={snapshot?.birthDate ?? null}
@@ -57,7 +58,7 @@ export default async function Assessment({
           />
         ) : (
           <Notice tone="warning">
-            <p>Esta avaliação está no formato novo, ainda em teste. Ela não pode ser editada neste ambiente.</p>
+            <p>A avaliação no formato novo está fechada neste ambiente. Ela não pode ser editada aqui.</p>
           </Notice>
         )}
         <Link href={`/profissional/alunos/${student.id}/avaliacoes`} className="button secondary">

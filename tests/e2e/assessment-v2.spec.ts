@@ -137,6 +137,26 @@ test("a value that is not a number is named and nothing typed is lost", async ({
   await expect(page.getByLabel("Peso (kg)")).toHaveValue("sessenta");
 });
 
+test("a draft of the new format is discarded, and the student can start an assessment again", async ({ page }) => {
+  await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
+  await createProfessional(page, "Estúdio do rascunho descartado");
+  const studentURL = await addStudent(page, "Aluno do descarte");
+  await showStudentTab(page, "Avaliações");
+  await page.getByRole("button", { name: "Nova avaliação (formato novo)" }).click();
+  await expect(page.getByRole("heading", { name: "Avaliação inicial de Aluno do descarte" })).toBeVisible();
+  // Cancelled at the question, nothing happens; accepted, the draft goes and the list offers to start again.
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page.getByRole("button", { name: "Descartar rascunho" }).click();
+  await expect(page.getByRole("heading", { name: "Avaliação inicial de Aluno do descarte" })).toBeVisible();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Descartar rascunho" }).click();
+  await expect(page.getByRole("button", { name: "Iniciar avaliação" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Continuar o rascunho" })).toHaveCount(0);
+  await page.goto(studentURL);
+  await showStudentTab(page, "Avaliações");
+  await expect(page.getByRole("button", { name: "Nova avaliação (formato novo)" })).toBeVisible();
+});
+
 test("the current assessment is still the default and opens the earlier form", async ({ page }) => {
   await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
   await createProfessional(page, "Estúdio do formato atual");

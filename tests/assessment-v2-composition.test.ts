@@ -38,12 +38,12 @@ const form = (patch: Partial<CompositionForm> = {}): CompositionForm => ({
 });
 
 describe("the switch of the new format", () => {
-  it("opens only with exactly \"true\", from the Worker or from process.env", () => {
-    expect(assessmentV2Open({}, {})).toBe(false);
-    expect(assessmentV2Open({ ASSESSMENT_V2_ENABLED: "1" }, {})).toBe(false);
-    expect(assessmentV2Open({ ASSESSMENT_V2_ENABLED: "TRUE" }, {})).toBe(false);
+  it("is open by default and closes only with exactly \"false\", from the Worker or from process.env", () => {
+    expect(assessmentV2Open({}, {})).toBe(true);
     expect(assessmentV2Open({ ASSESSMENT_V2_ENABLED: "true" }, {})).toBe(true);
-    expect(assessmentV2Open({}, { ASSESSMENT_V2_ENABLED: "true" })).toBe(true);
+    expect(assessmentV2Open({ ASSESSMENT_V2_ENABLED: "FALSE" }, {})).toBe(true);
+    expect(assessmentV2Open({ ASSESSMENT_V2_ENABLED: "false" }, {})).toBe(false);
+    expect(assessmentV2Open({}, { ASSESSMENT_V2_ENABLED: "false" })).toBe(false);
   });
 });
 
