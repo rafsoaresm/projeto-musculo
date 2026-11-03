@@ -27,15 +27,15 @@ export interface PlanPdfInput {
   generatedAt: Date;
 }
 
-const PAGE = { width: 595.28, height: 841.89 };
-const MARGIN = 44;
-const FOOTER = 34;
-const CONTENT_WIDTH = PAGE.width - MARGIN * 2;
-const INK = rgb(0x1f / 255, 0x29 / 255, 0x33 / 255);
-const MUTED = rgb(0x5a / 255, 0x64 / 255, 0x70 / 255);
-const BRAND = rgb(0, 0x77 / 255, 0xb6 / 255);
-const SOFT = rgb(0xe8 / 255, 0xf3 / 255, 0xfa / 255);
-const LINE = rgb(0xd7 / 255, 0xdd / 255, 0xe3 / 255);
+export const PAGE = { width: 595.28, height: 841.89 };
+export const MARGIN = 44;
+export const FOOTER = 34;
+export const CONTENT_WIDTH = PAGE.width - MARGIN * 2;
+export const INK = rgb(0x1f / 255, 0x29 / 255, 0x33 / 255);
+export const MUTED = rgb(0x5a / 255, 0x64 / 255, 0x70 / 255);
+export const BRAND = rgb(0, 0x77 / 255, 0xb6 / 255);
+export const SOFT = rgb(0xe8 / 255, 0xf3 / 255, 0xfa / 255);
+export const LINE = rgb(0xd7 / 255, 0xdd / 255, 0xe3 / 255);
 
 const REPLACEMENTS: Record<string, string> = {
   "→": "->",
@@ -44,6 +44,7 @@ const REPLACEMENTS: Record<string, string> = {
   "≤": "<=",
   "≈": "~",
   "−": "-",
+  "₂": "2",
   " ": " ",
   "\t": " ",
 };
@@ -145,7 +146,7 @@ export async function planFingerprint(plan: StudentTrainingPlan): Promise<string
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-const dateTimeBR = (date: Date) =>
+export const dateTimeBR = (date: Date) =>
   new Intl.DateTimeFormat("pt-BR", {
     timeZone: "America/Sao_Paulo",
     day: "2-digit",
@@ -168,7 +169,7 @@ export const pdfFileName = (plan: StudentTrainingPlan) => {
 };
 
 /** Vertical flow over A4 pages. Footers are written last, when the page count is known. */
-class Flow {
+export class Flow {
   page!: PDFPage;
   y = 0;
   constructor(

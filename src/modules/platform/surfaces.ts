@@ -267,6 +267,7 @@ const aluno: NavGroup[] = [
         status: "available",
         primary: true,
       },
+      { slug: "avaliacoes", label: "Avaliação Física", icon: "clipboard", status: "available" },
       { slug: "check-in", label: "Check-in", icon: "check", status: "available" },
     ],
   },
