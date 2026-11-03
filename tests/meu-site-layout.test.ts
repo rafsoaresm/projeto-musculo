@@ -121,10 +121,11 @@ describe("the page's stylesheet", () => {
     expect(site).not.toContain("overflow-wrap: anywhere");
   });
 
-  it("makes a phone's links, questions and consent box 44 px targets", () => {
+  it("makes a phone's links, questions and the link to the privacy notice 44 px targets; there is no consent box", () => {
     expect(css).toContain("@container site (max-width: 576px) {\n  .site a.site-link {\n    display: inline-flex;\n    align-items: center;\n    min-height: 44px;\n    min-width: 44px;");
     expect(rule(".site-faq summary")).toContain("min-height: 44px;");
-    expect(rule(".site-form .site-form-consent")).toContain("min-height: 44px;");
+    expect(css).toContain("  .site .site-form-hint a {\n    display: inline-flex;\n    align-items: center;\n    min-height: 44px;");
+    expect(css).not.toContain("site-form-consent");
   });
 
   it("lets the contact form fill its card", () => {

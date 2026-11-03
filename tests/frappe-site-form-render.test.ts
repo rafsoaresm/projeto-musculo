@@ -4,7 +4,7 @@ import { renderBlocks, type Block } from "@/modules/frappe-site/render";
 import { urlContext } from "@/modules/frappe-site/urls";
 
 const url = urlContext("studio", 0);
-const SEND = { action: "../site/studio/m/contato", noticeUrl: "https://example.test/aviso?a=1&b=\"2\"" };
+const SEND: { action: string; noticeUrl: string | null } = { action: "../site/studio/m/contato", noticeUrl: "https://example.test/aviso?a=1&b=\"2\"" };
 const node = (element: string, attributes: Record<string, string> = {}, more: Block = {}): Block => ({ blockId: crypto.randomUUID().slice(0, 8), element, attributes, ...more });
 const form = (...children: Block[]): Block => node("form", {}, { children });
 const NAME = node("input", { type: "text", placeholder: "Seu nome" });
@@ -41,13 +41,15 @@ describe("a form is drawn only where the site opened its forms, and it sends whe
     expect(out).toContain('<textarea placeholder="Mensagem" name="f3" maxlength="1000" aria-label="Mensagem"></textarea>');
   });
 
-  it("the box for the privacy notice, the bait and the hidden fields come right before the first button that sends, once", () => {
+  it("the link to the privacy notice, the bait and the hidden fields come right before the first button that sends, once; there is no consent box", () => {
     const out = open([form(NAME, EMAIL, SEND_BUTTON, node("button", {}, { innerHTML: "Outro" }))]).body;
-    const consent = out.indexOf('name="aceite"');
-    expect(consent).toBeGreaterThan(out.indexOf('name="f2"'));
-    expect(consent).toBeLessThan(out.indexOf("Enviar agora"));
-    expect(out.match(/name="aceite"/g)).toHaveLength(1);
-    expect(out).toContain('<a href="https://example.test/aviso?a=1&amp;b=&quot;2&quot;" target="_blank" rel="noopener noreferrer">aviso de privacidade</a>');
+    expect(out).not.toContain('name="aceite"');
+    expect(out).not.toContain('type="checkbox"');
+    const notice = out.indexOf("Aviso de privacidade");
+    expect(notice).toBeGreaterThan(out.indexOf('name="f2"'));
+    expect(notice).toBeLessThan(out.indexOf("Enviar agora"));
+    expect(out.match(/Aviso de privacidade/g)).toHaveLength(1);
+    expect(out).toContain('<a href="https://example.test/aviso?a=1&amp;b=&quot;2&quot;" target="_blank" rel="noopener noreferrer">Aviso de privacidade</a>');
     expect(out).toContain('<div aria-hidden="true" style="position: absolute; left: -10000px;');
     expect(out).toContain('name="empresa_extra" tabindex="-1" autocomplete="off"');
     expect(out).toContain('<input type="hidden" name="pagina" value="contato">');
@@ -57,17 +59,24 @@ describe("a form is drawn only where the site opened its forms, and it sends whe
     expect(out).toMatch(/<button type="submit">Outro<\/button>/);
   });
 
+  it("without a privacy notice in the environment the form is drawn and sent the same, with no link", () => {
+    const out = open([form(NAME, EMAIL, SEND_BUTTON)], {}, { route: "contato", send: { ...SEND, noticeUrl: null } }).body;
+    expect(out).toContain('action="../site/studio/m/contato"');
+    expect(out).not.toContain("Aviso de privacidade");
+    expect(out).toContain('name="empresa_extra"');
+  });
+
   it("a button that is not for sending is left alone; a form with none gets one, so it can be sent", () => {
     const reset = open([form(NAME, EMAIL, node("button", { type: "button" }, { innerHTML: "Limpar" }))]).body;
     expect(reset).toContain('<button type="button">Limpar</button>');
-    expect(reset).toMatch(/name="aceite"[\s\S]*<button type="submit" style="[^"]*">Enviar<\/button><\/form>/);
+    expect(reset).toMatch(/name="empresa_extra"[\s\S]*<button type="submit" style="[^"]*">Enviar<\/button><\/form>/);
     const bare = open([form(NAME, EMAIL)]).body;
     expect(bare.match(/type="submit"/g)).toHaveLength(1);
     // A button that names itself does not add a field of the page's making.
     expect(open([form(NAME, EMAIL, node("button", { name: "x", value: "y" }, { innerHTML: "Ir" }))]).body).toContain('<button type="submit">Ir</button>');
-    // An input of type submit is the button; it gets the consent box too.
+    // An input of type submit is the button; the extras come right before it too.
     const submit = open([form(NAME, EMAIL, node("input", { type: "submit", value: "Mandar", name: "z" }))]).body;
-    expect(submit).toMatch(/name="aceite"[\s\S]*<input type="submit" value="Mandar">/);
+    expect(submit).toMatch(/name="empresa_extra"[\s\S]*<input type="submit" value="Mandar">/);
     expect(submit).not.toContain("Enviar</button>");
   });
 
@@ -112,7 +121,7 @@ describe("the controls of a form", () => {
 
   it("what cannot be a field is not drawn: passwords, files, hidden values, disabled controls", () => {
     const out = open([form(NAME, EMAIL, node("input", { type: "password", name: "senha" }), node("input", { type: "file" }), node("input", { type: "hidden", name: "h", value: "v" }), node("input", { disabled: "" }), SEND_BUTTON)]);
-    expect(out.body.match(/<input /g)).toHaveLength(2 + 1 + 1 + 3); // the two fields, the consent box, the bait, and the three hidden ones of the form itself
+    expect(out.body.match(/<input /g)).toHaveLength(2 + 1 + 3); // the two fields, the bait, and the three hidden ones of the form itself
     expect(out.body).not.toMatch(/password|senha|type="file"|name="h"|disabled/);
     expect(out.forms[0]!.ignored).toHaveLength(4);
   });

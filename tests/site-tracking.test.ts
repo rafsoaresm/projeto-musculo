@@ -202,17 +202,16 @@ describe("the script of a site", () => {
     expect(text).not.toMatch(/[\u2028\u2029]/);
     expect(trackingScript(scriptConfig("marina-a", full))).toBe(trackingScript(scriptConfig("marina-a", full)));
   });
-  it("has no eval, no inline handler, loads only the tools' own addresses and asks consent before any of them", () => {
+  it("has no eval, no inline handler, loads only the tools' own addresses, and no consent banner or consent call", () => {
     const text = trackingScript(scriptConfig("marina-a", full));
     expect(text).not.toMatch(/\beval\(|new Function|setTimeout\(\s*["']|\.innerHTML|insertAdjacentHTML|document\.write|onclick=|setAttribute\(\s*["']on/);
     const loaded = [...text.matchAll(/inject\("([^"]+)"/g)].map((match) => match[1]);
     expect(loaded).toEqual(["https://www.googletagmanager.com/gtag/js?id=", "https://connect.facebook.net/en_US/fbevents.js"]);
-    // The default denial comes before anything else of Google; the loader is inside apply(), which runs only with a choice.
-    expect(text.indexOf('gtag("consent", "default"')).toBeLessThan(text.indexOf("function apply("));
-    for (const storage of ["ad_storage", "analytics_storage", "ad_user_data", "ad_personalization"]) expect(text).toContain(`${storage}: "denied"`);
-    expect(text).toContain("wait_for_update: 500");
-    expect(text).toContain('w.fbq("consent", "grant")');
-    expect(text).toContain('"revoke"');
+    // The tools load with the page (decision of 03/11/2026): no consent mode call, no Meta consent, no banner and no "cookie preferences" button.
+    expect(text).not.toMatch(/gtag\("consent"|fbq\("consent"|"revoke"|denied|Preferências de cookies|Aceitar|Recusar/);
+    expect(text.indexOf("load();")).toBeGreaterThan(-1);
+    // Still never GTM: only gtag.js, which loads the tags configured here.
+    expect(text).not.toContain("gtm.js");
   });
   it("reads nothing a visitor typed and sends no personal data", () => {
     const text = trackingScript(scriptConfig("marina-a", full));

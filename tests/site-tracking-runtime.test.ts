@@ -127,20 +127,18 @@ const choose = (tab: Tab, a: boolean, m: boolean) =>
   tab.local.setItem("rastreio:marina-a", JSON.stringify({ v: 1, tools: "ga4,ads,meta", a: a ? 1 : 0, m: m ? 1 : 0, at: "2026-11-02T00:00:00.000Z" }));
 
 describe("the script of a site, run", () => {
-  it("grants the consent before configuring a tag, also when a refusal kept from an earlier visit was applied first", () => {
+  it("loads every tool the site configured with the page: no banner, no consent call, and a choice stored by an older script changes nothing", () => {
     const tab = newTab("https://app.example/s/marina-a");
     choose(tab, false, false);
     const page = load(tab, config);
-    expect(page.loaded()).toEqual([]);
-    page.button("Preferências de cookies")!.click();
-    page.button("Aceitar")!.click();
-    const order = page.google().map((call) => `${String(call[0])}:${typeof call[1] === "string" ? call[1] : ""}`);
-    const granted = order.lastIndexOf("consent:update");
-    expect(order.filter((entry) => entry === "consent:update")).toHaveLength(2);
-    expect(page.google()[granted]![2]).toMatchObject({ analytics_storage: "granted", ad_storage: "granted" });
-    expect(granted).toBeLessThan(order.indexOf("config:G-AB12CD34EF"));
-    expect(granted).toBeLessThan(order.indexOf("config:AW-123456789"));
     expect(page.loaded()).toEqual(["https://www.googletagmanager.com/gtag/js?id=G-AB12CD34EF", "https://connect.facebook.net/en_US/fbevents.js"]);
+    const order = page.google().map((call) => `${String(call[0])}:${typeof call[1] === "string" ? call[1] : ""}`);
+    expect(order.filter((entry) => entry.startsWith("consent:"))).toEqual([]);
+    expect(order).toContain("config:G-AB12CD34EF");
+    expect(order).toContain("config:AW-123456789");
+    expect(page.button("Preferências de cookies")).toBeUndefined();
+    expect(page.button("Aceitar")).toBeUndefined();
+    expect(page.meta().filter((call) => call[0] === "consent")).toEqual([]);
   });
 
   it("names Google's cookies per site, since the sites share the app's address", () => {
@@ -163,31 +161,19 @@ describe("the script of a site, run", () => {
     choose(tab, true, true);
     const calls = load(tab, config).meta();
     expect(calls).toEqual([
-      ["consent", "grant"],
       ["set", "autoConfig", false, "123456789012345"],
       ["init", "123456789012345"],
       ["track", "PageView"],
     ]);
   });
 
-  it("counts a submission once per tool on the thank-you page: analytics only, a reload, then everything", () => {
+  it("counts a submission once per tool on the thank-you page: every tool at the first load, nothing at a reload", () => {
     const id = "0123456789abcdef0123456789abcdef";
     const tab = newTab(`https://app.example/s/marina-a/m/enviado?envio=${id}`);
-    choose(tab, true, false);
     const first = load(tab, config, true);
     expect(first.events("generate_lead")).toHaveLength(1);
-    expect(first.events("conversion")).toEqual([]);
-    // The tools not allowed yet have not counted it: the id stays in the address.
-    expect(tab.href).toContain(`envio=${id}`);
-
-    const reload = load(tab, config, true);
-    expect(reload.events("generate_lead")).toEqual([]);
-
-    reload.button("Preferências de cookies")!.click();
-    reload.button("Aceitar")!.click();
-    expect(reload.events("generate_lead")).toEqual([]);
-    expect(reload.events("conversion")).toEqual([["event", "conversion", { send_to: "AW-123456789/LeadLabel1", transport_type: "beacon", transaction_id: id }]]);
-    expect(reload.meta().filter((call) => call[0] === "track" && call[1] === "Lead")).toEqual([["track", "Lead", { content_name: "site_form" }, { eventID: id }]]);
+    expect(first.events("conversion")).toEqual([["event", "conversion", { send_to: "AW-123456789/LeadLabel1", transport_type: "beacon", transaction_id: id }]]);
+    expect(first.meta().filter((call) => call[0] === "track" && call[1] === "Lead")).toEqual([["track", "Lead", { content_name: "site_form" }, { eventID: id }]]);
     // Every tool counted it: the id leaves the address, and one more load counts nothing.
     expect(tab.href).toBe("https://app.example/s/marina-a/m/enviado");
     const again = load(tab, config, true);

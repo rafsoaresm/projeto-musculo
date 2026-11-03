@@ -8,6 +8,8 @@ import {
   contactKeys,
   formsGate,
   noticeAddress,
+  NO_NOTICE,
+  storedNotice,
   parseInquiry,
   readLimitedBody,
   senderKey,
@@ -23,20 +25,26 @@ import type { PublicSite } from "@/db/sites";
 
 const NOTICE = "https://example.test/aviso-de-privacidade";
 const form = (fields: Record<string, string>) => new URLSearchParams(fields);
-const good = { nome: "Ana Souza", contato: "ana@example.test", mensagem: "Quero saber dos planos", aceite: "on" };
+const good = { nome: "Ana Souza", contato: "ana@example.test", mensagem: "Quero saber dos planos" };
 
 describe("when the public forms are open", () => {
-  it("is never open unless the environment says exactly true on purpose, and there is a notice to point to", () => {
-    expect(formsGate({}, {})).toEqual({ open: false, why: "off" });
-    for (const value of ["", "TRUE", "True", "1", "yes", "false", " true"]) expect(formsGate({ PUBLIC_FORMS_ENABLED: value, PRIVACY_NOTICE_URL: NOTICE }, {}), value).toEqual({ open: false, why: "off" });
-    expect(formsGate({ PUBLIC_FORMS_ENABLED: "true" }, {})).toEqual({ open: false, why: "no-notice" });
-    expect(formsGate({ PUBLIC_FORMS_ENABLED: "true", PRIVACY_NOTICE_URL: "não é um endereço" }, {})).toEqual({ open: false, why: "no-notice" });
-    expect(formsGate({ PUBLIC_FORMS_ENABLED: "true", PRIVACY_NOTICE_URL: NOTICE }, {})).toEqual({ open: true, noticeUrl: NOTICE });
+  it("is open by default; only an explicit \"false\" closes it (an emergency switch), and a notice is optional", () => {
+    expect(formsGate({}, {})).toEqual({ open: true, noticeUrl: null });
+    for (const value of ["", "true", "TRUE", "1", "yes", " true"]) expect(formsGate({ PUBLIC_FORMS_ENABLED: value }, {}), value).toEqual({ open: true, noticeUrl: null });
+    for (const value of ["false", "FALSE", " false "]) expect(formsGate({ PUBLIC_FORMS_ENABLED: value, PRIVACY_NOTICE_URL: NOTICE }, {}), value).toEqual({ open: false, why: "off" });
+    expect(formsGate({ PRIVACY_NOTICE_URL: "não é um endereço" }, {})).toEqual({ open: true, noticeUrl: null });
+    expect(formsGate({ PRIVACY_NOTICE_URL: NOTICE }, {})).toEqual({ open: true, noticeUrl: NOTICE });
   });
   it("takes the variable from the Worker or from the dashboard, the Worker's first", () => {
-    expect(formsGate({}, { PUBLIC_FORMS_ENABLED: "true", PRIVACY_NOTICE_URL: NOTICE })).toEqual({ open: true, noticeUrl: NOTICE });
-    expect(formsGate({ PUBLIC_FORMS_ENABLED: "true", PRIVACY_NOTICE_URL: NOTICE }, { PUBLIC_FORMS_ENABLED: "false" })).toMatchObject({ open: true });
-    expect(formsGate({ PRIVACY_NOTICE_URL: "https://worker.test/aviso" }, { PUBLIC_FORMS_ENABLED: "true", PRIVACY_NOTICE_URL: NOTICE })).toEqual({ open: true, noticeUrl: "https://worker.test/aviso" });
+    expect(formsGate({}, { PRIVACY_NOTICE_URL: NOTICE })).toEqual({ open: true, noticeUrl: NOTICE });
+    expect(formsGate({}, { PUBLIC_FORMS_ENABLED: "false" })).toEqual({ open: false, why: "off" });
+    expect(formsGate({ PUBLIC_FORMS_ENABLED: "true" }, { PUBLIC_FORMS_ENABLED: "false" })).toMatchObject({ open: true });
+    expect(formsGate({ PRIVACY_NOTICE_URL: "https://worker.test/aviso" }, { PRIVACY_NOTICE_URL: NOTICE })).toEqual({ open: true, noticeUrl: "https://worker.test/aviso" });
+  });
+  it("stores a neutral value in place of the notice when there is none (the column asks for 8 to 300 letters)", () => {
+    expect(storedNotice(NOTICE)).toBe(NOTICE);
+    expect(storedNotice(null)).toBe(NO_NOTICE);
+    expect(NO_NOTICE.length).toBeGreaterThanOrEqual(8);
   });
   it("points only to a page a visitor can open: https, or http on this very machine, and short", () => {
     expect(noticeAddress("https://example.test/aviso")).toBe("https://example.test/aviso");
@@ -47,7 +55,7 @@ describe("when the public forms are open", () => {
 });
 
 describe("what a visitor sends", () => {
-  it("is a name, an e-mail or a phone, an optional message and the box that says the notice was read", () => {
+  it("is a name, an e-mail or a phone and an optional message; there is no box to tick", () => {
     expect(parseInquiry(form(good))).toEqual({ kind: "ok", value: { name: "Ana Souza", email: "ana@example.test", phone: null, message: "Quero saber dos planos", page: "" } });
     expect(parseInquiry(form({ ...good, contato: "(11) 91234-5678", mensagem: "" }))).toEqual({
       kind: "ok",
@@ -59,7 +67,7 @@ describe("what a visitor sends", () => {
     expect(parseInquiry(form({ ...good, nome: "  Ana Souza  ", mensagem: " linha 1\r\nlinha 2 ", pagina: "planos" }))).toMatchObject({ kind: "ok", value: { name: "Ana Souza", message: "linha 1\nlinha 2", page: "planos" } });
     for (const page of ["m", "Planos Caros", "../x", "a".repeat(41), "a--b"]) expect(parseInquiry(form({ ...good, pagina: page })), page).toMatchObject({ kind: "ok", value: { page: "" } });
   });
-  it("says what is wrong, field by field, and nothing is accepted without the box ticked", () => {
+  it("says what is wrong, field by field, and asks for no consent box", () => {
     const wrong = (over: Record<string, string>) => parseInquiry(form({ ...good, ...over }));
     expect(wrong({ nome: "A" })).toEqual({ kind: "invalid", field: "name" });
     expect(wrong({ nome: "A".repeat(161) })).toEqual({ kind: "invalid", field: "name" });
@@ -71,12 +79,10 @@ describe("what a visitor sends", () => {
     }
     expect(wrong({ mensagem: "x".repeat(1001) })).toEqual({ kind: "invalid", field: "message" });
     expect(wrong({ mensagem: "oi\u0007" })).toEqual({ kind: "invalid", field: "message" });
-    expect(wrong({ aceite: "" })).toEqual({ kind: "invalid", field: "consent" });
-    expect(wrong({ aceite: "true" })).toEqual({ kind: "invalid", field: "consent" });
-    const { aceite, ...without } = good;
-    void aceite;
-    expect(parseInquiry(form(without))).toEqual({ kind: "invalid", field: "consent" });
-    for (const field of ["name", "contact", "message", "consent"] as const) expect(INQUIRY_FIELD_PROBLEM[field].length).toBeGreaterThan(10);
+    // An old page may still send the box: it is ignored either way.
+    expect(wrong({ aceite: "" })).toMatchObject({ kind: "ok" });
+    expect(wrong({ aceite: "on" })).toMatchObject({ kind: "ok" });
+    for (const field of ["name", "contact", "message"] as const) expect(INQUIRY_FIELD_PROBLEM[field].length).toBeGreaterThan(10);
   });
   it("accepts a message of exactly 1000 letters and a name of exactly 160", () => {
     expect(parseInquiry(form({ ...good, mensagem: "x".repeat(1000), nome: "N".repeat(160) }))).toMatchObject({ kind: "ok" });
@@ -186,19 +192,25 @@ describe("the contact form block", () => {
     expect(html).toContain('name="nome"');
     expect(html).toContain('name="contato"');
     expect(html).toContain('name="mensagem"');
-    expect(html).toContain('name="aceite"');
-    expect(html).toContain('type="checkbox"');
+    expect(html).not.toContain('name="aceite"');
+    expect(html).not.toContain('type="checkbox"');
     expect(html).toContain('name="pagina" value="planos"');
     expect(html).toContain('name="empresa_extra"');
     expect(html).toMatch(/class="site-form-bait"[^>]*aria-hidden="true"/);
     // The link to the notice itself (the footer of the page has its own links with the same attribute).
-    expect(html).toContain(`<a href="${NOTICE}" target="_blank" rel="noopener noreferrer">aviso de privacidade</a>`);
+    expect(html).toContain(`<a href="${NOTICE}" target="_blank" rel="noopener noreferrer">Aviso de privacidade</a>`);
     expect(html).toContain("Escreva para mim");
     expect(html).toContain("Enviar mensagem");
     expect(html).not.toContain("<script");
     expect(html).not.toContain("disabled");
     expect(html).not.toMatch(/<fieldset[^>]*disabled/);
     expect(html).not.toContain("Amostra");
+  });
+  it("is sent without any notice when the environment has none: no link, no box", () => {
+    const html = render(site([node({ heading: "Escreva para mim" })]), { ...open, noticeUrl: null });
+    expect(html).toMatch(/<form class="site-form" action="\.\/marina\/m\/contato" method="post">/);
+    expect(html).not.toContain("Aviso de privacidade");
+    expect(html).not.toContain('type="checkbox"');
   });
   it("is not on a published page whose form is closed", () => {
     const html = render(site([node({ heading: "Escreva para mim" })]), null);
@@ -240,11 +252,11 @@ describe("the form of a published page", () => {
   const site = (over: Partial<PublicSite> = {}): PublicSite => ({ slug: "marina", number: 1, publishedAt: "2026-10-29T12:00:00.000Z", content: document(), images: {}, inquiriesOpen: true, ...over });
   const OPEN = { open: true, noticeUrl: NOTICE } as const;
   const CLOSED = { open: false, why: "off" } as const;
-  it("is open only when the environment opened the public forms AND the site turned on its own switch", () => {
+  it("is open unless the environment closed the public forms, and only when the site's own switch is on", () => {
     expect(publicFormOf(site(), "home", OPEN)).not.toBeNull();
     expect(publicFormOf(site({ inquiriesOpen: false }), "home", OPEN)).toBeNull();
     expect(publicFormOf(site(), "home", CLOSED)).toBeNull();
-    expect(publicFormOf(site(), "home", { open: false, why: "no-notice" })).toBeNull();
+    expect(publicFormOf(site(), "home", { open: true, noticeUrl: null })).toMatchObject({ noticeUrl: null });
     expect(publicFormOf(site({ inquiriesOpen: false }), "home", CLOSED)).toBeNull();
   });
   it("is sent from the home page and from another page by the address that works from there, and says which page it is on", () => {

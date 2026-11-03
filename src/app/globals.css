@@ -2969,6 +2969,12 @@ a.site-menu-link:hover {
     min-height: 44px;
     min-width: 44px;
   }
+  /* The link to the privacy notice under a form (when the environment has one). */
+  .site .site-form-hint a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
 }
 .site-eyebrow {
   color: var(--site-accent);

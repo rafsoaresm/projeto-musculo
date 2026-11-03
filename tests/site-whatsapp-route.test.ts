@@ -24,7 +24,7 @@ const WA = `https://wa.me/5511912345678?text=${encodeURIComponent(MESSAGE)}`;
 const one = async <T,>(sql: string, ...binds: unknown[]) => db.prepare(sql).bind(...binds).first<T>();
 const count = async (sql: string) => (await one<{ c: number }>(`SELECT COUNT(*) AS c FROM (${sql})`))!.c;
 const params = (slug: string) => ({ params: Promise.resolve({ slug }) });
-const GOOD = { nome: "Ana Souza", celular: "(11) 98765-4321", objetivo: "Ganhar força", aceite: "on" };
+const GOOD = { nome: "Ana Souza", celular: "(11) 98765-4321", objetivo: "Ganhar força" };
 const post = (slug: string, fields: Record<string, string> | string, headers: Record<string, string> = {}) =>
   POST(
     new Request(`https://example.test/s/${slug}/m/whatsapp`, {
@@ -87,9 +87,15 @@ beforeEach(async () => {
   await db.prepare("UPDATE sites SET inquiries_open = 1").run();
 });
 
-describe("the form before WhatsApp, closed unless everything says yes", () => {
-  it("is not there when the environment did not open the public forms, or the site has its switch off: the same 404, nothing written", async () => {
-    for (const closed of [{}, { PUBLIC_FORMS_ENABLED: "true" }, { PRIVACY_NOTICE_URL: NOTICE }]) {
+describe("the form before WhatsApp, open unless the environment or the site closes it", () => {
+  it("is there with no variable at all (a neutral value is kept in place of the notice)", async () => {
+    state.env = { DB: db, AUTH_SECRET: OPEN.AUTH_SECRET };
+    expect((await post("marina-a", GOOD)).status).toBe(303);
+    expect(await one("SELECT notice_url FROM site_inquiries")).toEqual({ notice_url: "sem-aviso" });
+    await db.prepare("DELETE FROM site_inquiries").run();
+  });
+  it("is not there when the environment closed the public forms on purpose, or the site has its switch off: the same 404, nothing written", async () => {
+    for (const closed of [{ PUBLIC_FORMS_ENABLED: "false" }, { PUBLIC_FORMS_ENABLED: "false", PRIVACY_NOTICE_URL: NOTICE }]) {
       state.env = { DB: db, AUTH_SECRET: OPEN.AUTH_SECRET, ...closed };
       const answered = await post("marina-a", GOOD);
       expect(answered.status, JSON.stringify(closed)).toBe(404);
@@ -167,7 +173,6 @@ describe("sending it", () => {
       [{ ...GOOD, celular: "(11) 3456-7890" }, /celular/],
       [{ ...GOOD, celular: "" }, /celular/],
       [{ ...GOOD, objetivo: "x".repeat(161) }, /objetivo/],
-      [{ nome: GOOD.nome, celular: GOOD.celular }, /aviso de privacidade/],
     ] as const) {
       const answered = await post("marina-a", fields);
       expect(answered.status).toBe(400);

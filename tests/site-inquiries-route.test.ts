@@ -21,7 +21,7 @@ const OPEN = { PUBLIC_FORMS_ENABLED: "true", PRIVACY_NOTICE_URL: NOTICE, AUTH_SE
 const one = async <T,>(sql: string, ...binds: unknown[]) => db.prepare(sql).bind(...binds).first<T>();
 const count = async (sql: string) => (await one<{ c: number }>(`SELECT COUNT(*) AS c FROM (${sql})`))!.c;
 const params = (slug: string) => ({ params: Promise.resolve({ slug }) });
-const GOOD = { nome: "Ana Souza", contato: "ana@example.test", mensagem: "Quero saber dos planos", aceite: "on" };
+const GOOD = { nome: "Ana Souza", contato: "ana@example.test", mensagem: "Quero saber dos planos" };
 const post = (slug: string, fields: Record<string, string> | string, headers: Record<string, string> = {}) =>
   POST(
     new Request(`https://example.test/s/${slug}/m/contato`, {
@@ -83,9 +83,14 @@ beforeEach(async () => {
   await db.prepare("UPDATE sites SET inquiries_open = 1").run();
 });
 
-describe("the form of a public page, closed by default", () => {
-  it("is not there when the environment did not open it, whatever the site chose: the same 404 as an unknown address, and nothing is written", async () => {
-    for (const closed of [{}, { PUBLIC_FORMS_ENABLED: "false" }, { PUBLIC_FORMS_ENABLED: "true" }, { PRIVACY_NOTICE_URL: NOTICE }, { PUBLIC_FORMS_ENABLED: "true", PRIVACY_NOTICE_URL: "http://example.test/aviso" }]) {
+describe("the form of a public page, open by default", () => {
+  it("receives with no variable at all, and keeps a neutral value in place of the notice when there is none", async () => {
+    state.env = { DB: db, AUTH_SECRET: OPEN.AUTH_SECRET };
+    expect((await post("marina-a", GOOD)).status).toBe(303);
+    expect(await one("SELECT notice_url FROM site_inquiries")).toEqual({ notice_url: "sem-aviso" });
+  });
+  it("is not there when the environment closed it on purpose, whatever the site chose: the same 404 as an unknown address, and nothing is written", async () => {
+    for (const closed of [{ PUBLIC_FORMS_ENABLED: "false" }, { PUBLIC_FORMS_ENABLED: "false", PRIVACY_NOTICE_URL: NOTICE }]) {
       state.env = { DB: db, AUTH_SECRET: OPEN.AUTH_SECRET, ...closed };
       const answered = await post("marina-a", GOOD);
       expect(answered.status, JSON.stringify(closed)).toBe(404);
@@ -95,9 +100,11 @@ describe("the form of a public page, closed by default", () => {
   });
   it("takes the switch from the variables of the dashboard when the Worker does not declare them", async () => {
     state.env = { DB: db, AUTH_SECRET: OPEN.AUTH_SECRET };
-    process.env.PUBLIC_FORMS_ENABLED = "true";
     process.env.PRIVACY_NOTICE_URL = NOTICE;
     expect((await post("marina-a", GOOD)).status).toBe(303);
+    expect(await one("SELECT notice_url FROM site_inquiries")).toEqual({ notice_url: NOTICE });
+    process.env.PUBLIC_FORMS_ENABLED = "false";
+    expect((await post("marina-a", GOOD)).status).toBe(404);
     expect(await count("SELECT 1 FROM site_inquiries")).toBe(1);
   });
   it("is closed too when the site has not turned on its own switch, the site is unknown or it is not an address", async () => {
@@ -153,7 +160,6 @@ describe("sending the form", () => {
       [{ ...GOOD, nome: "A" }, /nome/i],
       [{ ...GOOD, contato: "abc" }, /e-mail ou um telefone/],
       [{ ...GOOD, mensagem: "x".repeat(1001) }, /1000 letras/],
-      [{ ...GOOD, aceite: "" }, /aviso de privacidade/],
     ];
     for (const [fields, said] of cases) {
       const answered = await post("marina-a", fields);
@@ -167,6 +173,8 @@ describe("sending the form", () => {
       expect(html).toContain("botão Voltar do navegador");
     }
     expect(await count("SELECT 1 FROM site_inquiries")).toBe(0);
+    // There is no consent box to tick: the same message without one is kept.
+    expect((await post("marina-a", { ...GOOD, aceite: "" })).status).toBe(303);
   });
   it("accepts only what the form sends: a form body, of the size of a form", async () => {
     const json = await POST(new Request("https://example.test/s/marina-a/m/contato", { method: "POST", body: JSON.stringify(GOOD), headers: { "content-type": "application/json" } }), params("marina-a"));

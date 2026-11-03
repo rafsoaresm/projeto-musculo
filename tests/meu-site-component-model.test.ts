@@ -432,8 +432,8 @@ describe("copying instances", () => {
     expect(made.id).not.toBe("d");
     expect(made.style).toEqual({ gap: "4px" });
     expect(made.children[1]).toMatchObject({ text: "Da instância" });
-    // What is pasted as plain blocks is cleaned as any block is: the person has to authorize the testimony again.
-    expect(made.children[0]).toMatchObject({ authorized: false });
+    // What is pasted as plain blocks is cleaned as any block is; a testimony keeps what it said (nothing asks for an authorization).
+    expect(made.children[0]).toMatchObject({ quote: "Gostei", author: "Ana", authorized: true });
     expect(allNodes([made]).every((entry) => !["d", "d-q", "d-p"].includes(entry.id))).toBe(true);
   });
   it("does the same inside a container that was copied with it", () => {
