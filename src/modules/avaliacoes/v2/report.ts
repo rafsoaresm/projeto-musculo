@@ -6,7 +6,8 @@
  * flags; never recomputed with today's formulas), the professional's own texts. Something not measured reads "Sem aferição" or "Não realizado",
  * never 0; there is no classification (none is homologated, handoff 11), only the classification the professional typed, said to be theirs.
  * The handoff asks for an institutional disclaimer ("não equivale a exame médico") reviewed by whoever is responsible and does not give its text,
- * so the report carries the neutral line `REPORT_NOTICE` instead.
+ * so the report carries the neutral line `REPORT_NOTICE` instead (it says what the report does not do, without contradicting what it prints: the
+ * raw measures are not estimates and a classification the professional typed does appear, as theirs).
  *
  * Pure: no screen and no database here.
  */
@@ -36,7 +37,7 @@ import {
   postureRegionKey,
 } from "../catalog";
 import type { RiskStatus } from "../contracts";
-import { SKINFOLD_SITE_CODES, selectedValue } from "../formulas";
+import { PROTOCOL_VARIANTS, SKINFOLD_SITE_CODES, selectedValue } from "../formulas";
 import { assessmentTitle } from "../names";
 import { AGGREGATION_LABEL, CONVERSION_LABEL, EQUATION_LABEL, PROTOCOL_CHIP, SITE_LABEL, requiredSites, type CompositionPayload } from "./composition";
 import { CONCLUSION_FIELDS, CONCLUSION_LABEL, conclusionEmpty, type ConclusionPayload } from "./conclusion";
@@ -57,9 +58,12 @@ import { FLAG_LABEL, RESULT_LABEL, formatResult, isEstimate, methodLabel, result
 import { ANAMNESIS_CODES, PARQ_CODES, parqAnswer, type ProfilePayload, type ScreeningPayload } from "./screening";
 
 /** The line every report carries in place of the institutional disclaimer the handoff asks for but does not give (handoff 3.5). */
-export const REPORT_NOTICE = "Valores estimados; sem classificação.";
+export const REPORT_NOTICE = "Sem classificação automática; só os resultados marcados “estimativa” vêm de equações.";
+/** The short form of `REPORT_NOTICE`, for the footer of each page. */
+export const REPORT_FOOTER_NOTICE = "Sem classificação automática.";
 /** How an empty field reads in the report, so a reader does not take a blank for a zero. */
-export const REPORT_EMPTY_NOTE = "Um campo sem registro aparece como “Sem aferição”, “Sem registro” ou “Não realizado”, nunca como zero.";
+export const REPORT_EMPTY_NOTE =
+  "Um campo vazio aparece escrito por extenso (como “Sem aferição”, “Sem registro”, “Sem resposta” ou “Não realizado”), nunca como zero nem em branco.";
 
 export type ReportBlock =
   | { kind: "facts"; rows: { label: string; value: string }[] }
@@ -115,7 +119,7 @@ const decimal = (value: number, digits = 2) => new Intl.NumberFormat("pt-BR", { 
 const measured = (value: number | null | undefined, unit: string, digits = 2) =>
   value === null || value === undefined ? "Sem aferição" : `${decimal(value, digits)} ${unit}`;
 const yesNo = (value: "yes" | "no" | null) => (value === "yes" ? "Sim" : value === "no" ? "Não" : "Sem resposta");
-const orDash = (text: string) => (text.trim() === "" ? "—" : text.trim());
+const orEmpty = (text: string) => (text.trim() === "" ? "Sem registro" : text.trim());
 const filled = (text: string) => text.trim() !== "";
 /** An instant in Brasília time, as the screens show it. */
 export const reportDateTime = (iso: string) =>
@@ -142,7 +146,7 @@ function screeningSection(input: ReportInput): ReportSection {
   const blocks: ReportBlock[] = [
     ...facts([
       row("Objetivos", profile && profile.goals.length > 0 ? profile.goals.map((code) => GOALS[code]).join(", ") : "Nenhum selecionado"),
-      row(GOALS_NOTES_LABEL, orDash(profile?.goalNotes ?? "")),
+      row(GOALS_NOTES_LABEL, orEmpty(profile?.goalNotes ?? "")),
     ]),
   ];
   if (!screening) return { title: "Triagem", blocks: [...blocks, notDone("Anamnese, atividade física e PAR-Q: não realizados.")] };
@@ -163,12 +167,12 @@ function screeningSection(input: ReportInput): ReportSection {
     kind: "facts",
     rows: [
       row(`Atual: ${ACTIVITY_CURRENT.practices.toLowerCase()}`, yesNo(current.practices)),
-      row(`Atual: ${ACTIVITY_CURRENT.activities.toLowerCase()}`, orDash(current.activities)),
+      row(`Atual: ${ACTIVITY_CURRENT.activities.toLowerCase()}`, orEmpty(current.activities)),
       row(`Atual: ${ACTIVITY_CURRENT.frequency.toLowerCase()}`, current.frequency ? `${decimal(current.frequency.value)} por semana` : "Sem registro"),
       ...(filled(current.duration) ? [row(`Atual: ${ACTIVITY_CURRENT.duration.toLowerCase()}`, current.duration.trim())] : []),
       ...(filled(current.notes) ? [row(`Atual: ${ACTIVITY_CURRENT.notes.toLowerCase()}`, current.notes.trim())] : []),
       row(`Passada: ${ACTIVITY_PAST.practiced.toLowerCase()}`, yesNo(past.practiced)),
-      row(`Passada: ${ACTIVITY_PAST.activities.toLowerCase()}`, orDash(past.activities)),
+      row(`Passada: ${ACTIVITY_PAST.activities.toLowerCase()}`, orEmpty(past.activities)),
       ...(filled(past.totalTime) ? [row(`Passada: ${ACTIVITY_PAST.totalTime.toLowerCase()}`, past.totalTime.trim())] : []),
       ...(past.frequency ? [row(`Passada: ${ACTIVITY_PAST.frequency.toLowerCase()}`, `${decimal(past.frequency.value)} por semana`)] : []),
       ...(filled(past.notes) ? [row(`Passada: ${ACTIVITY_PAST.notes.toLowerCase()}`, past.notes.trim())] : []),
@@ -178,13 +182,16 @@ function screeningSection(input: ReportInput): ReportSection {
   blocks.push({ kind: "facts", rows: PARQ_CODES.map((code) => row(PARQ[code], PARQ_ANSWERS[parqAnswer(screening, code)])) });
   const review = screening.parq.professionalReview;
   if (review.decision) {
-    blocks.push({ kind: "facts", rows: [row("Decisão profissional", PARQ_DECISIONS[review.decision]), row("Nota da decisão", orDash(review.notes))] });
+    blocks.push({ kind: "facts", rows: [row("Decisão profissional", PARQ_DECISIONS[review.decision]), row("Nota da decisão", orEmpty(review.notes))] });
     blocks.push({
       kind: "text",
       text: `Registrada${input.decidedBy ? ` por ${input.decidedBy}` : ""}${review.reviewedAt ? ` em ${reportDateTime(review.reviewedAt)}` : ""}. A decisão é do profissional; o sistema não declara aptidão.`,
       muted: true,
     });
-  } else blocks.push(notDone("Sem resposta “Sim” no PAR-Q: nenhuma decisão foi pedida. Isto não é liberação clínica."));
+  } else if (input.assessment.riskStatus === "REVIEW_REQUIRED")
+    // finalize asks for the decision on any "Sim"; a record without one (imported or damaged) says it is missing instead of denying the "Sim".
+    blocks.push({ kind: "text", text: "PAR-Q com “Sim”, sem decisão profissional registrada. Isto não é liberação clínica." });
+  else blocks.push(notDone("Sem resposta “Sim” no PAR-Q: nenhuma decisão foi pedida. Isto não é liberação clínica."));
   return { title: "Triagem", blocks };
 }
 
@@ -215,7 +222,7 @@ function measuresSection(composition: CompositionPayload | null): ReportSection 
       rows: sites.map((site) => {
         const readings = composition.skinfolds[site] ?? [];
         const value = selectedValue(readings, composition.aggregation);
-        const used = value === null ? "—" : `${decimal(value)} mm`;
+        const used = value === null ? "Sem valor" : `${decimal(value)} mm`;
         const detail = readings.length > 1 ? ` (leituras ${readings.map((reading) => `${decimal(reading)} mm`).join(" · ")})` : "";
         return row(`${SITE_LABEL[site]}${inProtocol.includes(site) ? "" : " (fora do protocolo)"}`, `${used}${detail}`);
       }),
@@ -257,12 +264,31 @@ export function resultRows(results: readonly ResultRow[]) {
   });
 }
 
+/**
+ * The original validation population of each skinfold equation the results used (handoff 4.3: "protocolo, variante, conversão, população original
+ * de validação" in the report), read from the method recorded with the result, once per equation.
+ */
+export function validationLines(results: readonly ResultRow[]): string[] {
+  const lines: string[] = [];
+  for (const method of new Set(results.map((result) => result.method))) {
+    for (const protocol of Object.keys(PROTOCOL_VARIANTS) as (keyof typeof PROTOCOL_VARIANTS)[]) {
+      const variant = [PROTOCOL_VARIANTS[protocol].male, PROTOCOL_VARIANTS[protocol].female].find((item) => item.id === method);
+      if (variant) {
+        lines.push(`População original de validação (${methodLabel(method)}): ${variant.validation.text}`);
+        break;
+      }
+    }
+  }
+  return lines;
+}
+
 function resultsSection(results: readonly ResultRow[]): ReportSection {
   return {
     title: "Resultados",
     blocks: [
       notDone("Calculados ao finalizar, com o método e a versão da fórmula, sem classificação. Só os marcados como estimativa vêm da equação de um estudo."),
       results.length > 0 ? { kind: "results", rows: resultRows(results) } : { kind: "text", text: "Nenhum resultado foi calculado." },
+      ...validationLines(results).map((text): ReportBlock => ({ kind: "text", text, muted: true })),
     ],
   };
 }
@@ -291,7 +317,7 @@ function postureBlocks(posture: PosturePayload): ReportBlock[] {
     kind: "facts",
     rows: [
       row("Registro do profissional", somatotypeText(posture.somatotype.labels) ?? "Não registrado"),
-      row("Observações", orDash(posture.somatotype.notes)),
+      row("Observações", orEmpty(posture.somatotype.notes)),
       ...measures.map((code) => row(HEATH_CARTER_MEASURES[code].label, measured(posture.somatotype.heathCarter[code], HEATH_CARTER_MEASURES[code].unit))),
     ],
   });
@@ -347,10 +373,10 @@ function testsSection(tests: TestsPayload | null): ReportSection {
     blocks.push({
       kind: "facts",
       rows: [
-        row(EXERCISE_LABEL[key], orDash(test.exercise)),
+        row(EXERCISE_LABEL[key], orEmpty(test.exercise)),
         row("Repetições completas", count(test.repetitions, "repetição", "repetições")),
-        row("Duração", test.durationSeconds === null ? "—" : `${test.durationSeconds} s`),
-        ...(key === "upperLimb" || filled(test.conditions) ? [row("Condições", orDash(test.conditions))] : []),
+        row("Duração", test.durationSeconds === null ? "Sem registro" : `${test.durationSeconds} s`),
+        ...(key === "upperLimb" || filled(test.conditions) ? [row("Condições", orEmpty(test.conditions))] : []),
         ...(filled(test.classificationManual) ? [row("Classificação (manual)", test.classificationManual.trim())] : []),
         ...(filled(test.notes) ? [row("Observações", test.notes.trim())] : []),
       ],
@@ -365,9 +391,9 @@ function testsSection(tests: TestsPayload | null): ReportSection {
       rows: [
         row("Distância percorrida", cooper.distanceM === null ? "Sem registro" : `${decimal(cooper.distanceM, 1)} m em ${COOPER_MINUTES} min`),
         row("Data do teste", cooper.testedOn ? formatCalendarDate(cooper.testedOn) : "Sem registro"),
-        row("Local", orDash(cooper.location)),
-        row("Condições", orDash(cooper.conditions)),
-        row("Contraindicações", orDash(cooper.contraindications)),
+        row("Local", orEmpty(cooper.location)),
+        row("Condições", orEmpty(cooper.conditions)),
+        row("Contraindicações", orEmpty(cooper.contraindications)),
         ...(filled(cooper.classificationManual) ? [row("Classificação (manual)", cooper.classificationManual.trim())] : []),
         ...(filled(cooper.notes) ? [row("Observações", cooper.notes.trim())] : []),
       ],
@@ -396,12 +422,12 @@ export function assessmentReport(input: ReportInput): AssessmentReport {
     row("Profissional", assessment.recordedByName ?? "Não informado"),
     ...(input.organizationName ? [row("Espaço", input.organizationName)] : []),
     row("Data da avaliação", formatCalendarDate(assessment.assessedOn)),
-    row("Registrada em", assessment.recordedAt ? reportDateTime(assessment.recordedAt) : "—"),
+    row("Registrada em", assessment.recordedAt ? reportDateTime(assessment.recordedAt) : "Sem registro"),
     row("Triagem", parqLine(assessment.riskStatus, assessment.reviewed)),
     ...(assessment.amendsAssessmentId
       ? [
           row("Retifica", input.amendsAssessedOn ? `a avaliação de ${formatCalendarDate(input.amendsAssessedOn)}` : "uma avaliação registrada antes"),
-          row("Motivo da retificação", orDash(assessment.amendReason ?? "")),
+          row("Motivo da retificação", orEmpty(assessment.amendReason ?? "")),
         ]
       : []),
   ];
@@ -430,11 +456,28 @@ export function reportFileName(assessment: Pick<ReportInput["assessment"], "asse
 }
 
 /**
- * SHA-256 over what the report prints (the assessment and its sections, not the names nor the generation date), so the same recorded assessment
- * always carries the same fingerprint and a regenerated file can be told apart from a different record by it.
+ * SHA-256 over the recorded assessment itself (its identity, the frozen sections and the results as stored at finalize, the PAR-Q decider by user
+ * id), not over the printed words: so the same record always carries the same fingerprint, before and after a later amendment is recorded, after
+ * a rename of whoever decided, and whatever today's labels say. Names, the amendment warning and the generation date are left out.
  */
-export async function reportFingerprint(assessmentId: string, report: AssessmentReport): Promise<string> {
-  const canonical = JSON.stringify([assessmentId, report.title, report.warning, report.sections]);
+export async function reportFingerprint(input: ReportInput): Promise<string> {
+  const { assessment } = input;
+  const canonical = JSON.stringify([
+    assessment.id,
+    assessment.kind,
+    assessment.assessedOn,
+    assessment.recordedAt,
+    assessment.amendsAssessmentId,
+    assessment.amendReason,
+    input.results,
+    input.profile,
+    input.screening,
+    input.composition,
+    input.posture,
+    input.movement,
+    input.tests,
+    input.conclusion,
+  ]);
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }

@@ -80,7 +80,7 @@ test("the recorded Avaliação Física has its report in PDF for the professiona
   await client.page.goto("./aluno/avaliacoes");
   const row = client.page.getByRole("row").filter({ hasText: "Inicial" });
   await expect(row).toContainText("Registrada");
-  await expect(client.page.getByText("Valores estimados; sem classificação.", { exact: false })).toBeVisible();
+  await expect(client.page.getByText("Sem classificação automática;", { exact: false })).toBeVisible();
   await noHorizontalOverflow(client.page);
   await shots(client.page, "aluno", testInfo.project.name);
   const link = row.getByRole("link", { name: /^Baixar PDF da avaliação de \d{2}\/\d{2}\/\d{4}$/ });

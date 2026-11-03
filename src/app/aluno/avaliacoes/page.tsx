@@ -65,7 +65,7 @@ export default async function StudentAssessmentsPage() {
                       </td>
                       <td data-label="Relatório">
                         <Link
-                          className="button secondary small"
+                          className="button secondary small av2-report-button"
                           href={`/aluno/avaliacoes/pdf/${link.studentId}/${item.id}`}
                           download
                           prefetch={false}

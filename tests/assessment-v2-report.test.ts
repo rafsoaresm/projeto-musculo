@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { assessmentsFor } from "@/db/assessments";
 import { ASSESSMENT_PDF_DOWNLOADED, assessmentReportsFor, recordReportDownload, studentAssessmentsFor } from "@/db/assessment-reports";
 import { renderAssessmentPdf } from "@/modules/pdf/assessment-pdf";
-import { REPORT_NOTICE, assessmentReport, reportFileName, reportFingerprint, type ReportInput } from "@/modules/avaliacoes/v2/report";
+import { assessmentReport, reportFileName, reportFingerprint, type ReportInput } from "@/modules/avaliacoes/v2/report";
 import { readComposition } from "@/modules/avaliacoes/v2/composition";
 import { readScreening } from "@/modules/avaliacoes/v2/screening";
 import { readMovement } from "@/modules/avaliacoes/v2/flexitest";
@@ -129,10 +129,39 @@ describe("the report of a recorded Avaliação Física (pure)", () => {
         { label: "Cooper, VO₂máx estimado", value: "37,90 ml/kg/min", detail: "Cooper 12 min, (distância − 504,9) ÷ 44,73 · fórmula av2-2026-11 · estimativa" },
       ],
     });
-    // The fingerprint follows the content, not the names nor the time of the download.
-    const same = await reportFingerprint("as-1", report);
-    expect(await reportFingerprint("as-1", assessmentReport(empty({ results, studentName: "Outro nome" })))).toBe(same);
-    expect(await reportFingerprint("as-1", assessmentReport(empty()))).not.toBe(same);
+    // The fingerprint follows the record, not the names nor the time of the download.
+    const same = await reportFingerprint(empty({ results }));
+    expect(await reportFingerprint(empty({ results, studentName: "Outro nome" }))).toBe(same);
+    expect(await reportFingerprint(empty())).not.toBe(same);
+  });
+
+  it("prints the original validation population of the skinfold equation used, in range or not", () => {
+    const results: ReportInput["results"] = [
+      { code: "body_fat_percent", value: 12.4, unit: "%", method: "jackson_pollock_3_1978_male", formulaVersion: "av2-2026-11", inputs: null, flags: [] },
+      { code: "body_density", value: 1.07, unit: null, method: "jackson_pollock_3_1978_male", formulaVersion: "av2-2026-11", inputs: null, flags: [] },
+      { code: "bmi", value: 22.1, unit: "kg/m²", method: "weight_over_height_squared", formulaVersion: "av2-2026-11", inputs: null, flags: [] },
+    ];
+    const blocks = assessmentReport(empty({ results })).sections.find((section) => section.title === "Resultados")!.blocks;
+    const lines = blocks.filter((block) => block.kind === "text" && block.text.startsWith("População original de validação"));
+    expect(lines).toEqual([{ kind: "text", text: "População original de validação (Jackson & Pollock · 3, equação masculina): Homens de 18 a 61 anos.", muted: true }]);
+    expect(JSON.stringify(assessmentReport(empty()))).not.toContain("População original");
+  });
+
+  it("does not deny a “Sim” of the PAR-Q when the record has no decision", () => {
+    const yes = readScreening({ parq: { answers: { ...noParq.parq.answers, dizziness: "yes" } } });
+    const missing = JSON.stringify(assessmentReport(empty({ screening: yes, assessment: { ...empty().assessment, riskStatus: "REVIEW_REQUIRED" } })));
+    expect(missing).toContain("PAR-Q com “Sim”, sem decisão profissional registrada.");
+    expect(missing).not.toContain("Sem resposta “Sim” no PAR-Q");
+    expect(JSON.stringify(assessmentReport(empty({ screening: readScreening(noParq) })))).toContain("Sem resposta “Sim” no PAR-Q");
+  });
+
+  it("keeps the same fingerprint after a later amendment and a rename of who decided", async () => {
+    const input = empty({ screening: readScreening(noParq), decidedBy: "Pro A" });
+    const before = await reportFingerprint(input);
+    const amended = { ...input, assessment: { ...input.assessment, amendedById: "as-2" }, amendedAt: "2026-11-05T12:00:00.000Z", decidedBy: "Pro A Renomeado" };
+    expect(assessmentReport(amended).warning).not.toBeNull();
+    expect(await reportFingerprint(amended)).toBe(before);
+    expect(await reportFingerprint({ ...input, composition: readComposition(JP7) })).not.toBe(before);
   });
 });
 
@@ -153,7 +182,7 @@ describe("the report as a PDF", () => {
     const text = textOf(doc);
     for (const expected of [
       "AVALIAÇÃO FÍSICA · RELATÓRIO", "Avaliação física de 03/11/2026", "Aluno Exemplo", "Pro A", "Studio A", "PAR-Q sem", // the curly quotes are WinAnsi 0x93/0x94, not latin1
-      REPORT_NOTICE, "Triagem", "Entorse em 2024", "69,1 kg", "1,71 m", "Jackson & Pollock · 7", "Cintura", "69,5 cm",
+      "Sem classificação automática;", "Um campo vazio aparece escrito por extenso", "Triagem", "Entorse em 2024", "69,1 kg", "1,71 m", "Jackson & Pollock · 7", "Cintura", "69,5 cm",
       "Cooper, VO2máx estimado", "37,90 ml/kg/min", "Recomendações", "Treinar 3 vezes por semana.", "Não realizado.", "Gerado em 04/11/2026",
     ])
       expect(text, expected).toContain(expected);

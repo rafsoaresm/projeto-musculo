@@ -2,6 +2,17 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.81: Relatório em PDF da Avaliação Física, para o profissional e o aluno (handoff 3.5, 4.3, 6 e 9; Figma AV-06; decisão de 02/11/2026)
+
+**Sem migration.** O PDF sai de uma avaliação **registrada** do formato novo (um rascunho não tem relatório: 404), desenhado com pdf-lib como o PDF do plano (0.11; roda no Worker, sem binário nativo).
+
+- **Profissional:** "Baixar relatório em PDF" na avaliação registrada. **Aluno:** novo item "Avaliação Física" no menu do aluno, com a lista das avaliações registradas (data, tipo, "Retificada") e "Baixar PDF". O aluno vem dos vínculos verificados do login; qualquer outra coisa é 404. Cada download fica na trilha (`ASSESSMENT_PDF_DOWNLOADED`: quem, qual, quando; nunca o conteúdo).
+- **Conteúdo:** Triagem (com o PAR-Q e a decisão), Medidas, Resultados (como gravados ao finalizar: valor, método, versão da fórmula, "estimativa", alertas; mais a **população original de validação** de cada equação de dobras usada, handoff 4.3), Postura e movimento, Testes físicos, Considerações finais. Classificação só quando o profissional escreveu, marcada "(manual)". Campo vazio por extenso ("Sem aferição", "Sem registro", "Sem resposta", "Não realizado"), nunca zero. Retificação diz o que retifica e por quê; avaliação retificada avisa que é a original.
+- **Mesmo conteúdo para os dois** (decisões de 02 e 03/11/2026; nenhum campo é marcado como interno). Uma **identificação da versão** (resumo SHA-256 do registro congelado) aparece no cabeçalho e no rodapé de cada página; nomes e data de geração não entram nela.
+- **Aviso:** "Sem classificação automática; só os resultados marcados “estimativa” vêm de equações." O texto "não equivale a exame médico" do handoff 3.5 **não foi escrito** (o handoff pede texto revisado e não o fornece; ver B49).
+- **Verificado localmente:** tipos, lint e `npm run check` (117 arquivos, 1859 testes; 10+3 do relatório, incluindo D1 de acesso: outra organização, aluno sem vínculo, rascunho, formato anterior); e2e nos dois mounts (raiz e `/treinador`): 26 passaram em cada (download pelo profissional e pelo aluno, texto do PDF); capturas a 1440, 1280, 1024, 768 e 390 e o PDF renderizado.
+- **Não feito / não verificado:** fotos no relatório; avaliações do formato anterior não têm PDF; marcação de acessibilidade do PDF; o PDF com todos os módulos preenchidos não foi aberto num navegador (só testes). A linha da população usa o texto atual do catálogo, não um texto congelado no finalizar.
+
 ## Fatia 0.80: Flexiteste, testes físicos e conclusão da Avaliação Física (handoff 3.4, 3.5, 5 e 8; Figma AV-05 e AV-06)
 
 **Sem migration** (módulos `movement`, `tests` e `conclusion`, já previstos na 0033). As etapas passam a ser cinco: Triagem, Medidas, Movimento, **Testes** e Revisão (fluxo do handoff 2).

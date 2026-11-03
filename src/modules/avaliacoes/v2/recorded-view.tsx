@@ -109,7 +109,7 @@ export function RecordedAssessmentView({
           <Link className="button secondary small" href={`${base}/${detail.id}/pdf`} download prefetch={false}>
             <Download size={16} /> Baixar relatório em PDF
           </Link>
-          <span className="small muted">O mesmo relatório que o aluno baixa na área dele, quando tem acesso ao portal. Valores estimados; sem classificação.</span>
+          <span className="small muted">O mesmo relatório que o aluno baixa na área dele, quando tem acesso ao portal. Sem classificação automática.</span>
         </div>
         {detail.amendsAssessmentId && (
           <p>
@@ -206,6 +206,8 @@ export function RecordedAssessmentView({
                   {review.reviewedAt ? `em ${formatDateTime(review.reviewedAt)}` : ""}. A decisão é do profissional; o sistema não declara aptidão.
                 </p>
               </div>
+            ) : detail.riskStatus === "REVIEW_REQUIRED" ? (
+              <p className="small">PAR-Q com “Sim”, sem decisão profissional registrada. Isto não é liberação clínica.</p>
             ) : (
               <p className="muted small">Sem resposta “Sim” no PAR-Q: nenhuma decisão foi pedida. Isto não é liberação clínica.</p>
             )}

@@ -1,6 +1,7 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import {
   REPORT_EMPTY_NOTE,
+  REPORT_FOOTER_NOTICE,
   REPORT_NOTICE,
   assessmentReport,
   reportDateTime,
@@ -15,7 +16,7 @@ import { BRAND, CONTENT_WIDTH, Flow, INK, LINE, MARGIN, MUTED, PAGE, SOFT, print
  * A recorded Avaliação Física as a PDF, generated on the server with pdf-lib (pure JavaScript, so it runs in the Worker), the same way as the
  * delivered plan. It draws the report of `assessmentReport` and nothing else: what was recorded, the results as computed at finalize, "Não
  * realizado" for a module not done, no classification. The same file goes to the professional and to the student. The version is a short
- * fingerprint of the printed content, so the same record always carries the same one; the generation date is the only thing that changes.
+ * fingerprint of the recorded assessment (`reportFingerprint`), so the same record always carries the same one.
  */
 export interface AssessmentPdfInput extends ReportInput {
   generatedAt: Date;
@@ -107,7 +108,7 @@ function drawBlock(flow: Flow, block: ReportBlock) {
 
 export async function renderAssessmentPdf(input: AssessmentPdfInput): Promise<Uint8Array> {
   const report = assessmentReport(input);
-  const fingerprint = await reportFingerprint(input.assessment.id, report);
+  const fingerprint = await reportFingerprint(input);
   const short = fingerprint.slice(0, 12);
   const doc = await PDFDocument.create();
   const regular = await doc.embedFont(StandardFonts.Helvetica);
@@ -133,8 +134,7 @@ export async function renderAssessmentPdf(input: AssessmentPdfInput): Promise<Ui
     }
     flow.y -= 4;
   }
-  flow.text(REPORT_NOTICE, MARGIN, 10, bold, INK);
-  flow.y -= 14;
+  drawBlock(flow, { kind: "text", text: REPORT_NOTICE });
   drawBlock(flow, { kind: "text", text: REPORT_EMPTY_NOTE, muted: true });
   flow.y -= 6;
 
@@ -155,7 +155,7 @@ export async function renderAssessmentPdf(input: AssessmentPdfInput): Promise<Ui
     const right = `Página ${index + 1} de ${pages.length}`;
     page.drawLine({ start: { x: MARGIN, y: MARGIN + 18 }, end: { x: PAGE.width - MARGIN, y: MARGIN + 18 }, thickness: 0.5, color: LINE });
     page.drawText(wrap(regular, 8, left, CONTENT_WIDTH - 80)[0] ?? "", { x: MARGIN, y: MARGIN + 6, size: 8, font: regular, color: MUTED });
-    page.drawText(printable(regular, `Gerado em ${reportDateTime(input.generatedAt.toISOString())} · ${REPORT_NOTICE}`), {
+    page.drawText(printable(regular, `Gerado em ${reportDateTime(input.generatedAt.toISOString())} · ${REPORT_FOOTER_NOTICE}`), {
       x: MARGIN,
       y: MARGIN - 5,
       size: 8,

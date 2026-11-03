@@ -6624,6 +6624,13 @@ fieldset.yes-no legend {
 .av2-report-action .button {
   flex: 0 0 auto;
 }
+/* The download buttons (recorded view and the student's list) reach the 44px touch target on a phone or a touch screen. */
+@media (pointer: coarse), (max-width: 640px) {
+  .av2-report-action .button,
+  .av2-report-button {
+    min-height: 44px;
+  }
+}
 .av2-report-action > span {
   flex: 1 1 240px;
   min-width: 0;
