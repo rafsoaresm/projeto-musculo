@@ -15,6 +15,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Acessibilidade:** cada pergunta é um grupo com a pergunta como legenda; os campos exigidos para finalizar são marcados como obrigatórios; a faixa de atenção é anunciada quando aparece; "Não respondido" não parece uma resposta.
 - **Verificado localmente:** tipos, lint e `npm run check`; e2e nos dois mounts (raiz e `/treinador`): a triagem inteira preenchida, um Sim com descrição, frequência inválida recusada, PAR-Q com um Sim e a decisão, salvamento automático, recarregar e conferir tudo; capturas a 1440, 1280, 1024, 768 e 390.
 - **Não verificado:** leitor de tela real; o texto do PDF do PAR-Q. **Não feito (do handoff):** anexos da anamnese; a opção "avaliação física não realizada/adiada" (coberta por "Outra decisão" com nota); mostrar os dados pessoais do aluno na etapa 1. Nada bloqueia a aprovação do plano ainda (0.77).
+- **CI e deploy:** o CI do PR #78 passou (`validate` e `validate (/treinador)`, no commit `20825cf`); merge `1d47cdf`; deploy `5477051c` com sucesso em 03/11/2026 (sem migration).
 
 ## Fatia 0.75: Salvamento automático do rascunho da Avaliação Física
 
