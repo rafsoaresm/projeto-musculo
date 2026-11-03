@@ -15,6 +15,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Também:** "Salvo às" no fuso de São Paulo, como as outras datas; "Próximo" some na última etapa.
 - **Verificado localmente:** tipos, lint e `npm run check` (114 arquivos, 1806 testes; 17 D1 do finalizar, 8 da regra da Revisão); e2e nos dois mounts (raiz e `/treinador`): 26 passaram em cada (triagem → medidas → revisão → finalizar → resultados com método → retificar → histórico), mais 2 de `assessments-legacy` em cada; capturas a 1280 e 390.
 - **Não verificado:** a trava do plano bloqueada no navegador (a ferramenta não produz esse caso; só teste D1). **Não feito:** movimento, postura, testes físicos e o relatório em PDF (aparecem como "Não realizado"). **Para o usuário decidir:** se "Precisa de liberação médica" deve continuar liberando a aprovação do plano; se quem decidiu deve ser gravado no momento em que a decisão é salva, e não no finalizar (hoje: quem finaliza).
+- **CI e deploy:** o CI do PR #79 passou (`validate` e `validate (/treinador)`, no commit `d19640b`); merge `bee898f`; deploy `df60906f` com sucesso em 03/11/2026 (sem migration).
 
 ## Fatia 0.76: Etapa Triagem da Avaliação Física (handoff 3.1, Figma AV-02)
 
