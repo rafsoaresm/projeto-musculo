@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Download } from "lucide-react";
+import { Fragment } from "react";
 import { Notice, formatDateTime } from "@/components/ui";
 import type { AssessmentDetail, ResultRow } from "@/db/assessments";
 import { formatCalendarDate } from "@/modules/training/format";
@@ -50,7 +51,7 @@ import {
   type TestsPayload,
 } from "./physical-tests";
 import { CONCLUSION_FIELDS, CONCLUSION_LABEL, conclusionEmpty, type ConclusionPayload } from "./conclusion";
-import { NOT_INCLUDED, isPartEnabled, isStepEnabled, templateLine, type EnabledParts, type TemplatePart } from "./template";
+import { NOT_INCLUDED, PART_LABEL, excludedPartsOf, isPartEnabled, isStepEnabled, templateLine, type EnabledParts, type TemplatePart } from "./template";
 
 const decimal = (value: number, digits = 2) => new Intl.NumberFormat("pt-BR", { maximumFractionDigits: digits }).format(value);
 const measured = (value: number | null, unit: string, digits = 2) => (value === null ? "Sem aferição" : `${decimal(value, digits)} ${unit}`);
@@ -234,53 +235,54 @@ export function RecordedAssessmentView({
           <p className="muted">{NOT_INCLUDED}.</p>
         ) : composition ? (
           <>
-            {!on("basics") && <p className="muted av2-recorded-line">Medidas básicas e sinais vitais: não incluídas neste modelo.</p>}
-            {!on("skinfolds") && <p className="muted av2-recorded-line">Dobras cutâneas: não incluídas neste modelo.</p>}
-            <dl className="av2-facts">
-              {on("basics") && (
-                <>
-                  <div>
-                    <dt>Peso</dt>
-                    <dd>{measured(composition.weightKg, "kg")}</dd>
-                  </div>
-                  <div>
-                    <dt>Altura</dt>
-                    <dd>{composition.heightCm === null ? "Sem aferição" : `${decimal(composition.heightCm / 100, 3)} m`}</dd>
-                  </div>
-                  <div>
-                    <dt>PAS / PAD</dt>
-                    <dd>
-                      {measured(composition.systolicMmHg, "mmHg", 0)} / {measured(composition.diastolicMmHg, "mmHg", 0)}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>FC repouso</dt>
-                    <dd>{measured(composition.restingHeartRateBpm, "bpm", 0)}</dd>
-                  </div>
-                </>
-              )}
-              {on("skinfolds") && (
-                <>
-                  <div>
-                    <dt>Protocolo de dobras</dt>
-                    <dd>{composition.protocol ? PROTOCOL_CHIP[composition.protocol] : "Não escolhido"}</dd>
-                  </div>
-                  <div>
-                    <dt>Referência da equação</dt>
-                    <dd>{EQUATION_LABEL[composition.equation]}</dd>
-                  </div>
-                  <div>
-                    <dt>Leituras por dobra</dt>
-                    <dd>{AGGREGATION_LABEL[composition.aggregation]}</dd>
-                  </div>
-                  <div>
-                    <dt>Conversão</dt>
-                    <dd>{CONVERSION_LABEL[composition.conversion]}</dd>
-                  </div>
-                </>
-              )}
-            </dl>
-            {!on("skinfolds") ? null : SKINFOLD_SITE_CODES.some((site) => (composition.skinfolds[site] ?? []).length > 0) ? (
+            {!on("basics") && <ExcludedPart part="basics" />}
+            {(on("basics") || on("skinfolds")) && (
+              <dl className="av2-facts">
+                {on("basics") && (
+                  <>
+                    <div>
+                      <dt>Peso</dt>
+                      <dd>{measured(composition.weightKg, "kg")}</dd>
+                    </div>
+                    <div>
+                      <dt>Altura</dt>
+                      <dd>{composition.heightCm === null ? "Sem aferição" : `${decimal(composition.heightCm / 100, 3)} m`}</dd>
+                    </div>
+                    <div>
+                      <dt>PAS / PAD</dt>
+                      <dd>
+                        {measured(composition.systolicMmHg, "mmHg", 0)} / {measured(composition.diastolicMmHg, "mmHg", 0)}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>FC repouso</dt>
+                      <dd>{measured(composition.restingHeartRateBpm, "bpm", 0)}</dd>
+                    </div>
+                  </>
+                )}
+                {on("skinfolds") && (
+                  <>
+                    <div>
+                      <dt>Protocolo de dobras</dt>
+                      <dd>{composition.protocol ? PROTOCOL_CHIP[composition.protocol] : "Não escolhido"}</dd>
+                    </div>
+                    <div>
+                      <dt>Referência da equação</dt>
+                      <dd>{EQUATION_LABEL[composition.equation]}</dd>
+                    </div>
+                    <div>
+                      <dt>Leituras por dobra</dt>
+                      <dd>{AGGREGATION_LABEL[composition.aggregation]}</dd>
+                    </div>
+                    <div>
+                      <dt>Conversão</dt>
+                      <dd>{CONVERSION_LABEL[composition.conversion]}</dd>
+                    </div>
+                  </>
+                )}
+              </dl>
+            )}
+            {!on("skinfolds") ? <ExcludedPart part="skinfolds" /> : SKINFOLD_SITE_CODES.some((site) => (composition.skinfolds[site] ?? []).length > 0) ? (
               <div className="table-wrap">
                 <table className="data-table stack">
                   <caption className="sr-only">Dobras cutâneas registradas</caption>
@@ -316,7 +318,7 @@ export function RecordedAssessmentView({
             <RecordedPerimeters composition={composition} perimeters={on("perimeters")} breadths={on("breadths")} />
           </>
         ) : (
-          <p className="muted">Não realizado.</p>
+          <NotDone excluded={excludedPartsOf(enabled, "medidas")} />
         )}
       </section>
 
@@ -334,12 +336,23 @@ export function RecordedAssessmentView({
           <>
             {posture && !postureEmpty(posture) ? (
               <RecordedPosture posture={posture} views={on("posture")} somatotype={on("somatotype")} />
+            ) : on("posture") && on("somatotype") ? (
+              <p className="muted">Postura e somatotipo: não realizados.</p>
             ) : (
-              <p className="muted">{postureNotDone(on("posture"), on("somatotype"))}</p>
+              (["posture", "somatotype"] as const).map((part) =>
+                on(part) ? (
+                  <Fragment key={part}>
+                    <h4 className="av2-subtitle">{PART_LABEL[part]}</h4>
+                    <p className="muted">Não realizado.</p>
+                  </Fragment>
+                ) : (
+                  <ExcludedPart key={part} part={part} />
+                ),
+              )
             )}
-            {posture && !postureEmpty(posture) && (!on("posture") || !on("somatotype")) && (
-              <p className="muted av2-recorded-line">{postureNotDone(on("posture"), on("somatotype"), true)}</p>
-            )}
+            {posture &&
+              !postureEmpty(posture) &&
+              (["posture", "somatotype"] as const).filter((part) => !on(part)).map((part) => <ExcludedPart key={part} part={part} />)}
             {detail.photos.length > 0 && <RecordedPhotos detail={detail} />}
             <h4 className="av2-subtitle">Flexiteste</h4>
             {!on("flexitest") ? (
@@ -351,7 +364,7 @@ export function RecordedAssessmentView({
             )}
           </>
         ) : (
-          <p className="muted">Não realizado.</p>
+          <NotDone excluded={excludedPartsOf(enabled, "movimento")} />
         )}
       </section>
 
@@ -362,7 +375,7 @@ export function RecordedAssessmentView({
         ) : tests && !testsEmpty(tests) ? (
           <RecordedTests tests={tests} on={on} />
         ) : (
-          <p className="muted">Não realizado.</p>
+          <NotDone excluded={excludedPartsOf(enabled, "testes")} />
         )}
       </section>
 
@@ -557,12 +570,26 @@ function RecordedPosture({ posture, views = true, somatotype: somatotypeOn = tru
   );
 }
 
-/** What the posture part says when it holds nothing, or which of its two parts the model left out. */
-function postureNotDone(views: boolean, somatotype: boolean, onlyExcluded = false): string {
-  if (onlyExcluded) return !views ? "Avaliação postural: não incluída neste modelo." : "Somatotipo: não incluído neste modelo.";
-  if (views && somatotype) return "Postura e somatotipo: não realizados.";
-  if (!views && !somatotype) return "Avaliação postural e somatotipo: não incluídos neste modelo.";
-  return views ? "Postura: não realizada. Somatotipo: não incluído neste modelo." : "Avaliação postural: não incluída neste modelo. Somatotipo: não registrado.";
+/** A part the model left out, drawn like the other parts of a card: its subtitle, then "Não incluído neste modelo." (never "Não realizado"). */
+function ExcludedPart({ part }: { part: TemplatePart }) {
+  return (
+    <>
+      <h4 className="av2-subtitle">{PART_LABEL[part]}</h4>
+      <p className="muted">{NOT_INCLUDED}.</p>
+    </>
+  );
+}
+
+/** A step with nothing recorded: "Não realizado.", and the parts of it the model left out, so they are never read as not done. */
+function NotDone({ excluded }: { excluded: readonly TemplatePart[] }) {
+  return (
+    <>
+      <p className="muted">Não realizado.</p>
+      {excluded.map((part) => (
+        <ExcludedPart key={part} part={part} />
+      ))}
+    </>
+  );
 }
 
 /** The Flexiteste as recorded: the level of each movement assessed, how many, the total (only with all 15: in "Resultados" too), and the professional's text. */

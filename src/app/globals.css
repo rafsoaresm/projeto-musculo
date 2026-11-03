@@ -7205,3 +7205,16 @@ fieldset.yes-no legend {
     padding: 10px 8px;
   }
 }
+/* The list of models of the Avaliação Física (slice 0.85): the list of parts left out is long, so its cells wrap instead of making the table
+   scroll sideways inside its panel (the global table rule keeps cells on one line). */
+.av2-templates th,
+.av2-templates td {
+  white-space: normal;
+  vertical-align: top;
+}
+.av2-templates td[data-label="Partes"] {
+  min-width: 16ch;
+}
+.av2-templates th .cell-sub {
+  font-weight: 400;
+}

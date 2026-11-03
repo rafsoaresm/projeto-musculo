@@ -57,7 +57,7 @@ import {
 import { HEATH_CARTER_NOTE, findingsText, postureEmpty, regionsOf, somatotypeText, type PosturePayload } from "./posture";
 import { FLAG_LABEL, RESULT_LABEL, formatResult, isResultEstimate, methodLabel, resultNote } from "./review";
 import { ANAMNESIS_CODES, PARQ_CODES, parqAnswer, type ProfilePayload, type ScreeningPayload } from "./screening";
-import { NOT_INCLUDED, isPartEnabled, isStepEnabled, templateLine, type EnabledParts, type TemplatePart } from "./template";
+import { NOT_INCLUDED, PART_LABEL, excludedPartsOf, isPartEnabled, isStepEnabled, templateLine, type EnabledParts, type TemplatePart } from "./template";
 
 /** The line every report carries in place of the institutional disclaimer the handoff asks for but does not give (handoff 3.5). */
 export const REPORT_NOTICE = "Sem classificação automática; só os resultados marcados “estimativa” vêm de equações.";
@@ -139,7 +139,8 @@ export const reportDateTime = (iso: string) =>
   }).format(new Date(iso));
 
 const notDone = (text = "Não realizado."): ReportBlock => ({ kind: "text", text, muted: true });
-const notIncluded = (what?: string): ReportBlock => ({ kind: "text", text: what ? `${what}: ${NOT_INCLUDED.toLowerCase()}.` : `${NOT_INCLUDED}.`, muted: true });
+// One form for a part left out, as in the review and the recorded view: "Dobras cutâneas: Não incluído neste modelo." (never declined).
+const notIncluded = (what?: string): ReportBlock => ({ kind: "text", text: what ? `${what}: ${NOT_INCLUDED}.` : `${NOT_INCLUDED}.`, muted: true });
 const facts = (rows: { label: string; value: string }[]): ReportBlock[] => (rows.length === 0 ? [] : [{ kind: "facts", rows }]);
 const row = (label: string, value: string) => ({ label, value });
 
@@ -204,10 +205,10 @@ function screeningSection(input: ReportInput): ReportSection {
 
 function measuresSection(composition: CompositionPayload | null, enabled: EnabledParts = null): ReportSection {
   if (!isStepEnabled(enabled, "medidas")) return { title: "Medidas", blocks: [notIncluded()] };
-  if (!composition) return { title: "Medidas", blocks: [notDone()] };
+  if (!composition) return { title: "Medidas", blocks: [notDone(), ...excludedPartsOf(enabled, "medidas").map((part) => notIncluded(PART_LABEL[part]))] };
   const on = (part: TemplatePart) => isPartEnabled(enabled, part);
   const blocks: ReportBlock[] = [
-    ...(on("basics") ? [] : [notIncluded("Medidas básicas e sinais vitais")]),
+    ...(on("basics") ? [] : [notIncluded(PART_LABEL.basics)]),
     ...facts([
       ...(on("basics")
         ? [
@@ -313,7 +314,7 @@ function resultsSection(results: readonly ResultRow[]): ReportSection {
 
 function postureBlocks(posture: PosturePayload, enabled: EnabledParts = null): ReportBlock[] {
   const views = isPartEnabled(enabled, "posture");
-  const blocks: ReportBlock[] = [views ? notDone("Observações posturais, não diagnóstico clínico.") : notIncluded("Avaliação postural")];
+  const blocks: ReportBlock[] = [views ? notDone("Observações posturais, não diagnóstico clínico.") : notIncluded(PART_LABEL.posture)];
   for (const view of views ? POSTURE_VIEW_CODES : []) {
     const regions = regionsOf(view);
     const observed = regions.filter((region) => findingsText(region, posture.findings[postureRegionKey(region)]) !== null);
@@ -378,7 +379,7 @@ function movementSection(posture: PosturePayload | null, movement: MovementPaylo
   const emptyPosture: ReportBlock[] =
     views && somatotype
       ? [notDone("Postura e somatotipo: não realizados.")]
-      : [views ? notDone("Postura: não realizada.") : notIncluded("Avaliação postural"), somatotype ? notDone("Somatotipo: não registrado.") : notIncluded("Somatotipo")];
+      : [views ? notDone("Postura: não realizada.") : notIncluded(PART_LABEL.posture), somatotype ? notDone("Somatotipo: não realizado.") : notIncluded(PART_LABEL.somatotype)];
   return {
     title: "Postura e movimento",
     blocks: [

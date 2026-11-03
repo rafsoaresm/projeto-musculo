@@ -112,8 +112,9 @@ describe("the review of a draft made with a model", () => {
     const byKey = Object.fromEntries(review.modules.map((module) => [module.key, module]));
     expect(byKey.movimento).toMatchObject({ state: "not_included", lines: ["Não incluído neste modelo"] });
     expect(byKey.testes).toMatchObject({ state: "not_included", lines: ["Não incluído neste modelo"] });
-    expect(byKey.medidas.lines).toContain("Perímetros: não incluídos neste modelo");
-    expect(byKey.medidas.lines).toContain("Dobras cutâneas: não incluídas neste modelo");
+    // One form for every part left out: "Part: Não incluído neste modelo", never declined.
+    expect(byKey.medidas.lines).toContain("Perímetros corporais: Não incluído neste modelo");
+    expect(byKey.medidas.lines).toContain("Dobras cutâneas: Não incluído neste modelo");
     // Only the parts that are on give results: BMI from the basic measures; no waist-hip ratio and no Cooper (left out).
     expect(review.results.map((result) => result.code)).toEqual(["bmi"]);
   });
@@ -122,7 +123,20 @@ describe("the review of a draft made with a model", () => {
     const review = reviewDraft({ ...input, tests: null, enabled: without("cooper") });
     const testes = review.modules.find((module) => module.key === "testes")!;
     expect(testes.state).toBe("not_done");
-    expect(testes.lines).toEqual(["Não realizado", "Cooper: não incluído neste modelo"]);
+    expect(testes.lines).toEqual(["Não realizado", "Teste de Cooper · 12 minutos: Não incluído neste modelo"]);
+  });
+
+  it("with nothing measured, still names the Medidas parts left out", () => {
+    const medidas = reviewDraft({ ...input, composition: null, enabled: normalizeParts(["basics", "cooper"]) }).modules.find((module) => module.key === "medidas")!;
+    expect(medidas).toMatchObject({
+      state: "not_done",
+      lines: ["Não realizado", "Dobras cutâneas: Não incluído neste modelo", "Perímetros corporais: Não incluído neste modelo", "Diâmetros ósseos: Não incluído neste modelo"],
+    });
+  });
+
+  it("lists the steps in the model's order, as the step chips do", () => {
+    const review = reviewDraft({ ...input, enabled: normalizeParts(["basics", "cooper"], ["testes", "medidas", "movimento"]) });
+    expect(review.modules.map((module) => module.key)).toEqual(["triagem", "testes", "medidas", "movimento"]);
   });
 
   it("without a model is exactly as before", () => {
@@ -170,6 +184,16 @@ describe("the report of an assessment made with a model", () => {
     const tests = texts(report, "Testes físicos");
     expect(tests.filter((line) => line === "Não incluído neste modelo.")).toHaveLength(2);
     expect(tests).toContain("Não realizado.");
+  });
+
+  it("with nothing measured, still prints the Medidas parts left out", () => {
+    const report = assessmentReport({ ...base, template: { name: "Corrida", version: 2 }, enabled: ["basics", "cooper"] });
+    expect(texts(report, "Medidas")).toEqual([
+      "Não realizado.",
+      "Dobras cutâneas: Não incluído neste modelo.",
+      "Perímetros corporais: Não incluído neste modelo.",
+      "Diâmetros ósseos: Não incluído neste modelo.",
+    ]);
   });
 
   it("without a model is as before, with the same fingerprint", async () => {

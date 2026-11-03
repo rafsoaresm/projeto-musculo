@@ -30,6 +30,8 @@ export interface PhotoRow {
 export type PutOutcome =
   | { status: "stored"; replaced: boolean }
   | { status: "invalid"; reason: "NOT_JPEG" | "TOO_LARGE" | "BAD_DIMENSIONS" | "TRUNCATED" | "VIEW" }
+  /** The draft's model leaves the postural assessment out (slice 0.85): that part, and so its photos, is not in this draft. */
+  | { status: "not_included" }
   | { status: "not_found" };
 export type RemoveOutcome = { status: "removed" } | { status: "erased" } | { status: "not_found" };
 
@@ -84,12 +86,13 @@ export function assessmentPhotosFor(
       if (!isPhotoView(view)) return { status: "invalid", reason: "VIEW" };
       const target = await db
         .prepare(
-          `SELECT 1 AS ok FROM assessments a WHERE a.organization_id = ?1 AND a.id = ?3 AND a.state = 'DRAFT' AND ${reach("a")}
-             AND (a.enabled_modules IS NULL OR EXISTS (SELECT 1 FROM json_each(a.enabled_modules) WHERE value = 'posture'))`,
+          `SELECT (a.enabled_modules IS NULL OR EXISTS (SELECT 1 FROM json_each(a.enabled_modules) WHERE value = 'posture')) AS posture
+           FROM assessments a WHERE a.organization_id = ?1 AND a.id = ?3 AND a.state = 'DRAFT' AND ${reach("a")}`,
         )
         .bind(organizationId, userId, assessmentId)
-        .first();
+        .first<{ posture: number }>();
       if (!target) return { status: "not_found" };
+      if (!target.posture) return { status: "not_included" };
       const stamp = now.toISOString();
       const image = sanitizeJpeg(body);
       if (!image.ok) return { status: "invalid", reason: image.reason };

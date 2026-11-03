@@ -18,7 +18,7 @@ async function shots(page: Page, name: string, projectName: string) {
     await page.setViewportSize({ width, height: 900 });
     await page.waitForTimeout(200);
     await noHorizontalOverflow(page);
-    await page.screenshot({ path: `${dir}/085-${name}-${width}.png`, fullPage: true });
+    await page.screenshot({ path: `${dir}/${process.env.SHOTS_PREFIX ?? "085-"}${name}-${width}.png`, fullPage: true });
   }
   if (size) await page.setViewportSize(size);
 }
@@ -48,19 +48,21 @@ test("a model of the Avaliação Física leaves parts out, reorders the steps, n
   await page.getByRole("button", { name: "Subir Testes" }).click();
   await page.getByRole("button", { name: "Subir Testes" }).click();
   await expect(page.getByRole("button", { name: "Subir Testes" })).toBeDisabled();
+  // The editor names and numbers the steps as the draft's chips will: a step with nothing ticked has no number, and the ones after move up.
   await expect(page.getByRole("heading", { level: 3, name: /^\d · / })).toHaveText([
     "1 · Triagem e segurança",
     "2 · Testes físicos",
-    "3 · Medidas · composição corporal",
-    "4 · Movimento · postura e flexibilidade",
-    "5 · Revisão e entrega",
+    "3 · Composição corporal",
+    "4 · Revisão e conclusão",
   ]);
+  await expect(page.getByRole("heading", { level: 3, name: "Postura e movimento · não aparece neste modelo" })).toBeVisible();
   await noHorizontalOverflow(page);
   await page.getByRole("button", { name: "Criar modelo" }).click();
   await expect(page.getByText("Modelo “Corrida” salvo na versão 1.")).toBeVisible();
   const row = page.getByRole("row", { name: /Corrida/ });
   await expect(row).toContainText("3 de 11 partes opcionais");
   await expect(row).toContainText("Triagem, Testes, Medidas, Movimento, Revisão");
+  await expect(row).toContainText("Fora: Dobras cutâneas, Diâmetros ósseos");
   await shots(page, "modelos-lista", testInfo.project.name);
 
   // Start an assessment with the model: only the steps it shows, in its order.
@@ -83,6 +85,8 @@ test("a model of the Avaliação Física leaves parts out, reorders the steps, n
   await page.getByRole("button", { name: "Próximo" }).click();
   await expect(page.getByRole("heading", { name: "Composição corporal" })).toBeVisible();
   await expect(page.getByText("Não incluído neste modelo: Dobras cutâneas, Diâmetros ósseos.")).toBeVisible();
+  // The description under the title names only what the model has (never "dobras" above "Não incluído neste modelo: Dobras cutâneas").
+  await expect(page.getByText("Neste modelo: Medidas básicas e sinais vitais, Perímetros corporais")).toBeVisible();
   await expect(page.getByRole("region", { name: "Protocolo de dobras cutâneas" })).toHaveCount(0);
   await expect(page.getByRole("region", { name: "Diâmetros ósseos • cm" })).toHaveCount(0);
   await page.getByLabel("Peso (kg)").fill("70");
@@ -100,7 +104,9 @@ test("a model of the Avaliação Física leaves parts out, reorders the steps, n
   const checklist = page.getByRole("region", { name: "Checklist por etapa" });
   const movement = checklist.locator(".av2-module", { has: page.getByText("Movimento", { exact: true }) });
   await expect(movement.locator(".pill")).toHaveText("Não incluído neste modelo");
-  await expect(checklist.getByText("Dobras cutâneas: não incluídas neste modelo")).toBeVisible();
+  await expect(checklist.getByText("Dobras cutâneas: Não incluído neste modelo")).toBeVisible();
+  // The checklist follows the model's order of the steps, as the chips do.
+  await expect(checklist.locator(".av2-module-head strong")).toHaveText(["Triagem", "Testes físicos", "Medidas", "Movimento"]);
   await expect(page.getByText("Nada pendente: a avaliação pode ser finalizada.")).toBeVisible();
   await shots(page, "rascunho-revisao", testInfo.project.name);
   await page.getByRole("button", { name: "Finalizar avaliação" }).click();
@@ -112,6 +118,10 @@ test("a model of the Avaliação Física leaves parts out, reorders the steps, n
   const recordedMovement = page.getByRole("region", { name: "Postura e movimento" });
   await expect(recordedMovement.getByText("Não incluído neste modelo.")).toBeVisible();
   await expect(page.getByRole("region", { name: "Considerações finais" }).getByText("Não incluído neste modelo.")).toBeVisible();
+  // A part left out reads the same way in every card: its subtitle, then "Não incluído neste modelo.".
+  const recordedMeasures = page.getByRole("region", { name: "Medidas", exact: true });
+  await expect(recordedMeasures.getByRole("heading", { name: "Dobras cutâneas" })).toBeVisible();
+  await expect(recordedMeasures.getByText("Não incluído neste modelo.")).toHaveCount(2);
   const recordedTests = page.getByRole("region", { name: "Testes físicos" });
   await expect(recordedTests.getByText("Não incluído neste modelo.")).toHaveCount(2);
   await expect(page.getByRole("region", { name: "Resultados" }).getByText("Cooper, VO₂máx estimado")).toBeVisible();

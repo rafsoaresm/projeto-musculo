@@ -42,7 +42,7 @@ import { CONCLUSION_MODULE, conclusionFromForm, conclusionProblemsMessage, type 
 import { ConclusionCard } from "./conclusion-card";
 import { ReviewStep } from "./review-step";
 import { reviewDraft } from "./review";
-import type { StepKey } from "./steps";
+import { STEP_TITLE, type StepKey } from "./steps";
 import { NOT_INCLUDED, PART_LABEL, isPartEnabled, partsOfStep, visibleSteps, type EnabledParts, type TemplatePart } from "./template";
 
 /**
@@ -50,17 +50,17 @@ import { NOT_INCLUDED, PART_LABEL, isPartEnabled, partsOfStep, visibleSteps, typ
  * its own before "Revisão e entrega"), with the modules of the draft each one edits.
  */
 const STEPS = [
-  { key: "triagem", label: "Triagem", title: "Triagem e segurança", description: "Objetivos, histórico de saúde e revisão profissional", modules: [PROFILE_MODULE, SCREENING_MODULE] },
-  { key: "medidas", label: "Medidas", title: "Composição corporal", description: "Medidas básicas, dobras com prévia calculada, perímetros e diâmetros ósseos", modules: [COMPOSITION_MODULE] },
+  { key: "triagem", label: "Triagem", title: STEP_TITLE.triagem, description: "Objetivos, histórico de saúde e revisão profissional", modules: [PROFILE_MODULE, SCREENING_MODULE] },
+  { key: "medidas", label: "Medidas", title: STEP_TITLE.medidas, description: "Medidas básicas, dobras com prévia calculada, perímetros e diâmetros ósseos", modules: [COMPOSITION_MODULE] },
   {
     key: "movimento",
     label: "Movimento",
-    title: "Postura e movimento",
+    title: STEP_TITLE.movimento,
     description: "Observações posturais não diagnósticas, somatotipo registrado pelo profissional e os 15 movimentos do Flexiteste",
     modules: [POSTURE_MODULE, MOVEMENT_MODULE],
   },
-  { key: "testes", label: "Testes", title: "Testes físicos", description: "Resistência abdominal, resistência de membros superiores e Cooper 12 minutos", modules: [TESTS_MODULE] },
-  { key: "revisao", label: "Revisão", title: "Revisão e conclusão", description: "Pendências, resultados calculados, considerações finais e finalização", modules: [CONCLUSION_MODULE] },
+  { key: "testes", label: "Testes", title: STEP_TITLE.testes, description: "Resistência abdominal, resistência de membros superiores e Cooper 12 minutos", modules: [TESTS_MODULE] },
+  { key: "revisao", label: "Revisão", title: STEP_TITLE.revisao, description: "Pendências, resultados calculados, considerações finais e finalização", modules: [CONCLUSION_MODULE] },
 ] as const satisfies readonly { key: StepKey; label: string; title: string; description: string | null; modules: readonly string[] }[];
 
 /**
@@ -132,6 +132,13 @@ export function AssessmentShell({
   const current = steps[index];
   // What the model leaves out of the step on screen, said once under its title (never a card that looks empty).
   const excluded = partsOfStep(step).filter((part) => !on(part));
+  // The fixed description names every part of the step; with parts left out by the model it names only those in, so it never lists one the step hides.
+  const description =
+    excluded.length === 0
+      ? current.description
+      : step === "revisao"
+      ? "Pendências, resultados calculados e finalização"
+      : `Neste modelo: ${partsOfStep(step).filter(on).map((part) => PART_LABEL[part]).join(", ")}`;
 
   // The modules of the draft the screen edits; each step that has fields adds its own here.
   const compositionModule = useMemo<DraftModule>(
@@ -328,7 +335,7 @@ export function AssessmentShell({
 
       <div className="av2-heading">
         <h2>{current.title}</h2>
-        {current.description && <p className="muted small">{current.description}</p>}
+        {description && <p className="muted small">{description}</p>}
         {excluded.length > 0 && (
           <p className="small av2-excluded">
             {NOT_INCLUDED}: {excluded.map((part) => PART_LABEL[part]).join(", ")}.

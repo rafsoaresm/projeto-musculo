@@ -182,6 +182,10 @@ export const partsCountText = (enabled: EnabledParts) => {
 /** The default choice when starting an assessment: everything on, the order of the handoff. */
 export const DEFAULT_TEMPLATE_LABEL = "Todos os módulos (padrão)";
 export const NOT_INCLUDED = "Não incluído neste modelo";
+/** "Dobras cutâneas: Não incluído neste modelo": the one form a left-out part takes in the review, the recorded view and the PDF (never declined). */
+export const notIncludedLine = (part: TemplatePart) => `${PART_LABEL[part]}: ${NOT_INCLUDED}`;
+/** The parts of a step the model leaves out, in the canonical order (none without a model). */
+export const excludedPartsOf = (enabled: EnabledParts, step: StepKey) => (enabled === null ? [] : partsOfStep(step).filter((part) => !enabled.includes(part)));
 /** "Modelo: Corrida (versão 2)." or the default, for the heading of a draft and the record. */
 export const templateLine = (template: { name: string; version: number } | null) =>
   template ? `Modelo: ${template.name} (versão ${template.version}).` : `Modelo: ${DEFAULT_TEMPLATE_LABEL.toLowerCase()}.`;

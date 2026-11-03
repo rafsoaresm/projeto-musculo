@@ -254,6 +254,10 @@ export type StartOutcome =
   | { status: "draft_open"; id: string; formatVersion: number | null }
   /** The model asked for is not one of the organization's, or is archived. */
   | { status: "template_not_found" }
+  /** The model has a newer version than the one the screen offered (a colleague saved it meanwhile): nothing was started. */
+  | { status: "template_changed"; version: number }
+  /** The student already has an open draft made with another model (or without one) than the one asked for: nothing was started. */
+  | { status: "draft_open_other_model"; id: string }
   | { status: "not_found" };
 /** The newest recorded assessment of a student and whether an alert was reviewed. No access check. */
 export async function screeningStanding(
@@ -575,7 +579,7 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
      * equation of a protocol does not take from the profile: decision of the user, 02/11/2026). With a model of the organization (slice 0.85),
      * the draft keeps its newest version and the list of parts that are on; without one, every part is on, as before.
      */
-    async startDraft(studentId: string, now = new Date(), options: { templateId?: string | null } = {}): Promise<StartOutcome> {
+    async startDraft(studentId: string, now = new Date(), options: { templateId?: string | null; templateVersion?: number | null } = {}): Promise<StartOutcome> {
       const id = crypto.randomUUID();
       const stamp = now.toISOString();
       const templateId = options.templateId ?? null;
@@ -592,6 +596,8 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
           .bind(organizationId, templateId)
           .first<{ version: number; enabled: string }>();
         if (!template) return { status: "template_not_found" };
+        // The version the screen named, when it named one: a newer one has another list of parts, so the professional sees it before starting.
+        if (typeof options.templateVersion === "number" && template.version !== options.templateVersion) return { status: "template_changed", version: template.version };
       }
       try {
         const result = await db
@@ -621,6 +627,12 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
         if (!String(error).includes("UNIQUE")) throw error;
         const open = (await api.listForStudent(studentId)).find((a) => a.state === "DRAFT");
         if (!open) return { status: "not_found" };
+        // The open draft keeps its model: asking for another one (or for none) must not silently land in it.
+        const model = await db
+          .prepare(`SELECT template_id AS templateId FROM assessments WHERE organization_id = ?1 AND id = ?2`)
+          .bind(organizationId, open.id)
+          .first<{ templateId: string | null }>();
+        if ((model?.templateId ?? null) !== templateId) return { status: "draft_open_other_model", id: open.id };
         return { status: "draft_open", id: open.id, formatVersion: open.formatVersion };
       }
     },

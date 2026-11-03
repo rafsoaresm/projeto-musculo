@@ -63,7 +63,7 @@ export default async function AssessmentTemplates({ searchParams }: { searchPara
         </section>
       ) : (
         <div className="table-wrap">
-          <table className="data-table stack">
+          <table className="data-table stack av2-templates">
             <caption className="sr-only">Modelos de avaliação física</caption>
             <thead>
               <tr>
@@ -79,22 +79,32 @@ export default async function AssessmentTemplates({ searchParams }: { searchPara
                 const off = TEMPLATE_PARTS.filter((part) => !item.enabled.includes(part));
                 return (
                   <tr key={item.id}>
+                    {/* One element per cell: in the stacked phone layout each child of a cell is a flex column, so loose children would split apart. */}
                     <th scope="row" data-label="Modelo">
-                      {item.archivedAt ? (
-                        <span>{item.name}</span>
-                      ) : (
-                        <Link className="row-link" href={`/profissional/avaliacoes/modelos/${item.id}`}>
-                          {item.name}
-                        </Link>
-                      )}{" "}
-                      <span className="small muted">
-                        versão {item.version} · {formatDateTime(item.updatedAt)}
-                      </span>{" "}
-                      {item.archivedAt && <Pill tone="neutral">Arquivado</Pill>}
+                      <div>
+                        {item.archivedAt ? (
+                          <span>{item.name}</span>
+                        ) : (
+                          <Link className="row-link" href={`/profissional/avaliacoes/modelos/${item.id}`}>
+                            {item.name}
+                          </Link>
+                        )}
+                        {item.archivedAt && (
+                          <>
+                            {" "}
+                            <Pill tone="neutral">Arquivado</Pill>
+                          </>
+                        )}
+                        <span className="cell-sub">
+                          Versão {item.version} · {formatDateTime(item.updatedAt)}
+                        </span>
+                      </div>
                     </th>
                     <td data-label="Partes">
-                      {partsCountText(item.enabled)}
-                      {off.length > 0 && <span className="small muted"> · fora: {off.map((part) => PART_LABEL[part]).join(", ")}</span>}
+                      <div>
+                        {partsCountText(item.enabled)}
+                        {off.length > 0 && <span className="cell-sub">Fora: {off.map((part) => PART_LABEL[part]).join(", ")}</span>}
+                      </div>
                     </td>
                     <td data-label="Ordem das etapas">Triagem, {stepOrderOf(item.enabled).map((step) => ORDERABLE_STEP_LABEL[step]).join(", ")}, Revisão</td>
                     <td data-label="Uso">{item.assessments === 0 ? "Nenhuma avaliação" : `${item.assessments} ${item.assessments === 1 ? "avaliação" : "avaliações"}`}</td>

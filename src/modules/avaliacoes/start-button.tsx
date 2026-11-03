@@ -47,7 +47,8 @@ export function StartAssessmentButton({ studentId, first, templates = [] }: { st
         onClick={() =>
           startTransition(async () => {
             // On success the action redirects to the new draft (or to the one already open).
-            const result = await startAssessment(studentId, template === "" ? null : template);
+            const chosen = templates.find((item) => item.id === template) ?? null;
+            const result = await startAssessment(studentId, chosen?.id ?? null, chosen?.version ?? null);
             if (result?.error) setError(result.error);
           })
         }

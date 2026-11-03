@@ -4,6 +4,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { assessmentsFor } from "@/db/assessments";
 import { assessmentTemplatesFor } from "@/db/assessment-templates";
 import { assessmentReportsFor } from "@/db/assessment-reports";
+import { assessmentPhotosFor } from "@/db/assessment-photos";
+import type { R2Bucket } from "@cloudflare/workers-types";
 import { ALL_MIGRATIONS, migrate } from "./helpers/migrate";
 
 // Slice 0.85 on a real local D1 with every migration (0036 included): the models of the Avaliação Física. Only a technical member of the
@@ -107,6 +109,23 @@ describe("models of the Avaliação Física", () => {
     expect(await fails("UPDATE assessment_form_template_versions SET name = 'x' WHERE template_id = ?1", id)).toContain("TEMPLATE_VERSION_FIXED");
     expect(await fails("DELETE FROM assessment_form_template_versions WHERE template_id = ?1", id)).toContain("TEMPLATE_VERSION_FIXED");
     expect(await fails("DELETE FROM assessment_form_templates WHERE id = ?1", id)).toContain("TEMPLATE_FIXED");
+  });
+
+  it("never land silently in a draft of another model, nor start with a version newer than the one the screen named", async () => {
+    // st-1 has a draft of the model (version 1); st-2 one without a model. The model is now in version 2.
+    expect((await a().startDraft("st-1", new Date(), { templateId: id })).status).toBe("draft_open");
+    expect((await a().startDraft("st-1", new Date())).status).toBe("draft_open_other_model");
+    expect((await a().startDraft("st-2", new Date(), { templateId: id })).status).toBe("draft_open_other_model");
+    expect(await a().startDraft("st-2", new Date(), { templateId: id, templateVersion: 1 })).toEqual({ status: "template_changed", version: 2 });
+    expect(await one("SELECT count(*) AS n FROM assessments WHERE student_id IN ('st-1','st-2')")).toEqual({ n: 2 });
+  });
+
+  it("take no postural photo on a draft whose model leaves the postural assessment out, and say so (not “not found”)", async () => {
+    const draft = (await one<{ id: string }>("SELECT id FROM assessments WHERE student_id = 'st-1' AND state = 'DRAFT'"))!.id;
+    // The refusal comes before any image is read or stored: the storage is never touched.
+    const untouched = new Proxy({}, { get: () => { throw new Error("storage touched"); } }) as unknown as R2Bucket;
+    expect(await assessmentPhotosFor(db, untouched, scope("tech-a")).put(draft, "ANTERIOR", new Uint8Array([0xff, 0xd8]))).toEqual({ status: "not_included" });
+    expect(await assessmentPhotosFor(db, untouched, scope("tech-b", "org-b")).put(draft, "ANTERIOR", new Uint8Array([0xff, 0xd8]))).toEqual({ status: "not_found" });
   });
 
   it("refuse a save with something in a part the draft's model leaves out, and never block the finalize", async () => {

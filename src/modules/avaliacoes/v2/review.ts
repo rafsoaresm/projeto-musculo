@@ -51,7 +51,7 @@ import {
   type ProfilePayload,
   type ScreeningPayload,
 } from "./screening";
-import { NOT_INCLUDED, isPartEnabled, isStepEnabled, maskComposition, maskMovement, maskPosture, maskTests, type EnabledParts } from "./template";
+import { NOT_INCLUDED, excludedPartsOf, isPartEnabled, isStepEnabled, maskComposition, maskMovement, maskPosture, maskTests, notIncludedLine, stepOrderOf, type EnabledParts } from "./template";
 
 /** One row of assessment_results, as it will be written (code, value, unit, method, formula version, inputs and flags). */
 export interface ResultDraft {
@@ -252,7 +252,8 @@ function siteValues(composition: CompositionPayload): { values: SiteValues; read
   return { values, readings, manyForSingle };
 }
 
-function compositionResults(composition: CompositionPayload, ageYears: number | null): { results: ResultDraft[]; notComputed: string[] } {
+/** `basicsOn` false: the model leaves the weight out, so the masses are said to need a part not in the model (never a "falta" the professional cannot fill). */
+function compositionResults(composition: CompositionPayload, ageYears: number | null, basicsOn = true): { results: ResultDraft[]; notComputed: string[] } {
   const results: ResultDraft[] = [];
   const notComputed: string[] = [];
   const index = bmi(composition.weightKg, composition.heightCm);
@@ -313,7 +314,10 @@ function compositionResults(composition: CompositionPayload, ageYears: number | 
   if (outcome.fatMassKg !== null && outcome.fatFreeMassKg !== null) {
     results.push(row("fat_mass_kg", outcome.fatMassKg, "kg"));
     results.push(row("lean_mass_kg", outcome.fatFreeMassKg, "kg"));
-  } else notComputed.push("Massa gorda e massa livre de gordura: falta o peso");
+  } else
+    notComputed.push(
+      basicsOn ? "Massa gorda e massa livre de gordura: falta o peso" : `Massa gorda e massa livre de gordura: pedem o peso (${notIncludedLine("basics")})`,
+    );
   return { results, notComputed };
 }
 
@@ -418,7 +422,8 @@ function triagemSummary(profile: ProfilePayload | null, screening: ScreeningPayl
 
 function medidasSummary(composition: CompositionPayload | null, enabled: EnabledParts = null): ModuleSummary {
   if (!isStepEnabled(enabled, "medidas")) return { key: "medidas", title: "Medidas", state: "not_included", lines: [NOT_INCLUDED] };
-  if (!composition) return { key: "medidas", title: "Medidas", state: "not_done", lines: ["Não realizado"] };
+  const excluded = excludedPartsOf(enabled, "medidas").map(notIncludedLine);
+  if (!composition) return { key: "medidas", title: "Medidas", state: "not_done", lines: ["Não realizado", ...excluded] };
   const on = (part: "basics" | "skinfolds" | "perimeters" | "breadths") => isPartEnabled(enabled, part);
   const lines: string[] = [];
   const basics = [
@@ -429,10 +434,10 @@ function medidasSummary(composition: CompositionPayload | null, enabled: Enabled
       : null,
     composition.restingHeartRateBpm !== null ? `FC repouso ${decimal(composition.restingHeartRateBpm)} bpm` : null,
   ].filter((item): item is string => item !== null);
-  if (!on("basics")) lines.push("Medidas básicas: não incluídas neste modelo");
+  if (!on("basics")) lines.push(notIncludedLine("basics"));
   else lines.push(basics.length === 0 ? "Medidas básicas: sem aferição" : `Medidas básicas: ${basics.join(" · ")}`);
   const measured = SKINFOLD_SITE_CODES.filter((site) => (composition.skinfolds[site] ?? []).length > 0);
-  if (!on("skinfolds")) lines.push("Dobras cutâneas: não incluídas neste modelo");
+  if (!on("skinfolds")) lines.push(notIncludedLine("skinfolds"));
   else if (composition.protocol) {
     const required = requiredSites(composition.protocol, composition.equation);
     lines.push(
@@ -453,12 +458,12 @@ function medidasSummary(composition: CompositionPayload | null, enabled: Enabled
   const breadths = BONE_BREADTH_CODES.filter((code) => composition.boneBreadthsCm[code] !== undefined).length;
   const perimeterTotal = PERIMETER_SINGLE_CODES.length + PERIMETER_SIDED_CODES.length;
   const oneSidedText = oneSided.length > 0 ? ` · ${list(oneSided.map((code) => PERIMETERS_SIDED[code]))} só com um lado` : "";
-  if (!on("perimeters")) lines.push("Perímetros: não incluídos neste modelo");
+  if (!on("perimeters")) lines.push(notIncludedLine("perimeters"));
   else lines.push(perimeters === 0 ? "Perímetros: sem aferição" : `Perímetros: ${complete} de ${perimeterTotal} com medida${oneSidedText}`);
-  if (!on("breadths")) lines.push("Diâmetros ósseos: não incluídos neste modelo");
+  if (!on("breadths")) lines.push(notIncludedLine("breadths"));
   else lines.push(breadths === 0 ? "Diâmetros ósseos: sem aferição" : `Diâmetros ósseos: ${breadths} de ${BONE_BREADTH_CODES.length} com medida`);
   const empty = basics.length === 0 && measured.length === 0 && composition.protocol === null && perimeters === 0 && breadths === 0;
-  if (empty && enabled !== null) return { key: "medidas", title: "Medidas", state: "not_done", lines: ["Não realizado", ...lines.filter((line) => / não incluíd[oa]s? neste modelo$/.test(line))] };
+  if (empty && enabled !== null) return { key: "medidas", title: "Medidas", state: "not_done", lines: ["Não realizado", ...excluded] };
   return { key: "medidas", title: "Medidas", state: empty ? "not_done" : "filled", lines: empty ? ["Não realizado"] : lines };
 }
 
@@ -471,19 +476,15 @@ function movimentoSummary(posture: PosturePayload | null, movement: MovementPayl
   if (!isStepEnabled(enabled, "movimento")) return { key: "movimento", title: "Movimento", state: "not_included", lines: [NOT_INCLUDED] };
   const noPosture = !posture || postureEmpty(posture);
   const noFlexitest = !movement || movementEmpty(movement);
-  const excluded = [
-    ...(isPartEnabled(enabled, "posture") ? [] : ["Avaliação postural: não incluída neste modelo"]),
-    ...(isPartEnabled(enabled, "somatotype") ? [] : ["Somatotipo: não incluído neste modelo"]),
-    ...(isPartEnabled(enabled, "flexitest") ? [] : ["Flexiteste: não incluído neste modelo"]),
-  ];
+  const excluded = excludedPartsOf(enabled, "movimento").map(notIncludedLine);
   if (noPosture && noFlexitest) return { key: "movimento", title: "Movimento", state: "not_done", lines: ["Não realizado", ...excluded] };
   const lines: string[] = [];
   if (posture && !noPosture) lines.push(...postureLines(posture, enabled));
   else if (isPartEnabled(enabled, "posture") && isPartEnabled(enabled, "somatotype")) lines.push("Postura e somatotipo: não realizados");
   else if (isPartEnabled(enabled, "posture")) lines.push("Postura: não realizada");
-  else if (isPartEnabled(enabled, "somatotype")) lines.push("Somatotipo: não registrado");
-  lines.push(...excluded.filter((line) => !line.startsWith("Flexiteste")));
-  if (!isPartEnabled(enabled, "flexitest")) lines.push("Flexiteste: não incluído neste modelo");
+  else if (isPartEnabled(enabled, "somatotype")) lines.push("Somatotipo: não realizado");
+  lines.push(...excludedPartsOf(enabled, "movimento").filter((part) => part !== "flexitest").map(notIncludedLine));
+  if (!isPartEnabled(enabled, "flexitest")) lines.push(notIncludedLine("flexitest"));
   else if (movement && !noFlexitest) {
     const tally = flexitestTally(movement);
     lines.push(`Flexiteste: ${filledText(tally.filled)}${tally.total !== null ? `; total ${tally.total} pontos` : ""}`);
@@ -525,12 +526,12 @@ function somatotypeLines(posture: PosturePayload): string[] {
 function testesSummary(tests: TestsPayload | null, enabled: EnabledParts = null): ModuleSummary {
   if (!isStepEnabled(enabled, "testes")) return { key: "testes", title: "Testes físicos", state: "not_included", lines: [NOT_INCLUDED] };
   const testOn = (key: RepetitionTestKey | "cooper") => isPartEnabled(enabled, key === "upperLimb" ? "upper_limb" : key);
-  const excluded = (["abdominal", "upperLimb", "cooper"] as const).filter((key) => !testOn(key)).map((key) => `${key === "cooper" ? "Cooper" : TEST_TITLE[key]}: não incluído neste modelo`);
+  const excluded = excludedPartsOf(enabled, "testes").map(notIncludedLine);
   if (!tests || testsEmpty(tests)) return { key: "testes", title: "Testes físicos", state: "not_done", lines: ["Não realizado", ...excluded] };
   const lines: string[] = [];
   for (const key of REPETITION_TESTS) {
     const test = tests[key];
-    if (!testOn(key)) lines.push(`${TEST_TITLE[key]}: não incluído neste modelo`);
+    if (!testOn(key)) lines.push(notIncludedLine(key === "upperLimb" ? "upper_limb" : key));
     else if (repetitionTestEmpty(test)) lines.push(`${TEST_TITLE[key]}: não realizado`);
     else
       lines.push(
@@ -540,7 +541,7 @@ function testesSummary(tests: TestsPayload | null, enabled: EnabledParts = null)
   const cooperTest = tests.cooper;
   lines.push(
     !testOn("cooper")
-      ? "Cooper: não incluído neste modelo"
+      ? notIncludedLine("cooper")
       : cooperEmpty(cooperTest)
       ? "Cooper: não realizado"
       : `Cooper: ${cooperTest.distanceM === null ? "distância sem registro" : `${decimal(cooperTest.distanceM, 1)} m em ${COOPER_MINUTES} min`}`,
@@ -567,7 +568,7 @@ export function reviewDraft(input: ReviewInput): DraftReview {
     movement: input.movement ? maskMovement(input.movement, enabled) : null,
     tests: input.tests ? maskTests(input.tests, enabled) : null,
   };
-  const skinfold = input.composition ? compositionResults(input.composition, ageYears) : { results: [], notComputed: [] };
+  const skinfold = input.composition ? compositionResults(input.composition, ageYears, isPartEnabled(enabled, "basics")) : { results: [], notComputed: [] };
   const perimeter = input.composition ? perimeterResults(input.composition) : { results: [], notComputed: [] };
   const flexibility = input.movement ? flexitestResults(input.movement) : { results: [], notComputed: [] };
   const cooperTest = input.tests ? cooperResults(input.tests) : { results: [], notComputed: [] };
@@ -578,11 +579,16 @@ export function reviewDraft(input: ReviewInput): DraftReview {
     results: computed.results,
     notComputed: computed.notComputed,
     riskFlag: input.screening ? parqHasYes(input.screening) : false,
+    // In the order of the model's steps, as the step chips show them (the steps it leaves out come after, in the default order).
     modules: [
       triagemSummary(input.profile, input.screening, pending),
-      medidasSummary(input.composition, enabled),
-      movimentoSummary(input.posture ?? null, input.movement ?? null, enabled),
-      testesSummary(input.tests ?? null, enabled),
+      ...stepOrderOf(enabled).map((step) =>
+        step === "medidas"
+          ? medidasSummary(input.composition, enabled)
+          : step === "movimento"
+          ? movimentoSummary(input.posture ?? null, input.movement ?? null, enabled)
+          : testesSummary(input.tests ?? null, enabled),
+      ),
     ],
   };
 }

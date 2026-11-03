@@ -55,6 +55,9 @@ describe("reviewDraft", () => {
     const noWeight = why({ ...JP7, weightKg: null });
     expect(noWeight.results.map((row) => row.code)).toEqual(["sum_skinfolds", "body_density", "body_fat_percent"]);
     expect(noWeight.notComputed).toEqual(["IMC: falta o peso", "Massa gorda e massa livre de gordura: falta o peso"]);
+    // A model without "Medidas básicas" (slice 0.85): the weight cannot be typed, so the masses say the part is not in the model, never "falta".
+    const leftOut = reviewDraft({ ...base, screening: screening(), composition: JP7, enabled: ["skinfolds"] });
+    expect(leftOut.notComputed).toEqual(["Massa gorda e massa livre de gordura: pedem o peso (Medidas básicas e sinais vitais: Não incluído neste modelo)"]);
     expect(why({ ...JP7, aggregation: "single", skinfolds: { ...JP7.skinfolds, chest: [12, 13] } }).notComputed[0]).toContain("Leitura única");
   });
 

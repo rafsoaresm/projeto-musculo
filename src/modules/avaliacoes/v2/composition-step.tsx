@@ -23,7 +23,7 @@ import {
   type CompositionForm,
 } from "./composition";
 import { ReadOnlyField, SidedField, UnitField, UnitInput } from "./fields";
-import type { TemplatePart } from "./template";
+import { notIncludedLine, type TemplatePart } from "./template";
 
 /**
  * One skinfold site: up to three readings, none of them a 0 when not measured. "+ leitura" sits right under the site's own readings (in the
@@ -219,7 +219,7 @@ export function CompositionStep({
           <p className="muted small">
             {on("skinfolds")
               ? (preview.method ?? "Resultado estimado; o método aparece quando o protocolo e a equação estão escolhidos.")
-              : "IMC: peso ÷ altura², conta direta das medidas. Este modelo não inclui dobras cutâneas."}
+              : `IMC: peso ÷ altura², conta direta das medidas. ${notIncludedLine("skinfolds")}.`}
           </p>
           <dl className="av2-results">
             {[
@@ -227,6 +227,11 @@ export function CompositionStep({
                 ? ([
                     [preview.sumLabel, preview.sum],
                     ["Gordura estimada", preview.fatPercent],
+                  ] as const)
+                : []),
+              // The masses need the weight: with Medidas básicas out of the model they are not shown (the review says why).
+              ...(on("skinfolds") && on("basics")
+                ? ([
                     ["Massa gorda", preview.fatMass],
                     ["Massa livre", preview.fatFree],
                   ] as const)

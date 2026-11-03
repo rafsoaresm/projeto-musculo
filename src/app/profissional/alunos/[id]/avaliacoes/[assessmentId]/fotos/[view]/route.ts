@@ -70,6 +70,8 @@ export async function PUT(request: Request, { params }: Params) {
         },
         result.reason === "TOO_LARGE" ? 413 : result.reason === "VIEW" ? 404 : 415,
       );
+    case "not_included":
+      return json({ error: "O modelo deste rascunho não inclui a avaliação postural: as fotos posturais ficam fora dele." }, 409);
     default:
       return text("Página não encontrada.", 404);
   }

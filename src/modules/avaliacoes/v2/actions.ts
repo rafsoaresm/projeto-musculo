@@ -22,12 +22,24 @@ const CONFLICT_MESSAGE = "Esta avaliação foi alterada em outra aba ou por outr
  * Opens a draft of the Avaliação Física (the only assessment that can be started: user's decision of 03/11/2026) and goes to it. When the
  * student already has an open draft, goes to that one (one draft per student); an open draft of the earlier format shows how to discard it.
  */
-export async function startAssessment(studentId: string, templateId: string | null = null): Promise<{ error?: string }> {
+export async function startAssessment(studentId: string, templateId: string | null = null, templateVersion: number | null = null): Promise<{ error?: string }> {
   const { db, context } = await requireWorkspace();
-  // The model is one of the organization of the session (the repository checks it); "" or null is "Todos os módulos".
-  const started = await assessmentsFor(db, context).startDraft(studentId, new Date(), { templateId: typeof templateId === "string" && templateId !== "" ? templateId : null });
+  // The model is one of the organization of the session (the repository checks it); "" or null is "Todos os módulos". The version is the one the
+  // picker showed: a newer one is refused, so the draft never gets a list of parts other than the one named on screen.
+  const started = await assessmentsFor(db, context).startDraft(studentId, new Date(), {
+    templateId: typeof templateId === "string" && templateId !== "" ? templateId : null,
+    templateVersion: typeof templateVersion === "number" && Number.isInteger(templateVersion) ? templateVersion : null,
+  });
   if (started.status === "not_found") return { error: "Aluno não encontrado no seu atendimento." };
   if (started.status === "template_not_found") return { error: "Este modelo não está mais disponível. Escolha outro modelo." };
+  if (started.status === "template_changed") {
+    revalidatePath("/profissional", "layout");
+    return { error: `Este modelo foi alterado e agora está na versão ${started.version}. Recarregue a página para ver as partes da versão nova e inicie de novo.` };
+  }
+  if (started.status === "draft_open_other_model") {
+    revalidatePath("/profissional", "layout");
+    return { error: "Este aluno já tem um rascunho de avaliação aberto com outro modelo (iniciado em outra aba ou por outra pessoa). Recarregue a página para continuar esse rascunho ou descarte-o antes de usar este modelo." };
+  }
   revalidatePath("/profissional", "layout");
   redirect(`/profissional/alunos/${studentId}/avaliacoes/${started.id}`);
 }

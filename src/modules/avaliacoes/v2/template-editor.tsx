@@ -10,12 +10,14 @@ import {
   PART_LABEL,
   TEMPLATE_PARTS,
   partsOfStep,
+  normalizeParts,
   stepOrderOf,
+  visibleSteps,
   type OrderableStep,
   type TemplatePart,
 } from "./template";
+import { STEP_TITLE } from "./steps";
 
-const STEP_TITLE: Record<OrderableStep, string> = { medidas: "Medidas · composição corporal", movimento: "Movimento · postura e flexibilidade", testes: "Testes físicos" };
 
 /** The parts of one step, each a checkbox with what it holds. */
 function Parts({ parts, chosen, onToggle, labelledBy }: { parts: TemplatePart[]; chosen: TemplatePart[]; onToggle: (part: TemplatePart, on: boolean) => void; labelledBy: string }) {
@@ -62,6 +64,9 @@ export function TemplateEditor({ template = null }: { template?: { id: string; n
       if (result?.error) setError(result.error);
     });
   const offCount = TEMPLATE_PARTS.length - chosen.length;
+  // The numbers the draft's step chips will show: a step with nothing ticked is not shown, so it has no number and the ones after move up.
+  const shown = visibleSteps(normalizeParts(chosen, order));
+  const number = (step: (typeof shown)[number]) => shown.indexOf(step) + 1;
 
   return (
     <form
@@ -84,7 +89,9 @@ export function TemplateEditor({ template = null }: { template?: { id: string; n
       </section>
 
       <section className="panel av2-card" aria-labelledby="av2-modelo-triagem">
-        <h3 id="av2-modelo-triagem">1 · Triagem e segurança</h3>
+        <h3 id="av2-modelo-triagem">
+          {number("triagem")} · {STEP_TITLE.triagem}
+        </h3>
         <p className="av2-fixed small">
           <Lock size={16} aria-hidden="true" /> Sempre incluída e sempre a primeira etapa: objetivos, anamnese, atividade física e PAR-Q. O PAR-Q
           condiciona a aprovação de planos, por isso não é opcional.
@@ -97,7 +104,7 @@ export function TemplateEditor({ template = null }: { template?: { id: string; n
           <section key={step} className="panel av2-card" aria-labelledby={id}>
             <div className="av2-step-head">
               <h3 id={id}>
-                {index + 2} · {STEP_TITLE[step]}
+                {shown.includes(step) ? `${number(step)} · ${STEP_TITLE[step]}` : `${STEP_TITLE[step]} · não aparece neste modelo`}
               </h3>
               <div className="av2-order" role="group" aria-label={`Ordem da etapa ${ORDERABLE_STEP_LABEL[step]}`}>
                 <button type="button" className="button secondary small" disabled={index === 0} onClick={() => move(index, -1)} aria-label={`Subir ${ORDERABLE_STEP_LABEL[step]}`}>
@@ -118,7 +125,9 @@ export function TemplateEditor({ template = null }: { template?: { id: string; n
       })}
 
       <section className="panel av2-card" aria-labelledby="av2-modelo-revisao">
-        <h3 id="av2-modelo-revisao">5 · Revisão e entrega</h3>
+        <h3 id="av2-modelo-revisao">
+          {number("revisao")} · {STEP_TITLE.revisao}
+        </h3>
         <p className="muted small">Sempre a última etapa: pendências, resultados e finalização. As considerações finais são opcionais.</p>
         <Parts parts={partsOfStep("revisao")} chosen={chosen} onToggle={toggle} labelledBy="av2-modelo-revisao" />
       </section>
