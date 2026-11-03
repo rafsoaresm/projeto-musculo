@@ -542,6 +542,11 @@ test("the Movimento step records the posture in three views and the somatotype, 
   await expect(shoulders.getByRole("checkbox", { checked: true })).toHaveCount(1);
   await shoulders.getByRole("checkbox", { name: "Protusos" }).check();
   await expect(shoulders.getByRole("checkbox", { name: "Alinhados" })).not.toBeChecked();
+  // A paired region with a finding that deviates asks the side (handoff 3.3: `laterality?`); "Alinhados" or no finding does not.
+  const shouldersSide = posture.getByRole("radiogroup", { name: "Lado (ombros, visão lateral)" });
+  await expect(shouldersSide.getByRole("radio", { name: "Não informado" })).toBeChecked();
+  await shouldersSide.getByRole("radio", { name: "Lado direito" }).check();
+  await expect(posture.getByRole("radiogroup", { name: "Lado (quadril, visão lateral)" })).toHaveCount(0);
   const hip = posture.getByRole("radiogroup", { name: "Quadril (visão lateral)" });
   await hip.getByRole("radio", { name: "Retroversão" }).check();
   await hip.getByRole("radio", { name: "Anteversão" }).check();
@@ -601,13 +606,14 @@ test("the Movimento step records the posture in three views and the somatotype, 
   await expect(posture.getByRole("tab")).toHaveText(["Lateral · 2 de 8", "Posterior · 2 de 7", "Anterior · 1 de 4"]);
   await expect(shoulders.getByRole("checkbox", { name: "Protusos" })).toBeChecked();
   await expect(hip.getByRole("radio", { name: "Anteversão" })).toBeChecked();
+  await expect(shouldersSide.getByRole("radio", { name: "Lado direito" })).toBeChecked();
   await expect(knees.getByRole("radio", { name: "Não observado" })).toBeChecked();
   await view(page, "Posterior").click();
   await expect(posture.getByRole("group", { name: "Escápulas (visão posterior)" }).getByRole("checkbox", { name: "Esquerda alada" })).toBeChecked();
   await expect(posture.getByLabel("Observações da visão posterior")).toHaveValue("Escápula esquerda mais afastada");
   await expect(labels.getByRole("checkbox", { checked: true })).toHaveCount(2);
   await expect(supraspinale).toHaveValue("8,5");
-  await expect(somatotype.getByLabel("Perímetro do braço flexionado e contraído (cm)")).toHaveValue("");
+  await expect(somatotype.getByLabel("Perímetro do braço flexionado (cm)")).toHaveValue("");
 
   // The Revisão says what was observed per view and the somatotype as recorded; nothing of it is a result.
   await page.getByRole("navigation", { name: "Etapas da avaliação física" }).getByRole("button", { name: "4 Revisão" }).click();

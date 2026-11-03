@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { POSTURE_REGIONS, POSTURE_REGION_BY_KEY, SOMATOTYPES } from "@/modules/avaliacoes/catalog";
+import { LATERALITIES, POSTURE_REGIONS, POSTURE_REGION_BY_KEY, SOMATOTYPES } from "@/modules/avaliacoes/catalog";
 import {
   EMPTY_POSTURE,
   findingsProblem,
@@ -15,6 +15,7 @@ import {
   toggleFinding,
   toggleSomatotype,
   viewTabLabel,
+  viewTabName,
   type PostureForm,
 } from "@/modules/avaliacoes/v2/posture";
 import { compositionSchema } from "@/modules/avaliacoes/v2/composition";
@@ -60,6 +61,8 @@ describe("the regions of the three views (handoff 3.3, every list as written)", 
     expect(findingsProblem(shoulders, ["aligned", "protracted"])).toBe("neutral");
     expect(findingsProblem(shoulders, ["hunched"])).toBe("unknown");
     expect(findingsProblem(shoulders, [])).toBe("empty");
+    // What every object inherits is not a finding of the region.
+    for (const inherited of ["constructor", "toString", "hasOwnProperty", "valueOf", "__proto__"]) expect(findingsProblem(shoulders, [inherited])).toBe("unknown");
     expect(findingsProblem(region("lateral_feet"), ["flat", "equinus"])).toBeNull();
   });
 });
@@ -68,6 +71,7 @@ describe("the schema of the module “posture”", () => {
   it("starts empty: no region observed (never “alinhado” by default), no somatotype, no measure", () => {
     expect(EMPTY_POSTURE).toEqual({
       findings: {},
+      laterality: {},
       notes: { lateral: "", posterior: "", anterior: "" },
       somatotype: { method: "manual", labels: [], notes: "", heathCarter: { supraspinaleSkinfoldMm: null, flexedArmGirthCm: null } },
     });
@@ -91,6 +95,8 @@ describe("the schema of the module “posture”", () => {
     expect(postureSchema.safeParse({ somatotype: { labels: ["endomorph", "endomorph"] } }).success).toBe(false);
     expect(postureSchema.safeParse({ notes: { lateral: "x".repeat(1001) } }).success).toBe(false);
     expect(postureSchema.safeParse({ extra: true }).success).toBe(false);
+    expect(postureSchema.safeParse({ findings: { lateral_hip: ["constructor"] } }).success).toBe(false);
+    expect(postureSchema.safeParse({ findings: { lateral_hip: ["toString"] } }).success).toBe(false);
   });
   it("names the fields of a payload refused on the server, as the screen does", () => {
     const refused = postureSchema.safeParse({
@@ -104,7 +110,7 @@ describe("the schema of the module “posture”", () => {
       "EIAS (visão anterior)",
       "Observações da visão posterior",
       "Somatotipo",
-      "Perímetro do braço flexionado e contraído",
+      "Perímetro do braço flexionado",
     ]);
   });
 });
@@ -137,6 +143,7 @@ describe("the screen's form", () => {
     expect(read.problems).toEqual([]);
     expect(read.payload).toEqual({
       findings: { lateral_shoulders: ["protracted", "internal_rotation"], posterior_scapulae: ["left_winged"] },
+      laterality: {},
       notes: { lateral: "Ombro direito mais protuso", posterior: "", anterior: "" },
       somatotype: { method: "manual", labels: ["endomorph", "mesomorph"], notes: "Predomínio mesomorfo", heathCarter: { supraspinaleSkinfoldMm: 8.5, flexedArmGirthCm: null } },
     });
@@ -145,13 +152,14 @@ describe("the screen's form", () => {
   });
   it("names a measure that is not a positive number and a text too long, and stores nothing then", () => {
     const read = postureFromForm(form({ heathCarter: { supraspinaleSkinfoldMm: "0", flexedArmGirthCm: "abc" }, somatotypeNotes: "x".repeat(1001) }));
-    expect(read).toEqual({ payload: null, problems: ["Observações do somatotipo", "Dobra supraespinhal", "Perímetro do braço flexionado e contraído"] });
+    expect(read).toEqual({ payload: null, problems: ["Observações do somatotipo", "Dobra supraespinhal", "Perímetro do braço flexionado"] });
   });
   it("says how many regions of each view were observed, in the tab", () => {
     const shown = form({ findings: { lateral_hip: ["anteversion"], lateral_feet: ["cavus"] } });
     expect(viewTabLabel(shown, "lateral")).toBe("Lateral · 2 de 8");
     expect(viewTabLabel(shown, "anterior")).toBe("Anterior · 0 de 4");
-    expect(findingsText(region("lateral_shoulders"), ["protracted", "internal_rotation"])).toBe("Protusos e Rotação interna");
+    expect(viewTabName(shown, "lateral")).toBe("Lateral, 2 de 8 regiões observadas");
+    expect(findingsText(region("lateral_shoulders"), ["protracted", "internal_rotation"])).toBe("Protusos e rotação interna");
     expect(findingsText(region("lateral_shoulders"), undefined)).toBeNull();
   });
 });
@@ -187,7 +195,7 @@ describe("the Revisão of the Movimento step", () => {
         "Observações escritas: posterior",
         "Somatotipo (registro do profissional): Endomorfo e Mesomorfo",
         "Medidas para Heath-Carter guardadas, sem cálculo: dobra supraespinhal",
-        "Flexiteste: chega numa próxima versão",
+        "Flexiteste: não registrado nesta versão",
       ],
     });
     // No somatotype nor posture result: nothing here is computed, and nothing blocks the finalize.
@@ -199,5 +207,43 @@ describe("the Revisão of the Movimento step", () => {
       "Postura: nenhuma região observada",
       "Somatotipo (registro do profissional): Não classificado",
     ]);
+  });
+});
+
+describe("the side of a paired region (handoff 3.3: `laterality?`)", () => {
+  it("is offered only on paired regions whose findings do not name a side", () => {
+    expect(POSTURE_REGIONS.filter((item) => item.sided).map((item) => `${item.view}_${item.region}`)).toEqual([
+      "lateral_shoulders",
+      "lateral_knees",
+      "lateral_feet",
+      "posterior_feet",
+      "posterior_tibia",
+      "posterior_hip_rotation",
+      "anterior_knees",
+      "anterior_patellae",
+    ]);
+    expect(Object.values(LATERALITIES)).toEqual(["Lado esquerdo", "Lado direito", "Ambos os lados"]);
+  });
+  it("is stored only with a finding that deviates, and refused otherwise", () => {
+    expect(postureSchema.safeParse({ findings: { posterior_feet: ["pronated"] }, laterality: { posterior_feet: "left" } }).success).toBe(true);
+    // No finding, the neutral one, a region that is not sided, an unknown side.
+    expect(postureSchema.safeParse({ laterality: { posterior_feet: "left" } }).success).toBe(false);
+    expect(postureSchema.safeParse({ findings: { posterior_feet: ["aligned"] }, laterality: { posterior_feet: "left" } }).success).toBe(false);
+    expect(postureSchema.safeParse({ findings: { lateral_hip: ["anteversion"] }, laterality: { lateral_hip: "left" } }).success).toBe(false);
+    expect(postureSchema.safeParse({ findings: { posterior_feet: ["pronated"] }, laterality: { posterior_feet: "up" } }).success).toBe(false);
+    const refused = postureSchema.safeParse({ laterality: { anterior_knees: "both" } });
+    expect(issueNames(refused.error!.issues)).toEqual(["Joelhos (visão anterior)"]);
+  });
+  it("is dropped from the screen's form when the region no longer takes it, and said with the findings", () => {
+    const read = postureFromForm(
+      form({
+        findings: { posterior_feet: ["pronated"], anterior_knees: ["aligned"], lateral_knees: [] },
+        laterality: { posterior_feet: "right", anterior_knees: "both", lateral_knees: "left" },
+      }),
+    );
+    expect(read.payload?.laterality).toEqual({ posterior_feet: "right" });
+    expect(postureFormFrom(read.payload!).laterality).toEqual({ posterior_feet: "right" });
+    expect(findingsText(region("posterior_feet"), ["pronated"], "right")).toBe("Pronados (lado direito)");
+    expect(findingsText(region("anterior_knees"), ["aligned"], "both")).toBe("Alinhados");
   });
 });

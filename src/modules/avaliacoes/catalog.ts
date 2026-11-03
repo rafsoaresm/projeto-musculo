@@ -134,7 +134,10 @@ export const POSTURE_VIEW_SHORT: Record<PostureView, string> = { lateral: "Later
  * capitalization changes). `multiple`: findings that may coexist are a multiple choice (handoff: "seleção múltipla apenas nos achados que possam
  * coexistir"); the others are a single choice. `neutral`: the finding that says "nothing deviates" (alinhado, fisiológico, sem desvio observado),
  * which never goes with another finding of the region. A region left without a finding was not observed: never "alinhado" by default.
- * "Sem desvio observado" in the head tilt and the hip rotation is the option the handoff adds.
+ * "Sem desvio observado" in the head tilt and the hip rotation is the option the handoff adds; it is placed first, as the neutral finding is in the
+ * other regions (the handoff writes it after "direita / esquerda"). `sided`: a paired region whose findings do not name a side, so the side is
+ * recorded apart (handoff 3.3: `laterality?`); the regions whose findings already say it (esquerdo deprimido, esquerda alada...) and the midline
+ * ones are not sided.
  */
 export interface PostureRegion {
   view: PostureView;
@@ -143,18 +146,19 @@ export interface PostureRegion {
   findings: Readonly<Record<string, string>>;
   neutral: string | null;
   multiple: boolean;
+  sided: boolean;
 }
 export const POSTURE_REGIONS = [
-  { view: "lateral", region: "cervical_lordosis", label: "Lordose cervical", findings: { physiological: "Fisiológica", increased: "Aumentada", decreased: "Diminuída" }, neutral: "physiological", multiple: false },
-  { view: "lateral", region: "shoulders", label: "Ombros", findings: { aligned: "Alinhados", protracted: "Protusos", internal_rotation: "Rotação interna" }, neutral: "aligned", multiple: true },
-  { view: "lateral", region: "abdomen", label: "Abdômen", findings: { physiological: "Fisiológico", protruding: "Protuso" }, neutral: "physiological", multiple: false },
-  { view: "lateral", region: "thoracic_kyphosis", label: "Cifose torácica", findings: { physiological: "Fisiológica", increased: "Aumentada", flattened: "Retificada" }, neutral: "physiological", multiple: false },
-  { view: "lateral", region: "lumbar_lordosis", label: "Lordose lombar", findings: { physiological: "Fisiológica", increased: "Aumentada", flattened: "Retificada" }, neutral: "physiological", multiple: false },
-  { view: "lateral", region: "hip", label: "Quadril", findings: { aligned: "Alinhado", anteversion: "Anteversão", retroversion: "Retroversão" }, neutral: "aligned", multiple: false },
-  { view: "lateral", region: "knees", label: "Joelhos", findings: { aligned: "Alinhados", recurvatum: "Recurvatum", flexed: "Flexo" }, neutral: "aligned", multiple: false },
-  { view: "lateral", region: "feet", label: "Pés", findings: { flat: "Plano", cavus: "Cavo", calcaneus: "Calcâneo", equinus: "Equino" }, neutral: null, multiple: true },
-  { view: "posterior", region: "shoulders", label: "Ombros", findings: { aligned: "Alinhados", left_depressed: "Esquerdo deprimido", right_depressed: "Direito deprimido" }, neutral: "aligned", multiple: false },
-  { view: "posterior", region: "spine", label: "Coluna", findings: { aligned: "Alinhada", lumbar_scoliosis: "Escoliose lombar", thoracic_scoliosis: "Escoliose torácica", s_curve: "Em “S”" }, neutral: "aligned", multiple: true },
+  { view: "lateral", region: "cervical_lordosis", label: "Lordose cervical", findings: { physiological: "Fisiológica", increased: "Aumentada", decreased: "Diminuída" }, neutral: "physiological", multiple: false, sided: false },
+  { view: "lateral", region: "shoulders", label: "Ombros", findings: { aligned: "Alinhados", protracted: "Protusos", internal_rotation: "Rotação interna" }, neutral: "aligned", multiple: true, sided: true },
+  { view: "lateral", region: "abdomen", label: "Abdômen", findings: { physiological: "Fisiológico", protruding: "Protuso" }, neutral: "physiological", multiple: false, sided: false },
+  { view: "lateral", region: "thoracic_kyphosis", label: "Cifose torácica", findings: { physiological: "Fisiológica", increased: "Aumentada", flattened: "Retificada" }, neutral: "physiological", multiple: false, sided: false },
+  { view: "lateral", region: "lumbar_lordosis", label: "Lordose lombar", findings: { physiological: "Fisiológica", increased: "Aumentada", flattened: "Retificada" }, neutral: "physiological", multiple: false, sided: false },
+  { view: "lateral", region: "hip", label: "Quadril", findings: { aligned: "Alinhado", anteversion: "Anteversão", retroversion: "Retroversão" }, neutral: "aligned", multiple: false, sided: false },
+  { view: "lateral", region: "knees", label: "Joelhos", findings: { aligned: "Alinhados", recurvatum: "Recurvatum", flexed: "Flexo" }, neutral: "aligned", multiple: false, sided: true },
+  { view: "lateral", region: "feet", label: "Pés", findings: { flat: "Plano", cavus: "Cavo", calcaneus: "Calcâneo", equinus: "Equino" }, neutral: null, multiple: true, sided: true },
+  { view: "posterior", region: "shoulders", label: "Ombros", findings: { aligned: "Alinhados", left_depressed: "Esquerdo deprimido", right_depressed: "Direito deprimido" }, neutral: "aligned", multiple: false, sided: false },
+  { view: "posterior", region: "spine", label: "Coluna", findings: { aligned: "Alinhada", lumbar_scoliosis: "Escoliose lombar", thoracic_scoliosis: "Escoliose torácica", s_curve: "Em “S”" }, neutral: "aligned", multiple: true, sided: false },
   {
     view: "posterior",
     region: "scapulae",
@@ -162,16 +166,21 @@ export const POSTURE_REGIONS = [
     findings: { abducted: "Abduzida", left_winged: "Esquerda alada", right_winged: "Direita alada", downward_rotation: "Rodada inferior", upward_rotation: "Rodada superior" },
     neutral: null,
     multiple: true,
+    sided: false,
   },
-  { view: "posterior", region: "feet", label: "Pés", findings: { aligned: "Alinhados", pronated: "Pronados", supinated: "Supinados" }, neutral: "aligned", multiple: false },
-  { view: "posterior", region: "tibia", label: "Tíbia", findings: { aligned: "Alinhada", varus: "Vara", valgus: "Valga" }, neutral: "aligned", multiple: false },
-  { view: "posterior", region: "head_tilt", label: "Inclinação da cabeça", findings: { none: "Sem desvio observado", right: "Direita", left: "Esquerda" }, neutral: "none", multiple: false },
-  { view: "posterior", region: "hip_rotation", label: "Rotação do quadril", findings: { none: "Sem desvio observado", internal: "Interna", external: "Externa" }, neutral: "none", multiple: false },
-  { view: "anterior", region: "knees", label: "Joelhos", findings: { aligned: "Alinhados", valgus: "Valgo", varus: "Varo" }, neutral: "aligned", multiple: false },
-  { view: "anterior", region: "patellae", label: "Patelas", findings: { aligned: "Alinhadas", lateralized: "Lateralizadas", medialized: "Medializadas" }, neutral: "aligned", multiple: false },
-  { view: "anterior", region: "asis", label: "EIAS", findings: { aligned: "Alinhada", left_depressed: "Esquerda deprimida", right_depressed: "Direita deprimida" }, neutral: "aligned", multiple: false },
-  { view: "anterior", region: "psis", label: "EIPS", findings: { aligned: "Alinhada", left_depressed: "Esquerda deprimida", right_depressed: "Direita deprimida" }, neutral: "aligned", multiple: false },
+  { view: "posterior", region: "feet", label: "Pés", findings: { aligned: "Alinhados", pronated: "Pronados", supinated: "Supinados" }, neutral: "aligned", multiple: false, sided: true },
+  { view: "posterior", region: "tibia", label: "Tíbia", findings: { aligned: "Alinhada", varus: "Vara", valgus: "Valga" }, neutral: "aligned", multiple: false, sided: true },
+  { view: "posterior", region: "head_tilt", label: "Inclinação da cabeça", findings: { none: "Sem desvio observado", right: "Direita", left: "Esquerda" }, neutral: "none", multiple: false, sided: false },
+  { view: "posterior", region: "hip_rotation", label: "Rotação do quadril", findings: { none: "Sem desvio observado", internal: "Interna", external: "Externa" }, neutral: "none", multiple: false, sided: true },
+  { view: "anterior", region: "knees", label: "Joelhos", findings: { aligned: "Alinhados", valgus: "Valgo", varus: "Varo" }, neutral: "aligned", multiple: false, sided: true },
+  { view: "anterior", region: "patellae", label: "Patelas", findings: { aligned: "Alinhadas", lateralized: "Lateralizadas", medialized: "Medializadas" }, neutral: "aligned", multiple: false, sided: true },
+  { view: "anterior", region: "asis", label: "EIAS", findings: { aligned: "Alinhada", left_depressed: "Esquerda deprimida", right_depressed: "Direita deprimida" }, neutral: "aligned", multiple: false, sided: false },
+  { view: "anterior", region: "psis", label: "EIPS", findings: { aligned: "Alinhada", left_depressed: "Esquerda deprimida", right_depressed: "Direita deprimida" }, neutral: "aligned", multiple: false, sided: false },
 ] as const satisfies readonly PostureRegion[];
+/** The side of a sided region's findings (handoff 3.3: `laterality?`), recorded only with a finding that is not the neutral one. */
+export const LATERALITIES = { left: "Lado esquerdo", right: "Lado direito", both: "Ambos os lados" } as const;
+export type LateralityCode = keyof typeof LATERALITIES;
+export const LATERALITY_CODES = ["left", "right", "both"] as const satisfies readonly LateralityCode[];
 /** The stored key of a region: its view and its region ("lateral_shoulders"), so the same region in two views never mixes. */
 type RegionKeyOf<R> = R extends { view: infer V extends string; region: infer G extends string } ? `${V}_${G}` : never;
 export type PostureRegionKey = RegionKeyOf<(typeof POSTURE_REGIONS)[number]>;
@@ -196,7 +205,7 @@ export const SOMATOTYPE_ALONE: readonly SomatotypeCode[] = ["mixed", "unclassifi
  */
 export const HEATH_CARTER_MEASURES = {
   supraspinaleSkinfoldMm: { label: "Dobra supraespinhal", unit: "mm" },
-  flexedArmGirthCm: { label: "Perímetro do braço flexionado e contraído", unit: "cm" },
+  flexedArmGirthCm: { label: "Perímetro do braço flexionado", unit: "cm" },
 } as const;
 export type HeathCarterMeasure = keyof typeof HEATH_CARTER_MEASURES;
 export const HEATH_CARTER_CODES = ["supraspinaleSkinfoldMm", "flexedArmGirthCm"] as const satisfies readonly HeathCarterMeasure[];

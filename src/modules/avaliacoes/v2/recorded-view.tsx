@@ -368,7 +368,7 @@ function RecordedPosture({ posture }: { posture: PosturePayload }) {
                 {observed.map((region) => (
                   <div key={region.region}>
                     <dt>{region.label}</dt>
-                    <dd>{findingsText(region, posture.findings[postureRegionKey(region)])}</dd>
+                    <dd>{findingsText(region, posture.findings[postureRegionKey(region)], posture.laterality[postureRegionKey(region)])}</dd>
                   </div>
                 ))}
               </dl>

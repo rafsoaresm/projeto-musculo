@@ -375,7 +375,7 @@ function movimentoSummary(posture: PosturePayload | null): ModuleSummary {
   lines.push(somatotype ? `Somatotipo (registro do profissional): ${somatotype}` : "Somatotipo: não registrado");
   const measures = heathCarterTyped(posture);
   if (measures.length > 0) lines.push(`Medidas para Heath-Carter guardadas, sem cálculo: ${list(measures.map((code) => HEATH_CARTER_MEASURES[code].label.toLowerCase()))}`);
-  lines.push("Flexiteste: chega numa próxima versão");
+  lines.push("Flexiteste: não registrado nesta versão");
   return { key: "movimento", title: "Movimento", state: "observed", lines };
 }
 

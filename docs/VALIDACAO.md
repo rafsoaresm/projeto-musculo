@@ -2,6 +2,16 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.79: Postura e somatotipo da Avaliação Física (handoff 3.3 e 6; Figma AV-05)
+
+**Sem migration** (módulo `posture`, já previsto na 0033). A etapa 3 "Movimento" deixa de ser marcador; nada nela é calculado.
+
+- **Avaliação postural:** três vistas em abas (lateral, posterior, anterior), cada uma com a contagem ("Lateral · 4 de 8"). As 19 regiões e os achados seguem o handoff 3.3 palavra por palavra; "Sem desvio observado" só em inclinação da cabeça e rotação do quadril, como no handoff. Região sem achado fica "não observada", nunca "alinhada" por padrão. Seleção múltipla só onde os achados coexistem (ombros e pés laterais, coluna e escápulas posteriores); o achado neutro não se combina. **Lado** (`laterality` do modelo do handoff): esquerdo, direito ou ambos, nas regiões em que o achado não diz o lado — valores e regiões escolhidos pela ferramenta, a conferir. Uma observação livre por vista. O cartão diz que são observações posturais, não diagnóstico.
+- **Somatotipo:** registro manual do profissional (endomorfo, mesomorfo e ectomorfo podem ir juntos; misto e não classificado sozinhos), com observações; nunca inferido. **Heath-Carter não é calculado** (o handoff não traz as equações e põe o método completo na P2); só as duas medidas que faltam na página 2 ficam guardadas: dobra supraespinhal (mm) e perímetro do braço flexionado (cm).
+- **Finalizar** não grava resultado desta etapa; a postura congela com a avaliação e a retificação a copia. A Revisão e a avaliação registrada mostram as regiões observadas com os achados e o lado.
+- **Verificado localmente:** tipos, lint e `npm run check` (115 arquivos); e2e nos dois mounts (raiz e `/treinador`): 23 passaram e 1 pulado em cada (o de capturas, só no computador); capturas a 1440, 1280, 1024, 768 e 390.
+- **Não feito:** **fotos posturais** (o handoff 3.3 pede fotos opcionais por vista, e o 10 as põe na P2; ver B48); Flexiteste (0.80). Um lado por região: "esquerdo pronado, direito supinado" vai na observação da vista.
+
 ## Fatia 0.78: Perímetros e diâmetros da Avaliação Física (handoff 3.2, 5 e 8; Figma AV-04)
 
 **Sem migration.** Dois cartões novos na etapa Medidas, dentro do módulo de composição (mesmo salvamento automático e revisão).

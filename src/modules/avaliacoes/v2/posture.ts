@@ -2,8 +2,9 @@
  * The posture and somatotype of the "Movimento" step (handoff V2 section 3.3, Figma AV-05), stored as the module "posture" of the draft (page 3 of
  * the PDF: "Somatotipo e avaliação postural"), saved with the assessment's revision like the other modules.
  *
- * - Posture: for each region of each view (lateral, posterior, anterior), the findings observed, and a note per view. A region with no finding was
- *   not observed: it is absent, never "alinhado" by default. These are postural observations, not a clinical diagnosis (handoff 3.3).
+ * - Posture: for each region of each view (lateral, posterior, anterior), the findings observed, the side of a paired region, and a note per
+ *   view. A region with no finding was not observed: it is absent, never "alinhado" by default. These are postural observations, not a clinical
+ *   diagnosis (handoff 3.3).
  * - Somatotype: the professional's own record (manual), with a note; never inferred from a photo. The Heath-Carter measures that page 2 lacks are
  *   kept as typed; the somatotype is not computed (the handoff gives no equation nor constant for it, and puts the full method in P2).
  *
@@ -13,6 +14,8 @@ import { z } from "zod";
 import {
   HEATH_CARTER_CODES,
   HEATH_CARTER_MEASURES,
+  LATERALITIES,
+  LATERALITY_CODES,
   POSTURE_REGIONS,
   POSTURE_REGION_BY_KEY,
   POSTURE_REGION_KEYS,
@@ -24,6 +27,7 @@ import {
   SOMATOTYPE_CODES,
   postureRegionKey,
   type HeathCarterMeasure,
+  type LateralityCode,
   type PostureRegion,
   type PostureRegionKey,
   type PostureView,
@@ -45,7 +49,8 @@ const measure = z.number().finite().positive().max(MAX_MEASURE).nullable().defau
 export function findingsProblem(region: PostureRegion, findings: readonly string[]): string | null {
   if (findings.length === 0) return "empty";
   if (new Set(findings).size !== findings.length) return "repeated";
-  if (findings.some((finding) => !(finding in region.findings))) return "unknown";
+  // Own keys only: `in` would also take what every object inherits ("constructor", "toString"...).
+  if (findings.some((finding) => !Object.hasOwn(region.findings, finding))) return "unknown";
   if (!region.multiple && findings.length > 1) return "single";
   if (region.neutral !== null && findings.length > 1 && findings.includes(region.neutral)) return "neutral";
   return null;
@@ -62,6 +67,9 @@ const findingsSchema = z
   })
   .default({});
 
+/** A finding that says something deviates (not the neutral one): only then a side may be recorded. */
+const deviates = (region: PostureRegion, findings: readonly string[] | undefined) => (findings ?? []).some((finding) => finding !== region.neutral);
+
 const somatotypeLabels = z
   .array(z.enum(SOMATOTYPE_CODES))
   .max(SOMATOTYPE_CODES.length)
@@ -73,7 +81,9 @@ export const postureSchema = z
   .object({
     /** The findings of each region observed (handoff 3.3: `findings[]` per `view` and `region`); a region not observed is absent. */
     findings: findingsSchema,
-    /** A note per view (handoff 3.3: `notes?`), for what the findings do not say (a side, a degree). */
+    /** The side of a sided region's findings (handoff 3.3: `laterality?`); only with a finding that is not the neutral one. */
+    laterality: z.partialRecord(z.enum(POSTURE_REGION_KEYS), z.enum(LATERALITY_CODES)).default({}),
+    /** A note per view (handoff 3.3: `notes?`), for what the findings and the side do not say (a degree, one side unlike the other). */
     notes: z.object({ lateral: text, posterior: text, anterior: text }).strict().default({ lateral: "", posterior: "", anterior: "" }),
     /** Handoff 6: `somatotype: { method: "manual" | "heath_carter"; labels; notes }`. Only "manual" in this version. */
     somatotype: z
@@ -90,7 +100,13 @@ export const postureSchema = z
       .strict()
       .default({ method: "manual", labels: [], notes: "", heathCarter: { supraspinaleSkinfoldMm: null, flexedArmGirthCm: null } }),
   })
-  .strict();
+  .strict()
+  .superRefine((payload, context) => {
+    for (const [key, side] of Object.entries(payload.laterality) as [PostureRegionKey, LateralityCode | undefined][]) {
+      if (side !== undefined && !takesSide(POSTURE_REGION_BY_KEY[key], payload.findings[key]))
+        context.addIssue({ code: "custom", path: ["laterality", key], message: "laterality" });
+    }
+  });
 export type PosturePayload = z.infer<typeof postureSchema>;
 export const EMPTY_POSTURE: PosturePayload = postureSchema.parse({});
 
@@ -126,10 +142,19 @@ export function toggleSomatotype(current: readonly SomatotypeCode[], label: Soma
   return SOMATOTYPE_CODES.filter((code) => next.includes(code));
 }
 
-/** The findings of a region in words ("Protusos e Rotação interna"), or null when not observed. */
-export function findingsText(region: PostureRegion, findings: readonly string[] | undefined): string | null {
+/** A side may be recorded for this region with these findings: a sided region, with a finding that is not the neutral one. */
+export function takesSide(region: PostureRegion, findings: readonly string[] | undefined): boolean {
+  return region.sided && deviates(region, findings);
+}
+
+const lowerFirst = (label: string) => label.charAt(0).toLowerCase() + label.slice(1);
+
+/** The findings of a region as a sentence ("Protusos e rotação interna (lado esquerdo)"), or null when not observed. */
+export function findingsText(region: PostureRegion, findings: readonly string[] | undefined, side?: LateralityCode): string | null {
   if (!findings || findings.length === 0) return null;
-  return list(findings.map((finding) => (region.findings as Record<string, string>)[finding] ?? finding));
+  const labels = findings.map((finding) => (Object.hasOwn(region.findings, finding) ? (region.findings as Record<string, string>)[finding]! : finding));
+  const text = list(labels.map((label, index) => (index === 0 ? label : lowerFirst(label))));
+  return side && takesSide(region, findings) ? `${text} (${lowerFirst(LATERALITIES[side])})` : text;
 }
 
 const list = (items: string[]) => (items.length <= 1 ? items.join("") : `${items.slice(0, -1).join(", ")} e ${items[items.length - 1]}`);
@@ -139,13 +164,18 @@ export const observedIn = (payload: Pick<PosturePayload, "findings">, view: Post
   regionsOf(view).filter((region) => (payload.findings[postureRegionKey(region)] ?? []).length > 0).length;
 
 /** "Lateral · 3 de 8": the name of a view's tab, with how many of its regions were observed. */
-export const viewTabLabel = (payload: Pick<PosturePayload, "findings">, view: PostureView) =>
-  `${POSTURE_VIEW_SHORT[view]} · ${observedIn(payload, view)} de ${regionsOf(view).length}`;
+export const viewTabLabel = (payload: Pick<PosturePayload, "findings">, view: PostureView) => `${POSTURE_VIEW_SHORT[view]} · ${viewTabCount(payload, view)}`;
+/** The count of a view's tab ("3 de 8"), kept on one line on the screen. */
+export const viewTabCount = (payload: Pick<PosturePayload, "findings">, view: PostureView) => `${observedIn(payload, view)} de ${regionsOf(view).length}`;
+/** The tab's name for a screen reader, starting with the words it shows: "Lateral, 3 de 8 regiões observadas". */
+export const viewTabName = (payload: Pick<PosturePayload, "findings">, view: PostureView) => `${POSTURE_VIEW_SHORT[view]}, ${viewTabCount(payload, view)} regiões observadas`;
 
 /* ---------- The screen's form ---------- */
 
 export interface PostureForm {
   findings: Partial<Record<PostureRegionKey, string[]>>;
+  /** The side chosen for a sided region; dropped on save when the region has no finding that takes a side. */
+  laterality: Partial<Record<PostureRegionKey, LateralityCode>>;
   notes: Record<PostureView, string>;
   somatotype: SomatotypeCode[];
   somatotypeNotes: string;
@@ -158,6 +188,7 @@ const decimalText = (value: number | null) => (value === null ? "" : String(valu
 export function postureFormFrom(payload: PosturePayload): PostureForm {
   return {
     findings: { ...payload.findings },
+    laterality: { ...payload.laterality },
     notes: { ...payload.notes },
     somatotype: [...payload.somatotype.labels],
     somatotypeNotes: payload.somatotype.notes,
@@ -199,8 +230,14 @@ export function postureFromForm(form: PostureForm): PostureReading {
     const typed = form.findings[key] ?? [];
     if (typed.length > 0) findings[key] = findingCodes(POSTURE_REGION_BY_KEY[key]).filter((code) => typed.includes(code));
   }
+  const laterality: Partial<Record<PostureRegionKey, LateralityCode>> = {};
+  for (const key of POSTURE_REGION_KEYS) {
+    const side = form.laterality[key];
+    if (side && takesSide(POSTURE_REGION_BY_KEY[key], findings[key])) laterality[key] = side;
+  }
   const candidate = {
     findings,
+    laterality,
     notes: Object.fromEntries(POSTURE_VIEW_CODES.map((view) => [view, checkText(form.notes[view] ?? "", notesLabel(view))])),
     somatotype: {
       method: "manual" as const,
@@ -221,11 +258,11 @@ export function issueNames(issues: readonly { path: readonly PropertyKey[] }[]):
   const names = new Set<string>();
   for (const issue of issues) {
     const [first, second, third] = issue.path.map(String);
-    if (first === "findings" && second && second in POSTURE_REGION_BY_KEY) {
+    if ((first === "findings" || first === "laterality") && second && Object.hasOwn(POSTURE_REGION_BY_KEY, second)) {
       const region = POSTURE_REGION_BY_KEY[second as PostureRegionKey];
       names.add(`${region.label} (${POSTURE_VIEWS[region.view].toLowerCase()})`);
     } else if (first === "notes" && second && (POSTURE_VIEW_CODES as readonly string[]).includes(second)) names.add(notesLabel(second as PostureView));
-    else if (first === "somatotype" && second === "heathCarter" && third && third in HEATH_CARTER_MEASURES)
+    else if (first === "somatotype" && second === "heathCarter" && third && Object.hasOwn(HEATH_CARTER_MEASURES, third))
       names.add(HEATH_CARTER_MEASURES[third as HeathCarterMeasure].label);
     else if (first === "somatotype" && second === "notes") names.add(SOMATOTYPE_NOTES_LABEL);
     else if (first === "somatotype") names.add("Somatotipo");
@@ -247,9 +284,9 @@ export const somatotypeText = (labels: readonly SomatotypeCode[]) => (labels.len
 /** Any Heath-Carter measure typed. */
 export const heathCarterTyped = (payload: PosturePayload) => HEATH_CARTER_CODES.filter((code) => payload.somatotype.heathCarter[code] !== null);
 
-/** The line said wherever the somatotype shows: it is not computed, and why. */
+/** The line said wherever the somatotype shows: it is not computed (the handoff gives no equation nor constant; the full method is P2). */
 export const HEATH_CARTER_NOTE =
-  "O somatotipo Heath-Carter não é calculado nesta versão: o handoff não traz as equações nem as constantes, e a classificação depende de tabela homologada (técnico). As medidas ficam guardadas como foram aferidas.";
+  "O somatotipo Heath-Carter não é calculado nesta versão: o método ainda não foi validado para uso aqui. As medidas ficam guardadas como foram aferidas.";
 
 /** Nothing in the module (no finding, note, somatotype nor measure): the step reads as "Não realizado". */
 export function postureEmpty(payload: PosturePayload): boolean {
