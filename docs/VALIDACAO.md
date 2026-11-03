@@ -12,6 +12,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Aviso:** "Sem classificação automática; só os resultados marcados “estimativa” vêm de equações." O texto "não equivale a exame médico" do handoff 3.5 **não foi escrito** (o handoff pede texto revisado e não o fornece; ver B49).
 - **Verificado localmente:** tipos, lint e `npm run check` (117 arquivos, 1859 testes; 10+3 do relatório, incluindo D1 de acesso: outra organização, aluno sem vínculo, rascunho, formato anterior); e2e nos dois mounts (raiz e `/treinador`): 26 passaram em cada (download pelo profissional e pelo aluno, texto do PDF); capturas a 1440, 1280, 1024, 768 e 390 e o PDF renderizado.
 - **Não feito / não verificado:** fotos no relatório; avaliações do formato anterior não têm PDF; marcação de acessibilidade do PDF; o PDF com todos os módulos preenchidos não foi aberto num navegador (só testes). A linha da população usa o texto atual do catálogo, não um texto congelado no finalizar.
+- **CI e deploy:** o CI do PR #83 passou (`validate` e `validate (/treinador)`, no commit `e990a8e`); merge `23c8b7d`; deploy `3089f5cc` com sucesso em 03/11/2026 (sem migration).
 
 ## Fatia 0.80: Flexiteste, testes físicos e conclusão da Avaliação Física (handoff 3.4, 3.5, 5 e 8; Figma AV-05 e AV-06)
 
