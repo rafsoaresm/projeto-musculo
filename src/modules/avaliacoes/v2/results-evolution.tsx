@@ -27,11 +27,12 @@ function warning(group: ResultEvolution, title: string) {
 }
 
 /** The date of each value of a result, keyed by assessment: with the time it was recorded when another value of the result shares the date. */
-type DateOf = (point: EvolutionPoint) => string;
+type DateOf = (point: EvolutionPoint, compact?: boolean) => string;
 function datesOf(points: EvolutionPoint[]): DateOf {
   const labels = dateLabels(points);
-  const byAssessment = new Map(points.map((point, index) => [point.assessmentId, labels[index]]));
-  return (point) => byAssessment.get(point.assessmentId) ?? dateLabels([point])[0];
+  const compactLabels = dateLabels(points, true);
+  const byAssessment = new Map(points.map((point, index) => [point.assessmentId, [labels[index], compactLabels[index]] as const]));
+  return (point, compact = false) => byAssessment.get(point.assessmentId)?.[compact ? 1 : 0] ?? dateLabels([point], compact)[0];
 }
 
 function summary(code: string, points: EvolutionPoint[], dateOf: DateOf) {
@@ -64,7 +65,15 @@ function Series({ group, series, title, dateOf }: { group: ResultEvolution; seri
           title={label}
           unit={series.unit}
           digits={digits}
-          points={series.numeric.map((point) => ({ assessedOn: point.assessedOn, recordedAt: point.recordedAt, value: point.value as number, text: number.format(point.value as number) }))}
+          points={series.numeric.map((point) => ({
+            assessedOn: point.assessedOn,
+            recordedAt: point.recordedAt,
+            value: point.value as number,
+            text: number.format(point.value as number),
+            // The same date as the summary and the table: worked out over every value of the result, not only this series'.
+            label: dateOf(point),
+            axisLabel: dateOf(point, true),
+          }))}
         />
       )}
     </div>

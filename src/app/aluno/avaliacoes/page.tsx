@@ -7,6 +7,7 @@ import { studentAssessmentsFor } from "@/db/assessment-reports";
 import { PageHeading, Pill } from "@/components/ui";
 import { formatCalendarDate } from "@/modules/training/format";
 import { ASSESSMENT_NAME, assessmentKindLabel } from "@/modules/avaliacoes/names";
+import { dateLabels } from "@/modules/avaliacoes/evolution";
 import { REPORT_NOTICE } from "@/modules/avaliacoes/v2/report";
 import { ResultsEvolution } from "@/modules/avaliacoes/v2/results-evolution";
 
@@ -18,6 +19,10 @@ export const metadata: Metadata = { title: `${ASSESSMENT_NAME} · Área do aluno
  * and to the student; no lock, decision of 03/11/2026). Drafts never appear; the earlier format has no report. Slice 0.84: below the list, the
  * results of those assessments over time, in the same comparable series as the professional's page (0.82), read only.
  */
+/** Which assessment a report link downloads, in words, so two of one date never share a name ("da reavaliação de 03/11/2026 14:05"). */
+const pdfOf = (item: { kind: string; amendsAssessmentId: string | null }) =>
+  item.amendsAssessmentId ? "da retificação" : item.kind === "INITIAL" ? "da avaliação inicial" : "da reavaliação";
+
 export default async function StudentAssessmentsPage() {
   const { db, user, links } = await requireStudent();
   // The students come from the verified links of this login, never from the address.
@@ -25,7 +30,9 @@ export default async function StudentAssessmentsPage() {
     links.map(async (link) => {
       const mine = studentAssessmentsFor(db, user.id, link.studentId);
       const [items, evolution] = await Promise.all([mine.list(), mine.evolution()]);
-      return { link, items, evolution };
+      // Two of one date get the time they were recorded, so each report link has its own name (dateLabels takes oldest first).
+      const dates = dateLabels([...items].reverse()).reverse();
+      return { link, items, evolution, dates };
     }),
   );
   const any = perStudent.some((entry) => entry.items.length > 0);
@@ -42,7 +49,7 @@ export default async function StudentAssessmentsPage() {
           <p>Quando o seu profissional finalizar uma avaliação física, o relatório aparece aqui. Rascunhos nunca chegam até você.</p>
         </section>
       )}
-      {perStudent.map(({ link, items, evolution }) =>
+      {perStudent.map(({ link, items, evolution, dates }) =>
         items.length === 0 ? null : (
           <Fragment key={link.studentId}>
             <section className="panel" aria-labelledby={`avaliacoes-${link.studentId}`}>
@@ -62,7 +69,7 @@ export default async function StudentAssessmentsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {items.map((item) => (
+                    {items.map((item, index) => (
                       <tr key={item.id}>
                         <th scope="row" data-label="Data">
                           {formatCalendarDate(item.assessedOn)}
@@ -77,7 +84,7 @@ export default async function StudentAssessmentsPage() {
                             href={`/aluno/avaliacoes/pdf/${link.studentId}/${item.id}`}
                             download
                             prefetch={false}
-                            aria-label={`Baixar PDF da avaliação de ${formatCalendarDate(item.assessedOn)}`}
+                            aria-label={`Baixar PDF ${pdfOf(item)} de ${dates[index]}`}
                           >
                             <Download size={16} /> Baixar PDF
                           </Link>
@@ -92,7 +99,7 @@ export default async function StudentAssessmentsPage() {
               <ResultsEvolution
                 history={evolution}
                 headingId={`resultados-${link.studentId}`}
-                heading={links.length > 1 ? `Resultados ao longo do tempo · ${link.studentName}` : "Resultados ao longo do tempo"}
+                heading={links.length > 1 ? `Resultados ao longo do tempo · ${link.organizationName} · ${link.studentName}` : "Resultados ao longo do tempo"}
               />
             )}
           </Fragment>

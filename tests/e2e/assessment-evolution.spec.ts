@@ -47,7 +47,7 @@ async function shots(page: Page, name: string, projectName: string) {
 
 // Slice 0.84: both are recorded today, so they share the date: in the order recorded, side by side on the chart, each dated with its time;
 // the student reads the same series in their area (read only), and only their own.
-const sameDayTime = /^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}( \([12] de 2\))?$/;
+const sameDayTime = /^\d{2}\/\d{2}\/\d{4} \d{2}:\d{2}( \([12]ª de 2 no dia\))?$/;
 
 test("the evolution compares a result only within the same method: a change of protocol is a separate series, marked where it happens", async ({ page, browser, baseURL }, testInfo) => {
   test.setTimeout(240_000);

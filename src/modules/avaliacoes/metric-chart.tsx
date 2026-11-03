@@ -20,7 +20,11 @@ export function MetricChart({
 }: {
   title: string;
   unit: string | null;
-  points: Array<{ assessedOn: string; value: number; text: string; recordedAt?: string | null }>;
+  /**
+   * `label` and `axisLabel` (the ends of the axis) are the dates as the caller writes them elsewhere, so the chart and the table next to it
+   * never date one value differently; without them the dates are worked out from these points alone.
+   */
+  points: Array<{ assessedOn: string; value: number; text: string; recordedAt?: string | null; label?: string; axisLabel?: string }>;
   /** Decimal places of the guides and of the last value's label (a density reads 1,0532, a waist 88,5). */
   digits?: number;
 }) {
@@ -28,8 +32,10 @@ export function MetricChart({
   const [active, setActive] = useState<number | null>(null);
   const box = useRef<SVGSVGElement>(null);
   const geometry = chartGeometry(points, AREA);
-  const labels = dateLabels(points);
-  const axisLabels = dateLabels(points, true);
+  const own = dateLabels(points);
+  const ownAxis = dateLabels(points, true);
+  const labels = points.map((point, index) => point.label ?? own[index]);
+  const axisLabels = points.map((point, index) => point.axisLabel ?? ownAxis[index]);
   const suffix = unit ? ` ${unit}` : "";
   const last = geometry.points[geometry.points.length - 1];
   const shown = active !== null ? geometry.points[active] : null;

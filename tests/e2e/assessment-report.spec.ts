@@ -83,7 +83,7 @@ test("the recorded Avaliação Física has its report in PDF for the professiona
   await expect(client.page.getByText("Sem classificação automática;", { exact: false })).toBeVisible();
   await noHorizontalOverflow(client.page);
   await shots(client.page, "aluno", testInfo.project.name);
-  const link = row.getByRole("link", { name: /^Baixar PDF da avaliação de \d{2}\/\d{2}\/\d{4}$/ });
+  const link = row.getByRole("link", { name: /^Baixar PDF da avaliação inicial de \d{2}\/\d{2}\/\d{4}$/ });
   const clientDownload = client.page.waitForEvent("download");
   await link.click();
   const mine = await clientDownload;
