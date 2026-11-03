@@ -20,7 +20,8 @@ test("without a recorded assessment the plan approval asks for the acknowledgeme
   await expect(page.getByRole("heading", { name: "Avaliação física de Aluno do aviso de ciência" })).toBeVisible();
   await page.getByLabel("Peso (kg)").fill("70");
   await page.getByRole("button", { name: "Salvar rascunho" }).click();
-  await expect(page.getByText("Rascunho salvo.")).toBeVisible();
+  // Sooner than the pause of the autosave (1,8 s): it was the button.
+  await expect(page.getByText(/^Salvo às \d{2}:\d{2}\.$/)).toBeVisible({ timeout: 1500 });
 
   // An open draft is not a recorded screening: the approval still asks for the acknowledgement, and with it the plan is approved.
   await page.goto(revisionURL);

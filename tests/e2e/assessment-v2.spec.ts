@@ -1,5 +1,6 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page, type Request } from "@playwright/test";
 import { addStudent, createProfessional, localIP, noHorizontalOverflow, showStudentTab } from "./helpers";
+import { AUTOSAVE_STOPPED, DRAFT_AUTOSAVE_DELAY_MS } from "../../src/modules/avaliacoes/v2/autosave";
 
 // The Avaliação Física (handoff V2; the only assessment since the user's decision of 03/11/2026), step "Medidas".
 // The figures are the handoff's example (section 8): a man of 27 on the assessment date, 69,1 kg, 1,71 m.
@@ -14,6 +15,16 @@ const yearsAgo = (years: number) => {
 };
 const site = (page: Page, name: string) => page.getByLabel(`${name} (mm)`, { exact: true });
 const preview = (page: Page) => page.getByRole("region", { name: "Prévia calculada" });
+const CONFLICT = "Esta avaliação foi alterada em outra aba ou por outra pessoa. Recarregue para ver a versão atual.";
+/** The status line after a save, by itself or by the button: "Salvo às 14:05." */
+const savedLine = (page: Page) => page.locator(".av2-status").filter({ hasText: /^Salvo às \d{2}:\d{2}\.$/ });
+/** Long enough for the pause to pass and the save to come back. */
+const BY_ITSELF = DRAFT_AUTOSAVE_DELAY_MS + 10_000;
+const pastThePause = (page: Page) => page.waitForTimeout(DRAFT_AUTOSAVE_DELAY_MS + 1500);
+/** Sooner than the pause could have saved: what shows up within it came from the button or the step change. */
+const BEFORE_THE_PAUSE = DRAFT_AUTOSAVE_DELAY_MS - 300;
+/** A save of the draft: the POST of a server action (the page posts to its own address, so this holds under any mount). */
+const isSave = (request: Request) => request.method() === "POST" && "next-action" in request.headers();
 /**
  * Every line of fields of a card lines up: the controls of the fields that share a line start at the same height, and no value shown in a
  * read-only box is cut. Returns how many fields each line has, top to bottom.
@@ -33,7 +44,7 @@ async function linesOf(page: Page, card: string) {
 }
 const result = (page: Page, label: string) => preview(page).locator(".av2-result", { has: page.locator("dt", { hasText: label }) }).locator("dd");
 
-test("the Medidas step of the new format computes the preview, keeps values across protocols, saves and reports a conflict", async ({ page }) => {
+test("the Medidas step of the new format computes the preview, keeps values across protocols and saves itself", async ({ page }) => {
   await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
   await createProfessional(page, "Estúdio da avaliação nova");
   const studentURL = await addStudent(page, "Aluno das medidas");
@@ -66,11 +77,11 @@ test("the Medidas step of the new format computes the preview, keeps values acro
   await expect(page.getByLabel("Referência da equação", { exact: true })).toHaveAccessibleDescription("É a referência da equação, não o gênero da pessoa.");
 
   await page.getByLabel("Peso (kg)").fill("69,1");
+  await expect(page.getByText("Alterações não salvas.")).toBeVisible();
   await page.getByLabel("Altura (m)").fill("1,71");
   await page.getByLabel("PAS (mmHg)").fill("120");
   await page.getByLabel("PAD (mmHg)").fill("80");
   await page.getByLabel("FC repouso (bpm)").fill("70");
-  await expect(page.getByText("Alterações não salvas.")).toBeVisible();
   await expect(result(page, "IMC")).toHaveText("23,63");
 
   await page.getByRole("radio", { name: "Jackson & Pollock · 7" }).check();
@@ -130,8 +141,8 @@ test("the Medidas step of the new format computes the preview, keeps values acro
   await page.getByRole("button", { name: "Remover leitura 2 de Peitoral" }).click();
   await expect(page.getByLabel("Peitoral, leitura 2 (mm)")).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Salvar rascunho" }).click();
-  await expect(page.getByText("Rascunho salvo.")).toBeVisible();
+  // Nobody clicks "Salvar rascunho": after a pause in the typing the draft saves itself, and a reload brings everything back.
+  await expect(savedLine(page)).toBeVisible({ timeout: BY_ITSELF });
   await page.reload();
   await expect(page.getByLabel("Peso (kg)")).toHaveValue("69,1");
   await expect(page.getByLabel("Altura (m)")).toHaveValue("1,71");
@@ -140,19 +151,82 @@ test("the Medidas step of the new format computes the preview, keeps values acro
   await expect(page.getByLabel("Referência da equação", { exact: true })).toHaveValue("male");
   for (const [name, value] of Object.entries(JP7)) await expect(site(page, name)).toHaveValue(value);
   await expect(result(page, "Gordura estimada")).toHaveText("17,3%");
+  await expect(page.getByText("Sem alterações desde que a página abriu.")).toBeVisible();
 
-  // Another tab opens the same draft; this one saves first, so the other one's save is refused and said, not written over.
+  // Leaving the step saves at once, before the pause would.
+  await page.getByLabel("FC repouso (bpm)").fill("72");
+  await expect(savedLine(page)).toHaveCount(0);
+  await page.getByRole("button", { name: "Próximo" }).click();
+  await expect(savedLine(page)).toBeVisible({ timeout: BEFORE_THE_PAUSE });
+  await page.getByRole("button", { name: "Voltar" }).click();
+  // The button still saves on its own, before the pause would.
+  await page.getByLabel("PAS (mmHg)").fill("118");
+  await expect(savedLine(page)).toHaveCount(0);
+  await page.getByRole("button", { name: "Salvar rascunho" }).click();
+  await expect(savedLine(page)).toBeVisible({ timeout: BEFORE_THE_PAUSE });
+  await page.reload();
+  await expect(page.getByLabel("FC repouso (bpm)")).toHaveValue("72");
+  await expect(page.getByLabel("PAS (mmHg)")).toHaveValue("118");
+
+  // Never two saves at once: while a slow save is on the way, what is asked waits, and only the latest content goes after it. The saves are
+  // held on the way here so the second request surely meets the first one in flight.
+  let onTheWay = 0;
+  let mostAtOnce = 0;
+  let sent = 0;
+  await page.route("**/*", async (route) => {
+    if (!isSave(route.request())) return route.fallback();
+    sent += 1;
+    onTheWay += 1;
+    mostAtOnce = Math.max(mostAtOnce, onTheWay);
+    await new Promise((resolve) => setTimeout(resolve, 2500));
+    const response = await route.fetch();
+    onTheWay -= 1;
+    await route.fulfill({ response });
+  });
+  const save = page.getByRole("button", { name: "Salvar rascunho" });
+  await page.getByLabel("PAS (mmHg)").fill("119");
+  await save.click();
+  await expect(page.locator(".av2-status")).toHaveText("Salvando…");
+  // The focus stays on the button while it saves, and a click now waits for the save on the way.
+  await expect(save).toBeFocused();
+  await page.getByLabel("PAS (mmHg)").fill("121");
+  await page.getByLabel("PAS (mmHg)").fill("122");
+  await save.click();
+  await expect(savedLine(page)).toBeVisible({ timeout: 2 * 2500 + 10_000 });
+  expect(sent).toBe(2);
+  expect(mostAtOnce).toBe(1);
+  await page.unrouteAll({ behavior: "wait" });
+  await page.reload();
+  await expect(page.getByLabel("PAS (mmHg)")).toHaveValue("122");
+
+  // Another tab opens the same draft; this one saves first (by itself), so the other one's save is refused and said, not written over, and the
+  // other tab stops saving by itself until it is reloaded.
   const other = await page.context().newPage();
   await other.goto(draftURL);
   await expect(other.getByLabel("Peso (kg)")).toHaveValue("69,1");
   await page.getByLabel("Peso (kg)").fill("70");
-  await page.getByRole("button", { name: "Salvar rascunho" }).click();
-  await expect(page.getByText("Rascunho salvo.")).toBeVisible();
+  await expect(savedLine(page)).toBeVisible({ timeout: BY_ITSELF });
+  let sentByOther = 0;
+  other.on("request", (request) => {
+    if (isSave(request)) sentByOther += 1;
+  });
   await other.getByLabel("Peso (kg)").fill("68");
-  await other.getByRole("button", { name: "Salvar rascunho" }).click();
-  await expect(
-    other.getByRole("alert").filter({ hasText: "Esta avaliação foi alterada em outra aba ou por outra pessoa. Recarregue para ver a versão atual." }),
-  ).toBeVisible();
+  const conflict = other.getByRole("alert").filter({ hasText: CONFLICT });
+  await expect(conflict).toBeVisible({ timeout: BY_ITSELF });
+  await expect(conflict).toContainText(AUTOSAVE_STOPPED);
+  await expect(other.getByRole("button", { name: "Salvar rascunho" })).toBeDisabled();
+  expect(sentByOther).toBe(1);
+  // More typing in the stale tab, a step change and the button: nothing more is sent, the message stays.
+  await other.getByLabel("Peso (kg)").fill("67");
+  await pastThePause(other);
+  await other.getByRole("button", { name: "Próximo" }).click();
+  await other.getByRole("button", { name: "Voltar" }).click();
+  // aria-disabled (the button keeps the focus): Playwright would wait for it to be enabled, so the click is forced, as a person's click is.
+  await other.getByRole("button", { name: "Salvar rascunho" }).click({ force: true });
+  await other.waitForTimeout(1000);
+  expect(sentByOther).toBe(1);
+  await expect(conflict).toBeVisible();
+  await expect(savedLine(other)).toHaveCount(0);
   await other.close();
   await page.reload();
   await expect(page.getByLabel("Peso (kg)")).toHaveValue("70");
@@ -165,7 +239,7 @@ test("the Medidas step of the new format computes the preview, keeps values acro
   await expect(page.getByRole("navigation", { name: "Etapas da avaliação física" })).toBeVisible();
 });
 
-test("a value that is not a number is named and nothing typed is lost", async ({ page }) => {
+test("a value that is not a number is named, never saved by itself, and nothing typed is lost", async ({ page }) => {
   await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
   await createProfessional(page, "Estúdio das medidas erradas");
   await addStudent(page, "Aluna sem nascimento");
@@ -183,9 +257,32 @@ test("a value that is not a number is named and nothing typed is lost", async ({
   await page.getByLabel("Referência da equação", { exact: true }).selectOption("female");
   for (const name of ["Tríceps", "Supra-ilíaca", "Coxa"]) await site(page, name).fill("20");
   await expect(preview(page).getByText("Sem idade: o cálculo precisa da data de nascimento")).toBeVisible();
-  await page.getByRole("button", { name: "Salvar rascunho" }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "Confira o campo Peso" })).toBeVisible();
+  // After the pause the problem is shown by itself, on the quiet line (the person may still be typing: it does not interrupt), and the typing
+  // stays on the screen.
+  const quietProblem = page.getByRole("status").filter({ hasText: "Confira o campo Peso" });
+  const problem = page.getByRole("alert").filter({ hasText: "Confira o campo Peso" });
+  await expect(quietProblem).toBeVisible({ timeout: BY_ITSELF });
+  await expect(problem).toHaveCount(0);
   await expect(page.getByLabel("Peso (kg)")).toHaveValue("sessenta");
+  await expect(savedLine(page)).toHaveCount(0);
+  // Asked for with the button, it is an alert.
+  await page.getByRole("button", { name: "Salvar rascunho" }).click();
+  await expect(problem).toBeVisible();
+  await expect(page.getByLabel("Peso (kg)")).toHaveValue("sessenta");
+  // Nothing of it was stored: the same draft opened elsewhere is empty.
+  const elsewhere = await page.context().newPage();
+  await elsewhere.goto(page.url());
+  await expect(elsewhere.getByLabel("Peso (kg)")).toHaveValue("");
+  await expect(elsewhere.getByRole("radio", { name: "Jackson & Pollock · 3" })).not.toBeChecked();
+  await elsewhere.close();
+  // Corrected, it saves by itself.
+  await page.getByLabel("Peso (kg)").fill("60");
+  await expect(problem).toHaveCount(0);
+  await expect(quietProblem).toHaveCount(0);
+  await expect(savedLine(page)).toBeVisible({ timeout: BY_ITSELF });
+  await page.reload();
+  await expect(page.getByLabel("Peso (kg)")).toHaveValue("60");
+  await expect(page.getByRole("radio", { name: "Jackson & Pollock · 3" })).toBeChecked();
 });
 
 test("a draft is discarded, and the student can start the Avaliação Física again", async ({ page }) => {
