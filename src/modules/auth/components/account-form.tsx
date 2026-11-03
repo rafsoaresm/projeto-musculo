@@ -194,6 +194,17 @@ export function AccountForm({
         >
           {challenge === "app" ? "Perdi o celular: usar um código de recuperação" : "Voltar ao código do aplicativo"}
         </button>
+        {challenge === "recovery" && (
+          <>
+            <p className="small account-help">
+              Perdeu também os códigos? Um gestor da plataforma redefine a verificação de profissionais e de outros
+              gestores. O último gestor ativo usa o código de ativação do ambiente.
+            </p>
+            <Link className="account-link" href="/gestor/recuperar">
+              Sou o último gestor e perdi os códigos
+            </Link>
+          </>
+        )}
       </section>
     );
   return (

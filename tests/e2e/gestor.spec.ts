@@ -5,6 +5,7 @@ import {
   createProfessional,
   newActor,
   noHorizontalOverflow,
+  password,
   signIn,
   signUp,
   turnOnTwoFactor,
@@ -35,10 +36,11 @@ test("the platform manager is activated once and manages organizations without s
 
   // The manager signs up like anyone and activates with the operator token.
   const manager = await newActor(browser, baseURL);
+  const managerEmail = uniqueEmail("mgr");
   await signUp(
     manager.page,
     "Gestão E2E",
-    uniqueEmail("mgr"),
+    managerEmail,
     "./cadastro?area=gestor",
   );
   await expect(
@@ -170,6 +172,40 @@ test("the platform manager is activated once and manages organizations without s
   await expect(third.page.getByRole("heading", { name: "Convite indisponível." })).toBeVisible();
   await third.context.close();
 
+  // Two active managers: one resets the second step of the other in Gestor > Gestores (slice 0.89 keeps this path).
+  await turnOnTwoFactor(colleague.page, "./gestor/conta");
+  await manager.page.goto("./gestor/gestores");
+  const peerRow = manager.page.getByRole("row", { name: new RegExp(colleagueName) });
+  await expect(peerRow.getByText("Duas etapas ativas")).toBeVisible();
+  await peerRow.getByRole("button", { name: `Redefinir a verificação em duas etapas de ${colleagueName}` }).click();
+  await peerRow.getByRole("button", { name: `Confirmar: redefinir as duas etapas de ${colleagueName}` }).click();
+  await expect(manager.page.getByText("Verificação em duas etapas redefinida.", { exact: false })).toBeVisible();
+  await expect(peerRow.getByText("Duas etapas ativas")).toHaveCount(0);
+
+  // The first manager turns it on too, and later loses the phone and the codes. While another manager is active, the
+  // environment secret does not reset it: that one does, here.
+  await turnOnTwoFactor(manager.page, "./gestor/conta");
+  const stranded = await newActor(browser, baseURL);
+  await stranded.page.goto("./entrar");
+  await stranded.page.waitForLoadState("networkidle");
+  await stranded.page.getByLabel("E-mail", { exact: true }).fill(managerEmail);
+  await stranded.page.getByLabel("Senha", { exact: true }).fill(password);
+  await stranded.page.getByRole("button", { name: "Entrar", exact: true }).click();
+  await expect(stranded.page.getByRole("heading", { name: "Digite o código." })).toBeVisible();
+  await stranded.page.getByRole("button", { name: "Perdi o celular: usar um código de recuperação" }).click();
+  await stranded.page.getByRole("link", { name: "Sou o último gestor e perdi os códigos" }).click();
+  await expect(stranded.page.getByRole("heading", { name: "Recuperar o acesso do último gestor." })).toBeVisible();
+  await noHorizontalOverflow(stranded.page);
+  const recoverWith = async (secret: string, secretPassword = password) => {
+    await stranded.page.getByLabel("E-mail da conta de gestor").fill(managerEmail);
+    await stranded.page.getByLabel("Senha da conta").fill(secretPassword);
+    await stranded.page.getByLabel("Código de ativação").fill(secret);
+    await stranded.page.getByRole("button", { name: "Redefinir a verificação em duas etapas" }).click();
+  };
+  await recoverWith(setupToken());
+  await expect(stranded.page.locator("p.form-error")).toContainText("Há outro gestor ativo.");
+  await manager.page.goto("./gestor/gestores");
+
   // The first manager sees the new one and how they came in; the invitation is marked as used.
   await manager.page.reload();
   const newRow = manager.page.getByRole("row", { name: new RegExp(colleagueName) });
@@ -189,6 +225,22 @@ test("the platform manager is activated once and manages organizations without s
   await expect(manager.page.getByText("Convite de gestor criado").first()).toBeVisible();
   await expect(manager.page.getByText("Gestor acrescentado").first()).toBeVisible();
   await expect(manager.page.getByText("Acesso de gestor encerrado").first()).toBeVisible();
+
+  // Now the only active manager: the environment secret, with the person's own e-mail and password, turns off only the
+  // second step and ends every session. A wrong secret or a wrong password changes nothing.
+  await recoverWith("x".repeat(40));
+  await expect(stranded.page.locator("p.form-error")).toContainText("Código de ativação inválido.");
+  await recoverWith(setupToken(), "not-the-password-of-this-account");
+  await expect(stranded.page.locator("p.form-error")).toContainText("E-mail ou senha não conferem.");
+  await recoverWith(setupToken());
+  await expect(stranded.page.getByText("Verificação em duas etapas redefinida. Todos os aparelhos", { exact: false })).toBeVisible();
+  await stranded.context.close();
+  await manager.page.goto("./gestor");
+  await expect(manager.page).toHaveURL(/\/entrar/);
+  await signIn(manager.page, managerEmail);
+  await expect(manager.page.getByRole("heading", { name: "Quem contratou a ferramenta." })).toBeVisible();
+  await manager.page.goto("./gestor/auditoria");
+  await expect(manager.page.getByText("Verificação em duas etapas redefinida com o código de ativação").first()).toBeVisible();
 
   // The terms: the text in force is the approved one, and the manager can change it on a page of its own.
   // This is the last thing the scenario does: publishing a text asks everyone to accept again.

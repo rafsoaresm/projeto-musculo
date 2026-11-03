@@ -1098,6 +1098,15 @@ main {
   font-weight: 700;
   text-decoration: underline;
 }
+.account-card .account-help {
+  margin: 18px 0 0;
+}
+/* On the sign-in and recovery cards the link stands alone: at least 44px tall to tap. */
+.account-card .account-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
 button.account-link {
   padding: 0;
   border: 0;
