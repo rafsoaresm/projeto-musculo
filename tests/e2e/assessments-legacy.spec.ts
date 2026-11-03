@@ -69,6 +69,9 @@ test("a recorded assessment of the earlier format stays readable under its own n
   await expect(item).toBeVisible();
   await expect(page.getByText("Revisão obrigatória", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Iniciar reavaliação física" })).toBeVisible();
+  // The work queue of the overview names it the same way.
+  await page.goto("./profissional");
+  await expect(page.getByText(`Avaliação (formato anterior) de ${brazilian(assessedOn)}: a aprovação de um plano espera a revisão registrada`)).toBeVisible();
 
   // The plan cannot be approved while the alert has no review, and says where to record it.
   await page.goto(revisionURL);
@@ -98,6 +101,7 @@ test("a recorded assessment of the earlier format stays readable under its own n
   // The evolution still reads it.
   await page.goto(`${studentURL}/evolucao`);
   await expect(page.getByText("1 avaliação registrada", { exact: false })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Inicial (formato anterior)" })).toBeVisible();
 });
 
 test("an open draft of the earlier format cannot be filled any more: it is discarded, and the Avaliação Física starts in its place", async ({ page }) => {
@@ -110,6 +114,13 @@ test("an open draft of the earlier format cannot be filled any more: it is disca
   await showStudentTab(page, "Avaliação Física");
   await expect(page.getByRole("link", { name: /^Rascunho do formato anterior de / })).toBeVisible();
   await expect(page.getByRole("button", { name: "Iniciar avaliação física" })).toHaveCount(0);
+  // The list of assessments says the same: it is only discarded, not continued.
+  await page.goto("./profissional/avaliacoes");
+  const row = page.getByRole("row", { name: /Aluno do rascunho anterior/ });
+  await expect(row.getByRole("link", { name: "Descartar (formato anterior)" })).toBeVisible();
+  await expect(row.getByRole("link", { name: "Continuar" })).toHaveCount(0);
+  await page.goto(studentURL);
+  await showStudentTab(page, "Avaliação Física");
   await page.getByRole("link", { name: "Abrir o rascunho do formato anterior" }).click();
   await expect(page.getByRole("heading", { name: "Rascunho do formato anterior de Aluno do rascunho anterior" })).toBeVisible();
   await expect(page.getByText("Ele não pode ser preenchido nem registrado.", { exact: false })).toBeVisible();

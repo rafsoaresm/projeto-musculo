@@ -85,8 +85,8 @@ test("the Medidas step of the new format computes the preview, keeps values acro
   await expect(result(page, "Massa livre")).toHaveText("57,2 kg");
   await noHorizontalOverflow(page);
 
-  // The user's report of 03/11/2026: every line of fields lines up, with no empty column at the end of a line and nothing cut. On a computer
-  // the four basic measures and the four protocol fields are one line each, and the seven skinfolds are 4 + 3; on a phone, one per line.
+  // The user's report of 03/11/2026: every line of fields lines up and nothing is cut. On a computer the four basic measures and the four
+  // protocol fields are one full line each (no fifth, empty column), and the seven skinfolds wrap as 4 + 3; on a phone, one per line.
   const wide = (page.viewportSize()?.width ?? 0) >= 1024;
   for (const card of ["Medidas básicas e sinais vitais", "Protocolo de dobras cutâneas", "Dobras requeridas • Jackson & Pollock 7"]) {
     const { lines, cut } = await linesOf(page, card);
@@ -95,6 +95,8 @@ test("the Medidas step of the new format computes the preview, keeps values acro
     if (wide) expect(lines.map((line) => line.fields), card).toEqual(card.startsWith("Dobras") ? [4, 3] : [4]);
     else expect(lines.every((line) => line.fields === 1), card).toBe(true);
   }
+  // The chips of the steps scroll inside their row; they never make the page wider than the window.
+  expect(await page.evaluate(() => document.querySelector(".av2")!.getBoundingClientRect().right <= document.documentElement.clientWidth)).toBe(true);
 
   // Faulkner asks for 4 of them; the other three stay typed, kept aside, and come back when JP7 is chosen again.
   await page.getByRole("radio", { name: "Faulkner" }).check();
@@ -111,6 +113,22 @@ test("the Medidas step of the new format computes the preview, keeps values acro
   await page.getByRole("button", { name: "Adicionar leitura de Coxa" }).click();
   await expect(page.getByLabel("Coxa, leitura 2 (mm)")).toHaveAttribute("placeholder", "Sem aferição");
   await expect(result(page, "Soma das 7 dobras")).toHaveText("122 mm");
+  // The readings of a site keep one width (the first keeps the place of the remove button), and a neighbour's "+ leitura" stays right under
+  // its own input when a site of the same line has more readings.
+  const box = async (locator: ReturnType<Page["locator"]>) => (await locator.boundingBox())!;
+  await page.getByRole("button", { name: "Adicionar leitura de Peitoral" }).click();
+  const [peitoral, peitoral2, axilar, axilarAdd] = await Promise.all([
+    box(site(page, "Peitoral")),
+    box(page.getByLabel("Peitoral, leitura 2 (mm)")),
+    box(site(page, "Axilar média")),
+    box(page.getByRole("button", { name: "Adicionar leitura de Axilar média" })),
+  ]);
+  expect(Math.abs(peitoral.width - peitoral2.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(peitoral.x - peitoral2.x)).toBeLessThanOrEqual(1);
+  expect(Math.abs(peitoral.width - axilar.width)).toBeLessThanOrEqual(1);
+  expect(axilarAdd.y - (axilar.y + axilar.height)).toBeLessThanOrEqual(16);
+  await page.getByRole("button", { name: "Remover leitura 2 de Peitoral" }).click();
+  await expect(page.getByLabel("Peitoral, leitura 2 (mm)")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Salvar rascunho" }).click();
   await expect(page.getByText("Rascunho salvo.")).toBeVisible();
@@ -156,6 +174,10 @@ test("a value that is not a number is named and nothing typed is lost", async ({
   // The long read-only value wraps in its box instead of being cut (user's report of 03/11/2026).
   await expect(page.getByLabel("Idade na avaliação")).toHaveText("Sem data de nascimento no cadastro");
   expect((await linesOf(page, "Protocolo de dobras cutâneas")).cut).toBe(0);
+  // The wrapped value makes only its own box taller: the selects beside it keep their height.
+  const [equation, readings] = await Promise.all([page.locator("#av2-equacao").boundingBox(), page.locator("#av2-leituras").boundingBox()]);
+  expect(equation!.height).toBeLessThanOrEqual(56);
+  expect(Math.abs(equation!.height - readings!.height)).toBeLessThanOrEqual(1);
   await page.getByLabel("Peso (kg)").fill("sessenta");
   await page.getByRole("radio", { name: "Jackson & Pollock · 3" }).check();
   await page.getByLabel("Referência da equação", { exact: true }).selectOption("female");

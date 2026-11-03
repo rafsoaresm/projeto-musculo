@@ -45,7 +45,7 @@ export function AssessmentTable({ rows }: { rows: StudentAssessmentRow[] }) {
               <td data-label="Rascunho">
                 {row.draftId ? (
                   <Link className="row-link" href={`/profissional/alunos/${row.studentId}/avaliacoes/${row.draftId}`}>
-                    Continuar
+                    {row.draftFormatVersion === null ? "Descartar (formato anterior)" : "Continuar"}
                   </Link>
                 ) : (
                   "—"

@@ -323,4 +323,28 @@ describe("discarding an open draft that has photos (decision of 03/11/2026: a dr
     expect(await rows(draft)).toEqual([]);
     expect(await repo.get(draft)).toBeNull();
   });
+
+  it("goes even when a photo of it was erased on a request of the student (its erasure row references the draft)", async () => {
+    const draft = await draftFor("st-1", "tech-a", day(21));
+    expect(await photos().put(draft, "LATERAL_LEFT", jpeg(), day(21))).toEqual({ status: "stored", replaced: false });
+    const [stored] = await rows(draft);
+    const photoId = await db.prepare("SELECT id FROM assessment_photos WHERE assessment_id = ?1").bind(draft).first<string>("id");
+    // What erasing on a request does to a draft's photo (data-requests): the bytes go, the erasure is recorded, the draft's photo row goes.
+    await bucket.delete(stored.key);
+    await db.batch([
+      db
+        .prepare(
+          `INSERT INTO photo_erasures (photo_id, organization_id, assessment_id, view, request_id, erased_by_user_id, erased_at)
+           SELECT p.id, p.organization_id, p.assessment_id, p.view, NULL, 'tech-a', ?2 FROM assessment_photos p WHERE p.id = ?1`,
+        )
+        .bind(photoId, day(21).toISOString()),
+      db.prepare("DELETE FROM assessment_photos WHERE id = ?1").bind(photoId),
+    ]);
+    const repo = withLegacy(db, scope("tech-a"));
+    expect(await withLegacy(db, scope("tech-a2")).discardDraft(draft)).toEqual({ status: "not_found" });
+    expect(await db.prepare("SELECT COUNT(*) AS n FROM photo_erasures WHERE assessment_id = ?1").bind(draft).first("n")).toBe(1);
+    expect(await repo.discardDraft(draft, day(21))).toEqual({ status: "discarded" });
+    expect(await repo.get(draft)).toBeNull();
+    expect(await db.prepare("SELECT COUNT(*) AS n FROM photo_erasures WHERE assessment_id = ?1").bind(draft).first("n")).toBe(0);
+  });
 });

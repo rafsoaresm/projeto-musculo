@@ -274,7 +274,7 @@ describe("who can reach an assessment", () => {
   it("lists only the students of the acting professional, alerts without a review first", async () => {
     const rows = await a().overview();
     expect(rows.map((row) => row.studentId).sort()).toEqual(["st-1", "st-3"]);
-    expect(rows.find((row) => row.studentId === "st-1")).toMatchObject({ riskStatus: "CLEAR", assessedOn: "2026-11-20" });
+    expect(rows.find((row) => row.studentId === "st-1")).toMatchObject({ riskStatus: "CLEAR", assessedOn: "2026-11-20", formatVersion: null });
     const other = await withLegacy(db, scope("tech-b", "org-b")).overview();
     expect(other.map((row) => row.studentId)).toEqual(["st-b"]);
     expect(other[0]).toMatchObject({ assessmentId: null, riskStatus: null });

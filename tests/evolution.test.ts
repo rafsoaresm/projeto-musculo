@@ -11,7 +11,7 @@ const metric = (metricType: string, name: string, valueText: string, extra: Reco
   unit: null, side: null as "LEFT" | "RIGHT" | "BOTH" | null, notes: null, ...extra,
 });
 const snapshot = (id: string, assessedOn: string, extra: Partial<AssessmentSnapshot> = {}): AssessmentSnapshot => ({
-  id, assessedOn, kind: "REASSESSMENT", riskStatus: "CLEAR", reviewed: false, flags: { ...noFlags },
+  id, assessedOn, kind: "REASSESSMENT", formatVersion: null, riskStatus: "CLEAR", reviewed: false, flags: { ...noFlags },
   posture: { findings: [], notes: null }, movement: [], metrics: [], photos: [], ...extra,
 });
 

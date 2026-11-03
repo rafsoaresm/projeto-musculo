@@ -121,7 +121,7 @@ export function shapeFindings(rows: FindingRow[]): Pick<AssessmentDetail, "postu
 /** A recorded assessment as the evolution view reads it: no reviews, no drafts. */
 export type AssessmentSnapshot = Pick<
   AssessmentDetail,
-  "id" | "assessedOn" | "kind" | "riskStatus" | "reviewed" | "flags" | "posture" | "movement" | "metrics" | "photos"
+  "id" | "assessedOn" | "kind" | "formatVersion" | "riskStatus" | "reviewed" | "flags" | "posture" | "movement" | "metrics" | "photos"
 >;
 
 /**
@@ -152,9 +152,14 @@ export interface StudentAssessmentRow {
   studentName: string;
   assessmentId: string | null;
   assessedOn: string | null;
+  /** Of the newest recorded assessment (null when there is none); with `formatVersion` it names it on the screens. */
+  kind: "INITIAL" | "REASSESSMENT" | null;
+  formatVersion: number | null;
   riskStatus: RiskStatus | null;
   reviewed: boolean;
   draftId: string | null;
+  /** Of the open draft: null is the earlier format, which can only be discarded. */
+  draftFormatVersion: number | null;
 }
 export type DiscardOutcome = { status: "discarded" } | { status: "photos_left" } | { status: "not_found" };
 export type StartOutcome =
@@ -359,6 +364,7 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
         id: row.id,
         assessedOn: row.assessedOn,
         kind: row.kind,
+        formatVersion: row.formatVersion,
         riskStatus: row.riskStatus,
         reviewed: Boolean(row.reviewed),
         flags: Object.fromEntries(
@@ -473,6 +479,10 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
         AND NOT EXISTS (SELECT 1 FROM assessment_photos p WHERE p.organization_id = a.organization_id AND p.assessment_id = a.id)
         AND ${reachAssessment("a")})`;
       const results = await db.batch([
+        // A photo erased on a request of the student leaves its erasure row, which references the draft; the photo's own row of a draft is
+        // already gone (data-requests), so the erasure of a photo of a draft that is discarded goes with it. The request keeps its answer
+        // (the count is written in its outcome when it is fulfilled).
+        db.prepare(`DELETE FROM photo_erasures WHERE organization_id = ?1 AND assessment_id = ?3 AND ${open}`).bind(organizationId, userId, assessmentId),
         db.prepare(`DELETE FROM assessment_sections WHERE organization_id = ?1 AND assessment_id = ?3 AND ${open}`).bind(organizationId, userId, assessmentId),
         db.prepare(`DELETE FROM assessment_results WHERE organization_id = ?1 AND assessment_id = ?3 AND ${open}`).bind(organizationId, userId, assessmentId),
         db.prepare(`DELETE FROM assessment_metrics WHERE organization_id = ?1 AND assessment_id = ?3 AND ${open}`).bind(organizationId, userId, assessmentId),
@@ -486,7 +496,7 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
           .bind(organizationId, userId, assessmentId),
         audit("ASSESSMENT_DRAFT_DISCARDED", assessmentId, now.toISOString()),
       ]);
-      if (results[4].meta.changes > 0) return { status: "discarded" };
+      if (results[5].meta.changes > 0) return { status: "discarded" };
       const left = await db
         .prepare(
           `SELECT 1 AS ok FROM assessments a WHERE a.organization_id = ?1 AND a.id = ?3 AND a.state = 'DRAFT' AND ${reachAssessment("a")}
@@ -578,9 +588,10 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
                       OR (b.assessed_on = a.assessed_on AND b.recorded_at > a.recorded_at)))
            )
            SELECT s.id AS studentId, s.display_name AS studentName, l.id AS assessmentId,
-             l.assessed_on AS assessedOn, l.risk_status AS riskStatus,
+             l.assessed_on AS assessedOn, l.kind, l.format_version AS formatVersion, l.risk_status AS riskStatus,
              EXISTS (SELECT 1 FROM assessment_reviews r WHERE r.assessment_id = l.id) AS reviewed,
-             (SELECT d.id FROM assessments d WHERE d.student_id = s.id AND d.state = 'DRAFT') AS draftId
+             (SELECT d.id FROM assessments d WHERE d.student_id = s.id AND d.state = 'DRAFT') AS draftId,
+             (SELECT d.format_version FROM assessments d WHERE d.student_id = s.id AND d.state = 'DRAFT') AS draftFormatVersion
            FROM students s LEFT JOIN latest l ON l.student_id = s.id
            WHERE s.organization_id = ?1 AND ${activeUser("?2")} AND ${technicalAccessExists("s", "?2")}
            ORDER BY CASE WHEN l.risk_status = 'REVIEW_REQUIRED'

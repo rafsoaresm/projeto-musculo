@@ -166,7 +166,10 @@ export function EvolutionView({
                       {formatCalendarDate(assessment.assessedOn)}
                     </Link>
                   </th>
-                  <td data-label="Tipo">{assessment.kind === "INITIAL" ? "Inicial" : "Reavaliação"}</td>
+                  <td data-label="Tipo">
+                    {assessment.kind === "INITIAL" ? "Inicial" : "Reavaliação"}
+                    {assessment.formatVersion === null ? " (formato anterior)" : ""}
+                  </td>
                   <td data-label="Triagem">
                     <ScreeningPill risk={assessment.riskStatus} reviewed={assessment.reviewed} />
                   </td>

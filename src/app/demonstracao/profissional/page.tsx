@@ -63,7 +63,7 @@ export default async function DemoProfessionalHome() {
       </section>
       <p className="small muted">
         As pendências de revisão, plano e avaliação ilustram módulos planejados
-        (Avaliações e Prescrição). Na área real, hoje existem cadastro de alunos,
+        (Avaliação Física e Prescrição). Na área real, hoje existem cadastro de alunos,
         convite para a área do aluno e periodização.
       </p>
     </>

@@ -71,7 +71,11 @@ function ReadOnlyField({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** One skinfold site: up to three readings, none of them a 0 when not measured; "+ leitura" sits on the line of the grid below the readings. */
+/**
+ * One skinfold site: up to three readings, none of them a 0 when not measured. "+ leitura" sits right under the site's own readings (in the
+ * control row, not in the row the line shares, so extra readings of a neighbour never push it away). Every reading keeps the place of the
+ * remove button, also the first one, which has none: the inputs of a site, and of the sites side by side, have the same width.
+ */
 function SiteReadings({ site, readings, onChange }: { site: SkinfoldSite; readings: string[]; onChange: (readings: string[]) => void }) {
   const id = useId();
   const shown = readings.length === 0 ? [""] : readings;
@@ -91,7 +95,7 @@ function SiteReadings({ site, readings, onChange }: { site: SkinfoldSite; readin
               placeholder="Sem aferição"
               onChange={(text) => onChange(shown.map((item, at) => (at === position ? text : item)))}
             />
-            {position > 0 && (
+            {position > 0 ? (
               <button
                 type="button"
                 className="av2-icon-button"
@@ -100,17 +104,19 @@ function SiteReadings({ site, readings, onChange }: { site: SkinfoldSite; readin
               >
                 <X size={16} />
               </button>
+            ) : (
+              <span className="av2-icon-slot" aria-hidden="true" />
             )}
           </div>
         ))}
+        {shown.length < MAX_READINGS ? (
+          <button type="button" className="av2-add" aria-label={`Adicionar leitura de ${name}`} onClick={() => onChange([...shown, ""])}>
+            <Plus size={14} /> leitura
+          </button>
+        ) : (
+          <span className="av2-note">Até {MAX_READINGS} leituras por dobra.</span>
+        )}
       </div>
-      {shown.length < MAX_READINGS ? (
-        <button type="button" className="av2-add" aria-label={`Adicionar leitura de ${name}`} onClick={() => onChange([...shown, ""])}>
-          <Plus size={14} /> leitura
-        </button>
-      ) : (
-        <span className="av2-note">Até {MAX_READINGS} leituras por dobra.</span>
-      )}
     </div>
   );
 }

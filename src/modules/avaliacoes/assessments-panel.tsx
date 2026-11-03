@@ -52,13 +52,15 @@ export function AssessmentsPanel({ studentId, assessments }: { studentId: string
           </Link>
         </p>
       )}
-      {draft && draftHref ? (
-        <Link className="button primary small" href={draftHref}>
-          {earlierDraft ? "Abrir o rascunho do formato anterior" : "Continuar a avaliação física"}
-        </Link>
-      ) : (
-        <StartAssessmentButton studentId={studentId} first={recorded.length === 0} />
-      )}
+      <div className="assessment-start">
+        {draft && draftHref ? (
+          <Link className="button primary small" href={draftHref}>
+            {earlierDraft ? "Abrir o rascunho do formato anterior" : "Continuar a avaliação física"}
+          </Link>
+        ) : (
+          <StartAssessmentButton studentId={studentId} first={recorded.length === 0} />
+        )}
+      </div>
     </section>
   );
 }
