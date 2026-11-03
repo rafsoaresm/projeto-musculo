@@ -1,7 +1,8 @@
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import type { D1Database } from "@cloudflare/workers-types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { hasCurrentAcceptance, latestAcceptance, recordAcceptance, studentConsentFor } from "@/db/consent";
+import { latestAcceptance, recordAcceptance, studentConsentFor } from "@/db/consent";
+import { currentTerms } from "@/db/terms";
 import { BASELINE, BASELINE_VERSION, termsHash } from "@/modules/consentimento/terms";
 import { ALL_MIGRATIONS, migrate } from "./helpers/migrate";
 
@@ -17,6 +18,11 @@ const rows = async (user: string, audience?: string) =>
       .bind(user, audience ?? null)
       .first<{ n: number }>()
   )!.n;
+/** Whether the latest acceptance is of the words in force (nothing in the app is gated on it any more; the test still reads it). */
+const hasCurrentAcceptance = async (_db: D1Database, user: string, audience: "STUDENT" | "PROFESSIONAL") => {
+  const [latest, terms] = await Promise.all([latestAcceptance(db, user, audience), currentTerms(db, audience)]);
+  return latest !== null && latest.version === terms.version && latest.sha256 === terms.sha256;
+};
 const run = (sql: string, ...binds: unknown[]) => db.prepare(sql).bind(...binds).run();
 const insert = (user: string, audience: string, version: string, sha: string, photos: number, at: string) =>
   run(
@@ -159,9 +165,11 @@ describe("recording the acceptance", () => {
     expect(await hasCurrentAcceptance(db, "stranger", "STUDENT")).toBe(false);
   });
 
-  it("only grows, and rejects malformed rows", async () => {
-    await expect(run("UPDATE consent_acceptances SET photos_authorized = 0 WHERE user_id = 'login-1'")).rejects.toThrow(/CONSENT_APPEND_ONLY/);
-    await expect(run("DELETE FROM consent_acceptances WHERE user_id = 'login-1'")).rejects.toThrow(/CONSENT_APPEND_ONLY/);
+  it("is no longer append-only (migration 0035), and still rejects malformed rows", async () => {
+    await run("UPDATE consent_acceptances SET photos_authorized = 0 WHERE user_id = 'login-dates'");
+    expect((await latestAcceptance(db, "login-dates", "STUDENT"))!.photosAuthorized).toBe(false);
+    await run("DELETE FROM consent_acceptances WHERE user_id = 'login-dates'");
+    expect(await rows("login-dates")).toBe(0);
     const ok = "c".repeat(64);
     await expect(insert("login-off", "OTHER", BASELINE_VERSION, ok, 0, NOW.toISOString())).rejects.toThrow();
     await expect(insert("login-off", "STUDENT", BASELINE_VERSION, "short", 0, NOW.toISOString())).rejects.toThrow();

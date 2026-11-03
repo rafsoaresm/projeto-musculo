@@ -117,13 +117,15 @@ describe("the student's request", () => {
     expect(mine).toMatchObject({ kind: "ACCESS", outcome: null, outcomeNote: null, overdue: false });
   });
 
-  it("is one open request of each kind at a time, and a different kind is a different request", async () => {
-    expect(await asStudent("client-1").open("st-1", { kind: "ACCESS" }, day(11))).toEqual({ status: "already_open" });
+  it("may have more than one open request of the same kind (migration 0035), and a different kind is a different request", async () => {
+    const again = await asStudent("client-1").open("st-1", { kind: "ACCESS" }, day(11));
+    expect(again).toMatchObject({ status: "opened" });
+    // A request is no longer append-only either: the duplicate is removed directly, so the rest of this file starts from one ACCESS.
+    await run("DELETE FROM data_subject_requests WHERE id = ?1", (again as { id: string }).id);
     expect(await asStudent("client-1").open("st-1", { kind: "CORRECTION", message: "O telefone está errado." }, day(11))).toMatchObject({ status: "opened" });
     expect((await asStudent("client-1").list("st-1", day(11))).map((row) => row.kind).sort()).toEqual(["ACCESS", "CORRECTION"]);
-    // Nothing was written for the refused one.
     expect((await db.prepare("SELECT COUNT(*) AS n FROM data_subject_requests WHERE student_id = 'st-1'").first<{ n: number }>())!.n).toBe(2);
-    expect(await audit("DATA_REQUEST_OPENED")).toHaveLength(2);
+    expect(await audit("DATA_REQUEST_OPENED")).toHaveLength(3);
   });
 
   it("refuses a malformed request and writes nothing", async () => {
@@ -247,14 +249,15 @@ describe("the database does not rely on the application", () => {
   const insertOutcome = (requestId: string, outcome: string, by: string, note: string | null = "x") =>
     run("INSERT INTO data_subject_request_outcomes(request_id,organization_id,outcome,note,decided_by_user_id,created_at) VALUES (?1,'org-a',?2,?3,?4,'2026-11-16T00:00:00.000Z')", requestId, outcome, note, by);
 
-  it("never edits or deletes a request or its outcome", async () => {
-    const answered = (await db.prepare("SELECT request_id AS id FROM data_subject_request_outcomes LIMIT 1").first<{ id: string }>())!.id;
-    await expect(run("UPDATE data_subject_requests SET kind = 'OTHER' WHERE id = ?1", answered)).rejects.toThrow(/REQUEST_APPEND_ONLY/);
-    await expect(run("UPDATE data_subject_requests SET due_at = '2099-01-01T00:00:00.000Z' WHERE id = ?1", answered)).rejects.toThrow(/REQUEST_APPEND_ONLY/);
-    await expect(run("DELETE FROM data_subject_requests WHERE id = ?1", answered)).rejects.toThrow(/REQUEST_APPEND_ONLY/);
-    await expect(run("UPDATE data_subject_request_outcomes SET outcome = 'FULFILLED' WHERE request_id = ?1", answered)).rejects.toThrow(/REQUEST_APPEND_ONLY/);
-    await expect(run("UPDATE data_subject_request_outcomes SET note = 'outra' WHERE request_id = ?1", answered)).rejects.toThrow(/REQUEST_APPEND_ONLY/);
-    await expect(run("DELETE FROM data_subject_request_outcomes WHERE request_id = ?1", answered)).rejects.toThrow(/REQUEST_APPEND_ONLY/);
+  it("no longer keeps a request or its outcome append-only (migration 0035): both can be edited and deleted", async () => {
+    const id = await openRequest("client-1", "st-1", "OTHER", day(15), "Um pedido de teste.");
+    await run("UPDATE data_subject_requests SET due_at = '2099-01-01T00:00:00.000Z' WHERE id = ?1", id);
+    await insertOutcome(id, "FULFILLED", "tech-a");
+    await run("UPDATE data_subject_request_outcomes SET note = 'outra' WHERE request_id = ?1", id);
+    expect(await db.prepare("SELECT note FROM data_subject_request_outcomes WHERE request_id = ?1").bind(id).first()).toEqual({ note: "outra" });
+    await run("DELETE FROM data_subject_request_outcomes WHERE request_id = ?1", id);
+    await run("DELETE FROM data_subject_requests WHERE id = ?1", id);
+    expect(await db.prepare("SELECT COUNT(*) AS n FROM data_subject_requests WHERE id = ?1").bind(id).first()).toEqual({ n: 0 });
   });
 
   it("refuses a request from a login that is not linked to the student, or blocked", async () => {
@@ -266,7 +269,9 @@ describe("the database does not rely on the application", () => {
     await expect(insert("client-1")).rejects.toThrow(/REQUEST_LOGIN_INVALID/);
     await run("UPDATE users SET disabled_at = NULL WHERE id = 'client-1'");
     await insert("client-1", "st-1", "DATA_DELETION");
-    await expect(insert("client-1", "st-1", "DATA_DELETION")).rejects.toThrow(/REQUEST_ALREADY_OPEN/);
+    // A second open request of the same kind is accepted now (migration 0035); it is removed again for the tests below.
+    await insert("client-1", "st-1", "DATA_DELETION");
+    await run("DELETE FROM data_subject_requests WHERE id = (SELECT id FROM data_subject_requests WHERE kind = 'DATA_DELETION' ORDER BY rowid DESC LIMIT 1)");
     // A deadline that is not after the request is refused too.
     await expect(
       run("INSERT INTO data_subject_requests(id,organization_id,student_id,requested_by_user_id,kind,created_at,due_at) VALUES ('bad','org-a','st-1','client-1','ACCEPTANCE_WITHDRAWAL','2026-11-16T00:00:00.000Z','2026-11-16T00:00:00.000Z')"),
@@ -326,30 +331,30 @@ describe("erasing the photos of a student on request", () => {
     expect(await put(otherDraft, "ANTERIOR")).toEqual({ status: "stored", replaced: false });
   });
 
-  it("refuses an erasure that no request of the student asked for, whatever the application says", async () => {
+  it("refuses an erasure by anyone without the assignment, of a photo that is not there, or under another student's request", async () => {
     const [photo] = await photoRows("st-ph");
-    const tombstone = (requestId: string, user = "tech-a", photoId = photo.id, assessment = photo.assessment, view = photo.view) =>
+    const tombstone = (requestId: string | null, user = "tech-a", photoId = photo.id, assessment = photo.assessment, view = photo.view) =>
       run("INSERT INTO photo_erasures(photo_id,organization_id,assessment_id,view,request_id,erased_by_user_id,erased_at) VALUES (?1,'org-a',?2,?3,?4,?5,'2026-11-21T00:00:00.000Z')", photoId, assessment, view, requestId, user);
-    // No request at all, or one that is not about the photos.
+    // A request that does not exist.
     await expect(tombstone("missing")).rejects.toThrow();
-    const access = await openRequest("client-ph", "st-ph", "ACCESS", day(21));
-    await expect(tombstone(access)).rejects.toThrow(/PHOTO_ERASURE_NEEDS_REQUEST/);
+    await openRequest("client-ph", "st-ph", "ACCESS", day(21));
     // A request of another student, even for photos.
     const others = await openRequest("client-other", "st-other", "PHOTOS_DELETION", day(21));
-    await expect(tombstone(others)).rejects.toThrow(/PHOTO_ERASURE_NEEDS_REQUEST/);
-    // The right request, but not by someone with the assignment.
+    await expect(tombstone(others)).rejects.toThrow(/PHOTO_ERASURE_NOT_AUTHORIZED/);
+    // The right request, or none at all (migration 0035), but not by someone with the assignment.
     const mine = await openRequest("client-ph", "st-ph", "PHOTOS_DELETION", day(21));
-    await expect(tombstone(mine, "tech-a2")).rejects.toThrow(/PHOTO_ERASURE_NOT_AUTHORIZED/);
-    await expect(tombstone(mine, "owner-a")).rejects.toThrow(/PHOTO_ERASURE_NOT_AUTHORIZED/);
-    await expect(tombstone(mine, "client-ph")).rejects.toThrow(/PHOTO_ERASURE_NOT_AUTHORIZED/);
+    for (const request of [mine, null]) {
+      await expect(tombstone(request, "tech-a2")).rejects.toThrow(/PHOTO_ERASURE_NOT_AUTHORIZED/);
+      await expect(tombstone(request, "owner-a")).rejects.toThrow(/PHOTO_ERASURE_NOT_AUTHORIZED/);
+      await expect(tombstone(request, "client-ph")).rejects.toThrow(/PHOTO_ERASURE_NOT_AUTHORIZED/);
+    }
     // A photo that does not exist.
     await expect(tombstone(mine, "tech-a", "no-such-photo")).rejects.toThrow(/PHOTO_ERASURE_NO_PHOTO/);
-    await expect(tombstone(mine, "tech-a", photo.id, photo.assessment, "POSTERIOR")).rejects.toThrow(/PHOTO_ERASURE_NO_PHOTO/);
+    await expect(tombstone(null, "tech-a", photo.id, photo.assessment, "POSTERIOR")).rejects.toThrow(/PHOTO_ERASURE_NO_PHOTO/);
     expect((await db.prepare("SELECT COUNT(*) AS n FROM photo_erasures").first<{ n: number }>())!.n).toBe(0);
-    // The request cannot be closed as fulfilled while a photo is still stored.
-    await expect(
-      run("INSERT INTO data_subject_request_outcomes(request_id,organization_id,outcome,note,decided_by_user_id,created_at) VALUES (?1,'org-a','FULFILLED','feito','tech-a','2026-11-21T00:00:00.000Z')", mine),
-    ).rejects.toThrow(/PHOTOS_STILL_STORED/);
+    // A request to erase the photos can now be closed as fulfilled while a photo is still stored (migration 0035): a second one shows it.
+    const second = await openRequest("client-ph", "st-ph", "PHOTOS_DELETION", day(21));
+    await run("INSERT INTO data_subject_request_outcomes(request_id,organization_id,outcome,note,decided_by_user_id,created_at) VALUES (?1,'org-a','FULFILLED','feito','tech-a','2026-11-21T00:00:00.000Z')", second);
     // The same for the application's own answer: it must erase, not just say so.
     expect(await asPro("tech-a").answer(mine, { outcome: "FULFILLED", note: "feito" }, day(21))).toEqual({ status: "use_erasure" });
     expect(await asPro("tech-a").answer(mine, { outcome: "PARTIALLY_FULFILLED", note: "parte" }, day(21))).toEqual({ status: "use_erasure" });
@@ -422,9 +427,9 @@ describe("erasing the photos of a student on request", () => {
     // The other student's photo is still stored and served.
     expect((await assessmentsFor(db, scope("tech-a")).get(otherDraft))!.photos.map((p) => p.erasedAt)).toEqual([null]);
     expect(await assessmentPhotosFor(db, bucket, scope("tech-a")).read(otherDraft, "ANTERIOR")).not.toBeNull();
-    // What was erased is never changed afterwards.
-    await expect(run("UPDATE photo_erasures SET erased_at = '2030-01-01T00:00:00.000Z'")).rejects.toThrow(/PHOTO_ERASURE_APPEND_ONLY/);
-    await expect(run("DELETE FROM photo_erasures")).rejects.toThrow(/PHOTO_ERASURE_APPEND_ONLY/);
+    // The record of an erasure is no longer append-only (migration 0035).
+    await run("UPDATE photo_erasures SET erased_at = '2030-01-01T00:00:00.000Z' WHERE assessment_id = ?1 AND view = 'ANTERIOR'", recorded);
+    await run("UPDATE photo_erasures SET erased_at = '2026-11-22T12:00:00.000Z' WHERE assessment_id = ?1 AND view = 'ANTERIOR'", recorded);
   });
 
   it("can be tried again after a failure, without redoing what was erased, and the request stays open meanwhile", async () => {
@@ -456,7 +461,7 @@ describe("erasing the photos of a student on request", () => {
     expect((await asStudent("client-fail").list("st-fail"))[0]).toMatchObject({ outcome: "FULFILLED", outcomeNote: "2 fotos apagadas do armazenamento." });
   });
 
-  it("leaves the request open when a photo arrives while the others are being erased", async () => {
+  it("closes the request even when a photo arrives while the others are being erased (migration 0035), and the new one can be erased after", async () => {
     await recordedWithPhoto("st-race", "ANTERIOR", day(10));
     const draftId = await draftFor("st-race", day(11));
     const id = await openRequest("client-race", "st-race", "PHOTOS_DELETION", day(24));
@@ -475,11 +480,12 @@ describe("erasing the photos of a student on request", () => {
         return typeof value === "function" ? value.bind(target) : value;
       },
     });
-    expect(await asPro("tech-a", "org-a", racing).erasePhotos(id, day(24))).toEqual({ status: "photos_remain" });
-    expect((await asStudent("client-race").list("st-race"))[0].outcome).toBeNull();
+    expect(await asPro("tech-a", "org-a", racing).erasePhotos(id, day(24))).toEqual({ status: "erased", count: 1 });
+    expect((await asStudent("client-race").list("st-race"))[0].outcome).toBe("FULFILLED");
     expect(await asPro("tech-a").photosStored("st-race")).toBe(1);
-    // A new attempt takes the new photo too.
-    expect(await asPro("tech-a").erasePhotos(id, day(25))).toEqual({ status: "erased", count: 2 });
+    // The professional removes the new one directly: it is a draft's, so it goes with its row.
+    expect(await assessmentPhotosFor(db, bucket, scope("tech-a")).remove(draftId, "POSTERIOR", day(25))).toEqual({ status: "removed" });
+    expect(await asPro("tech-a").photosStored("st-race")).toBe(0);
   });
 
   it("can be refused with the reason, which the student reads, leaving the photos as they are", async () => {
