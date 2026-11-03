@@ -4,10 +4,18 @@
  */
 export const ASSESSMENT_NAME = "Avaliação Física";
 
-export type AssessmentNaming = { kind: "INITIAL" | "REASSESSMENT"; formatVersion: number | null };
+export type AssessmentNaming = { kind: "INITIAL" | "REASSESSMENT"; formatVersion: number | null; amendsAssessmentId?: string | null };
 
-/** "Avaliação física", "Reavaliação física" or "Avaliação (formato anterior)". */
+/** "Avaliação física", "Reavaliação física", "Retificação da avaliação física" or "Avaliação (formato anterior)". */
 export function assessmentTitle(assessment: AssessmentNaming): string {
   if (assessment.formatVersion === null) return "Avaliação (formato anterior)";
+  if (assessment.amendsAssessmentId) return "Retificação da avaliação física";
   return assessment.kind === "INITIAL" ? "Avaliação física" : "Reavaliação física";
+}
+
+/** The kind of an assessment in the history: "Inicial", "Reavaliação" or "Retificação" (the earlier format says so). */
+export function assessmentKindLabel(assessment: AssessmentNaming): string {
+  if (assessment.formatVersion === null) return "Formato anterior";
+  if (assessment.amendsAssessmentId) return "Retificação";
+  return assessment.kind === "INITIAL" ? "Inicial" : "Reavaliação";
 }

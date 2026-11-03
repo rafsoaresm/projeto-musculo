@@ -55,6 +55,7 @@ export default async function PlanRevision({
               ? "REVIEWED"
               : "BLOCKED",
         assessedOn: standing.assessedOn,
+        parq: standing.formatVersion === 2,
         href: `/profissional/alunos/${student.id}/avaliacoes/${standing.assessmentId}`,
       };
   const progress = progressOf(revision.schedule, items);

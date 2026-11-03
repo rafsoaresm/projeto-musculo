@@ -1,8 +1,8 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useUnsavedGuard } from "@/components/use-unsaved-guard";
-import { saveCompositionSection, saveProfileSection, saveScreeningSection } from "./actions";
+import { finalizeAssessment, saveCompositionSection, saveProfileSection, saveScreeningSection } from "./actions";
 import { DiscardDraftButton } from "./discard-button";
 import { COMPOSITION_MODULE, formFromPayload, payloadFromForm, problemsMessage, type CompositionForm, type CompositionPayload } from "./composition";
 import { CompositionStep } from "./composition-step";
@@ -20,6 +20,8 @@ import {
   type TriagemForm,
 } from "./screening";
 import { TriagemStep } from "./triagem-step";
+import { ReviewStep } from "./review-step";
+import { reviewDraft } from "./review";
 import type { StepKey } from "./steps";
 
 /**
@@ -30,7 +32,7 @@ const STEPS = [
   { key: "triagem", label: "Triagem", title: "Triagem e segurança", description: "Objetivos, histórico de saúde e revisão profissional", modules: [PROFILE_MODULE, SCREENING_MODULE] },
   { key: "medidas", label: "Medidas", title: "Composição corporal", description: "Medidas básicas, protocolo de dobras e prévia calculada", modules: [COMPOSITION_MODULE] },
   { key: "movimento", label: "Movimento", title: "Postura e movimento", description: null, modules: [] },
-  { key: "revisao", label: "Revisão", title: "Revisão e conclusão", description: null, modules: [] },
+  { key: "revisao", label: "Revisão", title: "Revisão e conclusão", description: "Pendências, resultados calculados e finalização", modules: [] },
 ] as const satisfies readonly { key: StepKey; label: string; title: string; description: string | null; modules: readonly string[] }[];
 
 /**
@@ -49,6 +51,8 @@ export function AssessmentShell({
   profile,
   screening,
   initialStep = "triagem",
+  suggestedEquation = null,
+  amendment = null,
 }: {
   studentId: string;
   assessmentId: string;
@@ -61,11 +65,17 @@ export function AssessmentShell({
   screening: ScreeningPayload;
   /** The step in the address (?etapa=), so a reload stays where the person was; a new draft starts at step 1. */
   initialStep?: StepKey;
+  /** For a reassessment: the reference of the equation of the student's previous assessment, offered (never applied by itself). */
+  suggestedEquation?: "male" | "female" | null;
+  /** For an amendment (retificação): its reason and the screening of the assessment it amends, as recorded. */
+  amendment?: { reason: string; originalScreening: ScreeningPayload | null } | null;
 }) {
   const [step, setStep] = useState<StepKey>(initialStep);
   const [form, setForm] = useState<CompositionForm>(() => formFromPayload(composition));
   const [triagem, setTriagem] = useState<TriagemForm>(() => triagemFormFrom(profile, screening));
   const [discardError, setDiscardError] = useState<string | null>(null);
+  const [finalizeError, setFinalizeError] = useState<{ text: string; pending?: string[] } | null>(null);
+  const [finalizing, startFinalize] = useTransition();
   const index = STEPS.findIndex((item) => item.key === step);
   const current = STEPS[index];
 
@@ -106,6 +116,40 @@ export function AssessmentShell({
   const status = draft.status;
   const alert = discardError ?? draft.alert;
   useUnsavedGuard(draft.unsaved);
+
+  // The review is computed from what is on the screen with the same rule the server finalizes with; a value that is not accepted is named.
+  const profileRead = profileFromForm(triagem);
+  const screeningRead = screeningFromForm(triagem);
+  const compositionRead = payloadFromForm(form);
+  const problems = [
+    ...(profileRead.payload === null ? [`Triagem: ${triagemProblemsMessage(profileRead.problems)}`] : []),
+    ...(screeningRead.payload === null ? [`Triagem: ${triagemProblemsMessage(screeningRead.problems)}`] : []),
+    ...(compositionRead.payload === null ? [`Medidas: ${problemsMessage(compositionRead.problems)}`] : []),
+  ];
+  const review = reviewDraft({
+    profile: profileRead.payload,
+    screening: screeningRead.payload ?? screening,
+    composition: compositionRead.payload ?? composition,
+    assessedOn,
+    birthDate,
+    original: amendment ? { screening: amendment.originalScreening } : null,
+  });
+
+  /** Saves what is still unsaved, then finalizes the draft at the revision the screen holds; on success the page goes to the record. */
+  const finalize = () =>
+    startFinalize(async () => {
+      setFinalizeError(null);
+      if (!(await draft.flush())) {
+        setFinalizeError({ text: "Não foi possível salvar tudo antes de finalizar. Confira a mensagem acima e tente de novo." });
+        return;
+      }
+      draft.halt();
+      const result = await finalizeAssessment(studentId, assessmentId, draft.revision());
+      if (result?.error) {
+        if (!result.conflict) draft.resume();
+        setFinalizeError({ text: result.error, pending: result.pending });
+      }
+    });
 
   /** A failed discard is said until the next change or save: it never hides what autosave says after it. */
   const edit = (next: CompositionForm) => {
@@ -153,7 +197,17 @@ export function AssessmentShell({
       {step === "triagem" ? (
         <TriagemStep form={triagem} onChange={editTriagem} />
       ) : step === "medidas" ? (
-        <CompositionStep form={form} onChange={edit} assessedOn={assessedOn} birthDate={birthDate} />
+        <CompositionStep form={form} onChange={edit} assessedOn={assessedOn} birthDate={birthDate} suggestedEquation={suggestedEquation} />
+      ) : step === "revisao" ? (
+        <ReviewStep
+          review={review}
+          problems={problems}
+          amendment={amendment}
+          finalizing={finalizing}
+          error={finalizeError}
+          onFinalize={finalize}
+          onOpenTriagem={() => goTo("triagem")}
+        />
       ) : (
         <section className="panel av2-card">
           <p>Esta etapa chega numa próxima versão.</p>
@@ -204,14 +258,12 @@ export function AssessmentShell({
           >
             Salvar rascunho
           </button>
-          <button
-            type="button"
-            className="button primary"
-            disabled={index === STEPS.length - 1}
-            onClick={() => goTo(STEPS[index + 1].key)}
-          >
-            Próximo <ArrowRight size={17} />
-          </button>
+          {/* On the last step (Revisão) the next action is the finalize card, not a "Próximo" that leads nowhere. */}
+          {index < STEPS.length - 1 && (
+            <button type="button" className="button primary" onClick={() => goTo(STEPS[index + 1].key)}>
+              Próximo <ArrowRight size={17} />
+            </button>
+          )}
         </div>
       </div>
     </div>

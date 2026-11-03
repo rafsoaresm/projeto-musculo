@@ -7,7 +7,7 @@ import { assessmentPhotosFor } from "@/db/assessment-photos";
 import { getPhotoBucket } from "@/db/binding";
 import type { AssessmentModule } from "../catalog";
 import { COMPOSITION_MODULE, FIELD_LABEL, SITE_LABEL, compositionSchema, problemsMessage } from "./composition";
-import { PROFILE_MODULE, SCREENING_MODULE, profileSchema, screeningSchema } from "./screening";
+import { PROFILE_MODULE, SCREENING_MODULE, draftScreening, profileSchema, screeningSchema } from "./screening";
 
 export type SaveSectionResult = { saved: true; revision: number } | { conflict: string } | { error: string };
 
@@ -95,5 +95,37 @@ export async function saveProfileSection(assessmentId: string, payload: unknown,
 export async function saveScreeningSection(assessmentId: string, payload: unknown, revision: number): Promise<SaveSectionResult> {
   const parsed = screeningSchema.safeParse(payload);
   if (!parsed.success) return { error: TRIAGEM_INVALID };
-  return storeSection(assessmentId, SCREENING_MODULE, parsed.data, revision, TRIAGEM_INVALID);
+  return storeSection(assessmentId, SCREENING_MODULE, draftScreening(parsed.data), revision, TRIAGEM_INVALID);
+}
+
+export type FinalizeResult = { error: string; pending?: string[]; conflict?: boolean };
+
+/**
+ * Finalizes the draft as the screen read it (its revision): the repository checks every module, refuses an incomplete triagem (saying what is
+ * missing), writes the results and records the assessment, which never changes afterwards. Then goes to the recorded assessment.
+ */
+export async function finalizeAssessment(studentId: string, assessmentId: string, revision: number): Promise<FinalizeResult> {
+  const { db, context } = await requireWorkspace();
+  const outcome = await assessmentsFor(db, context).finalize(assessmentId, revision);
+  if (outcome.status === "pending") return { error: "Ainda falta para finalizar:", pending: outcome.pending };
+  if (outcome.status === "conflict") return { error: CONFLICT_MESSAGE, conflict: true };
+  if (outcome.status === "invalid") return { error: "Algum dado salvo nesta avaliação não é aceito. Confira as etapas e salve de novo antes de finalizar." };
+  if (outcome.status === "not_found") return { error: "Este rascunho não está mais aberto." };
+  revalidatePath("/profissional", "layout");
+  redirect(`/profissional/alunos/${studentId}/avaliacoes/${assessmentId}`);
+}
+
+/**
+ * Starts an amendment (retificação) of a recorded Avaliação Física, with the reason written, and goes to its draft. The recorded one stays as it
+ * is. When the student already has an open draft, says so (one draft per student).
+ */
+export async function amendAssessment(studentId: string, assessmentId: string, reason: string): Promise<{ error?: string }> {
+  const { db, context } = await requireWorkspace();
+  const outcome = await assessmentsFor(db, context).amend(assessmentId, reason);
+  if (outcome.status === "invalid_reason") return { error: "Escreva o motivo da retificação, com 3 a 1000 caracteres." };
+  if (outcome.status === "draft_open") return { error: "Este aluno já tem um rascunho de avaliação aberto: conclua ou descarte esse rascunho antes de retificar." };
+  if (outcome.status === "already_amended") return { error: "Esta avaliação já foi retificada: retifique a versão mais recente." };
+  if (outcome.status === "not_found") return { error: "Esta avaliação não pode ser retificada." };
+  revalidatePath("/profissional", "layout");
+  redirect(`/profissional/alunos/${studentId}/avaliacoes/${outcome.id}?etapa=triagem`);
 }

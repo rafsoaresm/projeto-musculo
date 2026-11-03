@@ -14,9 +14,10 @@ import { approveRevision, deliverRevision } from "./actions";
  */
 export type ScreeningInfo =
   | { kind: "NONE" }
-  | { kind: "CLEAR"; assessedOn: string; href: string }
-  | { kind: "REVIEWED"; assessedOn: string; href: string }
-  | { kind: "BLOCKED"; assessedOn: string; href: string };
+  /** `parq`: the newest assessment is an Avaliação Física, whose screening is the PAR-Q and whose answer to a "Sim" is the professional's decision. */
+  | { kind: "CLEAR"; assessedOn: string; href: string; parq?: boolean }
+  | { kind: "REVIEWED"; assessedOn: string; href: string; parq?: boolean }
+  | { kind: "BLOCKED"; assessedOn: string; href: string; parq?: boolean };
 
 /**
  * The professional's decision on a closed revision: approve, then deliver. Both are acts of a
@@ -205,10 +206,12 @@ function ScreeningNote({
       <Notice tone="warning">
         <p>
           <strong>{REVIEW_REQUIRED_TEXT}</strong> A avaliação de{" "}
-          {formatCalendarDate(screening.assessedOn)} tem triagem com alerta e
-          ainda não tem revisão sua registrada.{" "}
-          <Link className="account-link" href={screening.href}>
-            Registrar a revisão
+          {formatCalendarDate(screening.assessedOn)}{" "}
+          {screening.parq
+            ? "tem resposta “Sim” no PAR-Q sem a decisão profissional registrada. Uma avaliação registrada não muda: a decisão entra por uma retificação, na etapa Triagem."
+            : "tem triagem com alerta e ainda não tem revisão sua registrada."}{" "}
+          <Link className="account-link" href={screening.parq ? `${screening.href}#av2-r-retificar` : screening.href}>
+            {screening.parq ? "Retificar a avaliação" : "Registrar a revisão"}
           </Link>
         </p>
       </Notice>
@@ -217,8 +220,12 @@ function ScreeningNote({
     <p role="status">
       <Pill tone={screening.kind === "CLEAR" ? "neutral" : "brand"}>
         {screening.kind === "CLEAR"
-          ? "Nenhum sinal marcado na triagem"
-          : "Alerta da triagem com revisão registrada"}
+          ? screening.parq
+            ? "Nenhum “Sim” no PAR-Q"
+            : "Nenhum sinal marcado na triagem"
+          : screening.parq
+            ? "PAR-Q com “Sim” e decisão profissional registrada"
+            : "Alerta da triagem com revisão registrada"}
       </Pill>{" "}
       <span className="small muted">
         Avaliação de {formatCalendarDate(screening.assessedOn)}.

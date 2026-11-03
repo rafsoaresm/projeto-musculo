@@ -12,6 +12,9 @@ import {
   type ScreeningKey,
 } from "@/modules/avaliacoes/contracts";
 import { SECTION_STATUSES, isModule, type AssessmentModule, type SectionStatus } from "@/modules/avaliacoes/catalog";
+import { COMPOSITION_MODULE, compositionSchema } from "@/modules/avaliacoes/v2/composition";
+import { PROFILE_MODULE, SCREENING_MODULE, profileSchema, screeningSchema } from "@/modules/avaliacoes/v2/screening";
+import { recordedScreening, reviewDraft } from "@/modules/avaliacoes/v2/review";
 import { activeUser, assertContext, technicalAccessExists, type AuthenticatedContext } from "./students";
 
 /** One module of an assessment of the new format, as stored (its payload is checked by the module's schema where it is read). */
@@ -43,7 +46,38 @@ export interface AssessmentSummary {
   reviewed: boolean;
   /** 2 for the Avaliação Física; null for the earlier format, which stays readable but can no longer be started (decision of 03/11/2026). */
   formatVersion: number | null;
+  /** An amendment (retificação) points to the recorded assessment it corrects; null otherwise. */
+  amendsAssessmentId: string | null;
+  /** The recorded amendment that corrects this assessment (the newest), if any: this one stays, read as "Retificada". */
+  amendedById: string | null;
+  /** The main results recorded (body fat with its method, BMI), for the history; none for a draft. */
+  results: ResultRow[];
 }
+/** One row of assessment_results: a value computed when the assessment was finalized, with its method, formula version, inputs and flags. */
+export interface ResultRow {
+  code: string;
+  value: number | null;
+  unit: string | null;
+  method: string;
+  formulaVersion: string | null;
+  inputs: Record<string, unknown> | null;
+  flags: string[];
+}
+export type FinalizeOutcome =
+  | { status: "recorded" }
+  /** What still blocks the finalize, in words (the triagem). */
+  | { status: "pending"; pending: string[] }
+  /** The draft changed since the screen read it (another tab, another person). */
+  | { status: "conflict" }
+  /** A stored module does not pass its schema. */
+  | { status: "invalid" }
+  | { status: "not_found" };
+export type AmendOutcome =
+  | { status: "started"; id: string }
+  | { status: "draft_open"; id: string }
+  | { status: "already_amended"; id: string }
+  | { status: "invalid_reason" }
+  | { status: "not_found" };
 export interface MetricRow {
   metricType: string;
   name: string;
@@ -84,6 +118,10 @@ function answeredOf(raw: string | null): Set<string> | null {
 
 export interface AssessmentDetail extends AssessmentSummary {
   previousAssessmentId: string | null;
+  /** Why this amendment was made (only for an amendment). */
+  amendReason: string | null;
+  /** The name of the professional who recorded it, when known. */
+  recordedByName: string | null;
   /** Yes, No, or null for a question not answered (in a draft) or not recorded as an answer (in the earlier format). */
   flags: Record<ScreeningKey, boolean | null>;
   /** The assessment was made before every question had to be answered (decision D4): only a "yes" of it is a recorded answer. */
@@ -133,16 +171,46 @@ export const latestRecordedSql = (organization: string, student: string) =>
     WHERE x.organization_id = ${organization} AND x.student_id = ${student} AND x.state = 'RECORDED'
     ORDER BY x.assessed_on DESC, x.recorded_at DESC LIMIT 1)`;
 
-/** SQL predicate: that newest assessment is an alert that nobody has reviewed yet. */
+/** SQL scalar: a value of the recorded screening of an assessment of the new format (null for the earlier format or a draft without it). */
+const screeningValueSql = (alias: string, path: string) =>
+  `(SELECT json_extract(ps.payload, '${path}') FROM assessment_sections ps WHERE ps.assessment_id = ${alias}.id AND ps.module = 'screening')`;
+
+/** SQL boolean: any PAR-Q answer of the screening of the assessment is "Sim" (read from the answers, so a record without the derived flag is not read as clear). */
+const parqYesSql = (alias: string) =>
+  `EXISTS (SELECT 1 FROM assessment_sections py, json_each(py.payload, '$.parq.answers') pj
+    WHERE py.assessment_id = ${alias}.id AND py.module = 'screening' AND pj.value = 'yes')`;
+
+/**
+ * SQL scalar: the risk of an assessment, 'CLEAR' or 'REVIEW_REQUIRED'. For the earlier format it is the column (tied by 0009 to its six questions).
+ * For the Avaliação Física it is the PAR-Q: any "Sim" (parq.riskFlag, written at finalize into the frozen screening, or any answer "yes" when the
+ * flag is missing, as in an imported or damaged record) is an alert. The column of
+ * such an assessment stays 'CLEAR', because the CHECK of 0009 ties it to the six questions of the earlier format, which this format does not ask:
+ * every reader goes through this expression instead.
+ */
+export const riskSql = (alias: string) =>
+  `(CASE WHEN ${alias}.format_version = 2 THEN
+      CASE WHEN ${alias}.state = 'RECORDED' AND (${screeningValueSql(alias, "$.parq.riskFlag")} = 1 OR ${parqYesSql(alias)}) THEN 'REVIEW_REQUIRED' ELSE 'CLEAR' END
+    ELSE ${alias}.risk_status END)`;
+
+/**
+ * SQL boolean: the alert of the assessment has the professional's recorded answer. For the earlier format, a review (assessment_reviews); for the
+ * Avaliação Física, the decision on the PAR-Q with who and when, recorded at finalize.
+ */
+export const reviewedSql = (alias: string) =>
+  `(CASE WHEN ${alias}.format_version = 2 THEN ${screeningValueSql(alias, "$.parq.professionalReview.reviewedAt")} IS NOT NULL
+    ELSE EXISTS (SELECT 1 FROM assessment_reviews rv WHERE rv.assessment_id = ${alias}.id) END)`;
+
+/** SQL predicate: that newest assessment is an alert that nobody has reviewed yet (earlier format) or decided on (PAR-Q "Sim" of the new one). */
 export const unreviewedAlertSql = (organization: string, student: string) =>
   `EXISTS (SELECT 1 FROM assessments al
-    WHERE al.id = ${latestRecordedSql(organization, student)} AND al.risk_status = 'REVIEW_REQUIRED'
-      AND NOT EXISTS (SELECT 1 FROM assessment_reviews rv WHERE rv.assessment_id = al.id))`;
+    WHERE al.id = ${latestRecordedSql(organization, student)} AND ${riskSql("al")} = 'REVIEW_REQUIRED' AND NOT ${reviewedSql("al")})`;
 
 /** What the newest recorded assessment of a student says about screening. */
 export interface ScreeningStanding {
   assessmentId: string;
   assessedOn: string;
+  /** 2: the screening is the PAR-Q of the Avaliação Física, and "reviewed" is the professional's recorded decision; null: the earlier format. */
+  formatVersion: number | null;
   risk: RiskStatus;
   reviewed: boolean;
   reviewedAt: string | null;
@@ -175,13 +243,14 @@ export async function screeningStanding(
 ): Promise<ScreeningStanding | null> {
   const row = await db
     .prepare(
-      `SELECT a.id AS assessmentId, a.assessed_on AS assessedOn, a.risk_status AS risk,
-         (SELECT MAX(r.reviewed_at) FROM assessment_reviews r WHERE r.assessment_id = a.id) AS reviewedAt
+      `SELECT a.id AS assessmentId, a.assessed_on AS assessedOn, a.format_version AS formatVersion, ${riskSql("a")} AS risk,
+         CASE WHEN a.format_version = 2 THEN ${screeningValueSql("a", "$.parq.professionalReview.reviewedAt")}
+           ELSE (SELECT MAX(r.reviewed_at) FROM assessment_reviews r WHERE r.assessment_id = a.id) END AS reviewedAt
        FROM assessments a
        WHERE a.id = ${latestRecordedSql("?1", "?2")}`,
     )
     .bind(organizationId, studentId)
-    .first<{ assessmentId: string; assessedOn: string; risk: RiskStatus; reviewedAt: string | null }>();
+    .first<{ assessmentId: string; assessedOn: string; formatVersion: number | null; risk: RiskStatus; reviewedAt: string | null }>();
   return row
     ? { ...row, reviewed: row.reviewedAt !== null }
     : null;
@@ -204,12 +273,46 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
       )
       .bind(crypto.randomUUID(), organizationId, userId, action, subject, stamp);
   const summaryColumns = `a.id, a.student_id AS studentId, a.assessed_on AS assessedOn, a.kind,
-    a.state, a.risk_status AS riskStatus, a.recorded_at AS recordedAt, a.format_version AS formatVersion,
-    EXISTS (SELECT 1 FROM assessment_reviews r WHERE r.assessment_id = a.id) AS reviewed`;
+    a.state, ${riskSql("a")} AS riskStatus, a.recorded_at AS recordedAt, a.format_version AS formatVersion,
+    ${reviewedSql("a")} AS reviewed, a.amends_assessment_id AS amendsAssessmentId,
+    (SELECT n.id FROM assessments n WHERE n.amends_assessment_id = a.id AND n.state = 'RECORDED' ORDER BY n.recorded_at DESC LIMIT 1) AS amendedById`;
   const asSummary = <T extends { reviewed: unknown }>(row: T) => ({
     ...row,
     reviewed: Boolean(row.reviewed),
   });
+  const parseJson = <T,>(raw: string | null, fallback: T): T => {
+    if (raw === null) return fallback;
+    try {
+      return JSON.parse(raw) as T;
+    } catch {
+      return fallback;
+    }
+  };
+  type RawResult = { assessmentId: string; code: string; value: number | null; unit: string | null; method: string; formulaVersion: string | null; inputs: string | null; flags: string | null };
+  const asResult = (row: RawResult): ResultRow => ({
+    code: row.code,
+    value: row.value,
+    unit: row.unit,
+    method: row.method,
+    formulaVersion: row.formulaVersion,
+    inputs: parseJson<Record<string, unknown> | null>(row.inputs, null),
+    flags: parseJson<unknown>(row.flags, []) instanceof Array ? (parseJson<unknown[]>(row.flags, []).filter((flag) => typeof flag === "string") as string[]) : [],
+  });
+  /** The results of some assessments whose ids came from a gated query (organization and access already checked). */
+  const resultsOf = async (ids: string[], codes: readonly string[] | null): Promise<RawResult[]> => {
+    if (ids.length === 0) return [];
+    const rows = await db
+      .prepare(
+        `SELECT r.assessment_id AS assessmentId, r.code, r.value, r.unit, r.method, r.formula_version AS formulaVersion, r.inputs, r.flags
+         FROM assessment_results r
+         WHERE r.organization_id = ?1 AND r.assessment_id IN (SELECT value FROM json_each(?2))
+           AND (?3 IS NULL OR r.code IN (SELECT value FROM json_each(?3)))
+         ORDER BY r.rowid`,
+      )
+      .bind(organizationId, JSON.stringify(ids), codes === null ? null : JSON.stringify(codes))
+      .all<RawResult>();
+    return rows.results;
+  };
 
   const api = {
     async listForStudent(studentId: string): Promise<AssessmentSummary[]> {
@@ -220,8 +323,51 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
            ORDER BY a.assessed_on DESC, a.created_at DESC`,
         )
         .bind(organizationId, userId, studentId)
-        .all<AssessmentSummary>();
-      return result.results.map(asSummary);
+        .all<Omit<AssessmentSummary, "results">>();
+      const results = await resultsOf(
+        result.results.filter((row) => row.state === "RECORDED").map((row) => row.id),
+        ["body_fat_percent", "bmi"],
+      );
+      return result.results.map((row) => ({ ...asSummary(row), results: results.filter((item) => item.assessmentId === row.id).map(asResult) }));
+    },
+
+    /** Everything computed when an assessment was finalized (and, for the earlier format, the body fat typed then), in the order written. */
+    async results(assessmentId: string): Promise<ResultRow[]> {
+      const reachable = await db
+        .prepare(`SELECT a.id FROM assessments a WHERE a.organization_id = ?1 AND a.id = ?3 AND ${reachAssessment("a")}`)
+        .bind(organizationId, userId, assessmentId)
+        .first<{ id: string }>();
+      if (!reachable) return [];
+      return (await resultsOf([reachable.id], null)).map(asResult);
+    },
+
+    /** The display name of a professional of this organization, by user (who recorded, who decided). Null when unknown. */
+    async professionalName(memberUserId: string): Promise<string | null> {
+      const row = await db
+        .prepare(`SELECT p.display_name AS name FROM professionals p WHERE p.organization_id = ?1 AND p.user_id = ?2`)
+        .bind(organizationId, memberUserId)
+        .first<{ name: string | null }>();
+      return row?.name ?? null;
+    },
+
+    /**
+     * The reference of the equation chosen in the student's newest recorded Avaliação Física, so a reassessment can suggest it (decision 2 of the
+     * user, 02/11/2026): it is offered on the screen, never copied into the draft. Null when there is none or that newest one made no choice (no
+     * Medidas): an older choice is never offered in its place.
+     */
+    async previousEquation(draftId: string): Promise<"male" | "female" | null> {
+      const row = await db
+        .prepare(
+          `SELECT json_extract(s.payload, '$.equation') AS equation
+           FROM assessments d
+           JOIN assessments p ON p.organization_id = d.organization_id AND p.student_id = d.student_id AND p.state = 'RECORDED' AND p.format_version = 2
+           LEFT JOIN assessment_sections s ON s.assessment_id = p.id AND s.module = 'composition'
+           WHERE d.organization_id = ?1 AND d.id = ?3 AND ${reachAssessment("d")}
+           ORDER BY p.assessed_on DESC, p.recorded_at DESC LIMIT 1`,
+        )
+        .bind(organizationId, userId, draftId)
+        .first<{ equation: unknown }>();
+      return row?.equation === "male" || row?.equation === "female" ? row.equation : null;
     },
 
     async get(assessmentId: string): Promise<AssessmentDetail | null> {
@@ -229,19 +375,22 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
         .prepare(
           `SELECT ${summaryColumns}, a.previous_assessment_id AS previousAssessmentId,
              ${SCREENING_ITEMS.map((item) => `a.${item.column} AS ${item.key}`).join(", ")},
-             a.screening_notes AS screeningNotes, a.notes, a.screening_answered AS screeningAnswered
+             a.screening_notes AS screeningNotes, a.notes, a.screening_answered AS screeningAnswered, a.amend_reason AS amendReason,
+             (SELECT p.display_name FROM professionals p WHERE p.organization_id = a.organization_id AND p.user_id = a.recorded_by_user_id) AS recordedByName
            FROM assessments a
            WHERE a.organization_id = ?1 AND a.id = ?3 AND ${reachAssessment("a")}`,
         )
         .bind(organizationId, userId, assessmentId)
-        .first<AssessmentSummary & Record<ScreeningKey, number> & {
+        .first<Omit<AssessmentSummary, "results"> & Record<ScreeningKey, number> & {
+          amendReason: string | null;
+          recordedByName: string | null;
           previousAssessmentId: string | null;
           screeningNotes: string | null;
           notes: string | null;
           screeningAnswered: string | null;
         }>();
       if (!row) return null;
-      const [metrics, findings, photoRows, reviews] = await Promise.all([
+      const [metrics, findings, photoRows, reviews, results] = await Promise.all([
         db
           .prepare(
             `SELECT m.metric_type AS metricType, m.name, m.value_text AS valueText,
@@ -279,6 +428,7 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
           )
           .bind(organizationId, assessmentId)
           .all<ReviewRow>(),
+        resultsOf([assessmentId], null),
       ]);
       const answered = answeredOf(row.screeningAnswered);
       // Earlier format (no list): a "yes" is an answer; a 0 may be a "no" or a question never asked, so it is shown as not answered.
@@ -295,6 +445,11 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
         recordedAt: row.recordedAt,
         reviewed: Boolean(row.reviewed),
         formatVersion: row.formatVersion,
+        amendsAssessmentId: row.amendsAssessmentId,
+        amendedById: row.amendedById,
+        amendReason: row.amendReason,
+        recordedByName: row.recordedByName,
+        results: results.map(asResult),
         previousAssessmentId: row.previousAssessmentId,
         flags,
         earlierFormat: answered === null,
@@ -319,11 +474,12 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
                ${SCREENING_ITEMS.map((item) => `a.${item.column} AS ${item.key}`).join(", ")}
              FROM assessments a
              WHERE a.organization_id = ?1 AND a.student_id = ?3 AND a.state = 'RECORDED'
+               AND NOT EXISTS (SELECT 1 FROM assessments n WHERE n.amends_assessment_id = a.id AND n.state = 'RECORDED')
                AND ${reachStudent}
              ORDER BY a.assessed_on DESC, a.recorded_at DESC LIMIT ?4`,
           )
           .bind(organizationId, userId, studentId, Math.max(1, Math.min(limit, 100)))
-          .all<AssessmentSummary & Record<ScreeningKey, number>>()
+          .all<Omit<AssessmentSummary, "results"> & Record<ScreeningKey, number>>()
       ).results.reverse();
       if (rows.length === 0) return [];
       // The ids below came from the gated query above.
@@ -546,6 +702,166 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
       return { status: "conflict", revision: current.revision };
     },
 
+    /**
+     * Finalizes an open draft of the Avaliação Física, based on the revision the screen read, in one batch: every stored module is checked by its
+     * schema; the triagem must be complete (every PAR-Q question answered and, with any "Sim", the professional's decision with a note — for an
+     * amendment with a new "Sim", that decision looked at again); the results that can be computed are written with the versioned formulas
+     * (`reviewDraft`, the same the "Revisão" step shows; one that cannot be computed is not written); the screening is written with the derived
+     * flag of any "Sim" and who recorded the decision and when; the modules become DONE and the assessment RECORDED. From then on the triggers of
+     * 0009 and 0033 freeze all of it. Nothing here approves anything: the plan gate reads what was recorded.
+     */
+    async finalize(assessmentId: string, expectedRevision: number, now = new Date()): Promise<FinalizeOutcome> {
+      if (!Number.isInteger(expectedRevision)) return { status: "conflict" };
+      const head = await db
+        .prepare(
+          `SELECT a.state, a.format_version AS formatVersion, a.revision, a.assessed_on AS assessedOn, a.student_snapshot AS snapshot,
+             a.amends_assessment_id AS amendsId
+           FROM assessments a WHERE a.organization_id = ?1 AND a.id = ?3 AND ${reachAssessment("a")}`,
+        )
+        .bind(organizationId, userId, assessmentId)
+        .first<{ state: string; formatVersion: number | null; revision: number; assessedOn: string; snapshot: string | null; amendsId: string | null }>();
+      if (!head || head.state !== "DRAFT" || head.formatVersion !== 2) return { status: "not_found" };
+      if (head.revision !== expectedRevision) return { status: "conflict" };
+      const rows = await db
+        .prepare(`SELECT module, payload FROM assessment_sections WHERE organization_id = ?1 AND assessment_id = ?2`)
+        .bind(organizationId, assessmentId)
+        .all<{ module: string; payload: string }>();
+      const stored = (module: string) => {
+        const row = rows.results.find((item) => item.module === module);
+        return row ? (JSON.parse(row.payload) as unknown) : undefined;
+      };
+      const profile = stored(PROFILE_MODULE) === undefined ? null : profileSchema.safeParse(stored(PROFILE_MODULE));
+      const screening = stored(SCREENING_MODULE) === undefined ? null : screeningSchema.safeParse(stored(SCREENING_MODULE));
+      const composition = stored(COMPOSITION_MODULE) === undefined ? null : compositionSchema.safeParse(stored(COMPOSITION_MODULE));
+      if ((profile && !profile.success) || (screening && !screening.success) || (composition && !composition.success)) return { status: "invalid" };
+      let original: { screening: ReturnType<typeof screeningSchema.parse> | null } | null = null;
+      if (head.amendsId) {
+        const raw = await db
+          .prepare(`SELECT payload FROM assessment_sections WHERE organization_id = ?1 AND assessment_id = ?2 AND module = 'screening'`)
+          .bind(organizationId, head.amendsId)
+          .first<{ payload: string }>();
+        const parsed = raw ? screeningSchema.safeParse(JSON.parse(raw.payload)) : null;
+        original = { screening: parsed?.success ? parsed.data : null };
+      }
+      const snapshot = head.snapshot ? (JSON.parse(head.snapshot) as { birthDate?: unknown }) : {};
+      const review = reviewDraft({
+        profile: profile?.success ? profile.data : null,
+        screening: screening?.success ? screening.data : null,
+        composition: composition?.success ? composition.data : null,
+        assessedOn: head.assessedOn,
+        birthDate: typeof snapshot.birthDate === "string" ? snapshot.birthDate : null,
+        original,
+      });
+      if (review.pending.length > 0 || !screening?.success) return { status: "pending", pending: review.pending };
+      const stamp = now.toISOString();
+      // The batch is one transaction. Every write holds only while the draft is still the one read above (same revision, still a draft, still
+      // reachable), and the last statement both moves the revision and records it: a save that landed first leaves every statement without effect.
+      const ours = `EXISTS (SELECT 1 FROM assessments g WHERE g.organization_id = ?1 AND g.id = ?3 AND g.state = 'DRAFT' AND g.format_version = 2
+        AND g.revision = ?4 AND ${reachAssessment("g")})`;
+      const writes = [
+        db.prepare(`DELETE FROM assessment_results WHERE organization_id = ?1 AND assessment_id = ?3 AND ${ours}`).bind(organizationId, userId, assessmentId, expectedRevision),
+        ...review.results.map((result) =>
+          db
+            .prepare(
+              `INSERT INTO assessment_results (id, assessment_id, organization_id, code, value, unit, method, formula_version, inputs, flags, created_at)
+               SELECT ?6, ?3, ?1, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?5 WHERE ${ours}`,
+            )
+            .bind(
+              organizationId,
+              userId,
+              assessmentId,
+              expectedRevision,
+              stamp,
+              crypto.randomUUID(),
+              result.code,
+              result.value,
+              result.unit,
+              result.method,
+              result.formulaVersion,
+              JSON.stringify(result.inputs),
+              JSON.stringify(result.flags),
+            ),
+        ),
+        db
+          .prepare(
+            `UPDATE assessment_sections SET payload = ?5 WHERE organization_id = ?1 AND assessment_id = ?3 AND module = 'screening' AND ${ours}`,
+          )
+          .bind(organizationId, userId, assessmentId, expectedRevision, JSON.stringify(recordedScreening(screening.data, userId, stamp, original?.screening ?? null))),
+        db
+          .prepare(
+            `UPDATE assessment_sections SET status = 'DONE', updated_at = ?5, updated_by_user_id = ?2
+             WHERE organization_id = ?1 AND assessment_id = ?3 AND ${ours}`,
+          )
+          .bind(organizationId, userId, assessmentId, expectedRevision, stamp),
+      ];
+      const results = await db.batch([
+        ...writes,
+        db
+          .prepare(
+            `UPDATE assessments SET revision = revision + 1, updated_at = ?5, state = 'RECORDED', recorded_at = ?5, recorded_by_user_id = ?2
+             WHERE organization_id = ?1 AND id = ?3 AND state = 'DRAFT' AND format_version = 2 AND revision = ?4 AND ${reachAssessment("assessments")}`,
+          )
+          .bind(organizationId, userId, assessmentId, expectedRevision, stamp),
+        audit("ASSESSMENT_RECORDED", assessmentId, stamp),
+      ]);
+      if (results[writes.length].meta.changes > 0) return { status: "recorded" };
+      const current = await db
+        .prepare(`SELECT a.state, a.format_version AS formatVersion FROM assessments a WHERE a.organization_id = ?1 AND a.id = ?3 AND ${reachAssessment("a")}`)
+        .bind(organizationId, userId, assessmentId)
+        .first<{ state: string; formatVersion: number | null }>();
+      return current && current.state === "DRAFT" && current.formatVersion === 2 ? { status: "conflict" } : { status: "not_found" };
+    },
+
+    /**
+     * Starts an amendment (retificação) of a recorded Avaliação Física: a new draft that points to it, with the reason written (3 to 1000
+     * characters), the same date, kind and snapshot, and a copy of its modules to correct — without what finalize wrote (the derived flag, who
+     * decided and when), which the amendment records again when it is finalized. The recorded one never changes and stays in the history, read as
+     * "Retificada". Only the newest of a chain is amended; one draft per student, as always.
+     */
+    async amend(originalId: string, reason: unknown, now = new Date()): Promise<AmendOutcome> {
+      const text = typeof reason === "string" ? reason.trim() : "";
+      if (text.length < 3 || text.length > 1000) return { status: "invalid_reason" };
+      const id = crypto.randomUUID();
+      const stamp = now.toISOString();
+      const notAmended = `NOT EXISTS (SELECT 1 FROM assessments n WHERE n.amends_assessment_id = o.id AND n.state = 'RECORDED')`;
+      try {
+        const results = await db.batch([
+          db
+            .prepare(
+              `INSERT INTO assessments
+                 (id, organization_id, student_id, assessed_on, kind, previous_assessment_id, state, risk_status, created_by_user_id,
+                  created_at, updated_at, screening_answered, format_version, student_snapshot, amends_assessment_id, amend_reason)
+               SELECT ?4, o.organization_id, o.student_id, o.assessed_on, o.kind, o.previous_assessment_id, 'DRAFT', 'CLEAR', ?2,
+                 ?6, ?6, '[]', 2, o.student_snapshot, o.id, ?5
+               FROM assessments o
+               WHERE o.organization_id = ?1 AND o.id = ?3 AND o.state = 'RECORDED' AND o.format_version = 2 AND ${notAmended}
+                 AND ${reachAssessment("o")}`,
+            )
+            .bind(organizationId, userId, originalId, id, text, stamp),
+          audit("ASSESSMENT_AMENDMENT_STARTED", id, stamp),
+          db
+            .prepare(
+              `INSERT INTO assessment_sections (assessment_id, organization_id, module, status, payload, updated_at, updated_by_user_id)
+               SELECT ?3, s.organization_id, s.module, 'IN_PROGRESS',
+                 json_remove(s.payload, '$.parq.riskFlag', '$.parq.professionalReview.reviewedAt', '$.parq.professionalReview.reviewerUserId'), ?4, ?2
+               FROM assessment_sections s
+               WHERE s.organization_id = ?1 AND s.assessment_id = ?5
+                 AND EXISTS (SELECT 1 FROM assessments n WHERE n.organization_id = ?1 AND n.id = ?3 AND n.amends_assessment_id = ?5 AND n.state = 'DRAFT')`,
+            )
+            .bind(organizationId, userId, id, stamp, originalId),
+        ]);
+        if (results[0].meta.changes > 0) return { status: "started", id };
+      } catch (error) {
+        if (!String(error).includes("UNIQUE")) throw error;
+        const original = await api.get(originalId);
+        const open = original ? (await api.listForStudent(original.studentId)).find((item) => item.state === "DRAFT") : undefined;
+        return open ? { status: "draft_open", id: open.id } : { status: "not_found" };
+      }
+      const original = await api.get(originalId);
+      if (original?.state === "RECORDED" && original.formatVersion === 2 && original.amendedById) return { status: "already_amended", id: original.amendedById };
+      return { status: "not_found" };
+    },
+
     /** The professional's documented review of an alert. It never changes the risk status. */
     async addReview(assessmentId: string, basis: unknown, now = new Date()): Promise<boolean> {
       const text = typeof basis === "string" ? basis.trim() : "";
@@ -588,15 +904,13 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
                       OR (b.assessed_on = a.assessed_on AND b.recorded_at > a.recorded_at)))
            )
            SELECT s.id AS studentId, s.display_name AS studentName, l.id AS assessmentId,
-             l.assessed_on AS assessedOn, l.kind, l.format_version AS formatVersion, l.risk_status AS riskStatus,
-             EXISTS (SELECT 1 FROM assessment_reviews r WHERE r.assessment_id = l.id) AS reviewed,
+             l.assessed_on AS assessedOn, l.kind, l.format_version AS formatVersion, ${riskSql("l")} AS riskStatus,
+             ${reviewedSql("l")} AS reviewed,
              (SELECT d.id FROM assessments d WHERE d.student_id = s.id AND d.state = 'DRAFT') AS draftId,
              (SELECT d.format_version FROM assessments d WHERE d.student_id = s.id AND d.state = 'DRAFT') AS draftFormatVersion
            FROM students s LEFT JOIN latest l ON l.student_id = s.id
            WHERE s.organization_id = ?1 AND ${activeUser("?2")} AND ${technicalAccessExists("s", "?2")}
-           ORDER BY CASE WHEN l.risk_status = 'REVIEW_REQUIRED'
-                          AND NOT EXISTS (SELECT 1 FROM assessment_reviews r WHERE r.assessment_id = l.id)
-                         THEN 0 ELSE 1 END,
+           ORDER BY CASE WHEN ${riskSql("l")} = 'REVIEW_REQUIRED' AND NOT ${reviewedSql("l")} THEN 0 ELSE 1 END,
              s.display_name`,
         )
         .bind(organizationId, userId)

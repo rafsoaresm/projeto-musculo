@@ -6533,6 +6533,259 @@ fieldset.yes-no legend {
   }
 }
 
+/* ---------- Avaliação Física: Revisão, registro e retificação (0.77) ---------- */
+.av2-subtitle {
+  margin: 20px 0 8px;
+  font-size: var(--font-size-base, 1rem);
+}
+.av2-pending,
+.av2-not-computed,
+.av2-module-lines,
+.av2-answer-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.av2-pending li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: var(--radius-card);
+  background: var(--color-warning-soft);
+  color: var(--color-warning-text);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+.av2-pending svg,
+.av2-ready svg {
+  flex: none;
+  margin-top: 2px;
+}
+.av2-ready {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: var(--radius-card);
+  background: var(--color-success-soft);
+  color: var(--color-success-text);
+  font-weight: 700;
+}
+.av2-pending + .av2-attention,
+.av2-ready + .av2-attention {
+  margin-top: 12px;
+  margin-bottom: 0;
+}
+/* Information, not a blocker: the same box as a pending row (padding, 16px icon), in the neutral tone. */
+.av2-review-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  border-radius: var(--radius-card);
+  background: var(--color-neutral-100);
+  color: var(--color-ink);
+  font-size: var(--font-size-sm);
+}
+.av2-review-note svg {
+  flex: none;
+  margin-top: 2px;
+}
+.av2-pending-where {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 12px 0 0;
+}
+.av2-finalize-reason {
+  margin: 10px 0 0;
+}
+.av2-not-computed li,
+.av2-module-lines li,
+.av2-answer-list li {
+  font-size: var(--font-size-sm);
+  overflow-wrap: anywhere;
+}
+.av2-not-computed li::before,
+.av2-module-lines li::before {
+  content: "· ";
+  color: var(--color-muted);
+}
+/* The checklist: one module per box, side by side where the card is wide. */
+.av2-modules {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.av2-module {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--color-line-strong);
+  border-radius: var(--radius-card);
+  background: var(--color-background);
+}
+.av2-module-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+@container (max-width: 760px) {
+  .av2-modules {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* A result per line: the name, the value, then the method and its flags (never a classification). */
+.av2-result-rows {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--color-line);
+}
+.av2-result-row {
+  display: grid;
+  grid-template-columns: minmax(0, 12rem) minmax(0, 8rem) minmax(0, 1fr);
+  align-items: baseline;
+  column-gap: 16px;
+  row-gap: 6px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-line);
+}
+.av2-result-name {
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+.av2-result-value {
+  font-variant-numeric: tabular-nums;
+}
+.av2-result-flags {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.av2-result-flags .av2-flag {
+  margin-top: 0;
+}
+@container (max-width: 560px) {
+  .av2-result-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .av2-result-method {
+    grid-column: 1 / -1;
+  }
+}
+.av2-confirm {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-line-strong);
+  border-radius: var(--radius-card);
+  background: var(--color-background);
+}
+.av2-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.av2-card > .button,
+.av2-amend {
+  margin-top: 4px;
+}
+.av2-amend {
+  display: grid;
+  gap: 12px;
+}
+.av2-suggestion {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 10px 14px;
+  border-radius: var(--radius-card);
+  background: var(--color-primary-soft);
+  font-size: var(--font-size-sm);
+}
+/* What was recorded, as label and value pairs in the grid of the fields (four per line where the card is wide). */
+.av2-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px 16px;
+  margin: 0;
+}
+.av2-facts > div {
+  min-width: 0;
+}
+.av2-facts dt {
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+.av2-facts dd {
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+}
+@container (max-width: 760px) {
+  .av2-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@container (max-width: 420px) {
+  .av2-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.av2-facts + .table-wrap {
+  margin-top: 16px;
+}
+.av2-decision-record {
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+  padding: 12px 16px;
+  border-radius: var(--radius-card);
+  background: var(--color-primary-soft);
+}
+.av2-decision-record p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.assessment-history td,
+.assessment-history th {
+  vertical-align: middle;
+}
+.assessment-history-wrap {
+  margin-top: 16px;
+}
+/* Five columns fit the panel at desktop widths: the text wraps inside its cell instead of the table scrolling sideways. */
+.assessment-history {
+  white-space: normal;
+}
+/* "Retificada por …" goes on its own line under the title. */
+.assessment-amended-by {
+  display: block;
+  margin-top: 4px;
+}
+/* A tab's panel takes the whole row of the tabs and may shrink below its content (a wide table scrolls inside its own box): as a flex item with
+   min-width auto, a table that does not wrap pushed the panel past the column. */
+.tabs > [role="tabpanel"] {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
 /* ---------- Meu Site: Rastreamento e conversões (0.71) ---------- */
 /* The table of events scrolls inside its own box; nothing in the panel widens the page on a phone. */
 .tracking-panel {
