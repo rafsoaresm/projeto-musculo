@@ -298,10 +298,7 @@ export function AssessmentShell({
       ) : step === "medidas" ? (
         <CompositionStep form={form} onChange={edit} assessedOn={assessedOn} birthDate={birthDate} suggestedEquation={suggestedEquation} />
       ) : step === "movimento" ? (
-        <div className="av2-cards">
-          <PostureStep form={postureForm} onChange={editPosture} />
-          <FlexitestCard form={movementForm} onChange={editMovement} />
-        </div>
+        <PostureStep form={postureForm} onChange={editPosture} after={<FlexitestCard form={movementForm} onChange={editMovement} />} />
       ) : step === "testes" ? (
         <TestsStep form={testsForm} onChange={editTests} />
       ) : (
