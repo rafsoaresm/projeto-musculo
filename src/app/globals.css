@@ -6849,6 +6849,98 @@ fieldset.yes-no legend {
     min-height: 44px;
   }
 }
+/* ---------- Readable copy of the student's data (0.91) ---------- */
+.copy-document {
+  display: grid;
+  min-width: 0;
+}
+.copy-index ol {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+  gap: 4px 24px;
+  margin: 8px 0 0;
+  padding-left: 22px;
+}
+.copy-index a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  overflow-wrap: anywhere;
+}
+.copy-section {
+  min-width: 0;
+}
+.copy-heading {
+  margin: 12px 0 6px;
+  font-size: var(--font-size-sm);
+  color: var(--color-primary);
+  overflow-wrap: anywhere;
+}
+@media (max-width: 860px) {
+  /* The top bar is sticky here: an index link must not land the section title under it. */
+  .copy-section,
+  #baixar {
+    scroll-margin-top: calc(var(--banner-h) + 72px);
+  }
+}
+.copy-subtitle {
+  margin: 20px 0 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-line);
+  font-size: var(--font-size-base);
+  overflow-wrap: anywhere;
+}
+.copy-section > h2 + .copy-subtitle,
+.copy-section > h2 + .copy-text + .copy-subtitle {
+  margin-top: 8px;
+  padding-top: 0;
+  border-top: 0;
+}
+.copy-text {
+  overflow-wrap: anywhere;
+}
+.copy-list {
+  margin: 0 0 12px;
+  padding-left: 22px;
+}
+.copy-facts {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.copy-facts > div {
+  display: grid;
+  grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
+  gap: 4px 16px;
+  align-items: baseline;
+}
+.copy-facts dt {
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
+.copy-facts dd {
+  margin: 0;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.copy-facts + .copy-facts {
+  padding-top: 8px;
+  border-top: 1px dashed var(--color-line);
+}
+.copy-actions {
+  margin: 16px 0 0;
+}
+@media (max-width: 640px) {
+  .copy-facts > div {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .copy-actions .button,
+  .copy-page-actions .button {
+    flex: 1 1 100%;
+  }
+}
 .student-assessment {
   display: grid;
   gap: 20px;

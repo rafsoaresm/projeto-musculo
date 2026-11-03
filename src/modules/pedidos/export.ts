@@ -23,7 +23,7 @@ export const EXPORT_NOTICE =
 
 export const EXPORT_INCLUDED = [
   "Seus dados de acesso (nome e e-mail).",
-  "Os aceites dos termos, com a versão e a escolha sobre fotos.",
+  "Os aceites dos termos que você registrou, com a versão.",
   "Os seus check-ins.",
   "Os treinos que você registrou, com séries, repetições e cargas.",
   "O treino entregue pelo seu profissional (a versão mais recente de cada plano).",
