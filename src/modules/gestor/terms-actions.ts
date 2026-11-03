@@ -41,7 +41,7 @@ export async function publishTerms(
   try {
     const outcome = await termsFor(db, context).publish(audience, content, note, new Date(), stateOf(loaded));
     if (outcome.status === "unchanged")
-      return { ok: false, error: "Nada mudou em relação ao texto em vigor. Publicar assim pediria um novo aceite sem motivo." };
+      return { ok: false, error: "Nada mudou em relação ao texto em vigor." };
     if (outcome.status === "conflict") return { ok: false, error: "Outra publicação aconteceu agora mesmo. Atualize a página e tente de novo." };
     if (outcome.status === "draft_changed") return { ok: false, error: CHANGED_UNDER_YOU };
     if (outcome.status === "base_changed") return { ok: false, error: BASE_CHANGED };

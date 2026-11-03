@@ -41,7 +41,7 @@ export default async function Terms({
       <PageHeading
         eyebrow="PLATAFORMA"
         title="Termos"
-        description="O texto que profissionais e alunos leem e aceitam ao entrar. Edite aqui quando for preciso."
+        description="O texto que profissionais e alunos podem ler. Edite aqui quando for preciso."
       />
       <nav className="terms-tabs" aria-label="Qual texto">
         {TABS.map((candidate) => (
@@ -57,9 +57,8 @@ export default async function Terms({
       </nav>
       <Notice>
         <p>
-          Trocar qualquer palavra cria uma <strong>nova versão</strong>, e todos aceitam de novo no próximo acesso.
-          As versões publicadas não mudam nem somem: o histórico prova o que cada pessoa aceitou. Mudanças de
-          conteúdo devem passar pelo responsável jurídico antes de publicar.
+          Trocar qualquer palavra cria uma <strong>nova versão</strong>, que passa a ser a mostrada. Os termos ficam
+          para leitura: entrar na ferramenta não depende de aceitá-los, e ninguém precisa aceitar de novo.
         </p>
       </Notice>
       <section className="panel" aria-labelledby="em-vigor">
@@ -116,7 +115,6 @@ export default async function Terms({
           audience={tab.audience}
           current={current.content}
           initial={startFrom ?? draft?.content ?? current.content}
-          acceptedBy={inForce.acceptedBy}
           inForceId={inForce.id}
           draft={{ revision: draft?.revision ?? null, savedAt: draft?.updatedAt ?? null, savedBy: draft?.updatedByEmail ?? null }}
         />

@@ -22,7 +22,7 @@ export function PhotoImage({
   view: string;
   stamp: string;
   alt: string;
-  /** When the photo was erased on the student's request. The image is not asked for again. */
+  /** When the photo was erased (by the professional, or on the student's request). The image is not asked for again. */
   erasedAt?: string | null;
 }) {
   const mountPath = useMountPath();
@@ -35,8 +35,8 @@ export function PhotoImage({
   );
   if (erasedAt)
     return (
-      <p className="posture-photo placeholder erased" role="img" aria-label={`${alt}: apagada a pedido do aluno`}>
-        Foto apagada a pedido do aluno em {formatDate(erasedAt)}.
+      <p className="posture-photo placeholder erased" role="img" aria-label={`${alt}: apagada`}>
+        Foto apagada em {formatDate(erasedAt)}.
       </p>
     );
   const src =

@@ -12,9 +12,8 @@ import { activeUser, assertContext, technicalAccessExists, type AuthenticatedCon
 /**
  * Requests from the data subject. The student asks, with a deadline; the professional with the
  * technical assignment over them answers. The tool records both and carries out only one thing: the
- * erasure of the stored photos, which is an exception to the freeze of a recorded assessment and is
- * therefore only possible under an open request of that very student (the database refuses it
- * otherwise). A request is never edited or deleted and has at most one outcome.
+ * erasure of the stored photos (which the professional can also do without a request, photo by photo,
+ * in the assessment). A request has at most one outcome.
  *
  * Two sides, like the check-in. The student reaches only the requests of the students their own login
  * is linked to; the professional only those of students under their active technical assignment.

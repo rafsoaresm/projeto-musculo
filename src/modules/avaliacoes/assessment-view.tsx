@@ -1,6 +1,7 @@
 import { Notice, Pill, formatDateTime } from "@/components/ui";
 import type { AssessmentDetail } from "@/db/assessments";
 import { formatCalendarDate } from "@/modules/training/format";
+import { PhotoEraseButton } from "./photo-erase-button";
 import { PhotoImage } from "./photo-image";
 import { PHOTO_VIEWS } from "./photos";
 import { ReviewForm } from "./review-form";
@@ -122,6 +123,9 @@ export function AssessmentView({ detail }: { detail: AssessmentDetail }) {
                 <figcaption>
                   <strong>{view.label}</strong>
                 </figcaption>
+                {!detail.photos.find((photo) => photo.view === view.key)?.erasedAt && (
+                  <PhotoEraseButton studentId={detail.studentId} assessmentId={detail.id} view={view.key} />
+                )}
               </figure>
             ))}
           </div>
