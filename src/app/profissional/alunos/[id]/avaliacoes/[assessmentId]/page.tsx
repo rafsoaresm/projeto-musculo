@@ -14,6 +14,9 @@ import { DiscardDraftButton } from "@/modules/avaliacoes/v2/discard-button";
 import { COMPOSITION_MODULE, readComposition } from "@/modules/avaliacoes/v2/composition";
 import { PROFILE_MODULE, SCREENING_MODULE, readProfile, readScreening } from "@/modules/avaliacoes/v2/screening";
 import { POSTURE_MODULE, readPosture } from "@/modules/avaliacoes/v2/posture";
+import { MOVEMENT_MODULE, readMovement } from "@/modules/avaliacoes/v2/flexitest";
+import { TESTS_MODULE, readTests } from "@/modules/avaliacoes/v2/physical-tests";
+import { CONCLUSION_MODULE, readConclusion } from "@/modules/avaliacoes/v2/conclusion";
 import { ASSESSMENT_NAME, assessmentTitle } from "@/modules/avaliacoes/names";
 import { RecordedAssessmentView } from "@/modules/avaliacoes/v2/recorded-view";
 
@@ -73,6 +76,9 @@ export default async function Assessment({
           profile={readProfile(section(PROFILE_MODULE))}
           screening={readScreening(section(SCREENING_MODULE))}
           posture={readPosture(section(POSTURE_MODULE))}
+          movement={readMovement(section(MOVEMENT_MODULE))}
+          tests={readTests(section(TESTS_MODULE))}
+          conclusion={readConclusion(section(CONCLUSION_MODULE))}
           initialStep={isStepKey(etapa) ? etapa : undefined}
           suggestedEquation={suggestedEquation}
           amendment={
@@ -132,6 +138,9 @@ export default async function Assessment({
           screening={screening}
           composition={section(COMPOSITION_MODULE) === undefined ? null : readComposition(section(COMPOSITION_MODULE))}
           posture={section(POSTURE_MODULE) === undefined ? null : readPosture(section(POSTURE_MODULE))}
+          movement={section(MOVEMENT_MODULE) === undefined ? null : readMovement(section(MOVEMENT_MODULE))}
+          tests={section(TESTS_MODULE) === undefined ? null : readTests(section(TESTS_MODULE))}
+          conclusion={section(CONCLUSION_MODULE) === undefined ? null : readConclusion(section(CONCLUSION_MODULE))}
           decidedBy={decidedBy}
           amendedAt={amendedAt}
           canAmend={openDraft === null && detail.amendedById === null}

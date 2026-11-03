@@ -30,6 +30,7 @@ import {
   bilateralDifference,
   bmi,
   bodyComposition,
+  cooper,
   selectedValue,
   waistHipRatio,
   type SiteValues,
@@ -37,6 +38,8 @@ import {
 } from "../formulas";
 import { AGGREGATION_LABEL, EQUATION_LABEL, PROTOCOL_CHIP, SITE_LABEL, bilateralObservation, bilateralSigned, requiredSites, type CompositionPayload } from "./composition";
 import { heathCarterTyped, observedIn, postureEmpty, regionsOf, somatotypeText, type PosturePayload } from "./posture";
+import { FLEXITEST_CODES, FLEXITEST_VARIANT, filledText, flexitestTally, movementEmpty, type MovementPayload } from "./flexitest";
+import { COOPER_MINUTES, REPETITION_TESTS, TEST_TITLE, cooperEmpty, repetitionTestEmpty, testsEmpty, type TestsPayload } from "./physical-tests";
 import {
   ANAMNESIS_CODES,
   EMPTY_SCREENING,
@@ -71,10 +74,32 @@ export const RESULT_CODES = [
   "bmi",
   "waist_hip_ratio",
   ...PERIMETER_SIDED_CODES.map(bilateralCode),
+  "flexitest_total",
+  "cooper_speed_kmh",
+  "cooper_vo2_estimate",
 ] as const;
-export type ResultCode = "sum_skinfolds" | "body_density" | "body_fat_percent" | "fat_mass_kg" | "lean_mass_kg" | "bmi" | "waist_hip_ratio" | ReturnType<typeof bilateralCode>;
+export type ResultCode =
+  | "sum_skinfolds"
+  | "body_density"
+  | "body_fat_percent"
+  | "fat_mass_kg"
+  | "lean_mass_kg"
+  | "bmi"
+  | "waist_hip_ratio"
+  | ReturnType<typeof bilateralCode>
+  | "flexitest_total"
+  | "cooper_speed_kmh"
+  | "cooper_vo2_estimate";
 /** How each computed-by-arithmetic result is obtained (no equation from a study, so never "estimativa"). */
-export const EXACT_METHODS = { bmi: "weight_over_height_squared", waistHip: "waist_over_hip", bilateral: "right_minus_left" } as const;
+export const EXACT_METHODS = {
+  bmi: "weight_over_height_squared",
+  waistHip: "waist_over_hip",
+  bilateral: "right_minus_left",
+  flexitest: "flexitest_sum_of_15_levels",
+  cooperSpeed: "cooper_distance_over_200",
+} as const;
+/** The estimate of VO₂max from the Cooper distance (handoff 5: `(distancia_m - 504.9) / 44.73`, a reference equation; the result is an estimate). */
+export const COOPER_VO2_METHOD = "cooper_12min_vo2_504_9_44_73";
 const EXACT_METHOD_SET: ReadonlySet<string> = new Set(Object.values(EXACT_METHODS));
 /** A result whose method is arithmetic on measures (BMI, waist-hip ratio, bilateral difference) or unknown: not an estimate of a study's equation. */
 export const isEstimate = (method: string) => method !== "legacy_formula_unknown" && !EXACT_METHOD_SET.has(method);
@@ -87,6 +112,9 @@ export const RESULT_LABEL: Record<string, string> = {
   lean_mass_kg: "Massa livre de gordura",
   bmi: "IMC",
   waist_hip_ratio: "RCQ",
+  flexitest_total: "Flexiteste, soma dos 15 níveis",
+  cooper_speed_kmh: "Cooper, velocidade média",
+  cooper_vo2_estimate: "Cooper, VO₂máx estimado",
   ...Object.fromEntries(PERIMETER_SIDED_CODES.map((code) => [bilateralCode(code), `Diferença bilateral ${PERIMETERS_SIDED_OF[code]}`])),
 };
 
@@ -96,6 +124,9 @@ export function methodLabel(method: string): string {
   if (method === EXACT_METHODS.bmi) return "peso ÷ altura²";
   if (method === EXACT_METHODS.waistHip) return "cintura ÷ quadril";
   if (method === EXACT_METHODS.bilateral) return "direito − esquerdo";
+  if (method === EXACT_METHODS.flexitest) return "soma dos níveis, 15 movimentos de 1 a 4";
+  if (method === EXACT_METHODS.cooperSpeed) return "distância ÷ 200 (12 min)";
+  if (method === COOPER_VO2_METHOD) return "Cooper 12 min, (distância − 504,9) ÷ 44,73";
   for (const protocol of Object.keys(PROTOCOL_VARIANTS) as (keyof typeof PROTOCOL_VARIANTS)[]) {
     const variants = PROTOCOL_VARIANTS[protocol];
     if (variants.male.id === method && variants.female.id === method) return PROTOCOL_CHIP[protocol];
@@ -112,8 +143,19 @@ export const FLAG_LABEL: Record<string, string> = {
   legacy_formula_unknown: "Método desconhecido (formato anterior)",
 };
 
-const DIGITS: Record<string, number> = { sum_skinfolds: 1, body_density: 4, body_fat_percent: 1, fat_mass_kg: 1, lean_mass_kg: 1, bmi: 2, waist_hip_ratio: 3 };
-const MIN_DIGITS: Record<string, number> = { bmi: 2, waist_hip_ratio: 3 };
+const DIGITS: Record<string, number> = {
+  sum_skinfolds: 1,
+  body_density: 4,
+  body_fat_percent: 1,
+  fat_mass_kg: 1,
+  lean_mass_kg: 1,
+  bmi: 2,
+  waist_hip_ratio: 3,
+  flexitest_total: 0,
+  cooper_speed_kmh: 1,
+  cooper_vo2_estimate: 2,
+};
+const MIN_DIGITS: Record<string, number> = { bmi: 2, waist_hip_ratio: 3, cooper_speed_kmh: 1, cooper_vo2_estimate: 2 };
 
 /** A value as the screens show it (rounded only here; the record keeps the full precision), with its unit. */
 export function formatResult(code: string, value: number, unit: string | null): string {
@@ -132,7 +174,7 @@ export function resultNote(code: string, value: number | null): string | null {
 
 /** One module of the review: what it holds, in words, and whether it is done, partial, or was not done (never a 0). */
 export interface ModuleSummary {
-  key: "triagem" | "medidas" | "movimento";
+  key: "triagem" | "medidas" | "movimento" | "testes";
   title: string;
   state: "ready" | "pending" | "partial" | "filled" | "observed" | "not_done";
   lines: string[];
@@ -156,6 +198,10 @@ export interface ReviewInput {
   composition: CompositionPayload | null;
   /** The "Movimento" step (module "posture"): posture and somatotype. Absent or null: not done. */
   posture?: PosturePayload | null;
+  /** The Flexiteste of the "Movimento" step (module "movement"). Absent or null: not done. */
+  movement?: MovementPayload | null;
+  /** The "Testes físicos" step (module "tests"). Absent or null: not done. */
+  tests?: TestsPayload | null;
   assessedOn: string;
   /** From the snapshot the draft took of the student's file. */
   birthDate: string | null;
@@ -295,6 +341,50 @@ function perimeterResults(composition: CompositionPayload): { results: ResultDra
   return { results, notComputed };
 }
 
+/**
+ * What the Flexiteste gives (handoff 3.4 and 5): the sum of the 15 levels, only when all 15 are filled — a partial sum is never a total. Plain
+ * arithmetic, versioned; no classification (the PDF gives no table: handoff 3.4).
+ */
+function flexitestResults(movement: MovementPayload): { results: ResultDraft[]; notComputed: string[] } {
+  const tally = flexitestTally(movement);
+  if (tally.total !== null)
+    return {
+      results: [
+        {
+          code: "flexitest_total",
+          value: tally.total,
+          unit: "pontos",
+          method: EXACT_METHODS.flexitest,
+          formulaVersion: FORMULA_VERSION,
+          inputs: { variant: FLEXITEST_VARIANT, levels: Object.fromEntries(FLEXITEST_CODES.map((code) => [code, movement.flexitest.levels[code]])) },
+          flags: [],
+        },
+      ],
+      notComputed: [],
+    };
+  if (tally.filled === 0) return { results: [], notComputed: [] };
+  return { results: [], notComputed: [`Flexiteste: o total só existe com os ${FLEXITEST_CODES.length} movimentos (${filledText(tally.filled)})`] };
+}
+
+/**
+ * What the Cooper test gives (handoff 3.5 and 5): the average speed over the fixed 12 minutes (distance ÷ 200, arithmetic) and the estimated VO₂max
+ * by the documented equation, versioned and said to be an estimate. A distance for which the equation gives no positive value records no VO₂.
+ */
+function cooperResults(tests: TestsPayload): { results: ResultDraft[]; notComputed: string[] } {
+  const distanceM = tests.cooper.distanceM;
+  const outcome = cooper(distanceM);
+  if (outcome === null || distanceM === null) return { results: [], notComputed: [] };
+  const inputs = { distanceM, durationMin: COOPER_MINUTES, testedOn: tests.cooper.testedOn };
+  const results: ResultDraft[] = [
+    { code: "cooper_speed_kmh", value: outcome.speedKmh, unit: "km/h", method: EXACT_METHODS.cooperSpeed, formulaVersion: outcome.formulaVersion, inputs, flags: [] },
+  ];
+  const notComputed: string[] = [];
+  if (outcome.vo2Estimate > 0)
+    results.push({ code: "cooper_vo2_estimate", value: outcome.vo2Estimate, unit: "ml/kg/min", method: COOPER_VO2_METHOD, formulaVersion: outcome.formulaVersion, inputs, flags: [] });
+  else notComputed.push("Cooper, VO₂máx estimado: com esta distância a equação não dá um valor positivo");
+  return { results, notComputed };
+}
+
 function triagemSummary(profile: ProfilePayload | null, screening: ScreeningPayload | null, pending: string[]): ModuleSummary {
   const lines: string[] = [];
   const goals = profile?.goals ?? [];
@@ -357,11 +447,26 @@ function medidasSummary(composition: CompositionPayload | null): ModuleSummary {
 }
 
 /**
- * The "Movimento" step in words (slice 0.79): how many regions of each view were observed, the somatotype as the professional recorded it, and the
- * Heath-Carter measures kept (never a computed somatotype). Nothing observed is "Não realizado", never "alinhado". The Flexiteste comes later.
+ * The "Movimento" step in words (slices 0.79 and 0.80): how many regions of each view were observed, the somatotype as the professional recorded
+ * it, the Heath-Carter measures kept (never a computed somatotype), and how many Flexiteste movements have a level, with the total only when all 15
+ * do. Nothing observed is "Não realizado", never "alinhado" nor 0.
  */
-function movimentoSummary(posture: PosturePayload | null): ModuleSummary {
-  if (!posture || postureEmpty(posture)) return { key: "movimento", title: "Movimento", state: "not_done", lines: ["Não realizado"] };
+function movimentoSummary(posture: PosturePayload | null, movement: MovementPayload | null): ModuleSummary {
+  const noPosture = !posture || postureEmpty(posture);
+  const noFlexitest = !movement || movementEmpty(movement);
+  if (noPosture && noFlexitest) return { key: "movimento", title: "Movimento", state: "not_done", lines: ["Não realizado"] };
+  const lines: string[] = [];
+  if (posture && !noPosture) lines.push(...postureLines(posture));
+  else lines.push("Postura e somatotipo: não realizados");
+  if (movement && !noFlexitest) {
+    const tally = flexitestTally(movement);
+    lines.push(`Flexiteste: ${filledText(tally.filled)}${tally.total !== null ? `; total ${tally.total} pontos` : ""}`);
+    if (movement.flexitest.classificationManual.trim() !== "") lines.push(`Classificação do Flexiteste escrita pelo profissional: ${movement.flexitest.classificationManual.trim()}`);
+  } else lines.push("Flexiteste: não realizado");
+  return { key: "movimento", title: "Movimento", state: "observed", lines };
+}
+
+function postureLines(posture: PosturePayload): string[] {
   const lines: string[] = [];
   const observed = POSTURE_VIEW_CODES.reduce((total, view) => total + observedIn(posture, view), 0);
   lines.push(
@@ -375,8 +480,30 @@ function movimentoSummary(posture: PosturePayload | null): ModuleSummary {
   lines.push(somatotype ? `Somatotipo (registro do profissional): ${somatotype}` : "Somatotipo: não registrado");
   const measures = heathCarterTyped(posture);
   if (measures.length > 0) lines.push(`Medidas para Heath-Carter guardadas, sem cálculo: ${list(measures.map((code) => HEATH_CARTER_MEASURES[code].label.toLowerCase()))}`);
-  lines.push("Flexiteste: não registrado nesta versão");
-  return { key: "movimento", title: "Movimento", state: "observed", lines };
+  return lines;
+}
+
+/** The "Testes físicos" step in words (slice 0.80): what each test has, as typed; a test not done says so, never 0. No classification by the system. */
+function testesSummary(tests: TestsPayload | null): ModuleSummary {
+  if (!tests || testsEmpty(tests)) return { key: "testes", title: "Testes físicos", state: "not_done", lines: ["Não realizado"] };
+  const lines: string[] = [];
+  for (const key of REPETITION_TESTS) {
+    const test = tests[key];
+    if (repetitionTestEmpty(test)) lines.push(`${TEST_TITLE[key]}: não realizado`);
+    else
+      lines.push(
+        `${TEST_TITLE[key]}: ${test.repetitions === null ? "repetições sem registro" : `${test.repetitions} ${test.repetitions === 1 ? "repetição completa" : "repetições completas"}`}${test.exercise.trim() ? ` · ${test.exercise.trim()}` : ""}`,
+      );
+  }
+  const cooperTest = tests.cooper;
+  lines.push(
+    cooperEmpty(cooperTest)
+      ? "Cooper: não realizado"
+      : `Cooper: ${cooperTest.distanceM === null ? "distância sem registro" : `${decimal(cooperTest.distanceM, 1)} m em ${COOPER_MINUTES} min`}`,
+  );
+  const classified = [...REPETITION_TESTS.map((key) => tests[key].classificationManual), cooperTest.classificationManual].some((value) => value.trim() !== "");
+  if (classified) lines.push("Classificação: escrita pelo profissional (nenhuma tabela homologada)");
+  return { key: "testes", title: "Testes físicos", state: "filled", lines };
 }
 
 /**
@@ -389,7 +516,10 @@ export function reviewDraft(input: ReviewInput): DraftReview {
   const ageYears = ageOn(input.birthDate, input.assessedOn);
   const skinfold = input.composition ? compositionResults(input.composition, ageYears) : { results: [], notComputed: [] };
   const perimeter = input.composition ? perimeterResults(input.composition) : { results: [], notComputed: [] };
-  const computed = { results: [...skinfold.results, ...perimeter.results], notComputed: [...skinfold.notComputed, ...perimeter.notComputed] };
+  const flexibility = input.movement ? flexitestResults(input.movement) : { results: [], notComputed: [] };
+  const cooperTest = input.tests ? cooperResults(input.tests) : { results: [], notComputed: [] };
+  const parts = [skinfold, perimeter, flexibility, cooperTest];
+  const computed = { results: parts.flatMap((part) => part.results), notComputed: parts.flatMap((part) => part.notComputed) };
   return {
     pending,
     results: computed.results,
@@ -398,7 +528,8 @@ export function reviewDraft(input: ReviewInput): DraftReview {
     modules: [
       triagemSummary(input.profile, input.screening, pending),
       medidasSummary(input.composition),
-      movimentoSummary(input.posture ?? null),
+      movimentoSummary(input.posture ?? null, input.movement ?? null),
+      testesSummary(input.tests ?? null),
     ],
   };
 }

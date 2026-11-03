@@ -15,6 +15,9 @@ import { SECTION_STATUSES, isModule, type AssessmentModule, type SectionStatus }
 import { COMPOSITION_MODULE, compositionSchema } from "@/modules/avaliacoes/v2/composition";
 import { PROFILE_MODULE, SCREENING_MODULE, profileSchema, screeningSchema } from "@/modules/avaliacoes/v2/screening";
 import { POSTURE_MODULE, postureSchema } from "@/modules/avaliacoes/v2/posture";
+import { MOVEMENT_MODULE, movementSchema } from "@/modules/avaliacoes/v2/flexitest";
+import { TESTS_MODULE, testsSchema } from "@/modules/avaliacoes/v2/physical-tests";
+import { CONCLUSION_MODULE, conclusionSchema } from "@/modules/avaliacoes/v2/conclusion";
 import { recordedScreening, reviewDraft } from "@/modules/avaliacoes/v2/review";
 import { activeUser, assertContext, technicalAccessExists, type AuthenticatedContext } from "./students";
 
@@ -735,8 +738,10 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
       const screening = stored(SCREENING_MODULE) === undefined ? null : screeningSchema.safeParse(stored(SCREENING_MODULE));
       const composition = stored(COMPOSITION_MODULE) === undefined ? null : compositionSchema.safeParse(stored(COMPOSITION_MODULE));
       const posture = stored(POSTURE_MODULE) === undefined ? null : postureSchema.safeParse(stored(POSTURE_MODULE));
-      if ((profile && !profile.success) || (screening && !screening.success) || (composition && !composition.success) || (posture && !posture.success))
-        return { status: "invalid" };
+      const movement = stored(MOVEMENT_MODULE) === undefined ? null : movementSchema.safeParse(stored(MOVEMENT_MODULE));
+      const tests = stored(TESTS_MODULE) === undefined ? null : testsSchema.safeParse(stored(TESTS_MODULE));
+      const conclusion = stored(CONCLUSION_MODULE) === undefined ? null : conclusionSchema.safeParse(stored(CONCLUSION_MODULE));
+      if ([profile, screening, composition, posture, movement, tests, conclusion].some((parsed) => parsed !== null && !parsed.success)) return { status: "invalid" };
       let original: { screening: ReturnType<typeof screeningSchema.parse> | null } | null = null;
       if (head.amendsId) {
         const raw = await db
@@ -752,6 +757,8 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
         screening: screening?.success ? screening.data : null,
         composition: composition?.success ? composition.data : null,
         posture: posture?.success ? posture.data : null,
+        movement: movement?.success ? movement.data : null,
+        tests: tests?.success ? tests.data : null,
         assessedOn: head.assessedOn,
         birthDate: typeof snapshot.birthDate === "string" ? snapshot.birthDate : null,
         original,

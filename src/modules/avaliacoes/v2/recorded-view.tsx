@@ -32,6 +32,19 @@ import { ANAMNESIS_CODES, PARQ_CODES, parqAnswer, type ProfilePayload, type Scre
 import { ResultsList } from "./results-list";
 import { HEATH_CARTER_NOTE, findingsText, postureEmpty, regionsOf, somatotypeText, type PosturePayload } from "./posture";
 import { AmendForm } from "./amend-form";
+import { FLEXITEST_CLASSIFICATION_NOTE, FLEXITEST_CODES, FLEXITEST_LABEL, filledText, flexitestTally, movementEmpty, totalText, type MovementPayload } from "./flexitest";
+import {
+  COOPER_MINUTES,
+  EXERCISE_LABEL,
+  REPETITION_TESTS,
+  TESTS_CLASSIFICATION_NOTE,
+  TEST_TITLE,
+  cooperEmpty,
+  repetitionTestEmpty,
+  testsEmpty,
+  type TestsPayload,
+} from "./physical-tests";
+import { CONCLUSION_FIELDS, CONCLUSION_LABEL, conclusionEmpty, type ConclusionPayload } from "./conclusion";
 
 const decimal = (value: number, digits = 2) => new Intl.NumberFormat("pt-BR", { maximumFractionDigits: digits }).format(value);
 const measured = (value: number | null, unit: string, digits = 2) => (value === null ? "Sem aferição" : `${decimal(value, digits)} ${unit}`);
@@ -51,6 +64,9 @@ export function RecordedAssessmentView({
   screening,
   composition,
   posture = null,
+  movement = null,
+  tests = null,
+  conclusion = null,
   decidedBy,
   amendedAt = null,
   canAmend,
@@ -61,6 +77,12 @@ export function RecordedAssessmentView({
   composition: CompositionPayload | null;
   /** The "Movimento" step (module "posture"), or null when it was never saved. */
   posture?: PosturePayload | null;
+  /** The Flexiteste (module "movement"), or null when it was never saved. */
+  movement?: MovementPayload | null;
+  /** The "Testes físicos" step (module "tests"), or null when it was never saved. */
+  tests?: TestsPayload | null;
+  /** The final considerations (module "conclusion"), or null when they were never saved. */
+  conclusion?: ConclusionPayload | null;
   /** The name of who recorded the PAR-Q decision, when there is one. */
   decidedBy: string | null;
   /** When the amendment that corrects this one was recorded (only for an amended one). */
@@ -272,7 +294,36 @@ export function RecordedAssessmentView({
 
       <section className="panel av2-card" aria-labelledby="av2-r-movimento">
         <h3 id="av2-r-movimento">Postura e movimento</h3>
-        {posture && !postureEmpty(posture) ? <RecordedPosture posture={posture} /> : <p className="muted">Não realizado.</p>}
+        {(posture && !postureEmpty(posture)) || (movement && !movementEmpty(movement)) ? (
+          <>
+            {posture && !postureEmpty(posture) ? <RecordedPosture posture={posture} /> : <p className="muted">Postura e somatotipo: não realizados.</p>}
+            <h4 className="av2-subtitle">Flexiteste</h4>
+            {movement && !movementEmpty(movement) ? <RecordedFlexitest movement={movement} /> : <p className="muted">Não realizado.</p>}
+          </>
+        ) : (
+          <p className="muted">Não realizado.</p>
+        )}
+      </section>
+
+      <section className="panel av2-card" aria-labelledby="av2-r-testes">
+        <h3 id="av2-r-testes">Testes físicos</h3>
+        {tests && !testsEmpty(tests) ? <RecordedTests tests={tests} /> : <p className="muted">Não realizado.</p>}
+      </section>
+
+      <section className="panel av2-card" aria-labelledby="av2-r-consideracoes">
+        <h3 id="av2-r-consideracoes">Considerações finais</h3>
+        {conclusion && !conclusionEmpty(conclusion) ? (
+          <dl className="av2-facts av2-facts-wide" aria-label="Considerações finais registradas">
+            {CONCLUSION_FIELDS.filter((field) => conclusion[field].trim() !== "").map((field) => (
+              <div key={field}>
+                <dt>{CONCLUSION_LABEL[field]}</dt>
+                <dd className="av2-prose">{conclusion[field]}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : (
+          <p className="muted">Não escritas.</p>
+        )}
       </section>
 
       {canAmend && (
@@ -400,7 +451,134 @@ function RecordedPosture({ posture }: { posture: PosturePayload }) {
         ))}
       </dl>
       {measures.length > 0 && <p className="small muted av2-recorded-line">{HEATH_CARTER_NOTE}</p>}
-      <p className="small muted av2-recorded-line">Flexiteste: não registrado nesta versão.</p>
+    </>
+  );
+}
+
+/** The Flexiteste as recorded: the level of each movement assessed, how many, the total (only with all 15: in "Resultados" too), and the professional's text. */
+function RecordedFlexitest({ movement }: { movement: MovementPayload }) {
+  const tally = flexitestTally(movement);
+  const assessed = FLEXITEST_CODES.filter((code) => movement.flexitest.levels[code] !== undefined);
+  const missing = FLEXITEST_CODES.filter((code) => movement.flexitest.levels[code] === undefined);
+  const { classificationManual, notes } = movement.flexitest;
+  return (
+    <>
+      <p className="small muted">
+        {filledText(tally.filled)} · total: {totalText(tally.total).toLowerCase()} · versão do PDF, 15 movimentos de 1 a 4.
+      </p>
+      {assessed.length > 0 && (
+        <dl className="av2-facts" aria-label="Níveis do Flexiteste">
+          {assessed.map((code) => (
+            <div key={code}>
+              <dt>{FLEXITEST_LABEL[code]}</dt>
+              <dd>Nível {movement.flexitest.levels[code]}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {assessed.length > 0 && missing.length > 0 && (
+        <p className="small muted av2-recorded-line">Não avaliados: {missing.map((code) => FLEXITEST_LABEL[code]).join(", ")}.</p>
+      )}
+      {classificationManual.trim() !== "" && (
+        <p className="av2-recorded-line">
+          Classificação (manual): {classificationManual} <span className="small muted">— {FLEXITEST_CLASSIFICATION_NOTE}</span>
+        </p>
+      )}
+      {notes.trim() !== "" && <p className="av2-recorded-line">Observações: {notes}</p>}
+    </>
+  );
+}
+
+const count = (value: number | null, one: string, many: string) => (value === null ? "Sem registro" : `${value} ${value === 1 ? one : many}`);
+
+/** The physical tests as recorded: what each one has, as typed; a test not done says so. The Cooper speed and VO₂max are in "Resultados". */
+function RecordedTests({ tests }: { tests: TestsPayload }) {
+  const cooper = tests.cooper;
+  const classified = [...REPETITION_TESTS.map((key) => tests[key].classificationManual), cooper.classificationManual].some((value) => value.trim() !== "");
+  return (
+    <>
+      {REPETITION_TESTS.map((key) => {
+        const test = tests[key];
+        return (
+          <div key={key}>
+            <h4 className="av2-subtitle">{TEST_TITLE[key]}</h4>
+            {repetitionTestEmpty(test) ? (
+              <p className="muted">Não realizado.</p>
+            ) : (
+              <dl className="av2-facts" aria-label={`${TEST_TITLE[key]} registrada`}>
+                <div>
+                  <dt>{EXERCISE_LABEL[key]}</dt>
+                  <dd>{orDash(test.exercise)}</dd>
+                </div>
+                <div>
+                  <dt>Repetições completas</dt>
+                  <dd>{count(test.repetitions, "repetição", "repetições")}</dd>
+                </div>
+                <div>
+                  <dt>Duração</dt>
+                  <dd>{test.durationSeconds === null ? "—" : `${test.durationSeconds} s`}</dd>
+                </div>
+                <div>
+                  <dt>Condições</dt>
+                  <dd>{orDash(test.conditions)}</dd>
+                </div>
+                {test.classificationManual.trim() !== "" && (
+                  <div>
+                    <dt>Classificação (manual)</dt>
+                    <dd>{test.classificationManual}</dd>
+                  </div>
+                )}
+                {test.notes.trim() !== "" && (
+                  <div>
+                    <dt>Observações</dt>
+                    <dd>{test.notes}</dd>
+                  </div>
+                )}
+              </dl>
+            )}
+          </div>
+        );
+      })}
+      <h4 className="av2-subtitle">{TEST_TITLE.cooper}</h4>
+      {cooperEmpty(cooper) ? (
+        <p className="muted">Não realizado.</p>
+      ) : (
+        <dl className="av2-facts" aria-label="Teste de Cooper registrado">
+          <div>
+            <dt>Distância percorrida</dt>
+            <dd>{cooper.distanceM === null ? "Sem registro" : `${decimal(cooper.distanceM, 1)} m em ${COOPER_MINUTES} min`}</dd>
+          </div>
+          <div>
+            <dt>Data do teste</dt>
+            <dd>{cooper.testedOn ? formatCalendarDate(cooper.testedOn) : "A da avaliação (não informada à parte)"}</dd>
+          </div>
+          <div>
+            <dt>Local</dt>
+            <dd>{orDash(cooper.location)}</dd>
+          </div>
+          <div>
+            <dt>Condições</dt>
+            <dd>{orDash(cooper.conditions)}</dd>
+          </div>
+          <div>
+            <dt>Contraindicações</dt>
+            <dd>{orDash(cooper.contraindications)}</dd>
+          </div>
+          {cooper.classificationManual.trim() !== "" && (
+            <div>
+              <dt>Classificação (manual)</dt>
+              <dd>{cooper.classificationManual}</dd>
+            </div>
+          )}
+          {cooper.notes.trim() !== "" && (
+            <div>
+              <dt>Observações</dt>
+              <dd>{cooper.notes}</dd>
+            </div>
+          )}
+        </dl>
+      )}
+      {classified && <p className="small muted av2-recorded-line">{TESTS_CLASSIFICATION_NOTE}</p>}
     </>
   );
 }

@@ -195,7 +195,7 @@ describe("the Revisão of the Movimento step", () => {
         "Observações escritas: posterior",
         "Somatotipo (registro do profissional): Endomorfo e Mesomorfo",
         "Medidas para Heath-Carter guardadas, sem cálculo: dobra supraespinhal",
-        "Flexiteste: não registrado nesta versão",
+        "Flexiteste: não realizado",
       ],
     });
     // No somatotype nor posture result: nothing here is computed, and nothing blocks the finalize.

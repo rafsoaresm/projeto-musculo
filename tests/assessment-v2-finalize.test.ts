@@ -445,3 +445,54 @@ describe("the posture and the somatotype", () => {
     expect(copy).toMatchObject({ status: "IN_PROGRESS", payload: POSTURE });
   });
 });
+
+describe("the Flexiteste, the physical tests and the final considerations (0.80)", () => {
+  const LEVELS = { shoulder_horizontal_abduction: 2, shoulder_abduction: 3, elbow_flexion: 2, elbow_hyperextension: 2, wrist_flexion: 1, wrist_extension: 1, hip_flexion: 2, trunk_hyperextension: 3, trunk_lateral_flexion: 3, thigh_flexion: 2, thigh_extension: 2, knee_flexion: 3, knee_hyperextension: 2, ankle_dorsiflexion: 2, ankle_plantar_flexion: 2 };
+  const MOVEMENT = { flexitest: { variant: "pdf_15_movements_1_to_4", levels: LEVELS, classificationManual: "Médio (-)", notes: "" } };
+  const TESTS = {
+    abdominal: { exercise: "Abdominal 1 min", repetitions: 35, durationSeconds: 60, conditions: "", notes: "", classificationManual: "" },
+    upperLimb: { exercise: "Flexão de braço", repetitions: 0, durationSeconds: null, conditions: "", notes: "", classificationManual: "" },
+    cooper: { distanceM: 2200, testedOn: "2026-11-28", location: "Pista", conditions: "", contraindications: "", notes: "", classificationManual: "" },
+  };
+  const CONCLUSION = { considerations: "Boa evolução.", recommendations: "", limitations: "", referrals: "" };
+  beforeAll(async () => {
+    await db.batch([
+      db.prepare("INSERT INTO students(id,organization_id,display_name) VALUES ('st-6','org-a','Six')"),
+      db.prepare("INSERT INTO care_assignments(organization_id,student_id,professional_id) VALUES ('org-a','st-6','pro-a')"),
+    ]);
+  });
+  it("refuses to finalize a stored Flexiteste with a level 0 or tests with a negative count (payloads not from the screen), and writes nothing", async () => {
+    const draft = await started("st-6", day(26));
+    let revision = await fill(draft, { screening: parq(), movement: { flexitest: { levels: { knee_flexion: 0 } } } });
+    expect(await a().finalize(draft, revision, day(26, 10))).toEqual({ status: "invalid" });
+    revision = await fill(draft, { movement: MOVEMENT, tests: { abdominal: { repetitions: -1 } } });
+    expect(await a().finalize(draft, revision, day(26, 10))).toEqual({ status: "invalid" });
+    expect(await one("SELECT state FROM assessments WHERE id = ?1", draft)).toEqual({ state: "DRAFT" });
+    // Another organization does not reach the draft to save its tests.
+    expect(await assessmentsFor(db, scope("tech-b", "org-b")).saveSection(draft, { module: "tests", status: "IN_PROGRESS", payload: TESTS, revision })).toEqual({ status: "not_found" });
+    expect(await a().discardDraft(draft)).toMatchObject({ status: "discarded" });
+  });
+  it("records the Flexiteste total (32), the Cooper speed and estimated VO₂ with method and version, the texts as typed, frozen; an amendment copies them", async () => {
+    const draft = await started("st-6", day(27));
+    const revision = await fill(draft, { screening: parq(), movement: MOVEMENT, tests: TESTS, conclusion: CONCLUSION });
+    expect(await a().finalize(draft, revision, day(27, 10))).toEqual({ status: "recorded" });
+    const results = await a().results(draft);
+    expect(results.map((row) => row.code).sort()).toEqual(["cooper_speed_kmh", "cooper_vo2_estimate", "flexitest_total"]);
+    expect(results.find((row) => row.code === "flexitest_total")).toMatchObject({ value: 32, unit: "pontos", method: "flexitest_sum_of_15_levels", formulaVersion: FORMULA_VERSION });
+    expect(results.find((row) => row.code === "cooper_speed_kmh")).toMatchObject({ value: 11, unit: "km/h", method: "cooper_distance_over_200" });
+    const vo2 = results.find((row) => row.code === "cooper_vo2_estimate")!;
+    expect(vo2.value).toBeCloseTo(37.9, 2);
+    expect(vo2).toMatchObject({ unit: "ml/kg/min", method: "cooper_12min_vo2_504_9_44_73", formulaVersion: FORMULA_VERSION });
+    for (const name of ["movement", "tests", "conclusion"]) {
+      const stored = await one<{ status: string }>("SELECT status FROM assessment_sections WHERE assessment_id = ?1 AND module = ?2", draft, name);
+      expect(stored?.status).toBe("DONE");
+    }
+    expect(await fails("UPDATE assessment_sections SET payload = '{}' WHERE assessment_id = ?1 AND module = 'tests'", draft)).toContain("ASSESSMENT_FROZEN");
+    const amended = await a().amend(draft, "Distância anotada errada", day(28));
+    if (amended.status !== "started") throw new Error(amended.status);
+    const copy = (await a().sections(amended.id))!.sections;
+    expect(copy.find((section) => section.module === "tests")).toMatchObject({ status: "IN_PROGRESS", payload: TESTS });
+    expect(copy.find((section) => section.module === "movement")).toMatchObject({ payload: MOVEMENT });
+    expect(copy.find((section) => section.module === "conclusion")).toMatchObject({ payload: CONCLUSION });
+  });
+});

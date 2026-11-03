@@ -2,7 +2,16 @@
 import { useMemo, useState, useTransition } from "react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useUnsavedGuard } from "@/components/use-unsaved-guard";
-import { finalizeAssessment, saveCompositionSection, savePostureSection, saveProfileSection, saveScreeningSection } from "./actions";
+import {
+  finalizeAssessment,
+  saveCompositionSection,
+  saveConclusionSection,
+  saveMovementSection,
+  savePostureSection,
+  saveProfileSection,
+  saveScreeningSection,
+  saveTestsSection,
+} from "./actions";
 import { DiscardDraftButton } from "./discard-button";
 import { COMPOSITION_MODULE, formFromPayload, payloadFromForm, problemsMessage, type CompositionForm, type CompositionPayload } from "./composition";
 import { CompositionStep } from "./composition-step";
@@ -22,19 +31,32 @@ import {
 import { TriagemStep } from "./triagem-step";
 import { POSTURE_MODULE, postureFormFrom, postureFromForm, postureProblemsMessage, type PostureForm, type PosturePayload } from "./posture";
 import { PostureStep } from "./posture-step";
+import { MOVEMENT_MODULE, movementFormFrom, movementFromForm, movementProblemsMessage, type MovementForm, type MovementPayload } from "./flexitest";
+import { FlexitestCard } from "./flexitest-card";
+import { TESTS_MODULE, testsFormFrom, testsFromForm, testsProblemsMessage, type TestsForm, type TestsPayload } from "./physical-tests";
+import { TestsStep } from "./tests-step";
+import { CONCLUSION_MODULE, conclusionFromForm, conclusionProblemsMessage, type ConclusionForm, type ConclusionPayload } from "./conclusion";
+import { ConclusionCard } from "./conclusion-card";
 import { ReviewStep } from "./review-step";
 import { reviewDraft } from "./review";
 import type { StepKey } from "./steps";
 
 /**
- * The steps of the guided assessment, as in the Figma frames (AV-02, AV-03, AV-04, AV-05), with the modules of the draft each one edits. The
- * Flexiteste of "Movimento" comes in a later version.
+ * The steps of the guided assessment, as in the Figma frames (AV-02 to AV-06) and the flow of the handoff (section 2: "Testes físicos" is a step of
+ * its own before "Revisão e entrega"), with the modules of the draft each one edits.
  */
 const STEPS = [
   { key: "triagem", label: "Triagem", title: "Triagem e segurança", description: "Objetivos, histórico de saúde e revisão profissional", modules: [PROFILE_MODULE, SCREENING_MODULE] },
   { key: "medidas", label: "Medidas", title: "Composição corporal", description: "Medidas básicas, dobras com prévia calculada, perímetros e diâmetros ósseos", modules: [COMPOSITION_MODULE] },
-  { key: "movimento", label: "Movimento", title: "Postura e movimento", description: "Observações posturais não diagnósticas e somatotipo registrado pelo profissional", modules: [POSTURE_MODULE] },
-  { key: "revisao", label: "Revisão", title: "Revisão e conclusão", description: "Pendências, resultados calculados e finalização", modules: [] },
+  {
+    key: "movimento",
+    label: "Movimento",
+    title: "Postura e movimento",
+    description: "Observações posturais não diagnósticas, somatotipo registrado pelo profissional e os 15 movimentos do Flexiteste",
+    modules: [POSTURE_MODULE, MOVEMENT_MODULE],
+  },
+  { key: "testes", label: "Testes", title: "Testes físicos", description: "Resistência abdominal, resistência de membros superiores e Cooper 12 minutos", modules: [TESTS_MODULE] },
+  { key: "revisao", label: "Revisão", title: "Revisão e conclusão", description: "Pendências, resultados calculados, considerações finais e finalização", modules: [CONCLUSION_MODULE] },
 ] as const satisfies readonly { key: StepKey; label: string; title: string; description: string | null; modules: readonly string[] }[];
 
 /**
@@ -53,6 +75,9 @@ export function AssessmentShell({
   profile,
   screening,
   posture,
+  movement,
+  tests,
+  conclusion,
   initialStep = "triagem",
   suggestedEquation = null,
   amendment = null,
@@ -67,6 +92,9 @@ export function AssessmentShell({
   profile: ProfilePayload;
   screening: ScreeningPayload;
   posture: PosturePayload;
+  movement: MovementPayload;
+  tests: TestsPayload;
+  conclusion: ConclusionPayload;
   /** The step in the address (?etapa=), so a reload stays where the person was; a new draft starts at step 1. */
   initialStep?: StepKey;
   /** For a reassessment: the reference of the equation of the student's previous assessment, offered (never applied by itself). */
@@ -78,6 +106,9 @@ export function AssessmentShell({
   const [form, setForm] = useState<CompositionForm>(() => formFromPayload(composition));
   const [triagem, setTriagem] = useState<TriagemForm>(() => triagemFormFrom(profile, screening));
   const [postureForm, setPostureForm] = useState<PostureForm>(() => postureFormFrom(posture));
+  const [movementForm, setMovementForm] = useState<MovementForm>(() => movementFormFrom(movement));
+  const [testsForm, setTestsForm] = useState<TestsForm>(() => testsFormFrom(tests));
+  const [conclusionForm, setConclusionForm] = useState<ConclusionForm>(() => ({ ...conclusion }));
   const [discardError, setDiscardError] = useState<string | null>(null);
   const [finalizeError, setFinalizeError] = useState<{ text: string; pending?: string[] } | null>(null);
   const [finalizing, startFinalize] = useTransition();
@@ -121,11 +152,38 @@ export function AssessmentShell({
     },
     send: (payload, revision) => savePostureSection(assessmentId, payload, revision),
   };
+  const movementModule: DraftModule = {
+    content: JSON.stringify(movementForm),
+    read: () => {
+      const read = movementFromForm(movementForm);
+      return read.payload === null ? { problem: movementProblemsMessage(read.problems) } : { payload: read.payload };
+    },
+    send: (payload, revision) => saveMovementSection(assessmentId, payload, revision),
+  };
+  const testsModule: DraftModule = {
+    content: JSON.stringify(testsForm),
+    read: () => {
+      const read = testsFromForm(testsForm);
+      return read.payload === null ? { problem: testsProblemsMessage(read.problems) } : { payload: read.payload };
+    },
+    send: (payload, revision) => saveTestsSection(assessmentId, payload, revision),
+  };
+  const conclusionModule: DraftModule = {
+    content: JSON.stringify(conclusionForm),
+    read: () => {
+      const read = conclusionFromForm(conclusionForm);
+      return read.payload === null ? { problem: conclusionProblemsMessage(read.problems) } : { payload: read.payload };
+    },
+    send: (payload, revision) => saveConclusionSection(assessmentId, payload, revision),
+  };
   const draft = useDraftAutosave(initialRevision, {
     [PROFILE_MODULE]: profileModule,
     [SCREENING_MODULE]: screeningModule,
     [COMPOSITION_MODULE]: compositionModule,
     [POSTURE_MODULE]: postureModule,
+    [MOVEMENT_MODULE]: movementModule,
+    [TESTS_MODULE]: testsModule,
+    [CONCLUSION_MODULE]: conclusionModule,
   });
   const status = draft.status;
   const alert = discardError ?? draft.alert;
@@ -136,17 +194,25 @@ export function AssessmentShell({
   const screeningRead = screeningFromForm(triagem);
   const compositionRead = payloadFromForm(form);
   const postureRead = postureFromForm(postureForm);
+  const movementRead = movementFromForm(movementForm);
+  const testsRead = testsFromForm(testsForm);
+  const conclusionRead = conclusionFromForm(conclusionForm);
   const problems = [
     ...(profileRead.payload === null ? [`Triagem: ${triagemProblemsMessage(profileRead.problems)}`] : []),
     ...(screeningRead.payload === null ? [`Triagem: ${triagemProblemsMessage(screeningRead.problems)}`] : []),
     ...(compositionRead.payload === null ? [`Medidas: ${problemsMessage(compositionRead.problems)}`] : []),
     ...(postureRead.payload === null ? [`Movimento: ${postureProblemsMessage(postureRead.problems)}`] : []),
+    ...(movementRead.payload === null ? [`Movimento: ${movementProblemsMessage(movementRead.problems)}`] : []),
+    ...(testsRead.payload === null ? [`Testes: ${testsProblemsMessage(testsRead.problems)}`] : []),
+    ...(conclusionRead.payload === null ? [`Revisão: ${conclusionProblemsMessage(conclusionRead.problems)}`] : []),
   ];
   const review = reviewDraft({
     profile: profileRead.payload,
     screening: screeningRead.payload ?? screening,
     composition: compositionRead.payload ?? composition,
     posture: postureRead.payload ?? posture,
+    movement: movementRead.payload ?? movement,
+    tests: testsRead.payload ?? tests,
     assessedOn,
     birthDate,
     original: amendment ? { screening: amendment.originalScreening } : null,
@@ -180,6 +246,18 @@ export function AssessmentShell({
   const editPosture = (next: PostureForm) => {
     setDiscardError(null);
     setPostureForm(next);
+  };
+  const editMovement = (next: MovementForm) => {
+    setDiscardError(null);
+    setMovementForm(next);
+  };
+  const editTests = (next: TestsForm) => {
+    setDiscardError(null);
+    setTestsForm(next);
+  };
+  const editConclusion = (next: ConclusionForm) => {
+    setDiscardError(null);
+    setConclusionForm(next);
   };
 
   /** Leaving a step saves what changed in it (never an invalid value: the problem is shown and the step still changes). */
@@ -220,7 +298,12 @@ export function AssessmentShell({
       ) : step === "medidas" ? (
         <CompositionStep form={form} onChange={edit} assessedOn={assessedOn} birthDate={birthDate} suggestedEquation={suggestedEquation} />
       ) : step === "movimento" ? (
-        <PostureStep form={postureForm} onChange={editPosture} />
+        <div className="av2-cards">
+          <PostureStep form={postureForm} onChange={editPosture} />
+          <FlexitestCard form={movementForm} onChange={editMovement} />
+        </div>
+      ) : step === "testes" ? (
+        <TestsStep form={testsForm} onChange={editTests} />
       ) : (
         <ReviewStep
           review={review}
@@ -230,6 +313,7 @@ export function AssessmentShell({
           error={finalizeError}
           onFinalize={finalize}
           onOpenTriagem={() => goTo("triagem")}
+          conclusion={<ConclusionCard form={conclusionForm} onChange={editConclusion} />}
         />
       )}
 
