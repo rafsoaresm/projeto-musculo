@@ -1,10 +1,12 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { betterAuth } from "better-auth";
 import { twoFactor } from "better-auth/plugins";
+import { createAuthMiddleware, getSessionFromCtx, isAPIError } from "better-auth/api";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { drizzle } from "drizzle-orm/d1";
 import type { PasswordResetSender } from "@/modules/email/service";
 import * as schema from "./schema";
+import { recordPasswordFailure, recordSecondStepFailure } from "@/db/sign-in-failures";
 
 export interface AuthSettings {
   secret: string;
@@ -17,6 +19,50 @@ export interface AuthSettings {
   email?: PasswordResetSender | null;
   /** Keeps work going after the response (the Worker's waitUntil). Without it the library awaits. */
   background?: (promise: Promise<unknown>) => void;
+}
+
+/** The two routes that finish a sign-in which asked for the code of the second step. */
+const SECOND_STEP_ROUTES = new Set(["/two-factor/verify-totp", "/two-factor/verify-backup-code"]);
+/**
+ * TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE is left out on purpose: the library discards the pending sign-in before it throws it, so that last
+ * attempt cannot be tied to anyone (PENDENCIAS).
+ */
+const WRONG_CODE = new Set(["INVALID_CODE", "INVALID_BACKUP_CODE"]);
+
+/**
+ * A line for each failed sign-in (PENDENCIAS B9, slice 0.88): a wrong address or password, a wrong code of the second step. It runs after
+ * the library answered and never changes that answer; failing to write it is logged and nothing else. The verification of a code while the
+ * person is already signed in (turning the second step on in "Minha conta") is not a sign-in and leaves nothing here: the library then checks
+ * the code of the session's user and ignores any cookie of a pending sign-in, which may still be in the browser and point to someone else
+ * (a sign-in left at the code screen on a shared browser), so a request with a session is never tied to that cookie. Too many requests,
+ * refused before the library runs, leave nothing either.
+ */
+function signInFailureTrail(db: D1Database, secret: string) {
+  return createAuthMiddleware(async (ctx) => {
+    const returned = ctx.context.returned;
+    if (!isAPIError(returned)) return;
+    const code = (returned.body as { code?: unknown } | undefined)?.code;
+    try {
+      if (ctx.path === "/sign-in/email") {
+        const email = (ctx.body as { email?: unknown } | undefined)?.email;
+        if (code === "INVALID_EMAIL_OR_PASSWORD" && typeof email === "string") await recordPasswordFailure(db, secret, email);
+        return;
+      }
+      if (!SECOND_STEP_ROUTES.has(ctx.path)) return;
+      const reason = code === "ACCOUNT_TEMPORARILY_LOCKED" ? "SECOND_STEP_LOCKED" : WRONG_CODE.has(String(code)) ? "SECOND_STEP_CODE" : null;
+      if (!reason) return;
+      // Same order as the library: with a session, the code was the session user's, and that is not a sign-in.
+      if (await getSessionFromCtx(ctx)) return;
+      // The pending sign-in: the signed cookie the library set after the password, pointing to who it is. After too many wrong codes the
+      // library has already discarded it, and that last attempt cannot be tied to anyone.
+      const pending = await ctx.getSignedCookie(ctx.context.createAuthCookie("two_factor").name, ctx.context.secret);
+      if (!pending) return;
+      const verification = await ctx.context.internalAdapter.findVerificationValue(pending);
+      if (verification?.value) await recordSecondStepFailure(db, verification.value, reason);
+    } catch {
+      console.error("SIGN_IN_FAILURE_AUDIT_FAILED");
+    }
+  });
 }
 
 /** How long the link of a reset e-mail lives, in seconds. It can be used once. */
@@ -111,6 +157,7 @@ export function createAuth(db: D1Database, settings: AuthSettings) {
       // with an account as for one without.
       ...(settings.background ? { backgroundTasks: { handler: settings.background } } : {}),
     },
+    hooks: { after: signInFailureTrail(db, settings.secret) },
     plugins: [
       // The second step of the sign-in: an authenticator app (TOTP) and single-use recovery codes.
       // Chosen by each person, never forced. No code is sent by e-mail or by phone (there is no

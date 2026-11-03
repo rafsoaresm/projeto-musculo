@@ -5,6 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { requireWorkspace } from "@/modules/auth/server";
 import { studentsFor } from "@/db/students";
 import { plansFor } from "@/db/plans";
+import { recordStudentRead } from "@/db/student-reads";
 import { exercisesFor } from "@/db/exercises";
 import { studentAccessFor } from "@/db/student-access";
 import { prescriptionFor } from "@/db/prescription";
@@ -37,6 +38,7 @@ export default async function PlanRevision({
   const detail = await plansFor(db, context).findRevision(planId, revisionId);
   // The plan must belong to the student in the address, not just to this professional.
   if (!detail || detail.plan.studentId !== student.id) notFound();
+  await recordStudentRead(db, context, student.id, "PLAN_REVISION");
   const { revision } = detail;
   const label = stateLabel(revision.state);
   const [items, library, access, standing] = await Promise.all([

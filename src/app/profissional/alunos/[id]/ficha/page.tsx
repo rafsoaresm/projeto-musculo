@@ -5,6 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { requireWorkspace } from "@/modules/auth/server";
 import { studentsFor } from "@/db/students";
 import { profilesFor } from "@/db/student-profile";
+import { recordStudentRead } from "@/db/student-reads";
 import { PageHeading } from "@/components/ui";
 import { ProfileForm } from "@/modules/ficha/profile-form";
 
@@ -20,6 +21,7 @@ export default async function StudentProfilePage({
   const { id } = await params;
   const student = await studentsFor(db, context).findById(id);
   if (!student) notFound();
+  await recordStudentRead(db, context, student.id, "STUDENT_RECORD");
   const profile = await profilesFor(db, context).get(student.id);
   return (
     <>

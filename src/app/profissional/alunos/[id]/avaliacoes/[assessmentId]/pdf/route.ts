@@ -1,6 +1,7 @@
 import { requireWorkspace } from "@/modules/auth/server";
 import { assessmentReportsFor, recordReportDownload } from "@/db/assessment-reports";
 import { photoBucketOrNull } from "@/db/binding";
+import { recordStudentRead } from "@/db/student-reads";
 import { renderAssessmentPdf } from "@/modules/pdf/assessment-pdf";
 import { reportFileName } from "@/modules/avaliacoes/v2/report";
 
@@ -22,6 +23,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const now = new Date();
   const bytes = await renderAssessmentPdf({ ...source, generatedAt: now });
   await recordReportDownload(db, { organizationId: context.organizationId, actorUserId: user.id, assessmentId }, now);
+  await recordStudentRead(db, context, id, "ASSESSMENT_PDF", now);
   return new Response(bytes as BodyInit, {
     headers: {
       "Content-Type": "application/pdf",

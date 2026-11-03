@@ -5,6 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { requireWorkspace } from "@/modules/auth/server";
 import { studentsFor } from "@/db/students";
 import { assessmentsFor } from "@/db/assessments";
+import { recordStudentRead } from "@/db/student-reads";
 import { Notice, PageHeading } from "@/components/ui";
 import { AssessmentView } from "@/modules/avaliacoes/assessment-view";
 import { formatCalendarDate } from "@/modules/training/format";
@@ -41,6 +42,8 @@ export default async function Assessment({
   const detail = await api.get(assessmentId);
   // The assessment must belong to the student in the address, not just to this professional.
   if (!detail || detail.studentId !== student.id) notFound();
+  // One line per interval, so the redraws of the autosave of a draft do not add more.
+  await recordStudentRead(db, context, student.id, "ASSESSMENT");
   const back = (
     <Link href={`/profissional/alunos/${student.id}/avaliacoes`} className="button secondary">
       <ArrowLeft size={17} /> Voltar à avaliação física

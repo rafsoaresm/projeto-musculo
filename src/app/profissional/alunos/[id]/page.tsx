@@ -12,6 +12,7 @@ import { assessmentTemplatesFor } from "@/db/assessment-templates";
 import { executionFor } from "@/db/workout-sessions";
 import { studentConsentFor } from "@/db/consent";
 import { dataRequestsFor } from "@/db/data-requests";
+import { readsOfStudent, recordStudentRead, seesStudentReads } from "@/db/student-reads";
 import { PageHeading } from "@/components/ui";
 import { Tabs } from "@/components/tabs";
 import { InvitePanel } from "@/modules/convites/invite-panel";
@@ -22,6 +23,7 @@ import { ExecutionPanel } from "@/modules/execucao/execution-panel";
 import { ConsentLine } from "@/modules/consentimento/consent-line";
 import { CheckinPanel } from "@/modules/checkin/checkin-panel";
 import { RequestsPanel } from "@/modules/pedidos/requests-panel";
+import { StudentReadsPanel } from "@/modules/alunos/student-reads-panel";
 import { STUDENT_HASH_TABS, STUDENT_TABS, STUDENT_TAB_LABEL, studentTabFrom } from "@/modules/alunos/student-tab-names";
 import { nextAction, portalLabel, timeline } from "@/modules/alunos/student-summary";
 
@@ -39,11 +41,14 @@ export default async function Student({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ aba?: string }>;
 }) {
-  const { db, context } = await requireWorkspace();
+  const { db, context, workspace } = await requireWorkspace();
   const { id } = await params;
   const { aba } = await searchParams;
   const student = await studentsFor(db, context).findById(id);
   if (!student) notFound();
+  // Opening the record leaves a line in the trail of reads (one per interval); the OWNER and the MANAGER see that trail here.
+  await recordStudentRead(db, context, student.id, "STUDENT_RECORD");
+  const showReads = seesStudentReads(workspace.role);
   const [access, plans, profile, assessments, executions, consent, requests, templates] = await Promise.all([
     studentAccessFor(db, context).statusOf(student.id),
     plansFor(db, context).listForStudent(student.id),
@@ -54,6 +59,7 @@ export default async function Student({
     dataRequestsFor(db, context).forStudent(student.id),
     assessmentTemplatesFor(db, context).list(),
   ]);
+  const reads = showReads ? await readsOfStudent(db, context, student.id) : null;
   const openRequests = requests.filter((row) => row.outcome === null).length;
   const summary = { studentId: student.id, hasProfile: profile !== null, assessments, plans, sessions: executions, openRequests };
   const action = nextAction(summary);
@@ -146,6 +152,7 @@ export default async function Student({
                 <ConsentLine consent={consent} />
               </section>
               <RequestsPanel db={db} context={context} studentId={student.id} />
+              {reads && <StudentReadsPanel reads={reads} />}
             </>
           ),
         }}

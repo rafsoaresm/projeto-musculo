@@ -3,6 +3,8 @@ import Link from "next/link";
 import { requireStudent, recoveryAvailable } from "@/modules/auth/server";
 import { latestAcceptance } from "@/db/consent";
 import { studentRequestsFor } from "@/db/data-requests";
+import { readsOfOwnData } from "@/db/student-reads";
+import { OwnReadsPanel } from "@/modules/alunos/own-reads-panel";
 import { formatCalendarDate } from "@/modules/training/format";
 import { PageHeading } from "@/components/ui";
 import { SecurityPanel } from "@/modules/auth/components/security-panel";
@@ -20,7 +22,11 @@ export default async function StudentAccount() {
   const accepted = await latestAcceptance(db, user.id, "STUDENT");
   // The students come from the verified links of this login, never from the address.
   const requests = studentRequestsFor(db, user.id);
-  const perStudent = await Promise.all(links.map(async (link) => ({ link, rows: await requests.list(link.studentId) })));
+  const [perStudent, reads] = await Promise.all([
+    Promise.all(links.map(async (link) => ({ link, rows: await requests.list(link.studentId) }))),
+    readsOfOwnData(db, user.id),
+  ]);
+  const studentName = new Map(links.map((link) => [link.studentId, link.studentName]));
   return (
     <>
       <PageHeading eyebrow="ÁREA DO ALUNO" title="Minha conta" description="Seus dados de acesso e a segurança da conta." />
@@ -48,6 +54,10 @@ export default async function StudentAccount() {
         <SecurityPanel />
       </section>
       <AccountAccess />
+      <OwnReadsPanel
+        reads={reads.map((read) => ({ ...read, studentName: studentName.get(read.studentId) }))}
+        showStudent={links.length > 1}
+      />
       <section className="panel" aria-labelledby="solicitacoes-conta">
         <p className="eyebrow">SEUS DADOS</p>
         <h2 id="solicitacoes-conta">Termos</h2>
