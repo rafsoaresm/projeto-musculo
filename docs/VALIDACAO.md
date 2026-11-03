@@ -11,6 +11,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Finalizar** não grava resultado desta etapa; a postura congela com a avaliação e a retificação a copia. A Revisão e a avaliação registrada mostram as regiões observadas com os achados e o lado.
 - **Verificado localmente:** tipos, lint e `npm run check` (115 arquivos); e2e nos dois mounts (raiz e `/treinador`): 23 passaram e 1 pulado em cada (o de capturas, só no computador); capturas a 1440, 1280, 1024, 768 e 390.
 - **Não feito:** **fotos posturais** (o handoff 3.3 pede fotos opcionais por vista, e o 10 as põe na P2; ver B48); Flexiteste (0.80). Um lado por região: "esquerdo pronado, direito supinado" vai na observação da vista.
+- **CI e deploy:** o CI do PR #81 passou (`validate` e `validate (/treinador)`, no commit `59d09c8`); merge `c29741f`; deploy `b230bde6` com sucesso em 03/11/2026 (sem migration).
 
 ## Fatia 0.78: Perímetros e diâmetros da Avaliação Física (handoff 3.2, 5 e 8; Figma AV-04)
 
