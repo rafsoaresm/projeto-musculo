@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { Notice, Pill, formatDateTime } from "@/components/ui";
+import { Notice, formatDateTime } from "@/components/ui";
 import type { AssessmentDetail } from "@/db/assessments";
 import { formatCalendarDate } from "@/modules/training/format";
-import { ACTIVITY_CURRENT, ACTIVITY_PAST, ANAMNESIS, ANAMNESIS_ANSWERS, GOALS, GOALS_NOTES_LABEL, PARQ, PARQ_ANSWERS, PARQ_DECISIONS, PARQ_INSTRUMENT } from "../catalog";
+import { ACTIVITY_CURRENT, ACTIVITY_PAST, ANAMNESIS, ANAMNESIS_ANSWERS, GOALS, GOALS_NOTES_LABEL, PARQ, PARQ_ANSWERS, PARQ_DECISIONS, PARQ_INSTRUMENT_LABEL } from "../catalog";
 import { SKINFOLD_SITE_CODES, selectedValue } from "../formulas";
 import { ScreeningPill } from "../screening-pill";
 import { AGGREGATION_LABEL, CONVERSION_LABEL, EQUATION_LABEL, PROTOCOL_CHIP, SITE_LABEL, requiredSites, type CompositionPayload } from "./composition";
@@ -13,6 +13,8 @@ import { AmendForm } from "./amend-form";
 const decimal = (value: number, digits = 2) => new Intl.NumberFormat("pt-BR", { maximumFractionDigits: digits }).format(value);
 const measured = (value: number | null, unit: string, digits = 2) => (value === null ? "Sem aferição" : `${decimal(value, digits)} ${unit}`);
 const yesNo = (value: "yes" | "no" | null) => (value === "yes" ? "Sim" : value === "no" ? "Não" : "Sem resposta");
+/** "Pergunta?" stays as it is before its answer; any other label takes a colon. */
+const withColon = (label: string) => (/[?:]$/.test(label.trim()) ? label : `${label}:`);
 const orDash = (text: string) => (text.trim() === "" ? "—" : text);
 
 /**
@@ -26,6 +28,7 @@ export function RecordedAssessmentView({
   screening,
   composition,
   decidedBy,
+  amendedAt = null,
   canAmend,
 }: {
   detail: AssessmentDetail;
@@ -34,6 +37,8 @@ export function RecordedAssessmentView({
   composition: CompositionPayload | null;
   /** The name of who recorded the PAR-Q decision, when there is one. */
   decidedBy: string | null;
+  /** When the amendment that corrects this one was recorded (only for an amended one). */
+  amendedAt?: string | null;
   /** No open draft for the student and no recorded amendment of this one. */
   canAmend: boolean;
 }) {
@@ -63,11 +68,11 @@ export function RecordedAssessmentView({
         {detail.amendedById && (
           <Notice tone="warning">
             <p>
-              <strong>Retificada.</strong> Uma retificação desta avaliação foi registrada depois; os dados abaixo são os originais, como foram
-              registrados.{" "}
+              <strong>Retificada</strong> por{" "}
               <Link className="account-link" href={`${base}/${detail.amendedById}`}>
-                Abrir a retificação
+                {amendedAt ? `retificação registrada em ${formatDateTime(amendedAt)}` : "uma retificação registrada depois"}
               </Link>
+              . Os dados abaixo são os originais, como foram registrados.
             </p>
           </Notice>
         )}
@@ -94,7 +99,7 @@ export function RecordedAssessmentView({
               const entry = screening?.anamnesis[code];
               return (
                 <li key={code}>
-                  {ANAMNESIS[code]}: <strong>{entry?.answer ? ANAMNESIS_ANSWERS[entry.answer] : "Sem resposta"}</strong>
+                  {withColon(ANAMNESIS[code])} <strong>{entry?.answer ? ANAMNESIS_ANSWERS[entry.answer] : "Sem resposta"}</strong>
                   {entry?.details ? <span className="small muted"> — {entry.details}</span> : null}
                 </li>
               );
@@ -126,12 +131,12 @@ export function RecordedAssessmentView({
               </div>
             </dl>
             <h4 className="av2-subtitle">
-              PAR-Q <span className="small muted">({PARQ_INSTRUMENT.id}, versão {PARQ_INSTRUMENT.version})</span>
+              PAR-Q <span className="small muted">({PARQ_INSTRUMENT_LABEL})</span>
             </h4>
             <ul className="av2-answer-list" aria-label="Respostas do PAR-Q">
               {PARQ_CODES.map((code) => (
                 <li key={code}>
-                  {PARQ[code]}: <strong>{PARQ_ANSWERS[parqAnswer(screening, code)]}</strong>
+                  {withColon(PARQ[code])} <strong>{PARQ_ANSWERS[parqAnswer(screening, code)]}</strong>
                 </li>
               ))}
             </ul>
@@ -254,7 +259,7 @@ export function RecordedAssessmentView({
       )}
       {!canAmend && !detail.amendedById && (
         <p className="small muted">
-          <Pill tone="neutral">Retificar</Pill> Há um rascunho aberto para este aluno: conclua ou descarte esse rascunho para retificar.
+          Para retificar esta avaliação, conclua ou descarte primeiro o rascunho aberto deste aluno.
         </p>
       )}
     </div>

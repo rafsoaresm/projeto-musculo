@@ -285,15 +285,29 @@ export function reviewDraft(input: ReviewInput): DraftReview {
   };
 }
 
-/** The screening as it is recorded: the derived flag of any "Sim", and who recorded the decision and when (only when there is one). */
-export function recordedScreening(screening: ScreeningPayload, reviewerUserId: string, at: string): ScreeningPayload {
+/**
+ * The screening as it is recorded: the derived flag of any "Sim", and who recorded the decision and when (only when there is one). An amendment
+ * that carries the original's decision unchanged (same decision, same note) keeps the original's who and when: nobody decided it again, and the
+ * amendment must not name its finalizer as the one who did.
+ */
+export function recordedScreening(screening: ScreeningPayload, reviewerUserId: string, at: string, original: ScreeningPayload | null = null): ScreeningPayload {
   const review = screening.parq.professionalReview;
+  const before = original?.parq.professionalReview;
+  const carried =
+    review.decision !== null &&
+    before !== undefined &&
+    before.decision === review.decision &&
+    before.notes.trim() === review.notes.trim() &&
+    typeof before.reviewedAt === "string" &&
+    typeof before.reviewerUserId === "string"
+      ? { reviewedAt: before.reviewedAt, reviewerUserId: before.reviewerUserId }
+      : { reviewedAt: at, reviewerUserId };
   return {
     ...screening,
     parq: {
       ...screening.parq,
       riskFlag: parqHasYes(screening),
-      professionalReview: review.decision === null ? { decision: null, notes: review.notes } : { decision: review.decision, notes: review.notes, reviewedAt: at, reviewerUserId },
+      professionalReview: review.decision === null ? { decision: null, notes: review.notes } : { decision: review.decision, notes: review.notes, ...carried },
     },
   };
 }

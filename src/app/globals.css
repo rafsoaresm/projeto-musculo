@@ -6579,6 +6579,32 @@ fieldset.yes-no legend {
   margin-top: 12px;
   margin-bottom: 0;
 }
+/* Information, not a blocker: the same box as a pending row (padding, 16px icon), in the neutral tone. */
+.av2-review-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 10px 14px;
+  border-radius: var(--radius-card);
+  background: var(--color-neutral-100);
+  color: var(--color-ink);
+  font-size: var(--font-size-sm);
+}
+.av2-review-note svg {
+  flex: none;
+  margin-top: 2px;
+}
+.av2-pending-where {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 12px 0 0;
+}
+.av2-finalize-reason {
+  margin: 10px 0 0;
+}
 .av2-not-computed li,
 .av2-module-lines li,
 .av2-answer-list li {
@@ -6722,6 +6748,9 @@ fieldset.yes-no legend {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+.av2-facts + .table-wrap {
+  margin-top: 16px;
+}
 .av2-decision-record {
   display: grid;
   gap: 6px;
@@ -6737,6 +6766,24 @@ fieldset.yes-no legend {
 .assessment-history td,
 .assessment-history th {
   vertical-align: middle;
+}
+.assessment-history-wrap {
+  margin-top: 16px;
+}
+/* Five columns fit the panel at desktop widths: the text wraps inside its cell instead of the table scrolling sideways. */
+.assessment-history {
+  white-space: normal;
+}
+/* "Retificada por …" goes on its own line under the title. */
+.assessment-amended-by {
+  display: block;
+  margin-top: 4px;
+}
+/* A tab's panel takes the whole row of the tabs and may shrink below its content (a wide table scrolls inside its own box): as a flex item with
+   min-width auto, a table that does not wrap pushed the panel past the column. */
+.tabs > [role="tabpanel"] {
+  flex: 1 1 100%;
+  min-width: 0;
 }
 
 /* ---------- Meu Site: Rastreamento e conversões (0.71) ---------- */

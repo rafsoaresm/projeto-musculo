@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { CircleCheck, TriangleAlert } from "lucide-react";
+import { CircleCheck, Info, TriangleAlert } from "lucide-react";
 import { ResultsList } from "./results-list";
 import type { DraftReview, ModuleSummary } from "./review";
 
@@ -24,6 +24,7 @@ export function ReviewStep({
   finalizing,
   error,
   onFinalize,
+  onOpenTriagem,
 }: {
   review: DraftReview;
   /** A value on the screen that is not accepted (named), which would not be saved. */
@@ -32,6 +33,8 @@ export function ReviewStep({
   finalizing: boolean;
   error: { text: string; pending?: string[] } | null;
   onFinalize: () => void;
+  /** Goes to step 1 (Triagem), where what blocks the finalize is filled in. */
+  onOpenTriagem: () => void;
 }) {
   const [confirming, setConfirming] = useState(false);
   const blockers = [...problems, ...review.pending];
@@ -42,21 +45,32 @@ export function ReviewStep({
         <h3 id="av2-pendencias">Pendências para finalizar</h3>
         <p className="muted small">A triagem precisa estar completa. Medidas e movimento podem ficar parciais: o que não foi feito fica como “Não realizado”.</p>
         {blocked ? (
-          <ul className="av2-pending">
-            {blockers.map((item) => (
-              <li key={item}>
-                <TriangleAlert size={16} aria-hidden="true" /> {item}
-              </li>
-            ))}
-          </ul>
+          <>
+            <ul className="av2-pending">
+              {blockers.map((item) => (
+                <li key={item}>
+                  <TriangleAlert size={16} aria-hidden="true" /> {item}
+                </li>
+              ))}
+            </ul>
+            {review.pending.length > 0 && (
+              <p className="av2-pending-where">
+                <span className="small muted">As pendências da triagem se resolvem na etapa 1, Triagem.</span>{" "}
+                <button type="button" className="button secondary small" onClick={onOpenTriagem}>
+                  Abrir a etapa Triagem
+                </button>
+              </p>
+            )}
+          </>
         ) : (
           <p className="av2-ready">
-            <CircleCheck size={18} aria-hidden="true" /> Nada pendente: a avaliação pode ser finalizada.
+            <CircleCheck size={16} aria-hidden="true" /> Nada pendente: a avaliação pode ser finalizada.
           </p>
         )}
-        {review.riskFlag && (
-          <p className="av2-attention">
-            <TriangleAlert size={18} aria-hidden="true" /> PAR-Q com resposta “Sim”: a decisão profissional é registrada com quem decidiu e quando.
+        {review.riskFlag && !blocked && (
+          <p className="av2-review-note">
+            <Info size={16} aria-hidden="true" /> PAR-Q com resposta “Sim”: ao finalizar, a decisão profissional fica registrada com quem a registrou e
+            quando.
           </p>
         )}
       </section>
@@ -137,13 +151,19 @@ export function ReviewStep({
             type="button"
             className="button primary"
             aria-disabled={blocked || undefined}
-            aria-describedby={blocked ? "av2-pendencias" : undefined}
+            aria-describedby={blocked ? "av2-finalizar-motivo" : undefined}
             onClick={() => {
               if (!blocked) setConfirming(true);
             }}
           >
             {amendment ? "Finalizar retificação" : "Finalizar avaliação"}
           </button>
+        )}
+        {blocked && !confirming && (
+          <p id="av2-finalizar-motivo" className="small muted av2-finalize-reason">
+            Ainda não pode ser finalizada: resolva {blockers.length === 1 ? "a pendência listada" : `as ${blockers.length} pendências listadas`} em
+            “Pendências para finalizar”.
+          </p>
         )}
       </section>
     </div>

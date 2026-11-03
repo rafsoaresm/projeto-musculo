@@ -206,6 +206,7 @@ export function AssessmentShell({
           finalizing={finalizing}
           error={finalizeError}
           onFinalize={finalize}
+          onOpenTriagem={() => goTo("triagem")}
         />
       ) : (
         <section className="panel av2-card">
@@ -257,14 +258,12 @@ export function AssessmentShell({
           >
             Salvar rascunho
           </button>
-          <button
-            type="button"
-            className="button primary"
-            disabled={index === STEPS.length - 1}
-            onClick={() => goTo(STEPS[index + 1].key)}
-          >
-            Próximo <ArrowRight size={17} />
-          </button>
+          {/* On the last step (Revisão) the next action is the finalize card, not a "Próximo" that leads nowhere. */}
+          {index < STEPS.length - 1 && (
+            <button type="button" className="button primary" onClick={() => goTo(STEPS[index + 1].key)}>
+              Próximo <ArrowRight size={17} />
+            </button>
+          )}
         </div>
       </div>
     </div>

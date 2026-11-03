@@ -60,8 +60,8 @@ export function runQueued(queued: boolean, stand: SaveStand, dirty: boolean): bo
   return queued && !stand.stopped && dirty;
 }
 
-/** "Salvo às 14:05." in the viewer's own clock (the zone is a parameter for the tests). */
-export function savedAtLabel(at: Date, timeZone?: string): string {
+/** "Salvo às 14:05." in the app's clock (America/Sao_Paulo, as every date and time on the screens: formatDateTime); the zone is a parameter for the tests. */
+export function savedAtLabel(at: Date, timeZone = "America/Sao_Paulo"): string {
   const time = new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone }).format(at);
   return `Salvo às ${time}.`;
 }

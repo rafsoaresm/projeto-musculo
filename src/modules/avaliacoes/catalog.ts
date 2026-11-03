@@ -76,6 +76,8 @@ export const FREQUENCY_UNITS = { por_semana: "por semana" } as const;
  * instrument (PAR-Q+) is another form with its own identifier, never this one replaced silently.
  */
 export const PARQ_INSTRUMENT = { id: "parq_7_legacy", version: "pdf_2026_11" } as const;
+/** How the screens name that instrument and version (the ids above are what is stored). */
+export const PARQ_INSTRUMENT_LABEL = "7 perguntas, versão do PDF de novembro de 2026";
 // The handoff's own wording (section 3.1, items 1–7, verbatim). The PDF's text is not in the repository; when it arrives and differs, it
 // replaces this (PENDENCIAS B47).
 export const PARQ = {

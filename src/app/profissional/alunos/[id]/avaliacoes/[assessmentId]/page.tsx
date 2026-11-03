@@ -110,10 +110,9 @@ export default async function Assessment({
     );
 
   if (detail.formatVersion === 2) {
-    const [v2, openDraft] = await Promise.all([
-      api.sections(assessmentId),
-      api.listForStudent(student.id).then((list) => list.find((item) => item.state === "DRAFT") ?? null),
-    ]);
+    const [v2, list] = await Promise.all([api.sections(assessmentId), api.listForStudent(student.id)]);
+    const openDraft = list.find((item) => item.state === "DRAFT") ?? null;
+    const amendedAt = detail.amendedById ? (list.find((item) => item.id === detail.amendedById)?.recordedAt ?? null) : null;
     const section = (module: string) => v2?.sections.find((item) => item.module === module)?.payload;
     const screening = section(SCREENING_MODULE) === undefined ? null : readScreening(section(SCREENING_MODULE));
     const reviewer = screening?.parq.professionalReview.reviewerUserId;
@@ -131,6 +130,7 @@ export default async function Assessment({
           screening={screening}
           composition={section(COMPOSITION_MODULE) === undefined ? null : readComposition(section(COMPOSITION_MODULE))}
           decidedBy={decidedBy}
+          amendedAt={amendedAt}
           canAmend={openDraft === null && detail.amendedById === null}
         />
         {back}

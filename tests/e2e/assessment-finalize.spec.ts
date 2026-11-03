@@ -21,7 +21,7 @@ async function shots(page: Page, name: string, projectName: string) {
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 900 });
     await page.waitForTimeout(150);
-    await page.screenshot({ path: `${dir}/077-${name}-${width}.png`, fullPage: true });
+    await page.screenshot({ path: `${dir}/077b-${name}-${width}.png`, fullPage: true });
   }
   if (size) await page.setViewportSize(size);
 }
@@ -52,7 +52,7 @@ test("the Revisão step finalizes the Avaliação Física, the record shows the 
   await expect(checklist.getByText("Não realizado", { exact: true }).first()).toBeVisible();
   const finalize = page.getByRole("button", { name: "Finalizar avaliação" });
   await expect(finalize).toHaveAttribute("aria-disabled", "true");
-  await finalize.click();
+  await finalize.click({ force: true });
   await expect(page.getByRole("button", { name: "Confirmar e finalizar" })).toHaveCount(0);
 
   // Triagem: every answer, one "Sim" and no decision yet.
@@ -63,7 +63,15 @@ test("the Revisão step finalizes the Avaliação Física, the record shows the 
   await expect(pending.getByText("PAR-Q com “Sim”: registre a decisão profissional")).toBeVisible();
   await expect(pending.getByText("PAR-Q com “Sim”: escreva a nota da decisão")).toBeVisible();
   await expect(finalize).toHaveAttribute("aria-disabled", "true");
+  await expect(page.getByText(/^Ainda não pode ser finalizada: resolva as 2 pendências listadas/)).toBeVisible();
+  await noHorizontalOverflow(page);
   await shots(page, "revisao-pendente", testInfo.project.name);
+  // The pending items say where they are fixed: the button goes to the Triagem.
+  await pending.getByRole("button", { name: "Abrir a etapa Triagem" }).click();
+  await expect(page.getByRole("heading", { name: "Triagem e segurança" })).toBeVisible();
+  await step(page, "4 Revisão").click();
+  // The last step has no "Próximo": the next action is the finalize card.
+  await expect(page.getByRole("button", { name: "Próximo" })).toHaveCount(0);
 
   // Meanwhile the plan still has no recorded screening: an open draft (with a "Sim" and no decision) never counts as one.
   const draftURL = page.url();
@@ -145,7 +153,8 @@ test("the Revisão step finalizes the Avaliação Física, the record shows the 
 
   // The original stays as it was, read as amended.
   await page.goto(recordedURL);
-  await expect(page.getByText("Retificada.", { exact: false })).toBeVisible();
+  await expect(page.getByText(/^Retificada por/)).toBeVisible();
+  await expect(page.getByRole("link", { name: /^retificação registrada em \d{2}\/\d{2}\/\d{4}/ })).toBeVisible();
   await expect(page.getByRole("list", { name: "Respostas do PAR-Q" }).getByRole("listitem").filter({ hasText: PARQ.bone_joint })).toContainText("Não");
   await expect(page.getByRole("button", { name: "Retificar" })).toHaveCount(0);
 
@@ -156,7 +165,10 @@ test("the Revisão step finalizes the Avaliação Física, the record shows the 
   await expect(history.getByRole("row")).toHaveCount(3);
   const amended = history.getByRole("row").filter({ hasText: "Retificada" });
   await expect(amended).toContainText("Avaliação física de");
+  await expect(amended.getByRole("cell").filter({ hasText: /^Inicial$/ })).toBeVisible();
+  await expect(amended.getByRole("link", { name: /^retificação registrada em/ })).toBeVisible();
   const amendment = history.getByRole("row").filter({ hasText: "Retificação da avaliação física de" });
+  await expect(amendment.getByRole("cell").filter({ hasText: /^Retificação$/ })).toBeVisible();
   await expect(amendment).toContainText("17,3%");
   await expect(amendment).toContainText("Jackson & Pollock · 7, equação masculina");
   await expect(amendment).toContainText("23,63");

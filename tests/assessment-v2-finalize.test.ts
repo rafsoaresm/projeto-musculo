@@ -230,6 +230,22 @@ describe("the plan gate reads the PAR-Q of the newest Avaliação Física", () =
     // The earlier format's review does not apply to it: the decision is part of the Avaliação Física.
     expect(await a().addReview("raw-1", "Revisado")).toBe(false);
   });
+  it("reads a “Sim” from the answers too: a recorded one without the derived flag is never taken as clear", async () => {
+    await db.batch([
+      db.prepare(
+        `INSERT INTO assessments (id, organization_id, student_id, assessed_on, kind, state, risk_status, created_by_user_id, screening_answered, format_version)
+         VALUES ('raw-2','org-a','st-2','2026-11-13','REASSESSMENT','DRAFT','CLEAR','tech-a','[]',2)`,
+      ),
+      db.prepare(
+        `INSERT INTO assessment_sections (assessment_id, organization_id, module, status, payload, updated_at, updated_by_user_id)
+         VALUES ('raw-2','org-a','screening','DONE',?1,'2026-11-13T12:00:00.000Z','tech-a')`,
+      ).bind(JSON.stringify(parq(["bone_joint"]))),
+      db.prepare("UPDATE assessments SET state = 'RECORDED', recorded_at = '2026-11-13T12:00:00.000Z', recorded_by_user_id = 'tech-a' WHERE id = 'raw-2'"),
+    ]);
+    expect(await a().standing("st-2")).toMatchObject({ assessmentId: "raw-2", risk: "REVIEW_REQUIRED", reviewed: false });
+    const plan = await readyPlan("st-2");
+    expect(await plans().approve(plan.planId, plan.revisionId, { screeningNotRecorded: true }, day(13))).toEqual({ status: "review_required", assessedOn: "2026-11-13" });
+  });
 });
 
 describe("an amendment (retificação)", () => {
@@ -307,5 +323,68 @@ describe("the history", () => {
     expect(await a().previousEquation(draft)).toBe("male");
     expect((await a().sections(draft))?.sections).toEqual([]);
     expect(await assessmentsFor(db, scope("tech-b", "org-b")).previousEquation(draft)).toBeNull();
+  });
+});
+
+describe("who decided, the finalize guard and the previous equation", () => {
+  const decided = { decision: "cleared", notes: "Liberado para treinar com supervisão." };
+  let first = "";
+  beforeAll(async () => {
+    await db.batch([
+      db.prepare("INSERT INTO students(id,organization_id,display_name) VALUES ('st-4','org-a','Four')"),
+      db.prepare("INSERT INTO care_assignments(organization_id,student_id,professional_id) VALUES ('org-a','st-4','pro-a')"),
+      db.prepare("INSERT INTO student_profiles(student_id,organization_id,birth_date,updated_by_user_id) VALUES ('st-4','org-a','1999-03-04','tech-a')"),
+    ]);
+  });
+  it("an amendment that carries the decision unchanged keeps who decided and when; a changed one is stamped again", async () => {
+    first = await started("st-4", day(21));
+    let revision = await fill(first, { screening: parq(["dizziness"], decided), composition: JP7 });
+    expect(await a().finalize(first, revision, day(21, 10))).toEqual({ status: "recorded" });
+    const review = async (id: string) =>
+      JSON.parse((await one<{ payload: string }>("SELECT payload FROM assessment_sections WHERE assessment_id = ?1 AND module = 'screening'", id))!.payload).parq
+        .professionalReview;
+    const amended = await a().amend(first, "Peso corrigido", day(22));
+    if (amended.status !== "started") throw new Error(amended.status);
+    revision = await fill(amended.id, { composition: { ...JP7, weightKg: 70 } });
+    expect(await a().finalize(amended.id, revision, day(22, 10))).toEqual({ status: "recorded" });
+    expect(await review(amended.id)).toEqual({ ...decided, reviewedAt: day(21, 10).toISOString(), reviewerUserId: "tech-a" });
+    const again = await a().amend(amended.id, "Nota revista", day(23));
+    if (again.status !== "started") throw new Error(again.status);
+    revision = await fill(again.id, { screening: parq(["dizziness"], { ...decided, notes: "Liberado, com supervisão nas duas primeiras semanas." }) });
+    expect(await a().finalize(again.id, revision, day(23, 10))).toEqual({ status: "recorded" });
+    expect(await review(again.id)).toMatchObject({ reviewedAt: day(23, 10).toISOString(), reviewerUserId: "tech-a" });
+  });
+  it("a save that lands before the finalize, even stamped in the same millisecond, leaves the finalize without effect", async () => {
+    const draft = await started("st-4", day(24));
+    const revision = await fill(draft, { screening: parq() });
+    // Another tab saves after the finalize read the draft and before its batch, at the very instant the finalize stamps.
+    let saved = "";
+    const racing = new Proxy(db, {
+      get(target, key) {
+        if (key === "batch")
+          return async (statements: Parameters<D1Database["batch"]>[0]) => {
+            if (!saved)
+              saved = (await a().saveSection(draft, { module: "screening", status: "IN_PROGRESS", payload: parq(["bone_joint"]), revision }, day(24, 10))).status;
+            return target.batch(statements);
+          };
+        const value = Reflect.get(target, key) as unknown;
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    expect(await assessmentsFor(racing, scope("tech-a")).finalize(draft, revision, day(24, 10))).toEqual({ status: "conflict" });
+    expect(saved).toBe("saved");
+    expect(await one("SELECT state, revision FROM assessments WHERE id = ?1", draft)).toEqual({ state: "DRAFT", revision: revision + 1 });
+    const stored = JSON.parse((await one<{ payload: string }>("SELECT payload FROM assessment_sections WHERE assessment_id = ?1 AND module = 'screening'", draft))!.payload);
+    expect(stored.parq.answers.bone_joint).toBe("yes");
+    expect(stored.parq.riskFlag).toBeUndefined();
+    expect(await one("SELECT count(*) AS n FROM access_audit_events WHERE action = 'ASSESSMENT_RECORDED' AND subject_id = ?1", draft)).toEqual({ n: 0 });
+    // Finalized from the current revision, it records with no Medidas.
+    expect(await a().finalize(draft, revision + 1, day(24, 11))).toEqual({ status: "pending", pending: ["PAR-Q com “Sim”: registre a decisão profissional", "PAR-Q com “Sim”: escreva a nota da decisão"] });
+    const next = await fill(draft, { screening: parq(["bone_joint"], decided) });
+    expect(await a().finalize(draft, next, day(24, 12))).toEqual({ status: "recorded" });
+  });
+  it("suggests the equation of the newest recorded one only: with no Medidas there, nothing older is offered", async () => {
+    const draft = await started("st-4", day(25));
+    expect(await a().previousEquation(draft)).toBeNull();
   });
 });

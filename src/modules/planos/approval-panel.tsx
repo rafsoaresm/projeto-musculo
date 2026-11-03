@@ -208,10 +208,10 @@ function ScreeningNote({
           <strong>{REVIEW_REQUIRED_TEXT}</strong> A avaliação de{" "}
           {formatCalendarDate(screening.assessedOn)}{" "}
           {screening.parq
-            ? "tem resposta “Sim” no PAR-Q sem a decisão profissional registrada."
+            ? "tem resposta “Sim” no PAR-Q sem a decisão profissional registrada. Uma avaliação registrada não muda: a decisão entra por uma retificação, na etapa Triagem."
             : "tem triagem com alerta e ainda não tem revisão sua registrada."}{" "}
-          <Link className="account-link" href={screening.href}>
-            {screening.parq ? "Abrir a avaliação" : "Registrar a revisão"}
+          <Link className="account-link" href={screening.parq ? `${screening.href}#av2-r-retificar` : screening.href}>
+            {screening.parq ? "Retificar a avaliação" : "Registrar a revisão"}
           </Link>
         </p>
       </Notice>

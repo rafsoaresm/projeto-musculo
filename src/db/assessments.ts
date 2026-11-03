@@ -175,15 +175,21 @@ export const latestRecordedSql = (organization: string, student: string) =>
 const screeningValueSql = (alias: string, path: string) =>
   `(SELECT json_extract(ps.payload, '${path}') FROM assessment_sections ps WHERE ps.assessment_id = ${alias}.id AND ps.module = 'screening')`;
 
+/** SQL boolean: any PAR-Q answer of the screening of the assessment is "Sim" (read from the answers, so a record without the derived flag is not read as clear). */
+const parqYesSql = (alias: string) =>
+  `EXISTS (SELECT 1 FROM assessment_sections py, json_each(py.payload, '$.parq.answers') pj
+    WHERE py.assessment_id = ${alias}.id AND py.module = 'screening' AND pj.value = 'yes')`;
+
 /**
  * SQL scalar: the risk of an assessment, 'CLEAR' or 'REVIEW_REQUIRED'. For the earlier format it is the column (tied by 0009 to its six questions).
- * For the Avaliação Física it is the PAR-Q: any "Sim" (parq.riskFlag, written at finalize into the frozen screening) is an alert. The column of
+ * For the Avaliação Física it is the PAR-Q: any "Sim" (parq.riskFlag, written at finalize into the frozen screening, or any answer "yes" when the
+ * flag is missing, as in an imported or damaged record) is an alert. The column of
  * such an assessment stays 'CLEAR', because the CHECK of 0009 ties it to the six questions of the earlier format, which this format does not ask:
  * every reader goes through this expression instead.
  */
 export const riskSql = (alias: string) =>
   `(CASE WHEN ${alias}.format_version = 2 THEN
-      CASE WHEN ${alias}.state = 'RECORDED' AND ${screeningValueSql(alias, "$.parq.riskFlag")} = 1 THEN 'REVIEW_REQUIRED' ELSE 'CLEAR' END
+      CASE WHEN ${alias}.state = 'RECORDED' AND (${screeningValueSql(alias, "$.parq.riskFlag")} = 1 OR ${parqYesSql(alias)}) THEN 'REVIEW_REQUIRED' ELSE 'CLEAR' END
     ELSE ${alias}.risk_status END)`;
 
 /**
@@ -346,7 +352,8 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
 
     /**
      * The reference of the equation chosen in the student's newest recorded Avaliação Física, so a reassessment can suggest it (decision 2 of the
-     * user, 02/11/2026): it is offered on the screen, never copied into the draft. Null when there is none or none was chosen.
+     * user, 02/11/2026): it is offered on the screen, never copied into the draft. Null when there is none or that newest one made no choice (no
+     * Medidas): an older choice is never offered in its place.
      */
     async previousEquation(draftId: string): Promise<"male" | "female" | null> {
       const row = await db
@@ -354,7 +361,7 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
           `SELECT json_extract(s.payload, '$.equation') AS equation
            FROM assessments d
            JOIN assessments p ON p.organization_id = d.organization_id AND p.student_id = d.student_id AND p.state = 'RECORDED' AND p.format_version = 2
-           JOIN assessment_sections s ON s.assessment_id = p.id AND s.module = 'composition'
+           LEFT JOIN assessment_sections s ON s.assessment_id = p.id AND s.module = 'composition'
            WHERE d.organization_id = ?1 AND d.id = ?3 AND ${reachAssessment("d")}
            ORDER BY p.assessed_on DESC, p.recorded_at DESC LIMIT 1`,
         )
@@ -747,17 +754,12 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
       });
       if (review.pending.length > 0 || !screening?.success) return { status: "pending", pending: review.pending };
       const stamp = now.toISOString();
-      const next = expectedRevision + 1;
-      // Every write below holds only if the claim of the first statement took (the revision, and this stamp, are ours).
-      const ours = `EXISTS (SELECT 1 FROM assessments g WHERE g.organization_id = ?1 AND g.id = ?3 AND g.state = 'DRAFT' AND g.revision = ?4 AND g.updated_at = ?5)`;
-      const results = await db.batch([
-        db
-          .prepare(
-            `UPDATE assessments SET revision = revision + 1, updated_at = ?5
-             WHERE organization_id = ?1 AND id = ?3 AND state = 'DRAFT' AND format_version = 2 AND revision = ?4 - 1 AND ${reachAssessment("assessments")}`,
-          )
-          .bind(organizationId, userId, assessmentId, next, stamp),
-        db.prepare(`DELETE FROM assessment_results WHERE organization_id = ?1 AND assessment_id = ?3 AND ${ours}`).bind(organizationId, userId, assessmentId, next, stamp),
+      // The batch is one transaction. Every write holds only while the draft is still the one read above (same revision, still a draft, still
+      // reachable), and the last statement both moves the revision and records it: a save that landed first leaves every statement without effect.
+      const ours = `EXISTS (SELECT 1 FROM assessments g WHERE g.organization_id = ?1 AND g.id = ?3 AND g.state = 'DRAFT' AND g.format_version = 2
+        AND g.revision = ?4 AND ${reachAssessment("g")})`;
+      const writes = [
+        db.prepare(`DELETE FROM assessment_results WHERE organization_id = ?1 AND assessment_id = ?3 AND ${ours}`).bind(organizationId, userId, assessmentId, expectedRevision),
         ...review.results.map((result) =>
           db
             .prepare(
@@ -768,7 +770,7 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
               organizationId,
               userId,
               assessmentId,
-              next,
+              expectedRevision,
               stamp,
               crypto.randomUUID(),
               result.code,
@@ -782,24 +784,27 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
         ),
         db
           .prepare(
-            `UPDATE assessment_sections SET payload = ?6 WHERE organization_id = ?1 AND assessment_id = ?3 AND module = 'screening' AND ${ours}`,
+            `UPDATE assessment_sections SET payload = ?5 WHERE organization_id = ?1 AND assessment_id = ?3 AND module = 'screening' AND ${ours}`,
           )
-          .bind(organizationId, userId, assessmentId, next, stamp, JSON.stringify(recordedScreening(screening.data, userId, stamp))),
+          .bind(organizationId, userId, assessmentId, expectedRevision, JSON.stringify(recordedScreening(screening.data, userId, stamp, original?.screening ?? null))),
         db
           .prepare(
             `UPDATE assessment_sections SET status = 'DONE', updated_at = ?5, updated_by_user_id = ?2
              WHERE organization_id = ?1 AND assessment_id = ?3 AND ${ours}`,
           )
-          .bind(organizationId, userId, assessmentId, next, stamp),
+          .bind(organizationId, userId, assessmentId, expectedRevision, stamp),
+      ];
+      const results = await db.batch([
+        ...writes,
         db
           .prepare(
-            `UPDATE assessments SET state = 'RECORDED', recorded_at = ?5, recorded_by_user_id = ?2
-             WHERE organization_id = ?1 AND id = ?3 AND ${ours}`,
+            `UPDATE assessments SET revision = revision + 1, updated_at = ?5, state = 'RECORDED', recorded_at = ?5, recorded_by_user_id = ?2
+             WHERE organization_id = ?1 AND id = ?3 AND state = 'DRAFT' AND format_version = 2 AND revision = ?4 AND ${reachAssessment("assessments")}`,
           )
-          .bind(organizationId, userId, assessmentId, next, stamp),
+          .bind(organizationId, userId, assessmentId, expectedRevision, stamp),
         audit("ASSESSMENT_RECORDED", assessmentId, stamp),
       ]);
-      if (results[0].meta.changes > 0) return { status: "recorded" };
+      if (results[writes.length].meta.changes > 0) return { status: "recorded" };
       const current = await db
         .prepare(`SELECT a.state, a.format_version AS formatVersion FROM assessments a WHERE a.organization_id = ?1 AND a.id = ?3 AND ${reachAssessment("a")}`)
         .bind(organizationId, userId, assessmentId)
