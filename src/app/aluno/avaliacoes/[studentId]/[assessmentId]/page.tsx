@@ -64,7 +64,7 @@ export default async function StudentAssessmentPage({ params }: Params) {
           <ArrowLeft size={16} /> Voltar às avaliações
         </Link>
         <Link
-          className="button small av2-report-button"
+          className="button primary small av2-report-button"
           href={`/aluno/avaliacoes/pdf/${link.studentId}/${assessment.id}`}
           download
           prefetch={false}
