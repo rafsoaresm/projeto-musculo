@@ -2,6 +2,17 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.82: Evolução comparável por protocolo da Avaliação Física (handoff 1, 4.3, 6 e 9; fecha a P1)
+
+**Sem migration.** Painel "Resultados ao longo do tempo" no topo da página de evolução do aluno (profissional).
+
+- **Séries comparáveis:** um valor entra numa série só com o mesmo resultado, o mesmo método (protocolo e variante da equação, ou a conta direta), a mesma versão da fórmula, a mesma conversão (só para gordura, massa gorda e massa livre) e a mesma unidade. Um protocolo diferente começa outra série; nada é recalculado entre versões (handoff 6). Gráfico só com 2 valores ou mais numa série; dois protocolos nunca na mesma linha (mais estrito que o gráfico opcional com os dois protocolos do handoff 4.3; escolha da ferramenta).
+- **Avisos:** com métodos diferentes, o texto do handoff 4.3 ("Metodologias diferentes; comparação de % de gordura pode não ser equivalente") e "Cada método tem a sua série"; quando muda só a versão da fórmula, a conversão ou a unidade, o aviso diz isso. "Ver os valores" marca onde o método muda e mostra os alertas. "Método da avaliação mais recente" na série atual.
+- **Formato anterior:** a gordura copiada pela 0033 aparece à parte, como "Formato anterior · método desconhecido", e não se repete nas medidas antigas. Um aluno só com avaliações do formato anterior vê a página como antes.
+- **Também:** a soma das dobras deixa de aparecer como "estimativa" (tela, evolução e PDF); a linha do tempo diz "PAR-Q sem “Sim”" nas avaliações novas; a comparação item a item fica só para o formato anterior (ela não lê os módulos novos).
+- **Verificado localmente:** tipos, lint e `npm run check` (119 arquivos, 1870 testes); e2e nos dois mounts (raiz e `/treinador`): 26 passaram em cada (Jackson & Pollock 7 e depois Faulkner, exemplo do handoff 8: duas séries, aviso, valores), mais `assessments-legacy` (2); capturas a 1440, 1280, 1024, 768 e 390.
+- **Não feito:** evolução para o aluno; medidas brutas (peso etc.) como série; o cartão-resumo "Evolução" do Figma AV-01. Duas avaliações no mesmo dia aparecem como dois pontos na mesma data. As páginas só com formato anterior e mistas são cobertas por teste de renderização, não no navegador.
+
 ## Fatia 0.81: Relatório em PDF da Avaliação Física, para o profissional e o aluno (handoff 3.5, 4.3, 6 e 9; Figma AV-06; decisão de 02/11/2026)
 
 **Sem migration.** O PDF sai de uma avaliação **registrada** do formato novo (um rascunho não tem relatório: 404), desenhado com pdf-lib como o PDF do plano (0.11; roda no Worker, sem binário nativo).
@@ -12,6 +23,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Aviso:** "Sem classificação automática; só os resultados marcados “estimativa” vêm de equações." O texto "não equivale a exame médico" do handoff 3.5 **não foi escrito** (o handoff pede texto revisado e não o fornece; ver B49).
 - **Verificado localmente:** tipos, lint e `npm run check` (117 arquivos, 1859 testes; 10+3 do relatório, incluindo D1 de acesso: outra organização, aluno sem vínculo, rascunho, formato anterior); e2e nos dois mounts (raiz e `/treinador`): 26 passaram em cada (download pelo profissional e pelo aluno, texto do PDF); capturas a 1440, 1280, 1024, 768 e 390 e o PDF renderizado.
 - **Não feito / não verificado:** fotos no relatório; avaliações do formato anterior não têm PDF; marcação de acessibilidade do PDF; o PDF com todos os módulos preenchidos não foi aberto num navegador (só testes). A linha da população usa o texto atual do catálogo, não um texto congelado no finalizar.
+- **CI e deploy:** o CI do PR #83 passou (`validate` e `validate (/treinador)`, no commit `e990a8e`); merge `23c8b7d`; deploy `3089f5cc` com sucesso em 03/11/2026 (sem migration).
 
 ## Fatia 0.80: Flexiteste, testes físicos e conclusão da Avaliação Física (handoff 3.4, 3.5, 5 e 8; Figma AV-05 e AV-06)
 

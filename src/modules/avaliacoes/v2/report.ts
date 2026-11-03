@@ -54,7 +54,7 @@ import {
   type TestsPayload,
 } from "./physical-tests";
 import { HEATH_CARTER_NOTE, findingsText, postureEmpty, regionsOf, somatotypeText, type PosturePayload } from "./posture";
-import { FLAG_LABEL, RESULT_LABEL, formatResult, isEstimate, methodLabel, resultNote } from "./review";
+import { FLAG_LABEL, RESULT_LABEL, formatResult, isResultEstimate, methodLabel, resultNote } from "./review";
 import { ANAMNESIS_CODES, PARQ_CODES, parqAnswer, type ProfilePayload, type ScreeningPayload } from "./screening";
 
 /** The line every report carries in place of the institutional disclaimer the handoff asks for but does not give (handoff 3.5). */
@@ -256,7 +256,7 @@ export function resultRows(results: readonly ResultRow[]) {
     return {
       label: RESULT_LABEL[result.code] ?? result.code,
       value: result.value === null ? "Sem valor" : formatResult(result.code, result.value, result.unit),
-      detail: [note, methodLabel(result.method), result.formulaVersion ? `fórmula ${result.formulaVersion}` : null, isEstimate(result.method) ? "estimativa" : null]
+      detail: [note, methodLabel(result.method), result.formulaVersion ? `fórmula ${result.formulaVersion}` : null, isResultEstimate(result.code, result.method) ? "estimativa" : null]
         .filter((part): part is string => part !== null)
         .join(" · "),
       flags: result.flags.map((flag) => FLAG_LABEL[flag] ?? flag),

@@ -103,6 +103,8 @@ export const COOPER_VO2_METHOD = "cooper_12min_vo2_504_9_44_73";
 const EXACT_METHOD_SET: ReadonlySet<string> = new Set(Object.values(EXACT_METHODS));
 /** A result whose method is arithmetic on measures (BMI, waist-hip ratio, bilateral difference) or unknown: not an estimate of a study's equation. */
 export const isEstimate = (method: string) => method !== "legacy_formula_unknown" && !EXACT_METHOD_SET.has(method);
+/** Whether a recorded result is an estimate: the sum of skinfolds carries the protocol as its method but is the sum of the measured folds, not an estimate. */
+export const isResultEstimate = (code: string, method: string) => code !== "sum_skinfolds" && isEstimate(method);
 
 export const RESULT_LABEL: Record<string, string> = {
   sum_skinfolds: "Soma das dobras",
@@ -156,6 +158,9 @@ const DIGITS: Record<string, number> = {
   cooper_vo2_estimate: 2,
 };
 const MIN_DIGITS: Record<string, number> = { bmi: 2, waist_hip_ratio: 3, cooper_speed_kmh: 1, cooper_vo2_estimate: 2 };
+
+/** Decimal places a result is shown with, at most (a bilateral difference in cm has two). */
+export const resultDigits = (code: string): number => (code.startsWith("bilateral_difference_") ? 2 : (DIGITS[code] ?? 2));
 
 /** A value as the screens show it (rounded only here; the record keeps the full precision), with its unit. */
 export function formatResult(code: string, value: number, unit: string | null): string {

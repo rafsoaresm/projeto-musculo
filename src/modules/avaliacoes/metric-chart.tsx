@@ -6,7 +6,6 @@ import { chartGeometry } from "./evolution";
 const W = 360;
 const H = 150;
 const AREA = { left: 46, top: 14, width: 296, height: 88 };
-const number = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
 
 /**
  * One measure over time: a thin line, round markers, three recessive guides and a label on the
@@ -17,11 +16,15 @@ export function MetricChart({
   title,
   unit,
   points,
+  digits = 1,
 }: {
   title: string;
   unit: string | null;
   points: Array<{ assessedOn: string; value: number; text: string }>;
+  /** Decimal places of the guides and of the last value's label (a density reads 1,0532, a waist 88,5). */
+  digits?: number;
 }) {
+  const number = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: digits });
   const [active, setActive] = useState<number | null>(null);
   const box = useRef<SVGSVGElement>(null);
   const geometry = chartGeometry(points, AREA);

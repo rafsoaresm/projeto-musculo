@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { compositionSchema } from "@/modules/avaliacoes/v2/composition";
 import { EMPTY_PROFILE, draftScreening, screeningSchema, type ScreeningPayload } from "@/modules/avaliacoes/v2/screening";
-import { FLAG_LABEL, formatResult, isEstimate, methodLabel, newYesAnswers, resultNote, recordedScreening, reviewDraft } from "@/modules/avaliacoes/v2/review";
+import { FLAG_LABEL, formatResult, isEstimate, isResultEstimate, methodLabel, newYesAnswers, resultNote, recordedScreening, reviewDraft } from "@/modules/avaliacoes/v2/review";
 
 // The pure rule of the "Revisão" step and of the finalize (slice 0.77): what blocks, what is recorded, and why the rest is not.
 const PARQ_CODES = ["heart_condition", "chest_pain_activity", "chest_pain_month", "dizziness", "bone_joint", "blood_pressure_medication", "other_reason"];
@@ -151,5 +151,10 @@ describe("the results of the perimeters", () => {
     expect(isEstimate("right_minus_left")).toBe(false);
     expect(isEstimate("weight_over_height_squared")).toBe(false);
     expect(isEstimate("jackson_pollock_7_1978_male")).toBe(true);
+    // The sum of skinfolds carries the protocol as its method but is the sum of what was measured: not an estimate.
+    expect(isResultEstimate("sum_skinfolds", "jackson_pollock_7_1978_male")).toBe(false);
+    expect(isResultEstimate("body_density", "jackson_pollock_7_1978_male")).toBe(true);
+    expect(isResultEstimate("body_fat_percent", "faulkner_4_1968")).toBe(true);
+    expect(isResultEstimate("bmi", "weight_over_height_squared")).toBe(false);
   });
 });

@@ -2295,6 +2295,9 @@ label.check input {
   margin: 0;
 }
 .series-block details > summary {
+  box-sizing: border-box;
+  min-height: 44px;
+  padding-block: 10px;
   cursor: pointer;
   font-weight: 700;
   color: var(--color-primary-strong);
@@ -6843,6 +6846,51 @@ fieldset.yes-no legend {
 }
 .av2-result-flags .av2-flag {
   margin-top: 0;
+}
+/* Evolution (0.82): per result, one series per method, each with its own line; the earlier format apart; never a classification. */
+.evolution-count {
+  margin: 0 0 12px;
+}
+/* A grid item takes its content's width unless told otherwise: without this, the table of values pushed the page wider than the window. */
+.av2-evolution > * {
+  min-width: 0;
+}
+.av2-evolution table,
+.av2-evolution .pill {
+  white-space: normal;
+}
+.av2-evolution-series {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.av2-evolution-series + .av2-evolution-series {
+  padding-top: 12px;
+  border-top: 1px dashed var(--color-line);
+}
+.av2-evolution-series > p,
+.av2-evolution-warning {
+  margin: 0;
+}
+.av2-evolution-method-cell {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  min-width: 0;
+}
+@media (max-width: 700px) {
+  table.stack .av2-evolution-method-cell {
+    justify-items: end;
+  }
+}
+.av2-evolution-flag {
+  width: fit-content;
+}
+.av2-evolution-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
 }
 @container (max-width: 560px) {
   .av2-result-row {

@@ -331,6 +331,11 @@ describe("the history", () => {
     expect(list.filter((item) => item.amendedById !== null).length).toBe(1);
     const history = await a().history("st-1");
     expect(history.map((item) => item.id)).toEqual([amended.id]);
+    // Slice 0.82: the evolution reads every result with its method, formula version and inputs (the conversion), as written at finalize.
+    const fat = history[0].results.find((row) => row.code === "body_fat_percent")!;
+    expect([fat.method, fat.formulaVersion, fat.inputs?.conversion]).toEqual(["jackson_pollock_7_1978_male", FORMULA_VERSION, "siri_1961"]);
+    expect(history[0].results.map((row) => row.code)).toEqual((await a().results(amended.id)).map((row) => row.code));
+    expect(await assessmentsFor(db, scope("tech-b", "org-b")).history("st-1")).toEqual([]);
     // Not reached from another organization.
     expect(await assessmentsFor(db, scope("tech-b", "org-b")).listForStudent("st-1")).toEqual([]);
     expect(await assessmentsFor(db, scope("tech-b", "org-b")).results(amended.id)).toEqual([]);
