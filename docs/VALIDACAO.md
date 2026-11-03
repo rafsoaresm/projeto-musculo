@@ -11,6 +11,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Retenção:** nada é apagado por enquanto (J3, J9, B12 em aberto), e as telas dizem isso.
 - **Verificado localmente:** tipos, lint e `npm run check` (126 arquivos, 1942 testes; 7 D1 da trilha de leitura e 7 de falhas com a autenticação real em D1, incluindo o navegador compartilhado); e2e nos dois mounts (raiz e `/treinador`): `read-trail` (novo), `two-factor`, `devices`, `account`, `student-tabs`, além da primeira rodada com 47 testes de 13 specs em cada mount; capturas a 1440, 1280, 1024, 768 e 390.
 - **Não feito / não verificado (B51):** pedidos recusados pelo limite de tentativas e o último código errado depois que a biblioteca descarta a entrada pendente não deixam linha; as páginas de evolução, execução do treino e do gestor da plataforma não gravam leitura; os nomes são lidos na hora (0.90); não há linhas de antes da 0.88; falhas da verificação em duas etapas e o papel TECHNICAL só têm teste D1, não de navegador.
+- **CI e deploy:** o CI do PR #90 passou (`validate` e `validate (/treinador)`, no commit `12888fc`); merge `df3c181`; deploy `53e583dc` com sucesso em 03/11/2026, com `0038_read_trail_sign_in_failures.sql ✅` no log.
 
 ## Fatia 0.87: Check-ins configuráveis, dias anteriores e resposta do profissional (PENDENCIAS B8)
 
