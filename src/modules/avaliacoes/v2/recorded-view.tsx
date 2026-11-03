@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Download } from "lucide-react";
 import { Notice, formatDateTime } from "@/components/ui";
 import type { AssessmentDetail, ResultRow } from "@/db/assessments";
 import { formatCalendarDate } from "@/modules/training/format";
@@ -104,6 +105,12 @@ export function RecordedAssessmentView({
             {detail.recordedByName ? ` por ${detail.recordedByName}` : ""}. Não muda mais.
           </span>
         </p>
+        <div className="av2-report-action">
+          <Link className="button secondary small" href={`${base}/${detail.id}/pdf`} download prefetch={false}>
+            <Download size={16} /> Baixar relatório em PDF
+          </Link>
+          <span className="small muted">O mesmo relatório que o aluno baixa na área dele, quando tem acesso ao portal. Valores estimados; sem classificação.</span>
+        </div>
         {detail.amendsAssessmentId && (
           <p>
             Retifica a{" "}

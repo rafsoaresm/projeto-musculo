@@ -126,6 +126,7 @@ export function ReviewStep({
             ? "Ao finalizar, a retificação é registrada como uma nova avaliação; a original continua no histórico, marcada como retificada."
             : "Ao finalizar, a avaliação é registrada e não muda mais. Uma correção depois disso é uma retificação, com o motivo escrito."}
         </p>
+        <p className="muted small">O relatório em PDF, para você e para o aluno, sai da avaliação registrada: fica na página dela depois de finalizar.</p>
         {error && (
           <div role="alert" className="av2-status error">
             <p>{error.text}</p>

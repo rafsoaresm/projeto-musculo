@@ -6613,6 +6613,22 @@ fieldset.yes-no legend {
   margin: 8px 0 0;
   overflow-wrap: anywhere;
 }
+/* The report of a recorded assessment: the button and its line side by side, the line under the button when the card is narrow. */
+.av2-report-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 12px;
+}
+.av2-report-action .button {
+  flex: 0 0 auto;
+}
+.av2-report-action > span {
+  flex: 1 1 240px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 @container (max-width: 760px) {
   .av2-finding {
     grid-template-columns: minmax(0, 1fr);
