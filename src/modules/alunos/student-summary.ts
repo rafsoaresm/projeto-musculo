@@ -51,14 +51,14 @@ export function timeline(input: SummaryInput): Milestone[] {
   const steps: Milestone[] = [{ key: "cadastro", text: "Cadastro salvo", state: "done" }];
   steps.push(
     draft
-      ? { key: "avaliacao", text: "Avaliação em rascunho", state: "current" }
+      ? { key: "avaliacao", text: "Avaliação física em rascunho", state: "current" }
       : recorded
         ? {
             key: "avaliacao",
-            text: `Avaliação registrada em ${formatCalendarDate(recorded.assessedOn)}${recorded.riskStatus === "REVIEW_REQUIRED" && !recorded.reviewed ? ", triagem pede a sua revisão" : ""}`,
+            text: `Avaliação física registrada em ${formatCalendarDate(recorded.assessedOn)}${recorded.riskStatus === "REVIEW_REQUIRED" && !recorded.reviewed ? ", triagem pede a sua revisão" : ""}`,
             state: recorded.riskStatus === "REVIEW_REQUIRED" && !recorded.reviewed ? "current" : "done",
           }
-        : { key: "avaliacao", text: "Nenhuma avaliação registrada", state: "missing" },
+        : { key: "avaliacao", text: "Nenhuma avaliação física registrada", state: "missing" },
   );
   steps.push(
     newest
@@ -105,7 +105,7 @@ export function nextAction(input: SummaryInput): NextAction | null {
   if (newest && newest.revision.state === "APPROVED")
     return { text: "entregar o plano aprovado", href: `${student}/planos/${newest.plan.id}/${newest.revision.id}` };
   const draft = input.assessments.find((row) => row.state === "DRAFT");
-  if (draft) return { text: "continuar a avaliação", href: `${student}/avaliacoes/${draft.id}` };
+  if (draft) return { text: "continuar a avaliação física", href: `${student}/avaliacoes/${draft.id}` };
   if (!input.hasProfile) return { text: "preencher a ficha", href: `${student}/ficha` };
   return null;
 }

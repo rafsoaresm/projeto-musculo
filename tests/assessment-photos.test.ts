@@ -2,12 +2,12 @@ import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import type { D1Database, R2Bucket } from "@cloudflare/workers-types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { assessmentPhotosFor } from "@/db/assessment-photos";
-import { assessmentsFor } from "@/db/assessments";
 import { recordAcceptance } from "@/db/consent";
 import { BASELINE_VERSION } from "@/modules/consentimento/terms";
 import { profilesFor } from "@/db/student-profile";
 import { MAX_PHOTO_BYTES } from "@/modules/avaliacoes/photos";
 import { ALL_MIGRATIONS, migrate } from "./helpers/migrate";
+import { withLegacy } from "./helpers/legacy-assessments";
 import { ALL_NO } from "./helpers/screening";
 
 // Real local D1 and R2 with the real migrations and triggers. Identities are rows, as the server
@@ -105,7 +105,7 @@ const objects = async () => (await bucket.list()).objects.map((o) => o.key).sort
 const rows = async (assessmentId?: string) =>
   (await db.prepare(`SELECT view, object_key AS key, size_bytes AS size FROM assessment_photos ${assessmentId ? "WHERE assessment_id = ?1" : ""} ORDER BY view`).bind(...(assessmentId ? [assessmentId] : [])).all<{ view: string; key: string; size: number }>()).results;
 async function draftFor(student: string, user: string, when: Date) {
-  const started = await assessmentsFor(db, scope(user)).startDraft(student, when);
+  const started = await withLegacy(db, scope(user)).startDraft(student, when);
   if (started.status !== "started") throw new Error(started.status);
   return started.id;
 }
@@ -155,7 +155,7 @@ describe("storing, replacing, reading and removing a photo", () => {
   });
 
   it("refuses what is not a usable photo, in any view, and stores nothing", async () => {
-    const draft = (await assessmentsFor(db, scope("tech-a")).listForStudent("st-1")).find((a) => a.state === "DRAFT")!.id;
+    const draft = (await withLegacy(db, scope("tech-a")).listForStudent("st-1")).find((a) => a.state === "DRAFT")!.id;
     const before = { objects: await objects(), rows: await rows() };
     const reason = async (body: Uint8Array, view = "POSTERIOR") => {
       const result = await photos().put(draft, view, body, day(10));
@@ -199,7 +199,7 @@ describe("no authorization of the student is needed (migration 0035)", () => {
   });
 
   it("does not follow the student's acceptance or access: a withdrawal or a revoked login changes nothing", async () => {
-    const draft = (await assessmentsFor(db, scope("tech-a")).listForStudent("st-race")).find((a) => a.state === "DRAFT")!.id;
+    const draft = (await withLegacy(db, scope("tech-a")).listForStudent("st-race")).find((a) => a.state === "DRAFT")!.id;
     await recordAcceptance(db, "client-r", "STUDENT", { photosAuthorized: false, shownVersion: BASELINE_VERSION }, day(11));
     expect(await photos().put(draft, "POSTERIOR", jpeg(), day(11))).toEqual({ status: "stored", replaced: false });
     await db.prepare("UPDATE student_access SET revoked_at = '2026-12-01T00:00:00.000Z' WHERE student_id = 'st-race'").run();
@@ -208,7 +208,7 @@ describe("no authorization of the student is needed (migration 0035)", () => {
   });
 
   it("is not required by the database either: a row with no acceptance is accepted", async () => {
-    const draft = (await assessmentsFor(db, scope("tech-a")).listForStudent("st-race")).find((a) => a.state === "DRAFT")!.id;
+    const draft = (await withLegacy(db, scope("tech-a")).listForStudent("st-race")).find((a) => a.state === "DRAFT")!.id;
     await db.prepare("DELETE FROM assessment_photos WHERE assessment_id = ?1 AND view = 'ANTERIOR'").bind(draft).run();
     await db
       .prepare(
@@ -223,7 +223,7 @@ describe("no authorization of the student is needed (migration 0035)", () => {
 
 describe("who can reach a photo", () => {
   it("is refused, reading and writing, to anyone without an active technical assignment", async () => {
-    const draft = (await assessmentsFor(db, scope("tech-a")).listForStudent("st-1")).find((a) => a.state === "DRAFT")!.id;
+    const draft = (await withLegacy(db, scope("tech-a")).listForStudent("st-1")).find((a) => a.state === "DRAFT")!.id;
     const before = { objects: await objects(), rows: await rows(), audit: (await db.prepare("SELECT COUNT(*) AS n FROM access_audit_events").first<{ n: number }>())!.n };
     for (const [user, org] of [["tech-a2", "org-a"], ["owner-a", "org-a"], ["commercial-a", "org-a"], ["client-1", "org-a"], ["mgr-1", "org-a"], ["tech-b", "org-b"], ["tech-b", "org-a"], ["stranger", "org-a"]]) {
       const api = photos(user, org);
@@ -237,7 +237,7 @@ describe("who can reach a photo", () => {
   });
 
   it("ends with the assignment or the identity", async () => {
-    const draft = (await assessmentsFor(db, scope("tech-a")).listForStudent("st-1")).find((a) => a.state === "DRAFT")!.id;
+    const draft = (await withLegacy(db, scope("tech-a")).listForStudent("st-1")).find((a) => a.state === "DRAFT")!.id;
     await db.prepare("UPDATE care_assignments SET revoked_at = '2026-12-01T00:00:00.000Z' WHERE student_id = 'st-1'").run();
     expect(await photos().list(draft)).toEqual([]);
     expect(await photos().read(draft, "LATERAL_LEFT")).toBeNull();
@@ -252,9 +252,9 @@ describe("who can reach a photo", () => {
 
 describe("a recorded assessment keeps its photos", () => {
   it("freezes them with the assessment, in the code and in the database, and still serves them", async () => {
-    const draft = (await assessmentsFor(db, scope("tech-a")).listForStudent("st-1")).find((a) => a.state === "DRAFT")!.id;
-    await assessmentsFor(db, scope("tech-a")).saveDraft(draft, { ...ALL_NO, assessedOn: "2026-11-10", chestPain: true }, day(12));
-    expect(await assessmentsFor(db, scope("tech-a")).record(draft, { screeningAsked: true }, day(12))).toMatchObject({ status: "recorded" });
+    const draft = (await withLegacy(db, scope("tech-a")).listForStudent("st-1")).find((a) => a.state === "DRAFT")!.id;
+    await withLegacy(db, scope("tech-a")).saveDraft(draft, { ...ALL_NO, assessedOn: "2026-11-10", chestPain: true }, day(12));
+    expect(await withLegacy(db, scope("tech-a")).record(draft, { screeningAsked: true }, day(12))).toMatchObject({ status: "recorded" });
     const before = { objects: await objects(), rows: await rows(draft) };
     expect(await photos().put(draft, "ANTERIOR", jpeg(), day(13))).toEqual({ status: "not_found" });
     expect(await photos().put(draft, "LATERAL_LEFT", jpeg(), day(13))).toEqual({ status: "not_found" });
@@ -292,8 +292,8 @@ describe("a recorded assessment keeps its photos", () => {
         return async (statements: Parameters<D1Database["batch"]>[0]) => {
           if (!raced) {
             raced = true;
-            await assessmentsFor(db, scope("tech-a2")).saveDraft(draft, { ...ALL_NO, assessedOn: "2026-11-14" }, day(14));
-            await assessmentsFor(db, scope("tech-a2")).record(draft, { screeningAsked: true }, day(14));
+            await withLegacy(db, scope("tech-a2")).saveDraft(draft, { ...ALL_NO, assessedOn: "2026-11-14" }, day(14));
+            await withLegacy(db, scope("tech-a2")).record(draft, { screeningAsked: true }, day(14));
           }
           return target.batch(statements);
         };
@@ -304,5 +304,47 @@ describe("a recorded assessment keeps its photos", () => {
     expect(result).toEqual({ status: "not_found" });
     expect(await objects()).toEqual(before);
     expect(await rows(draft)).toEqual([]);
+  });
+});
+
+describe("discarding an open draft that has photos (decision of 03/11/2026: a draft of the earlier format can only be discarded)", () => {
+  it("is refused while a photo is stored; once the photos are removed from the storage the draft goes, and nothing is left behind", async () => {
+    const draft = await draftFor("st-1", "tech-a", day(20));
+    expect(await photos().put(draft, "ANTERIOR", jpeg(), day(20))).toEqual({ status: "stored", replaced: false });
+    const [stored] = await rows(draft);
+    const repo = withLegacy(db, scope("tech-a"));
+    expect(await withLegacy(db, scope("tech-a2")).discardDraft(draft)).toEqual({ status: "not_found" });
+    expect(await repo.discardDraft(draft)).toEqual({ status: "photos_left" });
+    expect((await repo.get(draft))?.state).toBe("DRAFT");
+    // What the action does: remove each photo of the draft (object and row), then discard.
+    for (const photo of await photos().list(draft)) expect(await photos().remove(draft, photo.view, day(20))).toEqual({ status: "removed" });
+    expect(await repo.discardDraft(draft)).toEqual({ status: "discarded" });
+    expect(await objects()).not.toContain(stored.key);
+    expect(await rows(draft)).toEqual([]);
+    expect(await repo.get(draft)).toBeNull();
+  });
+
+  it("goes even when a photo of it was erased on a request of the student (its erasure row references the draft)", async () => {
+    const draft = await draftFor("st-1", "tech-a", day(21));
+    expect(await photos().put(draft, "LATERAL_LEFT", jpeg(), day(21))).toEqual({ status: "stored", replaced: false });
+    const [stored] = await rows(draft);
+    const photoId = await db.prepare("SELECT id FROM assessment_photos WHERE assessment_id = ?1").bind(draft).first<string>("id");
+    // What erasing on a request does to a draft's photo (data-requests): the bytes go, the erasure is recorded, the draft's photo row goes.
+    await bucket.delete(stored.key);
+    await db.batch([
+      db
+        .prepare(
+          `INSERT INTO photo_erasures (photo_id, organization_id, assessment_id, view, request_id, erased_by_user_id, erased_at)
+           SELECT p.id, p.organization_id, p.assessment_id, p.view, NULL, 'tech-a', ?2 FROM assessment_photos p WHERE p.id = ?1`,
+        )
+        .bind(photoId, day(21).toISOString()),
+      db.prepare("DELETE FROM assessment_photos WHERE id = ?1").bind(photoId),
+    ]);
+    const repo = withLegacy(db, scope("tech-a"));
+    expect(await withLegacy(db, scope("tech-a2")).discardDraft(draft)).toEqual({ status: "not_found" });
+    expect(await db.prepare("SELECT COUNT(*) AS n FROM photo_erasures WHERE assessment_id = ?1").bind(draft).first("n")).toBe(1);
+    expect(await repo.discardDraft(draft, day(21))).toEqual({ status: "discarded" });
+    expect(await repo.get(draft)).toBeNull();
+    expect(await db.prepare("SELECT COUNT(*) AS n FROM photo_erasures WHERE assessment_id = ?1").bind(draft).first("n")).toBe(0);
   });
 });

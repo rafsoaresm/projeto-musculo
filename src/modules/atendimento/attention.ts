@@ -5,7 +5,8 @@
  */
 export interface AttentionInput {
   requests: Array<{ id: string; studentId: string; studentName: string; kindLabel: string; overdue: boolean; dueOn: string }>;
-  alerts: Array<{ studentId: string; studentName: string; assessmentId: string; assessedOn: string }>;
+  /** `title` is the assessment's name on the screens (assessmentTitle): "Avaliação (formato anterior)" for a record of the earlier format. */
+  alerts: Array<{ studentId: string; studentName: string; assessmentId: string; assessedOn: string; title: string }>;
   pain: Array<{ sessionId: string; studentId: string; studentName: string; workoutLabel: string; performedOn: string }>;
   checkins: Array<{ checkinId: string; studentId: string; studentName: string; checkedOn: string; discomfort: boolean }>;
   drafts: Array<{ studentId: string; studentName: string; planId: string; revisionId: string; title: string; revisionNumber: number }>;
@@ -42,7 +43,7 @@ export function attentionQueue(input: AttentionInput): AttentionItem[] {
       key: `alert-${row.assessmentId}`,
       student: row.studentName,
       reason: "triagem pede a sua revisão",
-      detail: `Avaliação de ${row.assessedOn}: a aprovação de um plano espera a revisão registrada`,
+      detail: `${row.title} de ${row.assessedOn}: a aprovação de um plano espera a revisão registrada`,
       cta: "Registrar revisão",
       href: `${student(row.studentId)}/avaliacoes/${row.assessmentId}`,
       rank: 1,

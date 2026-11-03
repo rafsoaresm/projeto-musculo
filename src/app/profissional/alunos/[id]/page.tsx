@@ -17,7 +17,6 @@ import { InvitePanel } from "@/modules/convites/invite-panel";
 import { PlansPanel } from "@/modules/planos/plans-panel";
 import { ProfileSummary } from "@/modules/ficha/profile-summary";
 import { AssessmentsPanel } from "@/modules/avaliacoes/assessments-panel";
-import { assessmentV2Here } from "@/modules/avaliacoes/v2/switch";
 import { ExecutionPanel } from "@/modules/execucao/execution-panel";
 import { ConsentLine } from "@/modules/consentimento/consent-line";
 import { CheckinPanel } from "@/modules/checkin/checkin-panel";
@@ -104,7 +103,7 @@ export default async function Student({
               />
             </div>
           ),
-          avaliacoes: <AssessmentsPanel studentId={student.id} assessments={assessments} newFormat={await assessmentV2Here()} />,
+          avaliacoes: <AssessmentsPanel studentId={student.id} assessments={assessments} />,
           periodizacao: (
             <>
               <PlansPanel studentId={student.id} plans={plans} />
@@ -123,10 +122,10 @@ export default async function Student({
             <>
               <CheckinPanel db={db} context={context} studentId={student.id} />
               <section className="panel" aria-labelledby="evolucao-avaliacoes">
-                <h2 id="evolucao-avaliacoes">Evolução das avaliações</h2>
+                <h2 id="evolucao-avaliacoes">Evolução da avaliação física</h2>
                 <p className="muted">As medidas das avaliações registradas, ao longo do tempo.</p>
                 <Link className="account-link" href={`/profissional/alunos/${student.id}/evolucao`}>
-                  Abrir a evolução das avaliações
+                  Abrir a evolução da avaliação física
                 </Link>
               </section>
             </>

@@ -3,11 +3,11 @@ import type { D1Database, R2Bucket } from "@cloudflare/workers-types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ZodError } from "zod";
 import { assessmentPhotosFor } from "@/db/assessment-photos";
-import { assessmentsFor } from "@/db/assessments";
 import { recordAcceptance } from "@/db/consent";
 import { dataRequestsFor, studentRequestsFor } from "@/db/data-requests";
 import { BASELINE_VERSION } from "@/modules/consentimento/terms";
 import { ALL_MIGRATIONS, migrate } from "./helpers/migrate";
+import { withLegacy } from "./helpers/legacy-assessments";
 import { ALL_NO } from "./helpers/screening";
 
 // Real local D1 and R2 with the real migrations and triggers. Identities are rows, as the server
@@ -301,7 +301,7 @@ describe("erasing the photos of a student on request", () => {
   const put = (assessment: string, view: string) =>
     assessmentPhotosFor(db, bucket, scope("tech-a")).put(assessment, view, jpeg(), day(10));
   const draftFor = async (student: string, when = day(10), user = "tech-a") => {
-    const started = await assessmentsFor(db, scope(user)).startDraft(student, when);
+    const started = await withLegacy(db, scope(user)).startDraft(student, when);
     if (started.status !== "started") throw new Error(started.status);
     return started.id;
   };
@@ -309,8 +309,8 @@ describe("erasing the photos of a student on request", () => {
   const recordedWithPhoto = async (student: string, view: string, when: Date) => {
     const id = await draftFor(student, when);
     expect(await put(id, view)).toEqual({ status: "stored", replaced: false });
-    await assessmentsFor(db, scope("tech-a")).saveDraft(id, { ...ALL_NO, assessedOn: when.toISOString().slice(0, 10) }, when);
-    expect(await assessmentsFor(db, scope("tech-a")).record(id, { screeningAsked: true }, when)).toMatchObject({ status: "recorded" });
+    await withLegacy(db, scope("tech-a")).saveDraft(id, { ...ALL_NO, assessedOn: when.toISOString().slice(0, 10) }, when);
+    expect(await withLegacy(db, scope("tech-a")).record(id, { screeningAsked: true }, when)).toMatchObject({ status: "recorded" });
     return id;
   };
   const photoRows = async (student: string) =>
@@ -323,8 +323,8 @@ describe("erasing the photos of a student on request", () => {
     recorded = await draftFor("st-ph", day(10));
     expect(await put(recorded, "ANTERIOR")).toEqual({ status: "stored", replaced: false });
     expect(await put(recorded, "LATERAL_LEFT")).toEqual({ status: "stored", replaced: false });
-    await assessmentsFor(db, scope("tech-a")).saveDraft(recorded, { ...ALL_NO, assessedOn: "2026-11-10" }, day(10));
-    expect(await assessmentsFor(db, scope("tech-a")).record(recorded, { screeningAsked: true }, day(10))).toMatchObject({ status: "recorded" });
+    await withLegacy(db, scope("tech-a")).saveDraft(recorded, { ...ALL_NO, assessedOn: "2026-11-10" }, day(10));
+    expect(await withLegacy(db, scope("tech-a")).record(recorded, { screeningAsked: true }, day(10))).toMatchObject({ status: "recorded" });
     draft = await draftFor("st-ph", day(20));
     expect(await put(draft, "POSTERIOR")).toEqual({ status: "stored", replaced: false });
     otherDraft = await draftFor("st-other", day(10));
@@ -416,16 +416,16 @@ describe("erasing the photos of a student on request", () => {
       ["ANTERIOR", "2026-11-22T12:00:00.000Z"],
       ["LATERAL_LEFT", "2026-11-22T12:00:00.000Z"],
     ]);
-    const detail = (await assessmentsFor(db, scope("tech-a")).get(recorded))!;
+    const detail = (await withLegacy(db, scope("tech-a")).get(recorded))!;
     expect(detail.photos.map((p) => [p.view, p.erasedAt])).toEqual([
       ["ANTERIOR", "2026-11-22T12:00:00.000Z"],
       ["LATERAL_LEFT", "2026-11-22T12:00:00.000Z"],
     ]);
-    const history = await assessmentsFor(db, scope("tech-a")).history("st-ph");
+    const history = await withLegacy(db, scope("tech-a")).history("st-ph");
     expect(history.find((h) => h.id === recorded)?.photos.every((p) => p.erasedAt !== null)).toBe(true);
-    expect((await assessmentsFor(db, scope("tech-a")).get(draft))!.photos).toEqual([]);
+    expect((await withLegacy(db, scope("tech-a")).get(draft))!.photos).toEqual([]);
     // The other student's photo is still stored and served.
-    expect((await assessmentsFor(db, scope("tech-a")).get(otherDraft))!.photos.map((p) => p.erasedAt)).toEqual([null]);
+    expect((await withLegacy(db, scope("tech-a")).get(otherDraft))!.photos.map((p) => p.erasedAt)).toEqual([null]);
     expect(await assessmentPhotosFor(db, bucket, scope("tech-a")).read(otherDraft, "ANTERIOR")).not.toBeNull();
     // The record of an erasure is no longer append-only (migration 0035).
     await run("UPDATE photo_erasures SET erased_at = '2030-01-01T00:00:00.000Z' WHERE assessment_id = ?1 AND view = 'ANTERIOR'", recorded);

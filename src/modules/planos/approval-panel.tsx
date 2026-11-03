@@ -195,7 +195,7 @@ function ScreeningNote({
           com triagem para este aluno nesta ferramenta. Isso não significa
           ausência de riscos.{" "}
           <Link className="account-link" href={assessmentsHref}>
-            Registrar uma avaliação
+            Iniciar a avaliação física
           </Link>
         </p>
       </Notice>

@@ -2,7 +2,8 @@
 import { useState, useTransition } from "react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useUnsavedGuard } from "@/components/use-unsaved-guard";
-import { discardAssessmentV2, saveCompositionSection } from "./actions";
+import { saveCompositionSection } from "./actions";
+import { DiscardDraftButton } from "./discard-button";
 import { formFromPayload, payloadFromForm, problemsMessage, type CompositionForm, type CompositionPayload } from "./composition";
 import { CompositionStep } from "./composition-step";
 
@@ -72,7 +73,7 @@ export function AssessmentShell({
 
   return (
     <div className="av2">
-      <nav className="av2-steps" aria-label="Etapas da avaliação">
+      <nav className="av2-steps" aria-label="Etapas da avaliação física">
         <ol>
           {STEPS.map((item, position) => (
             <li key={item.key}>
@@ -110,20 +111,12 @@ export function AssessmentShell({
           {(status.kind === "conflict" || status.kind === "error") && status.text}
         </p>
         <div className="av2-actions">
-          <button
-            type="button"
-            className="button secondary"
+          <DiscardDraftButton
+            studentId={studentId}
+            assessmentId={assessmentId}
             disabled={pending}
-            onClick={() => {
-              if (!window.confirm("Descartar este rascunho? O que foi digitado nele será apagado.")) return;
-              startTransition(async () => {
-                const result = await discardAssessmentV2(studentId, assessmentId);
-                if (result?.error) setStatus({ kind: "error", text: result.error });
-              });
-            }}
-          >
-            Descartar rascunho
-          </button>
+            onError={(text) => setStatus({ kind: "error", text })}
+          />
           <button type="button" className="button secondary" disabled={index === 0} onClick={() => setStep(STEPS[index - 1].key)}>
             <ArrowLeft size={17} /> Voltar
           </button>

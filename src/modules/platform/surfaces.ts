@@ -197,7 +197,7 @@ const profissional: NavGroup[] = [
     items: [
       { slug: "", label: "Visão geral", icon: "dashboard", status: "available", primary: true },
       { slug: "alunos", label: "Alunos", icon: "users", status: "available", primary: true },
-      { slug: "avaliacoes", label: "Avaliações", icon: "clipboard", status: "available", primary: true },
+      { slug: "avaliacoes", label: "Avaliação Física", icon: "clipboard", status: "available", primary: true },
       {
         slug: "prescricao",
         label: "Planos e treinos",

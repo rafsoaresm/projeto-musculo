@@ -17,7 +17,7 @@ describe("the work queue of the overview (handoff V4 T02)", () => {
         { checkinId: "c2", studentId: "s4", studentName: "Pedro", checkedOn: "31/10/2026", discomfort: true },
       ],
       pain: [{ sessionId: "w1", studentId: "s3", studentName: "Lucas", workoutLabel: "A", performedOn: "30/10/2026" }],
-      alerts: [{ studentId: "s2", studentName: "Daniela", assessmentId: "a1", assessedOn: "29/10/2026" }],
+      alerts: [{ studentId: "s2", studentName: "Daniela", assessmentId: "a1", assessedOn: "29/10/2026", title: "Avaliação (formato anterior)" }],
       requests: [
         { id: "q1", studentId: "s1", studentName: "Ana", kindLabel: "Cópia dos dados", overdue: false, dueOn: "10/11/2026" },
         { id: "q2", studentId: "s1", studentName: "Ana", kindLabel: "Correção", overdue: true, dueOn: "28/10/2026" },
@@ -34,7 +34,7 @@ describe("the work queue of the overview (handoff V4 T02)", () => {
       "Fernanda: convite aguardando aceite",
     ]);
     expect(queue.find((item) => item.key === "draft-r2")).toMatchObject({ cta: "Continuar plano", href: "/profissional/alunos/s5/planos/p1/r2" });
-    expect(queue.find((item) => item.key === "alert-a1")).toMatchObject({ cta: "Registrar revisão", href: "/profissional/alunos/s2/avaliacoes/a1" });
+    expect(queue.find((item) => item.key === "alert-a1")).toMatchObject({ cta: "Registrar revisão", href: "/profissional/alunos/s2/avaliacoes/a1", detail: "Avaliação (formato anterior) de 29/10/2026: a aprovação de um plano espera a revisão registrada" });
     expect(queue.find((item) => item.key === "pain-w1")?.href).toBe("/profissional/alunos/s3/execucao/w1");
     expect(queue.find((item) => item.key === "invite-s6")).toMatchObject({ reason: "convite aguardando aceite", cta: "Ver situação do acesso" });
     expect(new Set(queue.map((item) => item.key)).size).toBe(queue.length);

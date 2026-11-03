@@ -6026,10 +6026,14 @@ fieldset.yes-no legend {
 .assessment-start {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 10px;
+  margin-top: 16px;
 }
 .av2 {
   display: grid;
+  /* One column that never grows past the page: the chips of the steps scroll inside their own row on a phone. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   margin-bottom: 20px;
   min-width: 0;
@@ -6079,9 +6083,13 @@ fieldset.yes-no legend {
   display: grid;
   gap: 12px;
 }
+/* Each card is a size container: its grids choose their columns from the card's own width (the menu beside it changes that width, not the
+   window's), so a card of four fields is one full line and nothing is squeezed. A card with more fields than columns wraps (7 skinfolds are
+   4 + 3, 5 results are 3 + 2 at medium width): the last line is shorter, its fields keep the width of the ones above. */
 .av2-card {
   margin-bottom: 0;
   min-width: 0;
+  container-type: inline-size;
 }
 .av2-card > h3 {
   font-size: var(--font-size-lg);
@@ -6090,22 +6098,65 @@ fieldset.yes-no legend {
 .av2-card > p.small {
   margin-bottom: 16px;
 }
+/* The fields of a line share their rows (subgrid): label, control, note. Labels of a line take the same height and sit on the control, the
+   controls start on one line, and a note under one control never moves its neighbours. Nothing stretches to its row: a read-only value that
+   wraps makes only its own box taller, never the selects and boxes beside it. */
 .av2-grid {
+  --av2-columns: 4;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(var(--av2-columns), minmax(0, 1fr));
+  column-gap: 16px;
+  row-gap: 0;
   align-items: start;
+  margin-bottom: -16px;
 }
 .av2-field {
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: grid;
+  grid-row: span 3;
+  grid-template-rows: subgrid;
+  row-gap: 8px;
+  align-content: start;
+  align-items: start;
+  margin-bottom: 16px;
+}
+.av2-label {
+  align-self: end;
+  display: block;
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  color: var(--color-ink);
+  overflow-wrap: anywhere;
 }
 .av2-note {
+  display: block;
   font-weight: 400;
   color: var(--color-muted);
   font-size: var(--font-size-xs);
+  line-height: 1.4;
+}
+.av2-readonly {
+  display: flex;
+  align-items: center;
+  min-height: 50px;
+  padding: 12px 22px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-input);
+  background: var(--color-background);
+  color: var(--color-ink);
+  font-size: var(--font-size-base);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+@container (max-width: 760px) {
+  .av2-grid {
+    --av2-columns: 2;
+  }
+}
+@container (max-width: 420px) {
+  .av2-grid {
+    --av2-columns: 1;
+  }
 }
 .av2-unit {
   position: relative;
@@ -6124,22 +6175,12 @@ fieldset.yes-no legend {
   font-size: var(--font-size-sm);
   pointer-events: none;
 }
-.av2-pair,
-.av2-site {
-  border: 0;
-  margin: 0;
-  padding: 0;
-  min-width: 0;
+.av2-readings {
   display: grid;
   gap: 8px;
-}
-.av2-pair legend,
-.av2-site legend {
-  padding: 0;
-  margin-bottom: 8px;
-  font-size: var(--font-size-sm);
-  font-weight: 700;
-  color: var(--color-ink);
+  min-width: 0;
+  align-self: start;
+  align-content: start;
 }
 .av2-pair-fields {
   display: grid;
@@ -6162,11 +6203,22 @@ fieldset.yes-no legend {
   align-items: center;
   gap: 6px;
 }
-.av2-reading .av2-field {
+.av2-reading .av2-unit {
   flex: 1;
+  min-width: 0;
+}
+.av2-icon-button {
+  width: 44px;
+  padding: 0;
+}
+/* The place of the remove button on the first reading, which has none: every input of a site has the same width. */
+.av2-icon-slot {
+  flex: none;
+  width: 44px;
 }
 .av2-icon-button,
 .av2-add {
+  flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -6181,7 +6233,9 @@ fieldset.yes-no legend {
 }
 .av2-add {
   justify-self: start;
+  align-self: start;
   min-height: 44px;
+  margin-left: -12px;
   padding: 0 12px;
 }
 .av2-icon-button:hover,
@@ -6193,6 +6247,11 @@ fieldset.yes-no legend {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 20px;
+}
+@container (max-width: 760px) {
+  .av2-chips {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 .av2-chip {
   display: block;
@@ -6236,15 +6295,34 @@ fieldset.yes-no legend {
 .av2-others[open] > summary {
   margin-bottom: 12px;
 }
+/* The five results on one line where the card is wide; label and value rows shared like the fields'. */
 .av2-results {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 1fr));
-  gap: 16px;
-  margin: 0;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  column-gap: 16px;
+  row-gap: 0;
+  margin: 0 0 -16px;
 }
 .av2-result {
   display: grid;
-  gap: 8px;
+  grid-row: span 2;
+  grid-template-rows: subgrid;
+  row-gap: 8px;
+  min-width: 0;
+  margin-bottom: 16px;
+}
+.av2-result dt {
+  align-self: end;
+}
+@container (max-width: 760px) {
+  .av2-results {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@container (max-width: 520px) {
+  .av2-results {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 .av2-result dt {
   font-size: var(--font-size-sm);
@@ -6256,7 +6334,8 @@ fieldset.yes-no legend {
   min-height: 50px;
   display: flex;
   align-items: center;
-  padding: 12px 22px;
+  padding: 12px 16px;
+  overflow-wrap: anywhere;
   border: 1px solid var(--color-line-strong);
   border-radius: var(--radius-input);
   background: var(--color-background);
@@ -6305,23 +6384,12 @@ fieldset.yes-no legend {
   gap: 10px;
   margin-left: auto;
 }
-@media (max-width: 900px) {
-  .av2-chips {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
 @media (pointer: coarse) {
   .av2-add {
     min-height: 44px;
   }
 }
 @media (max-width: 640px) {
-  .av2-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .av2-results {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
   .av2-chip span {
     padding: 8px 10px;
     white-space: normal;

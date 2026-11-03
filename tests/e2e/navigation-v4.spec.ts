@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { addStudent, createProfessional, localIP, noHorizontalOverflow } from "./helpers";
 
 const GROUPS = [
-  ["PRINCIPAL", ["Visão geral", "Alunos", "Avaliações", "Planos e treinos", "Biblioteca de exercícios"]],
+  ["PRINCIPAL", ["Visão geral", "Alunos", "Avaliação Física", "Planos e treinos", "Biblioteca de exercícios"]],
   ["COMERCIAL", ["Meu Site", "Leads", "Serviços"]],
   ["CONTA E EQUIPE", ["Configurações", "Minha conta"]],
 ] as const;
@@ -33,7 +33,7 @@ test("navigation V4 on a computer: the ten destinations in three groups, one ite
     [`${student}/planos/novo`, "Planos e treinos"],
     ["./profissional/prescricao", "Planos e treinos"],
     ["./profissional/periodizacao", "Planos e treinos"],
-    ["./profissional/avaliacoes", "Avaliações"],
+    ["./profissional/avaliacoes", "Avaliação Física"],
     ["./profissional/biblioteca", "Biblioteca de exercícios"],
     ["./profissional/meu-site", "Meu Site"],
     ["./profissional/leads/mensagens", "Leads"],

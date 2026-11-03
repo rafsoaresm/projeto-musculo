@@ -1,13 +1,13 @@
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import type { D1Database } from "@cloudflare/workers-types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { assessmentsFor } from "@/db/assessments";
 import { planDocumentsFor, recordPdfDownload } from "@/db/plan-documents";
 import { plansFor } from "@/db/plans";
 import { prescriptionFor } from "@/db/prescription";
 import { exercisesFor } from "@/db/exercises";
 import { studentTrainingFor } from "@/db/student-plan";
 import { ALL_MIGRATIONS, migrate } from "./helpers/migrate";
+import { withLegacy } from "./helpers/legacy-assessments";
 import { ALL_NO } from "./helpers/screening";
 
 // Real local D1 with every migration, triggers included. Identities are rows, as the server
@@ -291,7 +291,7 @@ describe("what the client sees", () => {
 
 describe("the screening standing behind an approval", () => {
   const owner = "tech-a2"; // professional of st-2
-  const api = () => assessmentsFor(db, scope(owner));
+  const api = () => withLegacy(db, scope(owner));
   const approvedRow = async (revisionId: string) =>
     (await db.prepare("SELECT approval_screening AS screening, approval_assessment_id AS assessmentId FROM plan_revisions WHERE id = ?1").bind(revisionId).first<{ screening: string | null; assessmentId: string | null }>())!;
   // The assessment date is the day of `input.assessedOn`; later days are newer assessments.

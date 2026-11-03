@@ -13,6 +13,7 @@ const assessment = (over: Partial<AssessmentSummary>): AssessmentSummary => ({
   riskStatus: "CLEAR",
   recordedAt: "2026-10-20T12:00:00.000Z",
   reviewed: false,
+  formatVersion: 2,
   ...over,
 });
 const revision = (state: PlanState, over: Partial<PlanRevisionSummary> = {}): PlanRevisionSummary => ({
@@ -42,7 +43,7 @@ const input = (over: Partial<SummaryInput> = {}): SummaryInput => ({
 
 describe("the tabs of the student's record", () => {
   it("are the Figma's five, in its order, and Acesso e dados", () => {
-    expect(STUDENT_TABS.map((tab) => STUDENT_TAB_LABEL[tab])).toEqual(["Resumo", "Avaliações", "Periodização", "Treinos", "Evolução", "Acesso e dados"]);
+    expect(STUDENT_TABS.map((tab) => STUDENT_TAB_LABEL[tab])).toEqual(["Resumo", "Avaliação Física", "Periodização", "Treinos", "Evolução", "Acesso e dados"]);
   });
   it("open the one named, and Resumo for anything else", () => {
     for (const tab of STUDENT_TABS) expect(studentTabFrom(tab)).toBe(tab);
@@ -66,9 +67,9 @@ describe("the timeline of the record", () => {
     expect(steps.map((step) => step.text).join(" ")).not.toMatch(/\d/);
   });
   it("never calls an assessment approved: a draft is a draft and a recorded one is registered on its date", () => {
-    expect(timeline(input({ assessments: [assessment({ state: "DRAFT", recordedAt: null })] }))[1]).toEqual({ key: "avaliacao", text: "Avaliação em rascunho", state: "current" });
+    expect(timeline(input({ assessments: [assessment({ state: "DRAFT", recordedAt: null })] }))[1]).toEqual({ key: "avaliacao", text: "Avaliação física em rascunho", state: "current" });
     const recorded = timeline(input({ assessments: [assessment({})] }))[1]!;
-    expect(recorded).toEqual({ key: "avaliacao", text: "Avaliação registrada em 20/10/2026", state: "done" });
+    expect(recorded).toEqual({ key: "avaliacao", text: "Avaliação física registrada em 20/10/2026", state: "done" });
     expect(JSON.stringify(timeline(input({ assessments: [assessment({})] })))).not.toMatch(/aprovad/i);
   });
   it("keeps a screening that asks for review as the current step until it is reviewed", () => {
@@ -111,7 +112,7 @@ describe("the next action of the record", () => {
     expect(nextAction(input({ plans: [plan(revision("APPROVED"))] }))?.text).toBe("entregar o plano aprovado");
   });
   it("then an assessment draft, then the file", () => {
-    expect(nextAction(input({ assessments: [assessment({ id: "d1", state: "DRAFT" })] }))).toEqual({ text: "continuar a avaliação", href: "/profissional/alunos/s1/avaliacoes/d1" });
+    expect(nextAction(input({ assessments: [assessment({ id: "d1", state: "DRAFT" })] }))).toEqual({ text: "continuar a avaliação física", href: "/profissional/alunos/s1/avaliacoes/d1" });
     expect(nextAction(input({ hasProfile: false }))).toEqual({ text: "preencher a ficha", href: "/profissional/alunos/s1/ficha" });
   });
 });

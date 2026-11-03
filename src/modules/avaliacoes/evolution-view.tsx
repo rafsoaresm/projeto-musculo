@@ -27,7 +27,7 @@ export function EvolutionView({
         <h2>Nenhuma avaliação registrada.</h2>
         <p>A evolução aparece depois da primeira avaliação registrada.</p>
         <Link className="button primary" href={`/profissional/alunos/${studentId}/avaliacoes`}>
-          Abrir as avaliações
+          Abrir a avaliação física
         </Link>
       </section>
     );
@@ -166,7 +166,10 @@ export function EvolutionView({
                       {formatCalendarDate(assessment.assessedOn)}
                     </Link>
                   </th>
-                  <td data-label="Tipo">{assessment.kind === "INITIAL" ? "Inicial" : "Reavaliação"}</td>
+                  <td data-label="Tipo">
+                    {assessment.kind === "INITIAL" ? "Inicial" : "Reavaliação"}
+                    {assessment.formatVersion === null ? " (formato anterior)" : ""}
+                  </td>
                   <td data-label="Triagem">
                     <ScreeningPill risk={assessment.riskStatus} reviewed={assessment.reviewed} />
                   </td>

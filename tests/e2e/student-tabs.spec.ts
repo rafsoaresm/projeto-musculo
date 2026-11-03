@@ -18,12 +18,12 @@ test("the student's record: a header with the portal and the next action, tabs t
   await expect(page.getByRole("link", { name: "Próxima ação: preencher a ficha" })).toBeVisible();
 
   // The Figma's five tabs, in its order, and Acesso e dados; Resumo opens first.
-  await expect(tabs(page).getByRole("tab")).toHaveText(["Resumo", "Avaliações", "Periodização", "Treinos", "Evolução", "Acesso e dados"]);
+  await expect(tabs(page).getByRole("tab")).toHaveText(["Resumo", "Avaliação Física", "Periodização", "Treinos", "Evolução", "Acesso e dados"]);
   await expect(tabs(page).getByRole("tab", { name: "Resumo" })).toHaveAttribute("aria-selected", "true");
 
   // Resumo: the timeline says what is missing, without dates or steps that did not happen; the invitation is not here (AC05.4).
   const steps = page.getByRole("list", { name: "Etapas do aluno" }).getByRole("listitem");
-  await expect(steps).toHaveText(["Cadastro salvo", /Nenhuma avaliação registrada/, /Nenhum plano salvo/, /Nenhum plano entregue/, /Nenhum treino registrado pelo aluno/]);
+  await expect(steps).toHaveText(["Cadastro salvo", /Nenhuma avaliação física registrada/, /Nenhum plano salvo/, /Nenhum plano entregue/, /Nenhum treino registrado pelo aluno/]);
   await expect(page.getByRole("heading", { name: "Informações relevantes" })).toBeVisible();
   await expect(page.getByText("A ficha ainda não foi preenchida")).toBeVisible();
   await expect(page.getByRole("button", { name: "Gerar link de convite" })).toHaveCount(0);
@@ -32,8 +32,8 @@ test("the student's record: a header with the portal and the next action, tabs t
   // Keyboard: the arrows move between the tabs (and wrap), Home and End go to the ends.
   await tabs(page).getByRole("tab", { name: "Resumo" }).focus();
   await page.keyboard.press("ArrowRight");
-  await expect(tabs(page).getByRole("tab", { name: "Avaliações" })).toBeFocused();
-  await expect(page.getByText("Este aluno ainda não tem avaliação.")).toBeVisible();
+  await expect(tabs(page).getByRole("tab", { name: "Avaliação Física" })).toBeFocused();
+  await expect(page.getByText("Este aluno ainda não tem avaliação física.", { exact: false })).toBeVisible();
   await page.keyboard.press("End");
   await expect(tabs(page).getByRole("tab", { name: "Acesso e dados" })).toHaveAttribute("aria-selected", "true");
   await page.keyboard.press("ArrowRight");

@@ -12,6 +12,7 @@ import { dataRequestsFor } from "@/db/data-requests";
 import { REQUEST_KIND_LABEL } from "@/modules/pedidos/contracts";
 import { Kpi, PageHeading, Pill, formatDate } from "@/components/ui";
 import { attentionQueue } from "@/modules/atendimento/attention";
+import { assessmentTitle } from "@/modules/avaliacoes/names";
 import { formatCalendarDate } from "@/modules/training/format";
 
 export const dynamic = "force-dynamic";
@@ -73,12 +74,12 @@ export default async function ProfessionalHome() {
     },
     {
       done: assessed,
-      title: "Registrar a avaliação e a triagem",
-      text: "A triagem e os indicadores ficam como registros com data. Qualquer sinal marcado pede a sua revisão antes da entrega.",
+      title: "Registrar a avaliação física",
+      text: "Triagem, medidas, movimento e revisão ficam como registros com data. Um alerta da triagem pede a sua revisão antes da entrega.",
       href: firstStudent
         ? `/profissional/alunos/${firstStudent.id}/avaliacoes`
         : "/profissional/avaliacoes",
-      cta: "Abrir avaliações",
+      cta: "Abrir a avaliação física",
     },
     {
       done: delivered,
@@ -94,7 +95,7 @@ export default async function ProfessionalHome() {
     requests: requestsPending.map((row) => ({ id: row.id, studentId: row.studentId, studentName: row.studentName, kindLabel: REQUEST_KIND_LABEL[row.kind], overdue: row.overdue, dueOn: formatDate(row.dueAt) })),
     alerts: assessments
       .filter((row) => row.riskStatus === "REVIEW_REQUIRED" && !row.reviewed && row.assessmentId && row.assessedOn)
-      .map((row) => ({ studentId: row.studentId, studentName: row.studentName, assessmentId: row.assessmentId!, assessedOn: formatCalendarDate(row.assessedOn!) })),
+      .map((row) => ({ studentId: row.studentId, studentName: row.studentName, assessmentId: row.assessmentId!, assessedOn: formatCalendarDate(row.assessedOn!), title: assessmentTitle({ kind: row.kind ?? "INITIAL", formatVersion: row.formatVersion }) })),
     pain: painPending.map((row) => ({ ...row, performedOn: formatCalendarDate(row.performedOn) })),
     checkins: checkinsPending.map((row) => ({ checkinId: row.checkinId, studentId: row.studentId, studentName: row.studentName, checkedOn: formatCalendarDate(row.checkedOn), discomfort: row.discomfort })),
     drafts: drafts.map((plan) => ({ studentId: plan.studentId, studentName: plan.studentName, planId: plan.planId, revisionId: plan.revisionId, title: plan.title, revisionNumber: plan.revisionNumber })),

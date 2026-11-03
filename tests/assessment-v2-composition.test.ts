@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assessmentV2Open } from "@/modules/avaliacoes/v2";
+import { assessmentTitle } from "@/modules/avaliacoes/names";
 import {
   EMPTY_COMPOSITION,
   compositionPreview,
@@ -37,13 +37,12 @@ const form = (patch: Partial<CompositionForm> = {}): CompositionForm => ({
   ...patch,
 });
 
-describe("the switch of the new format", () => {
-  it("is open by default and closes only with exactly \"false\", from the Worker or from process.env", () => {
-    expect(assessmentV2Open({}, {})).toBe(true);
-    expect(assessmentV2Open({ ASSESSMENT_V2_ENABLED: "true" }, {})).toBe(true);
-    expect(assessmentV2Open({ ASSESSMENT_V2_ENABLED: "FALSE" }, {})).toBe(true);
-    expect(assessmentV2Open({ ASSESSMENT_V2_ENABLED: "false" }, {})).toBe(false);
-    expect(assessmentV2Open({}, { ASSESSMENT_V2_ENABLED: "false" })).toBe(false);
+describe("the name of an assessment (user's decision of 03/11/2026: one assessment, the Avaliação Física)", () => {
+  it("names the new format by its kind and the earlier one apart, whatever its kind", () => {
+    expect(assessmentTitle({ kind: "INITIAL", formatVersion: 2 })).toBe("Avaliação física");
+    expect(assessmentTitle({ kind: "REASSESSMENT", formatVersion: 2 })).toBe("Reavaliação física");
+    expect(assessmentTitle({ kind: "INITIAL", formatVersion: null })).toBe("Avaliação (formato anterior)");
+    expect(assessmentTitle({ kind: "REASSESSMENT", formatVersion: null })).toBe("Avaliação (formato anterior)");
   });
 });
 
