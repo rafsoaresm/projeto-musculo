@@ -10,6 +10,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Gráfico de mesmo dia (profissional, aluno e as demais telas que usam o mesmo gráfico):** valores do mesmo dia ficam lado a lado, ordenados pela hora do registro, sem cair em cima de um dia vizinho; o rótulo leva a hora ("03/11/2026 14:05", fuso de São Paulo) só quando outro valor do mesmo resultado tem a mesma data, e "(1ª de 2 no dia)" se a hora também coincide. O gráfico e a tabela usam a mesma data. Os links "Baixar PDF" do aluno têm nomes distintos.
 - **Verificado localmente:** tipos, lint e `npm run check` (120 arquivos, 1883 testes); e2e nos dois mounts (raiz e `/treinador`): 28 passaram em cada; capturas a 1440, 1280, 1024, 768 e 390 (profissional e aluno).
 - **Não verificado / não feito:** a página de evolução do formato anterior e a de execução (que também usam o gráfico) não foram vistas no navegador; a lista do aluno e a linha do tempo do profissional ainda mostram só a data para duas avaliações no mesmo dia; o fuso é fixo em São Paulo (o da organização existe e não é usado).
+- **CI e deploy:** o CI do PR #86 passou (`validate` e `validate (/treinador)`, no commit `8a74914`); merge `3c79383`; deploy `0713232a` com sucesso em 03/11/2026 (sem migration).
 
 ## Fatia 0.83: Fotos posturais da Avaliação Física (PENDENCIAS B48; handoff 3.3 e 6)
 
