@@ -12,6 +12,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Ao registrar:** as fotos congelam com a avaliação (gatilhos da 0011, conferidos para o formato novo); "Excluir foto" continua apagando o arquivo de uma avaliação registrada ("Foto apagada em …"). **A retificação começa sem fotos** (a original mantém as dela). Descartar o rascunho apaga as fotos dele. A avaliação registrada mostra as miniaturas por vista.
 - **Verificado localmente:** tipos, lint e `npm run check` (120 arquivos, 1877 testes; 4 D1 e 3 unitários novos); e2e nos dois mounts (raiz e `/treinador`): 30 passaram em cada (enviar, substituir, remover, recarregar, congelar, excluir na registrada, aluno sem acesso); capturas a 1440, 1280, 1024, 768 e 390.
 - **Não verificado / não feito:** envio para o bucket de produção (só o R2 local); **controle de visibilidade** das fotos pedido no handoff 6 (hoje fixo: só o profissional; ver B50); descartar durante um envio não tem teste de navegador.
+- **CI e deploy:** o CI do PR #85 passou (`validate` e `validate (/treinador)`, no commit `d4b2421`); merge `ab168ad`; deploy `e1cf6727` com sucesso em 03/11/2026 (sem migration).
 
 ## Fatia 0.82: Evolução comparável por protocolo da Avaliação Física (handoff 1, 4.3, 6 e 9; fecha a P1)
 
