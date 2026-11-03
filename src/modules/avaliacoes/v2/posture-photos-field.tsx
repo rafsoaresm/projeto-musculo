@@ -37,8 +37,9 @@ export function PosturePhotosField({
         Fotos da vista {POSTURE_VIEW_SHORT[view].toLowerCase()} (opcional)
       </h4>
       <p className="muted small av2-card-note">
-        Registro visual, não diagnóstico. A ferramenta tira da foto os dados do aparelho (posição, data e modelo) antes de guardar, e só quem atende
-        o aluno a vê. Ao finalizar, as fotos ficam com a avaliação e não mudam mais; cada uma ainda pode ser excluída.
+        Registro visual, não diagnóstico. A ferramenta tira da foto os dados do aparelho (posição, data e modelo) antes de guardar. Enquanto é
+        rascunho, só quem atende o aluno a vê; ao finalizar, as fotos ficam com a avaliação e não mudam mais, o aluno passa a vê-las na área dele
+        e elas entram no relatório em PDF. Cada uma ainda pode ser apagada.
         {amendment && " Esta retificação começa sem fotos: as da avaliação retificada continuam nela."}
       </p>
       {!storageReady && (

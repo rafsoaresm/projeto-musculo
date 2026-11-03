@@ -20,6 +20,15 @@ export async function getPhotoBucket() {
   return env.PHOTOS;
 }
 
+/** The private photo bucket of this request, or null where it is not provisioned or not opened (a report then prints no image). Never throws. */
+export async function photoBucketOrNull(): Promise<R2Bucket | null> {
+  try {
+    return await getPhotoBucket();
+  } catch {
+    return null;
+  }
+}
+
 /** Whether the photo storage is provisioned and opened in this environment. Never throws. */
 export async function photoStorageAvailable(): Promise<boolean> {
   try {

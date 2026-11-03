@@ -6699,6 +6699,28 @@ fieldset.yes-no legend {
   min-width: 0;
   overflow-wrap: anywhere;
 }
+/* The student's page of one recorded assessment (0.86): back to the list and the PDF, side by side; they wrap on a phone. Each panel is a
+   size container like the professional's cards, so the photo slots take their columns from the panel's own width. */
+.student-assessment-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-bottom: 20px;
+}
+.student-assessment-actions .button {
+  flex: 0 0 auto;
+  flex-direction: row;
+}
+@media (pointer: coarse), (max-width: 640px) {
+  .student-assessment-actions .button {
+    min-height: 44px;
+  }
+}
+.student-assessment {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
 @container (max-width: 760px) {
   .av2-finding {
     grid-template-columns: minmax(0, 1fr);

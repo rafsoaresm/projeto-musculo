@@ -1,18 +1,21 @@
+import { readFile } from "node:fs/promises";
 import { test, expect, type Page } from "@playwright/test";
 import { addStudent, browserJpeg, createProfessional, joinStudent, localIP, newActor, noHorizontalOverflow, png, showStudentTab, signIn } from "./helpers";
 import { PARQ } from "../../src/modules/avaliacoes/catalog";
 
 // Slice 0.83: the optional photos of the posture of the Avaliação Física (handoff 3.3; PENDENCIAS B48), through the private photo route of
-// 0.14 (relative to the mount, never a fixed "/api"). No consent, authorization or age gate (decision of 03/11/2026).
+// 0.14 (relative to the mount, never a fixed "/api"). No consent, authorization or age gate (decision of 03/11/2026). Slice 0.86 (PENDENCIAS
+// B50, user's decision of 03/11/2026: "o aluno pode ver as próprias fotos"): the student sees the photos of their own recorded assessment, read
+// only, through the student's own route (never the professional's), and the PDF carries them.
 const step = (page: Page, name: string) => page.getByRole("navigation", { name: "Etapas da avaliação física" }).getByRole("button", { name });
 const question = (page: Page, text: string) => page.getByRole("radiogroup", { name: text, exact: true });
 const slot = (page: Page, name: string) => page.getByRole("group", { name, exact: true });
 
 /** Screenshots for the visual check, at every width the brief asks for, only where asked (SHOTS_DIR) and once (desktop project). */
-async function shots(page: Page, name: string, projectName: string) {
+async function shots(page: Page, name: string, projectName: string, slice = "0.83") {
   const dir = process.env.SHOTS_DIR;
   if (!dir || projectName !== "desktop") return;
-  const prefix = process.env.BASE_URL ? "0.83b" : "0.83";
+  const prefix = process.env.BASE_URL ? `${slice}b` : slice;
   const size = page.viewportSize();
   for (const width of [1440, 1280, 1024, 768, 390]) {
     await page.setViewportSize({ width, height: 900 });
@@ -97,7 +100,7 @@ test("the posture takes optional photos per view on a draft, they freeze with th
   await drawn(page, "Foto lateral esquerda do aluno");
   await expect(slot(page, "Foto lateral direita").getByText("Sem foto")).toBeVisible();
 
-  // Finalize; the record shows the photos per view, says they are not in the PDF, and each one can still be erased.
+  // Finalize; the record shows the photos per view, says the student sees them and they are in the PDF, and each one can still be erased.
   await step(page, "5 Revisão").click();
   await page.getByRole("button", { name: "Finalizar avaliação" }).click();
   await page.getByRole("button", { name: "Confirmar e finalizar" }).click();
@@ -106,7 +109,7 @@ test("the posture takes optional photos per view on a draft, they freeze with th
   const photos = page.getByRole("group", { name: "Fotos da postura" });
   await expect(photos.getByRole("figure")).toHaveCount(2);
   await expect(photos.locator("figcaption")).toHaveText(["Lateral esquerda", "Anterior"]);
-  await expect(page.getByText(/elas não entram no relatório em PDF/)).toBeVisible();
+  await expect(page.getByText(/o próprio aluno, na área dele, veem as fotos; elas entram no relatório em PDF/)).toBeVisible();
   const day = (await page.getByRole("heading", { level: 1 }).textContent())!.match(/\d{2}\/\d{2}\/\d{4}/)![0];
   await drawn(page, `Foto lateral esquerda de ${day}`);
   await shots(page, "registro-fotos", testInfo.project.name);
@@ -122,14 +125,56 @@ test("the posture takes optional photos per view on a draft, they freeze with th
   expect((await page.request.get(route("ANTERIOR"))).status()).toBe(404);
   expect((await page.request.get(route("LATERAL_LEFT"))).status()).toBe(200);
 
-  // The student never reaches the photos: not through the route, and the student's assessments page shows none.
+  // The student never reaches the professional's route; the list shows no image; the page of the recorded assessment shows their photos
+  // (0.86), read only, through the student's own route: the stored one drawn, the erased one with its date, no button to change anything.
   const student = await newActor(browser, baseURL);
   await signIn(student.page, email);
   const asStudent = await student.page.request.get(route("LATERAL_LEFT"));
   expect(asStudent.headers()["content-type"] ?? "").not.toContain("image/jpeg");
   await student.page.goto("./aluno/avaliacoes");
   await expect(student.page.getByRole("img", { name: /^Foto / })).toHaveCount(0);
-  await student.context.close();
+  await shots(student.page, "aluno-lista", testInfo.project.name, "0.86");
+  await student.page.getByRole("link", { name: `Ver a avaliação inicial de ${day}` }).click();
+  await expect(student.page.getByRole("heading", { name: `Avaliação física de ${day}`, level: 1 })).toBeVisible();
+  const mine = student.page.getByRole("region", { name: "Fotos da postura" });
+  await expect(mine.locator("figcaption")).toHaveText(["Lateral esquerda", "Anterior"]);
+  await drawn(student.page, `Foto lateral esquerda de ${day}`);
+  await expect(mine.getByText(/^Foto apagada em \d{2}\/\d{2}\/\d{4}\.$/)).toBeVisible();
+  await expect(student.page.getByRole("button", { name: /Excluir foto|Enviar foto|Substituir foto|Remover foto|Retificar/ })).toHaveCount(0);
+  await expect(student.page.getByRole("link", { name: "Baixar PDF" })).toBeVisible();
+  const ownSrc = await mine.getByRole("img", { name: `Foto lateral esquerda de ${day}`, exact: true }).getAttribute("src");
+  const ownPath = new URL(ownSrc!, student.page.url()).pathname;
+  expect(ownPath).toMatch(/\/aluno\/avaliacoes\/fotos\/[^/]+\/[^/]+\/LATERAL_LEFT$/);
+  const own = await student.page.request.get(new URL(ownPath, student.page.url()).href);
+  expect(own.status()).toBe(200);
+  expect(own.headers()["content-type"]).toBe("image/jpeg");
+  expect(own.headers()["cache-control"]).toContain("private");
+  expect(own.headers()["cache-control"]).toContain("no-store");
+  expect(own.headers()["x-content-type-options"]).toBe("nosniff");
+  // Read only: no other verb; the erased photo, a view without one and another student's address are a plain 404.
+  const studentRoute = (view: string) => new URL(ownPath.replace(/LATERAL_LEFT$/, view), student.page.url()).href;
+  expect((await student.page.request.put(studentRoute("POSTERIOR"), { headers: { "x-photo-request": "1" }, data: jpeg })).status()).toBe(405);
+  expect((await student.page.request.get(studentRoute("ANTERIOR"))).status()).toBe(404);
+  expect((await student.page.request.get(studentRoute("POSTERIOR"))).status()).toBe(404);
+  const [, ownStudent, ownAssessment] = ownPath.match(/\/fotos\/([^/]+)\/([^/]+)\//)!;
+  const swapped = new URL(ownPath.replace(`/${ownStudent}/${ownAssessment}/`, `/${ownAssessment}/${ownAssessment}/`), student.page.url()).href;
+  expect((await student.page.request.get(swapped)).status()).toBe(404);
+  // The PDF of the student carries the stored photos as images.
+  const pdfDownload = student.page.waitForEvent("download");
+  await student.page.getByRole("link", { name: "Baixar PDF" }).click();
+  const pdf = await readFile((await (await pdfDownload).path())!);
+  expect(pdf.toString("latin1").match(/\/Subtype \/Image/g)?.length).toBe(1);
+  await shots(student.page, "aluno-fotos", testInfo.project.name, "0.86");
+  // Nobody else gets the image from the student's route: no session, or a professional of another organization.
+  const anonymous = await newActor(browser, baseURL);
+  const noSession = await anonymous.page.request.get(new URL(ownPath, student.page.url()).href);
+  expect(noSession.headers()["content-type"] ?? "").not.toContain("image/jpeg");
+  await anonymous.context.close();
+  const other = await newActor(browser, baseURL);
+  await createProfessional(other.page, "Outro estúdio das fotos posturais");
+  const foreign = await other.page.request.get(new URL(ownPath, other.page.url()).href);
+  expect(foreign.headers()["content-type"] ?? "").not.toContain("image/jpeg");
+  await other.context.close();
 
   // An amendment starts without photos (the corrected one keeps its own) and takes new ones; discarding it removes them.
   await page.getByRole("button", { name: "Retificar" }).click();
@@ -141,6 +186,10 @@ test("the posture takes optional photos per view on a draft, they freeze with th
   await expect(slot(page, "Foto lateral esquerda").getByText("Sem foto")).toBeVisible();
   await page.getByLabel("Enviar foto lateral direita").setInputFiles({ name: "lateral-d.jpg", mimeType: "image/jpeg", buffer: jpeg });
   await drawn(page, "Foto lateral direita do aluno");
+  // A draft is never the student's, even with a photo in it.
+  const draftId = new URL(page.url()).pathname.split("/").filter(Boolean).at(-1)!;
+  expect((await student.page.request.get(new URL(ownPath.replace(`/${ownAssessment}/LATERAL_LEFT`, `/${draftId}/LATERAL_RIGHT`), student.page.url()).href)).status()).toBe(404);
+  await student.context.close();
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Descartar rascunho" }).click();
   await expect(page.getByRole("button", { name: "Iniciar reavaliação física" })).toBeVisible();

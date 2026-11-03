@@ -2,6 +2,16 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.86: Fotos posturais visíveis para o aluno (PENDENCIAS B50; decisão do usuário de 03/11/2026)
+
+**Sem migration.**
+
+- **Aluno:** em `/aluno/avaliacoes`, cada avaliação registrada tem "Ver avaliação", que abre uma página nova com data, quem registrou, aviso de retificação, **as fotos da postura** (na ordem lateral, posterior, anterior; apagada mostra "Foto apagada em …"; sem fotos, "Nenhuma foto da postura nesta avaliação.", "Não realizado." ou "Não incluído neste modelo.") e os resultados como gravados. As imagens saem por uma rota nova do aluno (`/aluno/avaliacoes/fotos/…`), com a mesma verificação do PDF do aluno (vínculo ativo, login não bloqueado, mesma organização, registrada, formato novo); rascunho, outro aluno, outra organização, foto apagada e vista sem foto respondem 404; leitura com falha no armazenamento responde 503. Cabeçalhos `private, no-store` e `nosniff`.
+- **PDF (profissional e aluno):** passa a ter a seção "Fotos da postura", duas por linha (pdf-lib embute o JPEG sem decodificar); foto apagada imprime a data; arquivo ilegível ou armazenamento desligado imprime "Foto indisponível no momento.". A identificação da versão do PDF não muda com as fotos (as fotos congelam com o registro); uma foto apagada depois deixa o PDF diferente com a mesma identificação, de propósito.
+- **Textos:** as notas que diziam "só o profissional vê" e "fora do PDF" foram atualizadas; "apagada" em todas as notas.
+- **Verificado localmente:** tipos, lint e `npm run check` (123 arquivos, 1911 testes; D1 e R2 de acesso do aluno e do PDF com fotos); e2e nos dois mounts (raiz e `/treinador`): 26 passaram em cada; capturas a 1440, 1280, 1024, 768 e 390.
+- **Não verificado:** R2 de produção; uma foto real de câmera (JPEG progressivo ou com perfil de cor) no PDF (as que o app grava são redesenhadas pelo navegador); memória de um PDF com quatro fotos grandes no Worker.
+
 ## Fatia 0.85: Modelos de avaliação (handoff 2 e 6)
 
 **Migration `0036_assessment_templates.sql`** (aditiva): tabelas `assessment_form_templates` (por organização; só o arquivamento muda; nunca apagado) e `assessment_form_template_versions` (nome e partes ativas na ordem das etapas; nunca alterada nem apagada); colunas `template_id`, `template_version` e `enabled_modules` em `assessments` (nulas = todas as partes, como antes), conferidas contra a versão escolhida e da mesma organização ao criar, e imutáveis depois. Gatilhos: só OWNER, MANAGER ou TECHNICAL ativos da organização escrevem modelos.
@@ -11,6 +21,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **No rascunho e depois:** parte desligada some da etapa (etapa sem nada some), aparece como **"Não incluído neste modelo"** na Revisão, na avaliação registrada e no PDF (diferente de "Não realizado") e nunca impede finalizar; nenhum resultado sai de parte desligada. Salvar dado numa parte desligada é recusado com o nome da parte; foto postural também, quando a postura está desligada. A retificação copia o modelo e a versão da original. O PDF mostra a linha "Modelo".
 - **Verificado localmente:** tipos, lint e `npm run check` (122 arquivos, 1907 testes; 11 unitários e 10 D1 de modelos: papéis e organização, versões, conflitos, salvamentos recusados, finalizar, gatilhos, retificação, arquivamento, foto recusada); e2e nos dois mounts (raiz e `/treinador`): 30 passaram em cada, com o fluxo inteiro de modelo; capturas a 1440, 1280, 1024, 768 e 390.
 - **Não feito / não verificado:** a migration no D1 de produção (só local); modelos no modo demonstração; ordem dos cartões dentro de uma etapa; as mensagens de "modelo mudou" e "rascunho com outro modelo" só têm teste D1.
+- **CI e deploy:** o CI do PR #87 passou (`validate` e `validate (/treinador)`, no commit `e91a6d0`); merge `6b96e78`; deploy `2d14ce81` com sucesso em 03/11/2026, com `0036_assessment_templates.sql ✅` no log.
 
 ## Fatia 0.84: Evolução da Avaliação Física para o aluno e gráfico de mesmo dia
 

@@ -1,5 +1,6 @@
 import { requireStudent } from "@/modules/auth/server";
 import { recordReportDownload, studentAssessmentsFor } from "@/db/assessment-reports";
+import { photoBucketOrNull } from "@/db/binding";
 import { renderAssessmentPdf } from "@/modules/pdf/assessment-pdf";
 import { reportFileName } from "@/modules/avaliacoes/v2/report";
 
@@ -13,7 +14,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ stu
   const { db, user, links } = await requireStudent();
   const { studentId, assessmentId } = await params;
   const link = links.find((item) => item.studentId === studentId);
-  const source = link ? await studentAssessmentsFor(db, user.id, link.studentId).source(assessmentId) : null;
+  const source = link ? await studentAssessmentsFor(db, user.id, link.studentId).source(assessmentId, await photoBucketOrNull()) : null;
   if (!link || !source)
     return new Response("Página não encontrada.", {
       status: 404,

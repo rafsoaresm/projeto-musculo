@@ -1,6 +1,7 @@
-import type { D1Database } from "@cloudflare/workers-types";
+import type { D1Database, R2Bucket, R2ObjectBody } from "@cloudflare/workers-types";
+import { isPhotoView, type PhotoView } from "@/modules/avaliacoes/photos";
 import { isModule } from "@/modules/avaliacoes/catalog";
-import type { ReportInput } from "@/modules/avaliacoes/v2/report";
+import type { ReportInput, ReportPhoto } from "@/modules/avaliacoes/v2/report";
 import { readEnabledParts } from "@/modules/avaliacoes/v2/template";
 import type { EvolutionSource } from "@/modules/avaliacoes/v2/evolution";
 import { COMPOSITION_MODULE, readComposition } from "@/modules/avaliacoes/v2/composition";
@@ -81,9 +82,36 @@ const flagsOf = (raw: string | null) => {
   return Array.isArray(parsed) ? parsed.filter((flag): flag is string => typeof flag === "string") : [];
 };
 
-/** Sections, results and the PAR-Q decider of an assessment whose head came from a gated query (organization and reach already checked). */
-async function assemble(db: D1Database, head: HeadRow): Promise<ReportInput> {
-  const [sections, results] = await Promise.all([
+/**
+ * The report with, when the private photo storage is given, the bytes of the stored posture photos for the PDF (slice 0.86). The storage keys
+ * never leave this module.
+ */
+export type AssessmentReportSource = ReportInput & { photoImages?: Partial<Record<PhotoView, Uint8Array>> };
+
+/** The bytes of the stored photos (not erased) of the index, from the private storage; one that cannot be read is left out. */
+async function photoBytes(bucket: R2Bucket, rows: readonly (ReportPhoto & { key: string })[]) {
+  const images: Partial<Record<PhotoView, Uint8Array>> = {};
+  await Promise.all(
+    rows
+      .filter((row) => row.erasedAt === null)
+      .map(async (row) => {
+        try {
+          const object = await bucket.get(row.key);
+          if (object) images[row.view] = new Uint8Array(await object.arrayBuffer());
+        } catch {
+          // Unreadable: the report says "Foto indisponível no momento." for it.
+        }
+      }),
+  );
+  return images;
+}
+
+/**
+ * Sections, results, posture photos and the PAR-Q decider of an assessment whose head came from a gated query (organization and reach already
+ * checked).
+ */
+async function assemble(db: D1Database, head: HeadRow, bucket: R2Bucket | null = null): Promise<AssessmentReportSource> {
+  const [sections, results, photoRows] = await Promise.all([
     db
       .prepare(`SELECT module, payload FROM assessment_sections WHERE organization_id = ?1 AND assessment_id = ?2`)
       .bind(head.organizationId, head.id)
@@ -95,7 +123,17 @@ async function assemble(db: D1Database, head: HeadRow): Promise<ReportInput> {
       )
       .bind(head.organizationId, head.id)
       .all<{ code: string; value: number | null; unit: string | null; method: string; formulaVersion: string | null; inputs: string | null; flags: string | null }>(),
+    db
+      .prepare(
+        `SELECT p.view, p.created_at AS createdAt, e.erased_at AS erasedAt, p.object_key AS key
+         FROM assessment_photos p LEFT JOIN photo_erasures e ON e.photo_id = p.id
+         WHERE p.organization_id = ?1 AND p.assessment_id = ?2
+         ORDER BY CASE p.view WHEN 'ANTERIOR' THEN 1 WHEN 'LATERAL_LEFT' THEN 2 WHEN 'LATERAL_RIGHT' THEN 3 ELSE 4 END`,
+      )
+      .bind(head.organizationId, head.id)
+      .all<ReportPhoto & { key: string }>(),
   ]);
+  const photoIndex = photoRows.results.filter((row) => isPhotoView(row.view));
   const payloads = new Map(sections.results.filter((row) => isModule(row.module)).map((row) => [row.module, parseJson(row.payload)]));
   const section = <T,>(module: string, read: (raw: unknown) => T): T | null => (payloads.has(module) ? read(payloads.get(module)) : null);
   const screening = section(SCREENING_MODULE, readScreening);
@@ -146,6 +184,8 @@ async function assemble(db: D1Database, head: HeadRow): Promise<ReportInput> {
     decidedBy,
     template: head.templateVersion !== null ? { name: head.templateName ?? "Modelo", version: head.templateVersion } : null,
     enabled: readEnabledParts(head.enabled),
+    photos: photoIndex.map(({ view, createdAt, erasedAt }) => ({ view, createdAt, erasedAt })),
+    ...(bucket && photoIndex.some((row) => row.erasedAt === null) ? { photoImages: await photoBytes(bucket, photoIndex) } : {}),
   };
 }
 
@@ -153,7 +193,8 @@ async function assemble(db: D1Database, head: HeadRow): Promise<ReportInput> {
 export function assessmentReportsFor(db: D1Database, context: AuthenticatedContext | null) {
   const { userId, organizationId } = assertContext(context);
   return {
-    async source(studentId: string, assessmentId: string): Promise<ReportInput | null> {
+    /** With the private photo storage, the bytes of the stored photos come too (for the PDF). */
+    async source(studentId: string, assessmentId: string, bucket: R2Bucket | null = null): Promise<AssessmentReportSource | null> {
       const head = await db
         .prepare(
           `SELECT ${headColumns}
@@ -165,7 +206,7 @@ export function assessmentReportsFor(db: D1Database, context: AuthenticatedConte
         )
         .bind(organizationId, userId, studentId, assessmentId)
         .first<HeadRow>();
-      return head ? assemble(db, head) : null;
+      return head ? assemble(db, head, bucket) : null;
     },
   };
 }
@@ -194,7 +235,8 @@ export function studentAssessmentsFor(db: D1Database, userId: string, studentId:
         .all<StudentAssessmentItem>();
       return rows.results;
     },
-    async source(assessmentId: string): Promise<ReportInput | null> {
+    /** The report of one of them (also the student's page of it, slice 0.86); with the photo storage, the bytes of its stored photos too. */
+    async source(assessmentId: string, bucket: R2Bucket | null = null): Promise<AssessmentReportSource | null> {
       if (blank || !assessmentId?.trim()) return null;
       const head = await db
         .prepare(
@@ -206,7 +248,34 @@ export function studentAssessmentsFor(db: D1Database, userId: string, studentId:
         )
         .bind(userId, studentId, assessmentId)
         .first<HeadRow>();
-      return head ? assemble(db, head) : null;
+      return head ? assemble(db, head, bucket) : null;
+    },
+    /**
+     * Slice 0.86: the image of one posture photo of one of their recorded assessments (user's decision of 03/11/2026: "o aluno pode ver as
+     * próprias fotos"), read only. The same gate as the report (active link, login not blocked, organization, recorded, new format); a draft,
+     * another student, an erased photo or an unknown view is null. The professional's route is never used for this.
+     */
+    async photo(bucket: R2Bucket, assessmentId: string, view: string): Promise<{ body: R2ObjectBody["body"]; size: number } | null> {
+      if (blank || !assessmentId?.trim() || !isPhotoView(view)) return null;
+      const row = await db
+        .prepare(
+          `SELECT p.object_key AS key
+           FROM assessments a
+           JOIN assessment_photos p ON p.organization_id = a.organization_id AND p.assessment_id = a.id
+           ${studentGate} AND a.id = ?3 AND p.view = ?4
+             AND NOT EXISTS (SELECT 1 FROM photo_erasures e WHERE e.photo_id = p.id)`,
+        )
+        .bind(userId, studentId, assessmentId, view)
+        .first<{ key: string }>();
+      if (!row) return null;
+      let object: R2ObjectBody | null;
+      try {
+        object = await bucket.get(row.key);
+      } catch {
+        // The storage failed to answer: the route says it is unavailable (503), as when the storage is off, not a bare 500.
+        throw new Error("PHOTO_STORAGE_UNAVAILABLE");
+      }
+      return object ? { body: object.body, size: object.size } : null;
     },
     /**
      * Slice 0.84: the results of the student's recorded Avaliações Físicas, oldest first (two of one date in the order they were recorded), for

@@ -1,4 +1,5 @@
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, type PDFImage } from "pdf-lib";
+import type { PhotoView } from "@/modules/avaliacoes/photos";
 import {
   REPORT_EMPTY_NOTE,
   REPORT_FOOTER_NOTICE,
@@ -20,6 +21,11 @@ import { BRAND, CONTENT_WIDTH, Flow, INK, LINE, MARGIN, MUTED, PAGE, SOFT, print
  */
 export interface AssessmentPdfInput extends ReportInput {
   generatedAt: Date;
+  /**
+   * The bytes of the stored posture photos (slice 0.86), read by the server from the private storage after the gated query of the report. A
+   * photo of the index without bytes here (storage off, or unreadable) prints "Foto indisponível no momento." in its place, never a blank.
+   */
+  photoImages?: Partial<Record<PhotoView, Uint8Array>>;
 }
 
 const WARNING = rgb(0x8a / 255, 0x4b / 255, 0x00);
@@ -27,7 +33,16 @@ const LABEL_WIDTH = 190;
 const GAP = 12;
 const VALUE_WIDTH = CONTENT_WIDTH - LABEL_WIDTH - GAP;
 
-function drawBlock(flow: Flow, block: ReportBlock) {
+const PHOTO_WIDTH = (CONTENT_WIDTH - GAP) / 2;
+const PHOTO_MAX_HEIGHT = 300;
+
+/** Fits an image in the box of one photo, keeping its proportion. */
+function photoSize(image: PDFImage) {
+  const scale = Math.min(PHOTO_WIDTH / image.width, PHOTO_MAX_HEIGHT / image.height, 1);
+  return { width: image.width * scale, height: image.height * scale };
+}
+
+function drawBlock(flow: Flow, block: ReportBlock, images: ReadonlyMap<PhotoView, PDFImage> = new Map()) {
   const { regular, bold } = flow;
   switch (block.kind) {
     case "subtitle": {
@@ -103,6 +118,30 @@ function drawBlock(flow: Flow, block: ReportBlock) {
       flow.y -= 4;
       return;
     }
+    case "photos": {
+      // Two per row: the name of the view over the image (or the line that says why there is none).
+      for (let index = 0; index < block.items.length; index += 2) {
+        const pair = block.items.slice(index, index + 2);
+        const body = Math.max(...pair.map((item) => (item.erasedOn === null && images.has(item.view) ? photoSize(images.get(item.view)!).height : 14)));
+        flow.need(16 + body + 12);
+        const top = flow.y;
+        pair.forEach((item, column) => {
+          const x = MARGIN + column * (PHOTO_WIDTH + GAP);
+          flow.y = top;
+          flow.text(item.label, x, 9.5, bold, INK);
+          flow.y = top - 16;
+          const image = item.erasedOn === null ? images.get(item.view) : undefined;
+          if (image) {
+            const size = photoSize(image);
+            flow.page.drawImage(image, { x, y: flow.y - size.height, width: size.width, height: size.height });
+          } else {
+            flow.text(item.erasedOn ? `Foto apagada em ${item.erasedOn}.` : "Foto indisponível no momento.", x, 9, regular, MUTED);
+          }
+        });
+        flow.y = top - 16 - body - 12;
+      }
+      return;
+    }
   }
 }
 
@@ -115,6 +154,18 @@ export async function renderAssessmentPdf(input: AssessmentPdfInput): Promise<Ui
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
   const flow = new Flow(doc, regular, bold);
   const heading = `${report.title} de ${formatCalendarDate(input.assessment.assessedOn)}`;
+  // The stored photos, embedded once (a JPEG goes into the PDF as it is: no decoding, Workers-safe). One that pdf-lib cannot read is left out
+  // and reads "Foto indisponível no momento.", like one the storage did not give.
+  const images = new Map<PhotoView, PDFImage>();
+  for (const photo of input.photos ?? []) {
+    const bytes = photo.erasedAt === null ? input.photoImages?.[photo.view] : undefined;
+    if (!bytes) continue;
+    try {
+      images.set(photo.view, await doc.embedJpg(bytes));
+    } catch {
+      // Left out on purpose; see above.
+    }
+  }
 
   // Header block.
   flow.text("AVALIAÇÃO FÍSICA · RELATÓRIO", MARGIN, 9, bold, BRAND);
@@ -144,7 +195,7 @@ export async function renderAssessmentPdf(input: AssessmentPdfInput): Promise<Ui
     flow.y -= 5;
     flow.text(section.title, MARGIN + 8, 11, bold, BRAND);
     flow.y -= 17 + 10;
-    for (const block of section.blocks) drawBlock(flow, block);
+    for (const block of section.blocks) drawBlock(flow, block, images);
     flow.y -= 8;
   }
 
