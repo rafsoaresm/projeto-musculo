@@ -9,12 +9,16 @@ import { discardAssessmentDraft } from "./actions";
 export function DiscardDraftButton({
   studentId,
   assessmentId,
-  disabled = false,
+  busy = false,
+  onConfirm,
   onError,
 }: {
   studentId: string;
   assessmentId: string;
-  disabled?: boolean;
+  /** A save is on the way: the button does nothing yet, but stays focusable (aria-disabled), so a save that starts by itself keeps the focus. */
+  busy?: boolean;
+  /** Called once the person confirmed, before the draft is sent away (the shell stops saving by itself). */
+  onConfirm?: () => void;
   onError?: (text: string) => void;
 }) {
   const [error, setError] = useState("");
@@ -29,9 +33,12 @@ export function DiscardDraftButton({
       <button
         type="button"
         className="button secondary"
-        disabled={disabled || pending}
+        disabled={pending}
+        aria-disabled={busy || undefined}
         onClick={() => {
+          if (busy) return;
           if (!window.confirm("Descartar este rascunho? O que foi digitado nele será apagado.")) return;
+          onConfirm?.();
           startTransition(async () => {
             const result = await discardAssessmentDraft(studentId, assessmentId);
             if (result?.error) (onError ?? setError)(result.error);
