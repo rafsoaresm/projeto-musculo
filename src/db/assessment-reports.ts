@@ -1,6 +1,7 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { isModule } from "@/modules/avaliacoes/catalog";
 import type { ReportInput } from "@/modules/avaliacoes/v2/report";
+import { readEnabledParts } from "@/modules/avaliacoes/v2/template";
 import type { EvolutionSource } from "@/modules/avaliacoes/v2/evolution";
 import { COMPOSITION_MODULE, readComposition } from "@/modules/avaliacoes/v2/composition";
 import { CONCLUSION_MODULE, readConclusion } from "@/modules/avaliacoes/v2/conclusion";
@@ -46,6 +47,9 @@ type HeadRow = {
   amendedById: string | null;
   amendedAt: string | null;
   amendsAssessedOn: string | null;
+  templateVersion: number | null;
+  templateName: string | null;
+  enabled: string | null;
 };
 
 const headColumns = `a.id, a.organization_id AS organizationId, s.display_name AS studentName, o.name AS organizationName,
@@ -57,7 +61,10 @@ const headColumns = `a.id, a.organization_id AS organizationId, s.display_name A
      ORDER BY n.recorded_at DESC LIMIT 1) AS amendedById,
   (SELECT n.recorded_at FROM assessments n WHERE n.organization_id = a.organization_id AND n.amends_assessment_id = a.id AND n.state = 'RECORDED'
      ORDER BY n.recorded_at DESC LIMIT 1) AS amendedAt,
-  (SELECT o2.assessed_on FROM assessments o2 WHERE o2.organization_id = a.organization_id AND o2.id = a.amends_assessment_id) AS amendsAssessedOn`;
+  (SELECT o2.assessed_on FROM assessments o2 WHERE o2.organization_id = a.organization_id AND o2.id = a.amends_assessment_id) AS amendsAssessedOn,
+  a.template_version AS templateVersion, a.enabled_modules AS enabled,
+  (SELECT v.name FROM assessment_form_template_versions v
+     WHERE v.organization_id = a.organization_id AND v.template_id = a.template_id AND v.version = a.template_version) AS templateName`;
 
 function parseJson(raw: string | null): unknown {
   if (raw === null) return null;
@@ -137,6 +144,8 @@ async function assemble(db: D1Database, head: HeadRow): Promise<ReportInput> {
     tests: section(TESTS_MODULE, readTests),
     conclusion: section(CONCLUSION_MODULE, readConclusion),
     decidedBy,
+    template: head.templateVersion !== null ? { name: head.templateName ?? "Modelo", version: head.templateVersion } : null,
+    enabled: readEnabledParts(head.enabled),
   };
 }
 

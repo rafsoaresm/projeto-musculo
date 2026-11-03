@@ -8,6 +8,7 @@ import { studentAccessFor } from "@/db/student-access";
 import { plansFor } from "@/db/plans";
 import { profilesFor } from "@/db/student-profile";
 import { assessmentsFor } from "@/db/assessments";
+import { assessmentTemplatesFor } from "@/db/assessment-templates";
 import { executionFor } from "@/db/workout-sessions";
 import { studentConsentFor } from "@/db/consent";
 import { dataRequestsFor } from "@/db/data-requests";
@@ -43,7 +44,7 @@ export default async function Student({
   const { aba } = await searchParams;
   const student = await studentsFor(db, context).findById(id);
   if (!student) notFound();
-  const [access, plans, profile, assessments, executions, consent, requests] = await Promise.all([
+  const [access, plans, profile, assessments, executions, consent, requests, templates] = await Promise.all([
     studentAccessFor(db, context).statusOf(student.id),
     plansFor(db, context).listForStudent(student.id),
     profilesFor(db, context).get(student.id),
@@ -51,6 +52,7 @@ export default async function Student({
     executionFor(db, context).list(student.id, 5),
     studentConsentFor(db, context, student.id),
     dataRequestsFor(db, context).forStudent(student.id),
+    assessmentTemplatesFor(db, context).list(),
   ]);
   const openRequests = requests.filter((row) => row.outcome === null).length;
   const summary = { studentId: student.id, hasProfile: profile !== null, assessments, plans, sessions: executions, openRequests };
@@ -103,7 +105,7 @@ export default async function Student({
               />
             </div>
           ),
-          avaliacoes: <AssessmentsPanel studentId={student.id} assessments={assessments} />,
+          avaliacoes: <AssessmentsPanel studentId={student.id} assessments={assessments} templates={templates} />,
           periodizacao: (
             <>
               <PlansPanel studentId={student.id} plans={plans} />

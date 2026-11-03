@@ -2,6 +2,16 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.85: Modelos de avaliação (handoff 2 e 6)
+
+**Migration `0036_assessment_templates.sql`** (aditiva): tabelas `assessment_form_templates` (por organização; só o arquivamento muda; nunca apagado) e `assessment_form_template_versions` (nome e partes ativas na ordem das etapas; nunca alterada nem apagada); colunas `template_id`, `template_version` e `enabled_modules` em `assessments` (nulas = todas as partes, como antes), conferidas contra a versão escolhida e da mesma organização ao criar, e imutáveis depois. Gatilhos: só OWNER, MANAGER ou TECHNICAL ativos da organização escrevem modelos.
+
+- **Telas:** `/profissional/avaliacoes/modelos` (lista, novo, editar), a partir da página Avaliação Física. O profissional escolhe as 11 partes opcionais (Medidas: básicas, dobras, perímetros, diâmetros; Movimento: postura com fotos, somatotipo, Flexiteste; Testes: abdominal, membros superiores, Cooper; e Considerações finais) e a ordem de Medidas, Movimento e Testes. **Triagem e PAR-Q nunca são opcionais** (seguram a aprovação do plano); Revisão é sempre a última. Editar cria uma versão nova; o rascunho fica com a versão em que começou. Arquivar só tira o modelo da escolha.
+- **Iniciar:** com modelos na organização, "Iniciar avaliação física" oferece a escolha ("Todos os módulos (padrão)" é o comportamento de antes). Se já há um rascunho aberto com outro modelo, ou se o modelo ganhou versão nova depois que a tela abriu, nada é iniciado e a tela diz por quê.
+- **No rascunho e depois:** parte desligada some da etapa (etapa sem nada some), aparece como **"Não incluído neste modelo"** na Revisão, na avaliação registrada e no PDF (diferente de "Não realizado") e nunca impede finalizar; nenhum resultado sai de parte desligada. Salvar dado numa parte desligada é recusado com o nome da parte; foto postural também, quando a postura está desligada. A retificação copia o modelo e a versão da original. O PDF mostra a linha "Modelo".
+- **Verificado localmente:** tipos, lint e `npm run check` (122 arquivos, 1907 testes; 11 unitários e 10 D1 de modelos: papéis e organização, versões, conflitos, salvamentos recusados, finalizar, gatilhos, retificação, arquivamento, foto recusada); e2e nos dois mounts (raiz e `/treinador`): 30 passaram em cada, com o fluxo inteiro de modelo; capturas a 1440, 1280, 1024, 768 e 390.
+- **Não feito / não verificado:** a migration no D1 de produção (só local); modelos no modo demonstração; ordem dos cartões dentro de uma etapa; as mensagens de "modelo mudou" e "rascunho com outro modelo" só têm teste D1.
+
 ## Fatia 0.84: Evolução da Avaliação Física para o aluno e gráfico de mesmo dia
 
 **Sem migration.**
@@ -10,6 +20,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Gráfico de mesmo dia (profissional, aluno e as demais telas que usam o mesmo gráfico):** valores do mesmo dia ficam lado a lado, ordenados pela hora do registro, sem cair em cima de um dia vizinho; o rótulo leva a hora ("03/11/2026 14:05", fuso de São Paulo) só quando outro valor do mesmo resultado tem a mesma data, e "(1ª de 2 no dia)" se a hora também coincide. O gráfico e a tabela usam a mesma data. Os links "Baixar PDF" do aluno têm nomes distintos.
 - **Verificado localmente:** tipos, lint e `npm run check` (120 arquivos, 1883 testes); e2e nos dois mounts (raiz e `/treinador`): 28 passaram em cada; capturas a 1440, 1280, 1024, 768 e 390 (profissional e aluno).
 - **Não verificado / não feito:** a página de evolução do formato anterior e a de execução (que também usam o gráfico) não foram vistas no navegador; a lista do aluno e a linha do tempo do profissional ainda mostram só a data para duas avaliações no mesmo dia; o fuso é fixo em São Paulo (o da organização existe e não é usado).
+- **CI e deploy:** o CI do PR #86 passou (`validate` e `validate (/treinador)`, no commit `8a74914`); merge `3c79383`; deploy `0713232a` com sucesso em 03/11/2026 (sem migration).
 
 ## Fatia 0.83: Fotos posturais da Avaliação Física (PENDENCIAS B48; handoff 3.3 e 6)
 

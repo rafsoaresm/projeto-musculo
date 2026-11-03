@@ -48,6 +48,7 @@ import {
   REPETITION_TESTS,
   TESTS_CLASSIFICATION_NOTE,
   TEST_TITLE,
+  EMPTY_TESTS,
   cooperEmpty,
   repetitionTestEmpty,
   testsEmpty,
@@ -56,6 +57,7 @@ import {
 import { HEATH_CARTER_NOTE, findingsText, postureEmpty, regionsOf, somatotypeText, type PosturePayload } from "./posture";
 import { FLAG_LABEL, RESULT_LABEL, formatResult, isResultEstimate, methodLabel, resultNote } from "./review";
 import { ANAMNESIS_CODES, PARQ_CODES, parqAnswer, type ProfilePayload, type ScreeningPayload } from "./screening";
+import { NOT_INCLUDED, PART_LABEL, excludedPartsOf, isPartEnabled, isStepEnabled, templateLine, type EnabledParts, type TemplatePart } from "./template";
 
 /** The line every report carries in place of the institutional disclaimer the handoff asks for but does not give (handoff 3.5). */
 export const REPORT_NOTICE = "Sem classificação automática; só os resultados marcados “estimativa” vêm de equações.";
@@ -113,6 +115,10 @@ export interface ReportInput {
   conclusion: ConclusionPayload | null;
   /** The name of who recorded the PAR-Q decision, when there is one. */
   decidedBy: string | null;
+  /** The model it was made with (slice 0.85); absent or null: every part on. */
+  template?: { name: string; version: number } | null;
+  /** The optional parts that model had on; a part that is off prints "Não incluído neste modelo", never "Não realizado". */
+  enabled?: EnabledParts;
 }
 
 const decimal = (value: number, digits = 2) => new Intl.NumberFormat("pt-BR", { maximumFractionDigits: digits }).format(value);
@@ -133,6 +139,8 @@ export const reportDateTime = (iso: string) =>
   }).format(new Date(iso));
 
 const notDone = (text = "Não realizado."): ReportBlock => ({ kind: "text", text, muted: true });
+// One form for a part left out, as in the review and the recorded view: "Dobras cutâneas: Não incluído neste modelo." (never declined).
+const notIncluded = (what?: string): ReportBlock => ({ kind: "text", text: what ? `${what}: ${NOT_INCLUDED}.` : `${NOT_INCLUDED}.`, muted: true });
 const facts = (rows: { label: string; value: string }[]): ReportBlock[] => (rows.length === 0 ? [] : [{ kind: "facts", rows }]);
 const row = (label: string, value: string) => ({ label, value });
 
@@ -195,27 +203,36 @@ function screeningSection(input: ReportInput): ReportSection {
   return { title: "Triagem", blocks };
 }
 
-function measuresSection(composition: CompositionPayload | null): ReportSection {
-  if (!composition) return { title: "Medidas", blocks: [notDone()] };
+function measuresSection(composition: CompositionPayload | null, enabled: EnabledParts = null): ReportSection {
+  if (!isStepEnabled(enabled, "medidas")) return { title: "Medidas", blocks: [notIncluded()] };
+  if (!composition) return { title: "Medidas", blocks: [notDone(), ...excludedPartsOf(enabled, "medidas").map((part) => notIncluded(PART_LABEL[part]))] };
+  const on = (part: TemplatePart) => isPartEnabled(enabled, part);
   const blocks: ReportBlock[] = [
-    {
-      kind: "facts",
-      rows: [
-        row("Peso", measured(composition.weightKg, "kg")),
-        row("Altura", composition.heightCm === null ? "Sem aferição" : `${decimal(composition.heightCm / 100, 3)} m`),
-        row("PAS / PAD", `${measured(composition.systolicMmHg, "mmHg", 0)} / ${measured(composition.diastolicMmHg, "mmHg", 0)}`),
-        row("FC repouso", measured(composition.restingHeartRateBpm, "bpm", 0)),
-        row("Protocolo de dobras", composition.protocol ? PROTOCOL_CHIP[composition.protocol] : "Não escolhido"),
-        row("Referência da equação", EQUATION_LABEL[composition.equation]),
-        row("Leituras por dobra", AGGREGATION_LABEL[composition.aggregation]),
-        row("Conversão", CONVERSION_LABEL[composition.conversion]),
-      ],
-    },
+    ...(on("basics") ? [] : [notIncluded(PART_LABEL.basics)]),
+    ...facts([
+      ...(on("basics")
+        ? [
+            row("Peso", measured(composition.weightKg, "kg")),
+            row("Altura", composition.heightCm === null ? "Sem aferição" : `${decimal(composition.heightCm / 100, 3)} m`),
+            row("PAS / PAD", `${measured(composition.systolicMmHg, "mmHg", 0)} / ${measured(composition.diastolicMmHg, "mmHg", 0)}`),
+            row("FC repouso", measured(composition.restingHeartRateBpm, "bpm", 0)),
+          ]
+        : []),
+      ...(on("skinfolds")
+        ? [
+            row("Protocolo de dobras", composition.protocol ? PROTOCOL_CHIP[composition.protocol] : "Não escolhido"),
+            row("Referência da equação", EQUATION_LABEL[composition.equation]),
+            row("Leituras por dobra", AGGREGATION_LABEL[composition.aggregation]),
+            row("Conversão", CONVERSION_LABEL[composition.conversion]),
+          ]
+        : []),
+    ]),
     { kind: "subtitle", text: "Dobras cutâneas" },
   ];
   const sites = SKINFOLD_SITE_CODES.filter((site) => (composition.skinfolds[site] ?? []).length > 0);
   const inProtocol = requiredSites(composition.protocol, composition.equation);
-  if (sites.length === 0) blocks.push(notDone("Nenhuma dobra medida."));
+  if (!on("skinfolds")) blocks.push(notIncluded());
+  else if (sites.length === 0) blocks.push(notDone("Nenhuma dobra medida."));
   else
     blocks.push({
       kind: "facts",
@@ -230,7 +247,8 @@ function measuresSection(composition: CompositionPayload | null): ReportSection 
   const single = PERIMETER_SINGLE_CODES.filter((code) => composition.perimetersCm[code] !== undefined);
   const sided = PERIMETER_SIDED_CODES.filter((code) => composition.sidedPerimetersCm[code] !== undefined);
   blocks.push({ kind: "subtitle", text: "Perímetros" });
-  if (single.length + sided.length === 0) blocks.push(notDone("Nenhum perímetro medido."));
+  if (!on("perimeters")) blocks.push(notIncluded());
+  else if (single.length + sided.length === 0) blocks.push(notDone("Nenhum perímetro medido."));
   else
     blocks.push({
       kind: "facts",
@@ -244,7 +262,8 @@ function measuresSection(composition: CompositionPayload | null): ReportSection 
     });
   const breadths = BONE_BREADTH_CODES.filter((code) => composition.boneBreadthsCm[code] !== undefined);
   blocks.push({ kind: "subtitle", text: "Diâmetros ósseos" });
-  if (breadths.length === 0) blocks.push(notDone("Nenhum diâmetro medido."));
+  if (!on("breadths")) blocks.push(notIncluded());
+  else if (breadths.length === 0) blocks.push(notDone("Nenhum diâmetro medido."));
   else blocks.push({ kind: "facts", rows: breadths.map((code) => row(BONE_BREADTHS[code], measured(composition.boneBreadthsCm[code], "cm"))) });
   return { title: "Medidas", blocks };
 }
@@ -293,9 +312,10 @@ function resultsSection(results: readonly ResultRow[]): ReportSection {
   };
 }
 
-function postureBlocks(posture: PosturePayload): ReportBlock[] {
-  const blocks: ReportBlock[] = [notDone("Observações posturais, não diagnóstico clínico.")];
-  for (const view of POSTURE_VIEW_CODES) {
+function postureBlocks(posture: PosturePayload, enabled: EnabledParts = null): ReportBlock[] {
+  const views = isPartEnabled(enabled, "posture");
+  const blocks: ReportBlock[] = [views ? notDone("Observações posturais, não diagnóstico clínico.") : notIncluded(PART_LABEL.posture)];
+  for (const view of views ? POSTURE_VIEW_CODES : []) {
     const regions = regionsOf(view);
     const observed = regions.filter((region) => findingsText(region, posture.findings[postureRegionKey(region)]) !== null);
     blocks.push({ kind: "subtitle", text: POSTURE_VIEWS[view] });
@@ -313,6 +333,10 @@ function postureBlocks(posture: PosturePayload): ReportBlock[] {
   }
   const measures = HEATH_CARTER_CODES.filter((code) => posture.somatotype.heathCarter[code] !== null);
   blocks.push({ kind: "subtitle", text: "Somatotipo" });
+  if (!isPartEnabled(enabled, "somatotype")) {
+    blocks.push(notIncluded());
+    return blocks;
+  }
   blocks.push({
     kind: "facts",
     rows: [
@@ -344,28 +368,43 @@ function flexitestBlocks(movement: MovementPayload, results: readonly ResultRow[
   return blocks;
 }
 
-function movementSection(posture: PosturePayload | null, movement: MovementPayload | null, results: readonly ResultRow[]): ReportSection {
+function movementSection(posture: PosturePayload | null, movement: MovementPayload | null, results: readonly ResultRow[], enabled: EnabledParts = null): ReportSection {
+  if (!isStepEnabled(enabled, "movimento")) return { title: "Postura e movimento", blocks: [notIncluded()] };
   const hasPosture = posture !== null && !postureEmpty(posture);
   const hasMovement = movement !== null && !movementEmpty(movement);
-  if (!hasPosture && !hasMovement) return { title: "Postura e movimento", blocks: [notDone()] };
+  const views = isPartEnabled(enabled, "posture");
+  const somatotype = isPartEnabled(enabled, "somatotype");
+  const flexitest = isPartEnabled(enabled, "flexitest");
+  if (!hasPosture && !hasMovement && enabled === null) return { title: "Postura e movimento", blocks: [notDone()] };
+  const emptyPosture: ReportBlock[] =
+    views && somatotype
+      ? [notDone("Postura e somatotipo: não realizados.")]
+      : [views ? notDone("Postura: não realizada.") : notIncluded(PART_LABEL.posture), somatotype ? notDone("Somatotipo: não realizado.") : notIncluded(PART_LABEL.somatotype)];
   return {
     title: "Postura e movimento",
     blocks: [
-      ...(hasPosture ? postureBlocks(posture) : [notDone("Postura e somatotipo: não realizados.")]),
+      ...(hasPosture ? postureBlocks(posture, enabled) : emptyPosture),
       { kind: "subtitle", text: "Flexiteste" },
-      ...(hasMovement ? flexitestBlocks(movement, results) : [notDone()]),
+      ...(!flexitest ? [notIncluded()] : hasMovement ? flexitestBlocks(movement, results) : [notDone()]),
     ],
   };
 }
 
 const count = (value: number | null, one: string, many: string) => (value === null ? "Sem registro" : `${value} ${value === 1 ? one : many}`);
 
-function testsSection(tests: TestsPayload | null): ReportSection {
-  if (!tests || testsEmpty(tests)) return { title: "Testes físicos", blocks: [notDone()] };
+function testsSection(tests: TestsPayload | null, enabled: EnabledParts = null): ReportSection {
+  if (!isStepEnabled(enabled, "testes")) return { title: "Testes físicos", blocks: [notIncluded()] };
+  const on = (key: "abdominal" | "upperLimb" | "cooper") => isPartEnabled(enabled, key === "upperLimb" ? "upper_limb" : key);
+  if ((!tests || testsEmpty(tests)) && enabled === null) return { title: "Testes físicos", blocks: [notDone()] };
+  tests = tests ?? EMPTY_TESTS;
   const blocks: ReportBlock[] = [];
   for (const key of REPETITION_TESTS) {
     const test = tests[key];
     blocks.push({ kind: "subtitle", text: TEST_TITLE[key] });
+    if (!on(key)) {
+      blocks.push(notIncluded());
+      continue;
+    }
     if (repetitionTestEmpty(test)) {
       blocks.push(notDone());
       continue;
@@ -384,7 +423,8 @@ function testsSection(tests: TestsPayload | null): ReportSection {
   }
   const { cooper } = tests;
   blocks.push({ kind: "subtitle", text: TEST_TITLE.cooper });
-  if (cooperEmpty(cooper)) blocks.push(notDone());
+  if (!on("cooper")) blocks.push(notIncluded());
+  else if (cooperEmpty(cooper)) blocks.push(notDone());
   else
     blocks.push({
       kind: "facts",
@@ -400,11 +440,12 @@ function testsSection(tests: TestsPayload | null): ReportSection {
     });
   const classified = [...REPETITION_TESTS.map((key) => tests[key].classificationManual), cooper.classificationManual].some(filled);
   if (classified) blocks.push(notDone(TESTS_CLASSIFICATION_NOTE));
-  blocks.push(notDone("A velocidade média e o VO₂máx estimado do Cooper estão em “Resultados”."));
+  if (on("cooper")) blocks.push(notDone("A velocidade média e o VO₂máx estimado do Cooper estão em “Resultados”."));
   return { title: "Testes físicos", blocks };
 }
 
-function conclusionSection(conclusion: ConclusionPayload | null): ReportSection {
+function conclusionSection(conclusion: ConclusionPayload | null, enabled: EnabledParts = null): ReportSection {
+  if (!isPartEnabled(enabled, "conclusion")) return { title: "Considerações finais", blocks: [notIncluded()] };
   if (!conclusion || conclusionEmpty(conclusion)) return { title: "Considerações finais", blocks: [notDone("Não escritas.")] };
   const blocks: ReportBlock[] = [];
   for (const field of CONCLUSION_FIELDS.filter((item) => filled(conclusion[item]))) {
@@ -424,6 +465,7 @@ export function assessmentReport(input: ReportInput): AssessmentReport {
     row("Data da avaliação", formatCalendarDate(assessment.assessedOn)),
     row("Registrada em", assessment.recordedAt ? reportDateTime(assessment.recordedAt) : "Sem registro"),
     row("Triagem", parqLine(assessment.riskStatus, assessment.reviewed)),
+    ...(input.template ? [row("Modelo", templateLine(input.template).replace(/^Modelo: /, "").replace(/\.$/, ""))] : []),
     ...(assessment.amendsAssessmentId
       ? [
           row("Retifica", input.amendsAssessedOn ? `a avaliação de ${formatCalendarDate(input.amendsAssessedOn)}` : "uma avaliação registrada antes"),
@@ -440,11 +482,11 @@ export function assessmentReport(input: ReportInput): AssessmentReport {
     warning,
     sections: [
       screeningSection(input),
-      measuresSection(input.composition),
+      measuresSection(input.composition, input.enabled ?? null),
       resultsSection(input.results),
-      movementSection(input.posture, input.movement, input.results),
-      testsSection(input.tests),
-      conclusionSection(input.conclusion),
+      movementSection(input.posture, input.movement, input.results, input.enabled ?? null),
+      testsSection(input.tests, input.enabled ?? null),
+      conclusionSection(input.conclusion, input.enabled ?? null),
     ],
   };
 }
@@ -477,6 +519,8 @@ export async function reportFingerprint(input: ReportInput): Promise<string> {
     input.movement,
     input.tests,
     input.conclusion,
+    // The model (slice 0.85) only when there is one, so the fingerprint of every report made before stays the same.
+    ...(input.template ? [input.template, input.enabled ?? null] : []),
   ]);
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");

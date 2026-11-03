@@ -19,6 +19,7 @@ import { MOVEMENT_MODULE, movementSchema } from "@/modules/avaliacoes/v2/flexite
 import { TESTS_MODULE, testsSchema } from "@/modules/avaliacoes/v2/physical-tests";
 import { CONCLUSION_MODULE, conclusionSchema } from "@/modules/avaliacoes/v2/conclusion";
 import { recordedScreening, reviewDraft } from "@/modules/avaliacoes/v2/review";
+import { excludedWithData, readEnabledParts, type EnabledParts, type TemplatePart } from "@/modules/avaliacoes/v2/template";
 import { activeUser, assertContext, technicalAccessExists, type AuthenticatedContext } from "./students";
 
 /** One module of an assessment of the new format, as stored (its payload is checked by the module's schema where it is read). */
@@ -28,7 +29,20 @@ export interface SectionRow {
   payload: unknown;
   updatedAt: string;
 }
-export type SaveSectionOutcome = { status: "saved"; revision: number } | { status: "conflict"; revision: number } | { status: "not_found" } | { status: "invalid" };
+export type SaveSectionOutcome =
+  | { status: "saved"; revision: number }
+  | { status: "conflict"; revision: number }
+  | { status: "not_found" }
+  | { status: "invalid" }
+  /** The payload holds something in a part that the draft's model leaves out (slice 0.85): refused, nothing is written. */
+  | { status: "excluded"; parts: TemplatePart[] };
+/** The model a draft of the new format started with (slice 0.85); null for "Todos os módulos" and every assessment made before. */
+export interface AssessmentTemplateRef {
+  id: string;
+  version: number;
+  /** The name of that version (a later rename does not change what this assessment says). */
+  name: string;
+}
 /** The largest payload of a module (the database refuses more than 64 000 characters). */
 export const MAX_SECTION_CHARS = 60_000;
 
@@ -238,6 +252,12 @@ export type StartOutcome =
   | { status: "started"; id: string }
   /** The student already has an open draft (one per student); `formatVersion` says which format it is (null: the earlier format, which can only be discarded). */
   | { status: "draft_open"; id: string; formatVersion: number | null }
+  /** The model asked for is not one of the organization's, or is archived. */
+  | { status: "template_not_found" }
+  /** The model has a newer version than the one the screen offered (a colleague saved it meanwhile): nothing was started. */
+  | { status: "template_changed"; version: number }
+  /** The student already has an open draft made with another model (or without one) than the one asked for: nothing was started. */
+  | { status: "draft_open_other_model"; id: string }
   | { status: "not_found" };
 /** The newest recorded assessment of a student and whether an alert was reviewed. No access check. */
 export async function screeningStanding(
@@ -556,17 +576,36 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
      * Opens a draft of the Avaliação Física dated today (the only format that can be started: user's decision of 03/11/2026). One open draft
      * per student: asking again returns it, whatever its format (an open draft of the earlier format can only be discarded). Its modules are
      * sections, and it keeps a snapshot of the student's data as they are now (birth date, height, weight, goal; never the gender, which the
-     * equation of a protocol does not take from the profile: decision of the user, 02/11/2026).
+     * equation of a protocol does not take from the profile: decision of the user, 02/11/2026). With a model of the organization (slice 0.85),
+     * the draft keeps its newest version and the list of parts that are on; without one, every part is on, as before.
      */
-    async startDraft(studentId: string, now = new Date()): Promise<StartOutcome> {
+    async startDraft(studentId: string, now = new Date(), options: { templateId?: string | null; templateVersion?: number | null } = {}): Promise<StartOutcome> {
       const id = crypto.randomUUID();
       const stamp = now.toISOString();
+      const templateId = options.templateId ?? null;
+      // A model (slice 0.85): its newest version, of this organization and not archived; the draft keeps that version and a copy of its list.
+      let template: { version: number; enabled: string } | null = null;
+      if (templateId !== null) {
+        template = await db
+          .prepare(
+            `SELECT v.version, v.enabled_modules AS enabled FROM assessment_form_templates t
+             JOIN assessment_form_template_versions v ON v.template_id = t.id AND v.organization_id = t.organization_id
+             WHERE t.organization_id = ?1 AND t.id = ?2 AND t.archived_at IS NULL
+             ORDER BY v.version DESC LIMIT 1`,
+          )
+          .bind(organizationId, templateId)
+          .first<{ version: number; enabled: string }>();
+        if (!template) return { status: "template_not_found" };
+        // The version the screen named, when it named one: a newer one has another list of parts, so the professional sees it before starting.
+        if (typeof options.templateVersion === "number" && template.version !== options.templateVersion) return { status: "template_changed", version: template.version };
+      }
       try {
         const result = await db
           .prepare(
             `INSERT INTO assessments
                (id, organization_id, student_id, assessed_on, kind, previous_assessment_id, state,
-                risk_status, created_by_user_id, created_at, updated_at, screening_answered, format_version, student_snapshot)
+                risk_status, created_by_user_id, created_at, updated_at, screening_answered, format_version, student_snapshot,
+                template_id, template_version, enabled_modules)
              SELECT ?4, s.organization_id, s.id, ?5,
                CASE WHEN EXISTS (SELECT 1 FROM assessments p
                                    WHERE p.student_id = s.id AND p.state = 'RECORDED')
@@ -575,18 +614,25 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
                   ORDER BY p.assessed_on DESC, p.recorded_at DESC LIMIT 1),
                'DRAFT', 'CLEAR', ?2, ?6, ?6, '[]', 2,
                (SELECT json_object('birthDate', p.birth_date, 'heightCm', p.height_cm, 'weightKg', p.weight_kg, 'goal', p.goal)
-                 FROM student_profiles p WHERE p.organization_id = s.organization_id AND p.student_id = s.id)
+                 FROM student_profiles p WHERE p.organization_id = s.organization_id AND p.student_id = s.id),
+               ?7, ?8, ?9
              FROM students s
              WHERE s.organization_id = ?1 AND s.id = ?3 AND ${activeUser("?2")}
                AND ${technicalAccessExists("s", "?2")}`,
           )
-          .bind(organizationId, userId, studentId, id, stamp.slice(0, 10), stamp)
+          .bind(organizationId, userId, studentId, id, stamp.slice(0, 10), stamp, templateId, template?.version ?? null, template?.enabled ?? null)
           .run();
         return result.meta.changes > 0 ? { status: "started", id } : { status: "not_found" };
       } catch (error) {
         if (!String(error).includes("UNIQUE")) throw error;
         const open = (await api.listForStudent(studentId)).find((a) => a.state === "DRAFT");
         if (!open) return { status: "not_found" };
+        // The open draft keeps its model: asking for another one (or for none) must not silently land in it.
+        const model = await db
+          .prepare(`SELECT template_id AS templateId FROM assessments WHERE organization_id = ?1 AND id = ?2`)
+          .bind(organizationId, open.id)
+          .first<{ templateId: string | null }>();
+        if ((model?.templateId ?? null) !== templateId) return { status: "draft_open_other_model", id: open.id };
         return { status: "draft_open", id: open.id, formatVersion: open.formatVersion };
       }
     },
@@ -595,11 +641,25 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
      * The modules of an assessment of the new format, each with its state and its data (handoff V2), and the revision a save must be based on.
      * Null when the assessment is not reachable.
      */
-    async sections(assessmentId: string): Promise<{ revision: number; formatVersion: number | null; sections: SectionRow[] } | null> {
+    async sections(assessmentId: string): Promise<{
+      revision: number;
+      formatVersion: number | null;
+      sections: SectionRow[];
+      /** The model the draft started with, or null (every part on). */
+      template: AssessmentTemplateRef | null;
+      /** The optional parts that are on (null: all of them). */
+      enabled: EnabledParts;
+    } | null> {
       const head = await db
-        .prepare(`SELECT a.revision, a.format_version AS formatVersion FROM assessments a WHERE a.organization_id = ?1 AND a.id = ?3 AND ${reachAssessment("a")}`)
+        .prepare(
+          `SELECT a.revision, a.format_version AS formatVersion, a.template_id AS templateId, a.template_version AS templateVersion,
+             a.enabled_modules AS enabled,
+             (SELECT v.name FROM assessment_form_template_versions v
+               WHERE v.template_id = a.template_id AND v.version = a.template_version AND v.organization_id = a.organization_id) AS templateName
+           FROM assessments a WHERE a.organization_id = ?1 AND a.id = ?3 AND ${reachAssessment("a")}`,
+        )
         .bind(organizationId, userId, assessmentId)
-        .first<{ revision: number; formatVersion: number | null }>();
+        .first<{ revision: number; formatVersion: number | null; templateId: string | null; templateVersion: number | null; enabled: string | null; templateName: string | null }>();
       if (!head) return null;
       const rows = await db
         .prepare(
@@ -611,6 +671,11 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
       return {
         revision: head.revision,
         formatVersion: head.formatVersion,
+        template:
+          head.templateId !== null && head.templateVersion !== null
+            ? { id: head.templateId, version: head.templateVersion, name: head.templateName ?? "Modelo" }
+            : null,
+        enabled: readEnabledParts(head.enabled),
         sections: rows.results.flatMap((row) => (isModule(row.module) ? [{ module: row.module, status: row.status, payload: JSON.parse(row.payload) as unknown, updatedAt: row.updatedAt }] : [])),
       };
     },
@@ -684,6 +749,15 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
       if (!isModule(input.module) || !(SECTION_STATUSES as readonly string[]).includes(input.status) || !Number.isInteger(input.revision)) return { status: "invalid" };
       const payload = JSON.stringify(input.payload ?? {});
       if (payload.length > MAX_SECTION_CHARS) return { status: "invalid" };
+      // A part the draft's model leaves out holds nothing (the list never changes after the draft is created: trigger of 0036).
+      const model = await db
+        .prepare(`SELECT a.enabled_modules AS enabled FROM assessments a WHERE a.organization_id = ?1 AND a.id = ?3 AND ${reachAssessment("a")}`)
+        .bind(organizationId, userId, assessmentId)
+        .first<{ enabled: string | null }>();
+      if (model) {
+        const excluded = excludedWithData(input.module, input.payload ?? {}, readEnabledParts(model.enabled));
+        if (excluded.length > 0) return { status: "excluded", parts: excluded };
+      }
       const stamp = now.toISOString();
       const results = await db.batch([
         db
@@ -723,11 +797,11 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
       const head = await db
         .prepare(
           `SELECT a.state, a.format_version AS formatVersion, a.revision, a.assessed_on AS assessedOn, a.student_snapshot AS snapshot,
-             a.amends_assessment_id AS amendsId
+             a.amends_assessment_id AS amendsId, a.enabled_modules AS enabled
            FROM assessments a WHERE a.organization_id = ?1 AND a.id = ?3 AND ${reachAssessment("a")}`,
         )
         .bind(organizationId, userId, assessmentId)
-        .first<{ state: string; formatVersion: number | null; revision: number; assessedOn: string; snapshot: string | null; amendsId: string | null }>();
+        .first<{ state: string; formatVersion: number | null; revision: number; assessedOn: string; snapshot: string | null; amendsId: string | null; enabled: string | null }>();
       if (!head || head.state !== "DRAFT" || head.formatVersion !== 2) return { status: "not_found" };
       if (head.revision !== expectedRevision) return { status: "conflict" };
       const rows = await db
@@ -766,6 +840,7 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
         assessedOn: head.assessedOn,
         birthDate: typeof snapshot.birthDate === "string" ? snapshot.birthDate : null,
         original,
+        enabled: readEnabledParts(head.enabled),
       });
       if (review.pending.length > 0 || !screening?.success) return { status: "pending", pending: review.pending };
       const stamp = now.toISOString();
@@ -831,7 +906,8 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
      * Starts an amendment (retificação) of a recorded Avaliação Física: a new draft that points to it, with the reason written (3 to 1000
      * characters), the same date, kind and snapshot, and a copy of its modules to correct — without what finalize wrote (the derived flag, who
      * decided and when), which the amendment records again when it is finalized. The recorded one never changes and stays in the history, read as
-     * "Retificada". Only the newest of a chain is amended; one draft per student, as always.
+     * "Retificada". Only the newest of a chain is amended; one draft per student, as always. It keeps the model (and version) of the one it
+     * amends, so its parts are the same: a correction does not bring back a part the original left out, nor drop one it had (slice 0.85).
      */
     async amend(originalId: string, reason: unknown, now = new Date()): Promise<AmendOutcome> {
       const text = typeof reason === "string" ? reason.trim() : "";
@@ -845,9 +921,10 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
             .prepare(
               `INSERT INTO assessments
                  (id, organization_id, student_id, assessed_on, kind, previous_assessment_id, state, risk_status, created_by_user_id,
-                  created_at, updated_at, screening_answered, format_version, student_snapshot, amends_assessment_id, amend_reason)
+                  created_at, updated_at, screening_answered, format_version, student_snapshot, amends_assessment_id, amend_reason,
+                  template_id, template_version, enabled_modules)
                SELECT ?4, o.organization_id, o.student_id, o.assessed_on, o.kind, o.previous_assessment_id, 'DRAFT', 'CLEAR', ?2,
-                 ?6, ?6, '[]', 2, o.student_snapshot, o.id, ?5
+                 ?6, ?6, '[]', 2, o.student_snapshot, o.id, ?5, o.template_id, o.template_version, o.enabled_modules
                FROM assessments o
                WHERE o.organization_id = ?1 AND o.id = ?3 AND o.state = 'RECORDED' AND o.format_version = 2 AND ${notAmended}
                  AND ${reachAssessment("o")}`,

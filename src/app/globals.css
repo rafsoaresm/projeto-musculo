@@ -6034,6 +6034,23 @@ fieldset.yes-no legend {
   gap: 10px;
   margin-top: 16px;
 }
+/* The model picked when an assessment starts (slice 0.85): its label above the select, beside the button where there is room. */
+.assessment-template-pick {
+  display: grid;
+  gap: 6px;
+  flex: 1 1 260px;
+  max-width: 420px;
+  min-width: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+}
+.assessment-template-pick select {
+  width: 100%;
+  min-width: 0;
+}
+.assessment-start:has(.assessment-template-pick) {
+  align-items: end;
+}
 .av2 {
   display: grid;
   /* One column that never grows past the page: the chips of the steps scroll inside their own row on a phone. */
@@ -7018,6 +7035,94 @@ fieldset.yes-no legend {
   margin: 0;
   overflow-wrap: anywhere;
 }
+/* Models of the assessment (slice 0.85): what a model leaves out of a step, said once under the step's title; the editor's parts, each a box
+   with its checkbox, name and what it holds (two per line where the card is wide, one on a phone); the order buttons beside a step's title. */
+.av2-excluded {
+  margin: 6px 0 0;
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
+.av2-fixed {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  color: var(--color-muted);
+}
+.av2-fixed svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+.av2-step-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-bottom: 6px;
+}
+.av2-step-head h3 {
+  margin: 0;
+  font-size: var(--font-size-lg);
+  min-width: 0;
+}
+.av2-order {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.av2-parts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+@container (max-width: 640px) {
+  .av2-parts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.av2-parts > li {
+  display: grid;
+  min-width: 0;
+}
+.av2-part {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 16px;
+  border: 1px solid var(--color-line-strong);
+  border-radius: var(--radius-card);
+  background: var(--color-background);
+  cursor: pointer;
+  font-weight: 400;
+}
+.av2-part:has(input:checked) {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+.av2-part input {
+  width: 20px;
+  height: 20px;
+  min-height: 0;
+  margin: 2px 0 0;
+  padding: 0;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+.av2-part > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.av2-part strong {
+  color: var(--color-ink, inherit);
+}
 .assessment-history td,
 .assessment-history th {
   vertical-align: middle;
@@ -7099,4 +7204,17 @@ fieldset.yes-no legend {
   .tracking-panel td {
     padding: 10px 8px;
   }
+}
+/* The list of models of the Avaliação Física (slice 0.85): the list of parts left out is long, so its cells wrap instead of making the table
+   scroll sideways inside its panel (the global table rule keeps cells on one line). */
+.av2-templates th,
+.av2-templates td {
+  white-space: normal;
+  vertical-align: top;
+}
+.av2-templates td[data-label="Partes"] {
+  min-width: 16ch;
+}
+.av2-templates th .cell-sub {
+  font-weight: 400;
 }

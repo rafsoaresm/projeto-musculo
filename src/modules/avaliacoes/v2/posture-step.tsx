@@ -16,6 +16,7 @@ import {
   type PostureView,
 } from "../catalog";
 import { TextAreaField, UnitField } from "./fields";
+import type { TemplatePart } from "./template";
 import { HEATH_CARTER_NOTE, findingCodes, regionsOf, takesSide, toggleFinding, toggleSomatotype, viewTabCount, viewTabName, type PostureForm } from "./posture";
 
 /** The blank answer of a single choice: chosen, the region has no finding (not observed), drawn as an empty outline like the PAR-Q's. */
@@ -118,6 +119,7 @@ export function PostureStep({
   onChange,
   after = null,
   photos = null,
+  on = () => true,
 }: {
   form: PostureForm;
   onChange: (form: PostureForm) => void;
@@ -126,6 +128,8 @@ export function PostureStep({
   /** The optional photos (handoff 3.3): the field of each view, under its notes, and the one line that says what happened to the last one
    * (onView drops that line when another view is shown, so it is never read under the wrong view). */
   photos?: { field: (view: PostureView) => ReactNode; status: ReactNode; onView?: () => void } | null;
+  /** Whether the draft's model has a part on (slice 0.85): the posture and the somatotype cards show only when on. */
+  on?: (part: TemplatePart) => boolean;
 }) {
   const [view, setViewState] = useState<PostureView>("lateral");
   const setView = (next: PostureView) => {
@@ -150,116 +154,120 @@ export function PostureStep({
 
   return (
     <div className="av2-cards">
-      <section className="panel av2-card" aria-labelledby="av2-postura">
-        <h3 id="av2-postura">Avaliação postural</h3>
-        <p className="muted small">
-          Três vistas com seleção de achados e observações. São observações posturais, não diagnóstico clínico; uma região sem achado fica como não
-          observada.
-        </p>
-        <div role="tablist" aria-label="Vistas da avaliação postural" className="av2-view-tabs" onKeyDown={onKey}>
-          {POSTURE_VIEW_CODES.map((code) => (
-            <button
-              key={code}
-              type="button"
-              role="tab"
-              className="av2-step av2-tab"
-              id={`${baseId}-aba-${code}`}
-              aria-selected={view === code}
-              aria-label={viewTabName(form, code)}
-              aria-controls={`${baseId}-painel-${code}`}
-              tabIndex={view === code ? 0 : -1}
-              ref={(node) => {
-                tabs.current[code] = node;
-              }}
-              onClick={() => setView(code)}
-            >
-              {/* One flex item, so the space after "·" stays and a narrow tab breaks only there. */}
-              <span>
-                {POSTURE_VIEW_SHORT[code]} · <span className="av2-tab-count">{viewTabCount(form, code)}</span>
-              </span>
-            </button>
-          ))}
-        </div>
-        {POSTURE_VIEW_CODES.map((code) => (
-          <div
-            key={code}
-            role="tabpanel"
-            id={`${baseId}-painel-${code}`}
-            aria-labelledby={`${baseId}-aba-${code}`}
-            hidden={view !== code}
-            className="av2-view-panel"
-            style={{ "--av2-finding-columns": findingColumns(code) } as CSSProperties}
-          >
-            <ul className="av2-questions" aria-label={POSTURE_VIEWS[code]}>
-              {regionsOf(code).map((region) => {
-                const key = postureRegionKey(region);
-                return (
-                  <Region
-                    key={key}
-                    region={region}
-                    findings={form.findings[key] ?? []}
-                    side={form.laterality[key]}
-                    onChange={(findings) => set({ findings: { ...form.findings, [key]: findings } })}
-                    onSide={(side) => {
-                      const laterality = { ...form.laterality };
-                      if (side) laterality[key] = side;
-                      else delete laterality[key];
-                      set({ laterality });
-                    }}
-                  />
-                );
-              })}
-            </ul>
-            <div className="av2-grid av2-view-notes">
-              <TextAreaField
-                label="Observações"
-                context={`da ${POSTURE_VIEWS[code].toLowerCase()}`}
-                value={form.notes[code]}
-                onChange={(notes) => set({ notes: { ...form.notes, [code]: notes } })}
-                note="Grau, um lado diferente do outro ou o que os achados não dizem."
-              />
-            </div>
-            {photos?.field(code)}
+      {on("posture") && (
+        <section className="panel av2-card" aria-labelledby="av2-postura">
+          <h3 id="av2-postura">Avaliação postural</h3>
+          <p className="muted small">
+            Três vistas com seleção de achados e observações. São observações posturais, não diagnóstico clínico; uma região sem achado fica como não
+            observada.
+          </p>
+          <div role="tablist" aria-label="Vistas da avaliação postural" className="av2-view-tabs" onKeyDown={onKey}>
+            {POSTURE_VIEW_CODES.map((code) => (
+              <button
+                key={code}
+                type="button"
+                role="tab"
+                className="av2-step av2-tab"
+                id={`${baseId}-aba-${code}`}
+                aria-selected={view === code}
+                aria-label={viewTabName(form, code)}
+                aria-controls={`${baseId}-painel-${code}`}
+                tabIndex={view === code ? 0 : -1}
+                ref={(node) => {
+                  tabs.current[code] = node;
+                }}
+                onClick={() => setView(code)}
+              >
+                {/* One flex item, so the space after "·" stays and a narrow tab breaks only there. */}
+                <span>
+                  {POSTURE_VIEW_SHORT[code]} · <span className="av2-tab-count">{viewTabCount(form, code)}</span>
+                </span>
+              </button>
+            ))}
           </div>
-        ))}
-        {photos?.status}
-      </section>
-
-      <section className="panel av2-card" aria-labelledby="av2-somatotipo">
-        <h3 id="av2-somatotipo">Somatotipo</h3>
-        <p className="muted small">Registro do profissional, nunca inferido de foto. Endomorfo, mesomorfo e ectomorfo podem ir juntos; misto e não classificado vão sozinhos.</p>
-        <div className="av2-chips av2-somatotypes" role="group" aria-labelledby="av2-somatotipo">
-          {SOMATOTYPE_CODES.map((code) => (
-            <label key={code} className="av2-chip">
-              <input
-                type="checkbox"
-                checked={form.somatotype.includes(code)}
-                onChange={(event) => set({ somatotype: toggleSomatotype(form.somatotype, code, event.target.checked) })}
-              />
-              <span>{SOMATOTYPES[code]}</span>
-            </label>
-          ))}
-        </div>
-        <div className="av2-grid">
-          <TextAreaField label="Observações do somatotipo" value={form.somatotypeNotes} onChange={(somatotypeNotes) => set({ somatotypeNotes })} />
-        </div>
-        <h4 className="av2-subtitle" id="av2-heath-carter">
-          Medidas para Heath-Carter
-        </h4>
-        <p className="muted small av2-card-note">{HEATH_CARTER_NOTE}</p>
-        <div className="av2-grid" role="group" aria-labelledby="av2-heath-carter">
-          {HEATH_CARTER_CODES.map((code) => (
-            <UnitField
+          {POSTURE_VIEW_CODES.map((code) => (
+            <div
               key={code}
-              label={HEATH_CARTER_MEASURES[code].label}
-              unit={HEATH_CARTER_MEASURES[code].unit}
-              value={form.heathCarter[code]}
-              placeholder="Sem aferição"
-              onChange={(text) => set({ heathCarter: { ...form.heathCarter, [code]: text } })}
-            />
+              role="tabpanel"
+              id={`${baseId}-painel-${code}`}
+              aria-labelledby={`${baseId}-aba-${code}`}
+              hidden={view !== code}
+              className="av2-view-panel"
+              style={{ "--av2-finding-columns": findingColumns(code) } as CSSProperties}
+            >
+              <ul className="av2-questions" aria-label={POSTURE_VIEWS[code]}>
+                {regionsOf(code).map((region) => {
+                  const key = postureRegionKey(region);
+                  return (
+                    <Region
+                      key={key}
+                      region={region}
+                      findings={form.findings[key] ?? []}
+                      side={form.laterality[key]}
+                      onChange={(findings) => set({ findings: { ...form.findings, [key]: findings } })}
+                      onSide={(side) => {
+                        const laterality = { ...form.laterality };
+                        if (side) laterality[key] = side;
+                        else delete laterality[key];
+                        set({ laterality });
+                      }}
+                    />
+                  );
+                })}
+              </ul>
+              <div className="av2-grid av2-view-notes">
+                <TextAreaField
+                  label="Observações"
+                  context={`da ${POSTURE_VIEWS[code].toLowerCase()}`}
+                  value={form.notes[code]}
+                  onChange={(notes) => set({ notes: { ...form.notes, [code]: notes } })}
+                  note="Grau, um lado diferente do outro ou o que os achados não dizem."
+                />
+              </div>
+              {photos?.field(code)}
+            </div>
           ))}
-        </div>
-      </section>
+          {photos?.status}
+        </section>
+      )}
+
+      {on("somatotype") && (
+        <section className="panel av2-card" aria-labelledby="av2-somatotipo">
+          <h3 id="av2-somatotipo">Somatotipo</h3>
+          <p className="muted small">Registro do profissional, nunca inferido de foto. Endomorfo, mesomorfo e ectomorfo podem ir juntos; misto e não classificado vão sozinhos.</p>
+          <div className="av2-chips av2-somatotypes" role="group" aria-labelledby="av2-somatotipo">
+            {SOMATOTYPE_CODES.map((code) => (
+              <label key={code} className="av2-chip">
+                <input
+                  type="checkbox"
+                  checked={form.somatotype.includes(code)}
+                  onChange={(event) => set({ somatotype: toggleSomatotype(form.somatotype, code, event.target.checked) })}
+                />
+                <span>{SOMATOTYPES[code]}</span>
+              </label>
+            ))}
+          </div>
+          <div className="av2-grid">
+            <TextAreaField label="Observações do somatotipo" value={form.somatotypeNotes} onChange={(somatotypeNotes) => set({ somatotypeNotes })} />
+          </div>
+          <h4 className="av2-subtitle" id="av2-heath-carter">
+            Medidas para Heath-Carter
+          </h4>
+          <p className="muted small av2-card-note">{HEATH_CARTER_NOTE}</p>
+          <div className="av2-grid" role="group" aria-labelledby="av2-heath-carter">
+            {HEATH_CARTER_CODES.map((code) => (
+              <UnitField
+                key={code}
+                label={HEATH_CARTER_MEASURES[code].label}
+                unit={HEATH_CARTER_MEASURES[code].unit}
+                value={form.heathCarter[code]}
+                placeholder="Sem aferição"
+                onChange={(text) => set({ heathCarter: { ...form.heathCarter, [code]: text } })}
+              />
+            ))}
+          </div>
+        </section>
+      )}
       {after}
     </div>
   );

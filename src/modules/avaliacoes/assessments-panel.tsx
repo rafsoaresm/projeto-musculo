@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Pill, formatDateTime } from "@/components/ui";
 import type { AssessmentSummary } from "@/db/assessments";
 import { formatCalendarDate } from "@/modules/training/format";
-import { StartAssessmentButton } from "./start-button";
+import { StartAssessmentButton, type TemplateOption } from "./start-button";
 import { ScreeningPill } from "./screening-pill";
 import { ASSESSMENT_NAME, assessmentKindLabel, assessmentTitle } from "./names";
 import { formatResult, methodLabel } from "./v2/review";
@@ -17,7 +17,16 @@ function amendedByLabel(recorded: AssessmentSummary[], id: string): string {
  * The Avaliação Física of one student: the open draft, the recorded ones (newest first; those of the earlier format stay readable, under their
  * own name) and the way to start the next one. An open draft of the earlier format can no longer be filled, only discarded.
  */
-export function AssessmentsPanel({ studentId, assessments }: { studentId: string; assessments: AssessmentSummary[] }) {
+export function AssessmentsPanel({
+  studentId,
+  assessments,
+  templates = [],
+}: {
+  studentId: string;
+  assessments: AssessmentSummary[];
+  /** The models of the organization that can be picked when an assessment starts (slice 0.85); none: every module, as before. */
+  templates?: TemplateOption[];
+}) {
   const draft = assessments.find((item) => item.state === "DRAFT");
   const recorded = assessments.filter((item) => item.state === "RECORDED");
   const draftHref = draft && `/profissional/alunos/${studentId}/avaliacoes/${draft.id}`;
@@ -115,7 +124,7 @@ export function AssessmentsPanel({ studentId, assessments }: { studentId: string
             {earlierDraft ? "Abrir o rascunho do formato anterior" : draft.amendsAssessmentId ? "Continuar a retificação" : "Continuar a avaliação física"}
           </Link>
         ) : (
-          <StartAssessmentButton studentId={studentId} first={recorded.length === 0} />
+          <StartAssessmentButton studentId={studentId} first={recorded.length === 0} templates={templates} />
         )}
       </div>
     </section>

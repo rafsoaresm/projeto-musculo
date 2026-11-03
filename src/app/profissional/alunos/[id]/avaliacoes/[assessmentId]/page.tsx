@@ -21,6 +21,7 @@ import { ASSESSMENT_NAME, assessmentTitle } from "@/modules/avaliacoes/names";
 import { RecordedAssessmentView } from "@/modules/avaliacoes/v2/recorded-view";
 import { storedPhotos } from "@/modules/avaliacoes/v2/posture-photos";
 import { photoStorageAvailable } from "@/db/binding";
+import { templateLine } from "@/modules/avaliacoes/v2/template";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: ASSESSMENT_NAME };
@@ -63,11 +64,11 @@ export default async function Assessment({
         <PageHeading
           eyebrow={workspace.name}
           title={`${assessmentTitle(detail)} de ${student.displayName}`}
-          description={
+          description={`${
             detail.amendsAssessmentId
               ? `Rascunho que retifica a avaliação de ${formatCalendarDate(detail.assessedOn)}. Motivo: ${detail.amendReason ?? ""}`
               : `Rascunho de ${formatCalendarDate(detail.assessedOn)}.`
-          }
+          } ${templateLine(v2?.template ?? null)}`}
         />
         <AssessmentShell
           studentId={student.id}
@@ -85,6 +86,7 @@ export default async function Assessment({
           initialStep={isStepKey(etapa) ? etapa : undefined}
           photos={storedPhotos(detail.photos)}
           photoStorage={photoStorage}
+          enabled={v2?.enabled ?? null}
           suggestedEquation={suggestedEquation}
           amendment={
             detail.amendsAssessmentId
@@ -148,6 +150,8 @@ export default async function Assessment({
           conclusion={section(CONCLUSION_MODULE) === undefined ? null : readConclusion(section(CONCLUSION_MODULE))}
           decidedBy={decidedBy}
           amendedAt={amendedAt}
+          template={v2?.template ?? null}
+          enabled={v2?.enabled ?? null}
           canAmend={openDraft === null && detail.amendedById === null}
         />
         {back}

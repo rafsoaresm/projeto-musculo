@@ -23,6 +23,7 @@ import {
   type CompositionForm,
 } from "./composition";
 import { ReadOnlyField, SidedField, UnitField, UnitInput } from "./fields";
+import { notIncludedLine, type TemplatePart } from "./template";
 
 /**
  * One skinfold site: up to three readings, none of them a 0 when not measured. "+ leitura" sits right under the site's own readings (in the
@@ -84,6 +85,7 @@ export function CompositionStep({
   assessedOn,
   birthDate,
   suggestedEquation = null,
+  on = () => true,
 }: {
   form: CompositionForm;
   onChange: (form: CompositionForm) => void;
@@ -91,6 +93,8 @@ export function CompositionStep({
   birthDate: string | null;
   /** A reassessment offers the reference of the previous assessment (decision 2 of the user); it is applied only when the person chooses it. */
   suggestedEquation?: "male" | "female" | null;
+  /** Whether the draft's model has a part on (slice 0.85): a part that is off is not shown. */
+  on?: (part: TemplatePart) => boolean;
 }) {
   const age = ageAtAssessment(birthDate, assessedOn);
   const preview = compositionPreview(form, age);
@@ -103,183 +107,206 @@ export function CompositionStep({
 
   return (
     <div className="av2-cards">
-      <section className="panel av2-card" aria-labelledby="av2-basicas">
-        <h3 id="av2-basicas">Medidas básicas e sinais vitais</h3>
-        <p className="muted small">Data e aferidor vinculados à avaliação. Campo vazio é “sem aferição”, nunca zero.</p>
-        <div className="av2-grid">
-          <UnitField label="Peso" unit="kg" value={form.weight} onChange={(weight) => set({ weight })} placeholder="Sem aferição" />
-          <UnitField label="Altura" unit="m" value={form.height} onChange={(height) => set({ height })} placeholder="Sem aferição" />
-          <div className="av2-field" role="group" aria-labelledby="av2-pressao">
-            <span id="av2-pressao" className="av2-label">
-              PAS / PAD
-            </span>
-            <span className="av2-pair-fields">
-              <UnitInput label="PAS" unit="mmHg" value={form.systolic} onChange={(systolic) => set({ systolic })} />
-              <span aria-hidden="true" className="av2-slash">/</span>
-              <UnitInput label="PAD" unit="mmHg" value={form.diastolic} onChange={(diastolic) => set({ diastolic })} />
-            </span>
-          </div>
-          <UnitField label="FC repouso" unit="bpm" value={form.heartRate} onChange={(heartRate) => set({ heartRate })} placeholder="Sem aferição" />
-        </div>
-      </section>
-
-      <section className="panel av2-card" aria-labelledby="av2-protocolo">
-        <h3 id="av2-protocolo">Protocolo de dobras cutâneas</h3>
-        <p className="muted small">A troca do método nunca apaga medidas já registradas.</p>
-        <div className="av2-chips" role="radiogroup" aria-label="Protocolo de dobras">
-          {PROTOCOL_IDS.map((protocol) => (
-            <label key={protocol} className="av2-chip">
-              <input type="radio" name="av2-protocol" checked={form.protocol === protocol} onChange={() => set({ protocol })} />
-              <span>{PROTOCOL_CHIP[protocol]}</span>
-            </label>
-          ))}
-        </div>
-        <div className="av2-grid">
-          <div className="av2-field">
-            <label htmlFor="av2-equacao" className="av2-label">
-              Referência da equação
-            </label>
-            <select id="av2-equacao" value={form.equation} onChange={(event) => set({ equation: event.target.value as EquationSelection })} aria-describedby="av2-equacao-nota">
-              {EQUATIONS.map((equation) => (
-                <option key={equation} value={equation}>
-                  {EQUATION_LABEL[equation]}
-                </option>
-              ))}
-            </select>
-            <span id="av2-equacao-nota" className="av2-note">
-              É a referência da equação, não o gênero da pessoa.
-            </span>
-          </div>
-          <ReadOnlyField label="Idade na avaliação" value={age === null ? "Sem data de nascimento no cadastro" : `${age} ${age === 1 ? "ano" : "anos"}`} />
-          <ReadOnlyField label="Fórmula de conversão" value={CONVERSION_LABEL.siri_1961} />
-          <div className="av2-field">
-            <label htmlFor="av2-leituras" className="av2-label">
-              Leituras por dobra
-            </label>
-            <select id="av2-leituras" value={form.aggregation} onChange={(event) => set({ aggregation: event.target.value as AggregationRule })}>
-              {AGGREGATIONS.map((rule) => (
-                <option key={rule} value={rule}>
-                  {AGGREGATION_LABEL[rule]}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-        {suggestedEquation && form.equation === "not_selected" && (
-          <p className="av2-suggestion">
-            Na avaliação anterior a referência da equação foi <strong>{EQUATION_LABEL[suggestedEquation]}</strong>.{" "}
-            <button type="button" className="av2-add" onClick={() => set({ equation: suggestedEquation })}>
-              Usar a mesma referência
-            </button>
-          </p>
-        )}
-      </section>
-
-      <section className="panel av2-card" aria-labelledby="av2-dobras">
-        <h3 id="av2-dobras">Dobras requeridas{form.protocol ? ` • ${protocolTitle(form.protocol)}` : ""}</h3>
-        <p className="muted small">
-          {form.protocol === null
-            ? "Escolha um protocolo para ver as dobras que ele pede. As medidas abaixo ficam guardadas de qualquer forma."
-            : form.equation === "not_selected"
-              ? "Medidas em milímetros. Sem a equação escolhida, aparecem as dobras das duas referências."
-              : "Medidas em milímetros; itens fora deste método permanecem salvos."}
-        </p>
-        {required.length > 0 && (
+      {on("basics") && (
+        <section className="panel av2-card" aria-labelledby="av2-basicas">
+          <h3 id="av2-basicas">Medidas básicas e sinais vitais</h3>
+          <p className="muted small">Data e aferidor vinculados à avaliação. Campo vazio é “sem aferição”, nunca zero.</p>
           <div className="av2-grid">
-            {required.map((site) => (
-              <SiteReadings key={site} site={site} readings={form.skinfolds[site] ?? []} onChange={(readings) => setSite(site, readings)} />
-            ))}
-          </div>
-        )}
-        <details className="av2-others" open={form.protocol === null || undefined}>
-          <summary>
-            Outras dobras (guardadas, fora deste método){othersTyped > 0 ? ` · ${othersTyped} com medida` : ""}
-          </summary>
-          <div className="av2-grid">
-            {others.map((site) => (
-              <SiteReadings key={site} site={site} readings={form.skinfolds[site] ?? []} onChange={(readings) => setSite(site, readings)} />
-            ))}
-          </div>
-        </details>
-      </section>
-
-      <section className="panel av2-card" aria-labelledby="av2-previa">
-        <h3 id="av2-previa">Prévia calculada</h3>
-        <p className="muted small">{preview.method ?? "Resultado estimado; o método aparece quando o protocolo e a equação estão escolhidos."}</p>
-        <dl className="av2-results">
-          {(
-            [
-              [preview.sumLabel, preview.sum],
-              ["Gordura estimada", preview.fatPercent],
-              ["Massa gorda", preview.fatMass],
-              ["Massa livre", preview.fatFree],
-              ["IMC", preview.bmi],
-            ] as const
-          ).map(([label, value]) => (
-            <div key={label} className="av2-result">
-              <dt>{label}</dt>
-              <dd>{value ?? "—"}</dd>
+            <UnitField label="Peso" unit="kg" value={form.weight} onChange={(weight) => set({ weight })} placeholder="Sem aferição" />
+            <UnitField label="Altura" unit="m" value={form.height} onChange={(height) => set({ height })} placeholder="Sem aferição" />
+            <div className="av2-field" role="group" aria-labelledby="av2-pressao">
+              <span id="av2-pressao" className="av2-label">
+                PAS / PAD
+              </span>
+              <span className="av2-pair-fields">
+                <UnitInput label="PAS" unit="mmHg" value={form.systolic} onChange={(systolic) => set({ systolic })} />
+                <span aria-hidden="true" className="av2-slash">/</span>
+                <UnitInput label="PAD" unit="mmHg" value={form.diastolic} onChange={(diastolic) => set({ diastolic })} />
+              </span>
             </div>
-          ))}
-        </dl>
-        <div aria-live="polite">
-          {preview.status && <p className="av2-preview-status">{preview.status}</p>}
-          {preview.flag && <p className="av2-flag">{preview.flag}</p>}
-        </div>
-      </section>
+            <UnitField label="FC repouso" unit="bpm" value={form.heartRate} onChange={(heartRate) => set({ heartRate })} placeholder="Sem aferição" />
+          </div>
+        </section>
+      )}
 
-      <section className="panel av2-card" aria-labelledby="av2-perimetros">
-        <h3 id="av2-perimetros">Perímetros corporais • cm</h3>
-        <p className="muted small">
-          Sem lateralidade e bilateral com campos separados (D direito, E esquerdo). A diferença bilateral é direito − esquerdo, sem
-          classificação.
-        </p>
-        <div className="av2-grid">
-          {PERIMETER_SINGLE_CODES.map((code) => (
-            <UnitField
-              key={code}
-              label={PERIMETERS_SINGLE[code]}
-              unit="cm"
-              value={form.perimeters[code] ?? ""}
-              placeholder="Sem aferição"
-              onChange={(text) => set({ perimeters: { ...form.perimeters, [code]: text } })}
-            />
-          ))}
-          {PERIMETER_SIDED_CODES.map((code) => {
-            const pair = form.sidedPerimeters[code] ?? { right: "", left: "" };
-            return (
-              <SidedField
+      {on("skinfolds") && (
+        <section className="panel av2-card" aria-labelledby="av2-protocolo">
+          <h3 id="av2-protocolo">Protocolo de dobras cutâneas</h3>
+          <p className="muted small">A troca do método nunca apaga medidas já registradas.</p>
+          <div className="av2-chips" role="radiogroup" aria-label="Protocolo de dobras">
+            {PROTOCOL_IDS.map((protocol) => (
+              <label key={protocol} className="av2-chip">
+                <input type="radio" name="av2-protocol" checked={form.protocol === protocol} onChange={() => set({ protocol })} />
+                <span>{PROTOCOL_CHIP[protocol]}</span>
+              </label>
+            ))}
+          </div>
+          <div className="av2-grid">
+            <div className="av2-field">
+              <label htmlFor="av2-equacao" className="av2-label">
+                Referência da equação
+              </label>
+              <select id="av2-equacao" value={form.equation} onChange={(event) => set({ equation: event.target.value as EquationSelection })} aria-describedby="av2-equacao-nota">
+                {EQUATIONS.map((equation) => (
+                  <option key={equation} value={equation}>
+                    {EQUATION_LABEL[equation]}
+                  </option>
+                ))}
+              </select>
+              <span id="av2-equacao-nota" className="av2-note">
+                É a referência da equação, não o gênero da pessoa.
+              </span>
+            </div>
+            <ReadOnlyField label="Idade na avaliação" value={age === null ? "Sem data de nascimento no cadastro" : `${age} ${age === 1 ? "ano" : "anos"}`} />
+            <ReadOnlyField label="Fórmula de conversão" value={CONVERSION_LABEL.siri_1961} />
+            <div className="av2-field">
+              <label htmlFor="av2-leituras" className="av2-label">
+                Leituras por dobra
+              </label>
+              <select id="av2-leituras" value={form.aggregation} onChange={(event) => set({ aggregation: event.target.value as AggregationRule })}>
+                {AGGREGATIONS.map((rule) => (
+                  <option key={rule} value={rule}>
+                    {AGGREGATION_LABEL[rule]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {suggestedEquation && form.equation === "not_selected" && (
+            <p className="av2-suggestion">
+              Na avaliação anterior a referência da equação foi <strong>{EQUATION_LABEL[suggestedEquation]}</strong>.{" "}
+              <button type="button" className="av2-add" onClick={() => set({ equation: suggestedEquation })}>
+                Usar a mesma referência
+              </button>
+            </p>
+          )}
+        </section>
+      )}
+
+      {on("skinfolds") && (
+        <section className="panel av2-card" aria-labelledby="av2-dobras">
+          <h3 id="av2-dobras">Dobras requeridas{form.protocol ? ` • ${protocolTitle(form.protocol)}` : ""}</h3>
+          <p className="muted small">
+            {form.protocol === null
+              ? "Escolha um protocolo para ver as dobras que ele pede. As medidas abaixo ficam guardadas de qualquer forma."
+              : form.equation === "not_selected"
+                ? "Medidas em milímetros. Sem a equação escolhida, aparecem as dobras das duas referências."
+                : "Medidas em milímetros; itens fora deste método permanecem salvos."}
+          </p>
+          {required.length > 0 && (
+            <div className="av2-grid">
+              {required.map((site) => (
+                <SiteReadings key={site} site={site} readings={form.skinfolds[site] ?? []} onChange={(readings) => setSite(site, readings)} />
+              ))}
+            </div>
+          )}
+          <details className="av2-others" open={form.protocol === null || undefined}>
+            <summary>
+              Outras dobras (guardadas, fora deste método){othersTyped > 0 ? ` · ${othersTyped} com medida` : ""}
+            </summary>
+            <div className="av2-grid">
+              {others.map((site) => (
+                <SiteReadings key={site} site={site} readings={form.skinfolds[site] ?? []} onChange={(readings) => setSite(site, readings)} />
+              ))}
+            </div>
+          </details>
+        </section>
+      )}
+
+      {(on("skinfolds") || on("basics")) && (
+        <section className="panel av2-card" aria-labelledby="av2-previa">
+          <h3 id="av2-previa">Prévia calculada</h3>
+          <p className="muted small">
+            {on("skinfolds")
+              ? (preview.method ?? "Resultado estimado; o método aparece quando o protocolo e a equação estão escolhidos.")
+              : `IMC: peso ÷ altura², conta direta das medidas. ${notIncludedLine("skinfolds")}.`}
+          </p>
+          <dl className="av2-results">
+            {[
+              ...(on("skinfolds")
+                ? ([
+                    [preview.sumLabel, preview.sum],
+                    ["Gordura estimada", preview.fatPercent],
+                  ] as const)
+                : []),
+              // The masses need the weight: with Medidas básicas out of the model they are not shown (the review says why).
+              ...(on("skinfolds") && on("basics")
+                ? ([
+                    ["Massa gorda", preview.fatMass],
+                    ["Massa livre", preview.fatFree],
+                  ] as const)
+                : []),
+              ...(on("basics") ? ([["IMC", preview.bmi]] as const) : []),
+            ].map(([label, value]) => (
+              <div key={label} className="av2-result">
+                <dt>{label}</dt>
+                <dd>{value ?? "—"}</dd>
+              </div>
+            ))}
+          </dl>
+          <div aria-live="polite">
+            {on("skinfolds") && preview.status && <p className="av2-preview-status">{preview.status}</p>}
+            {on("skinfolds") && preview.flag && <p className="av2-flag">{preview.flag}</p>}
+          </div>
+        </section>
+      )}
+
+      {on("perimeters") && (
+        <section className="panel av2-card" aria-labelledby="av2-perimetros">
+          <h3 id="av2-perimetros">Perímetros corporais • cm</h3>
+          <p className="muted small">
+            Sem lateralidade e bilateral com campos separados (D direito, E esquerdo). A diferença bilateral é direito − esquerdo, sem
+            classificação.
+          </p>
+          <div className="av2-grid">
+            {PERIMETER_SINGLE_CODES.map((code) => (
+              <UnitField
                 key={code}
-                label={PERIMETERS_SIDED[code]}
-                rightLabel={sideFieldLabel(code, "right")}
-                leftLabel={sideFieldLabel(code, "left")}
+                label={PERIMETERS_SINGLE[code]}
                 unit="cm"
-                value={pair}
-                note={bilateralNote(pair)}
-                onChange={(next) => set({ sidedPerimeters: { ...form.sidedPerimeters, [code]: next } })}
+                value={form.perimeters[code] ?? ""}
+                placeholder="Sem aferição"
+                onChange={(text) => set({ perimeters: { ...form.perimeters, [code]: text } })}
               />
-            );
-          })}
-          <ReadOnlyField label="Relação cintura/quadril" value={waistHip.value ?? "—"} note={waistHip.status} />
-        </div>
-      </section>
+            ))}
+            {PERIMETER_SIDED_CODES.map((code) => {
+              const pair = form.sidedPerimeters[code] ?? { right: "", left: "" };
+              return (
+                <SidedField
+                  key={code}
+                  label={PERIMETERS_SIDED[code]}
+                  rightLabel={sideFieldLabel(code, "right")}
+                  leftLabel={sideFieldLabel(code, "left")}
+                  unit="cm"
+                  value={pair}
+                  note={bilateralNote(pair)}
+                  onChange={(next) => set({ sidedPerimeters: { ...form.sidedPerimeters, [code]: next } })}
+                />
+              );
+            })}
+            <ReadOnlyField label="Relação cintura/quadril" value={waistHip.value ?? "—"} note={waistHip.status} />
+          </div>
+        </section>
+      )}
 
-      <section className="panel av2-card" aria-labelledby="av2-diametros">
-        <h3 id="av2-diametros">Diâmetros ósseos • cm</h3>
-        <p className="muted small">Medidas brutas, guardadas com a avaliação; nesta versão não geram resultado calculado.</p>
-        <div className="av2-grid">
-          {BONE_BREADTH_CODES.map((code) => (
-            <UnitField
-              key={code}
-              label={BONE_BREADTHS[code]}
-              unit="cm"
-              value={form.breadths[code] ?? ""}
-              placeholder="Sem aferição"
-              onChange={(text) => set({ breadths: { ...form.breadths, [code]: text } })}
-            />
-          ))}
-        </div>
-      </section>
+      {on("breadths") && (
+        <section className="panel av2-card" aria-labelledby="av2-diametros">
+          <h3 id="av2-diametros">Diâmetros ósseos • cm</h3>
+          <p className="muted small">Medidas brutas, guardadas com a avaliação; nesta versão não geram resultado calculado.</p>
+          <div className="av2-grid">
+            {BONE_BREADTH_CODES.map((code) => (
+              <UnitField
+                key={code}
+                label={BONE_BREADTHS[code]}
+                unit="cm"
+                value={form.breadths[code] ?? ""}
+                placeholder="Sem aferição"
+                onChange={(text) => set({ breadths: { ...form.breadths, [code]: text } })}
+              />
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

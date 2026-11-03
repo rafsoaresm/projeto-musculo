@@ -4,6 +4,7 @@ import { requireWorkspace } from "@/modules/auth/server";
 import { assessmentsFor } from "@/db/assessments";
 import { PageHeading } from "@/components/ui";
 import { AssessmentTable } from "@/modules/avaliacoes/assessment-table";
+import { canManageTemplates } from "@/modules/avaliacoes/v2/template-access";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Avaliação Física" };
@@ -19,6 +20,14 @@ export default async function Assessments() {
         title="Avaliação Física"
         description="A avaliação física de cada aluno, como registros com data. Alertas sem revisão aparecem primeiro. A ferramenta descreve o que foi relatado e medido; não diagnostica nem libera ninguém para treinar."
       />
+      {canManageTemplates(workspace.role) && (
+        <p>
+          <Link className="account-link" href="/profissional/avaliacoes/modelos">
+            Modelos de avaliação
+          </Link>{" "}
+          <span className="small muted">— quais partes opcionais entram em cada avaliação e em que ordem.</span>
+        </p>
+      )}
       {rows.length === 0 ? (
         <section className="panel">
           <h2>Nenhum aluno ainda.</h2>
