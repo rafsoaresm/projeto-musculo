@@ -9,6 +9,7 @@ import {
   autosaveArmed,
   decideSave,
   runQueued,
+  sendModules,
   type SaveOutcome,
   type SaveStand,
   type SaveTrigger,
@@ -46,7 +47,7 @@ const joined = (modules: Record<string, DraftModule>) => JSON.stringify(Object.k
 /**
  * The draft that saves itself (rule in autosave.ts): a pause in the typing, leaving a step and the button all go through `request`, which never
  * starts a second save while one is on the way — it waits, and the latest content goes after it. Each module that changed is sent in turn, with the
- * revision the previous answer gave.
+ * revision the previous answer gave; a module with an invalid value is skipped, and the others still go (sendModules).
  */
 export function useDraftAutosave(initialRevision: number, modules: Record<string, DraftModule>) {
   const [saved, setSaved] = useState<Record<string, string>>(() => Object.fromEntries(Object.entries(modules).map(([key, part]) => [key, part.content])));
@@ -84,36 +85,13 @@ export function useDraftAutosave(initialRevision: number, modules: Record<string
     busy.current = true;
     setInFlight(true);
     const sentContent = now.content;
-    let outcome: SaveOutcome = "saved";
-    const stored: Record<string, string> = {};
-    for (const key of keys) {
-      const part = now.modules[key];
-      const read = part.read();
-      if ("problem" in read) {
-        outcome = "invalid";
-        setAnswer({ kind: "error", text: read.problem, content: sentContent, loud: trigger === "button" });
-        break;
-      }
-      let result: SaveSectionResult;
-      try {
-        result = await part.send(read.payload, revision.current);
-      } catch {
-        result = { error: SAVE_UNREACHABLE };
-      }
-      if ("saved" in result) {
-        revision.current = result.revision;
-        stored[key] = part.content;
-        continue;
-      }
-      if ("conflict" in result) {
-        outcome = "conflict";
-        setAnswer({ kind: "conflict", text: `${result.conflict} ${AUTOSAVE_STOPPED}` });
-      } else {
-        outcome = "error";
-        setAnswer({ kind: "error", text: result.error, content: sentContent, loud: true });
-      }
-      break;
-    }
+    const report = await sendModules(keys, now.modules, revision.current, SAVE_UNREACHABLE);
+    revision.current = report.revision;
+    const outcome: SaveOutcome = report.outcome;
+    const stored = Object.fromEntries(report.stored.map((key) => [key, now.modules[key].content]));
+    if (outcome === "conflict") setAnswer({ kind: "conflict", text: `${report.problem} ${AUTOSAVE_STOPPED}` });
+    else if (outcome === "error") setAnswer({ kind: "error", text: report.problem ?? SAVE_UNREACHABLE, content: sentContent, loud: true });
+    else if (outcome === "invalid") setAnswer({ kind: "error", text: report.problem ?? "", content: sentContent, loud: trigger === "button" });
     const nextSaved = { ...latest.current.saved, ...stored };
     setSaved(nextSaved);
     latest.current = { ...latest.current, saved: nextSaved };

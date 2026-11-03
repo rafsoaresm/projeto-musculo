@@ -65,3 +65,57 @@ export function savedAtLabel(at: Date, timeZone?: string): string {
   const time = new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone }).format(at);
   return `Salvo às ${time}.`;
 }
+
+/** The server's answer to one module (the shape of SaveSectionResult in actions.ts). */
+export type ModuleAnswer = { saved: true; revision: number } | { conflict: string } | { error: string };
+
+/** One module to send: how to read it into a payload (or the problem to show), and how to send it against a revision. */
+export interface ModuleToSend {
+  read: () => { payload: unknown } | { problem: string };
+  send: (payload: unknown, revision: number) => Promise<ModuleAnswer>;
+}
+
+export interface SendReport {
+  outcome: SaveOutcome;
+  /** The modules the server stored. */
+  stored: string[];
+  /** The revision after the last save that went through. */
+  revision: number;
+  /** The first invalid value found, or the conflict or the failure that stopped the round. */
+  problem: string | null;
+}
+
+/**
+ * Sends the modules in turn, each with the revision the previous answer gave. A module with an invalid value is not sent, and the others still
+ * are: a value still being typed in one step never holds back what was typed in another. A conflict or a failure stops the round (every later
+ * attempt would meet the same), and wins over an invalid value in what is reported.
+ */
+export async function sendModules(keys: readonly string[], modules: Record<string, ModuleToSend>, revision: number, unreachable: string): Promise<SendReport> {
+  const report: SendReport = { outcome: "saved", stored: [], revision, problem: null };
+  for (const key of keys) {
+    const part = modules[key];
+    const read = part.read();
+    if ("problem" in read) {
+      if (report.outcome === "saved") {
+        report.outcome = "invalid";
+        report.problem = read.problem;
+      }
+      continue;
+    }
+    let result: ModuleAnswer;
+    try {
+      result = await part.send(read.payload, report.revision);
+    } catch {
+      result = { error: unreachable };
+    }
+    if ("saved" in result) {
+      report.revision = result.revision;
+      report.stored.push(key);
+      continue;
+    }
+    report.outcome = "conflict" in result ? "conflict" : "error";
+    report.problem = "conflict" in result ? result.conflict : result.error;
+    break;
+  }
+  return report;
+}
