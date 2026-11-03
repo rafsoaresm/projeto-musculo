@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Dumbbell, ShieldCheck } from "lucide-react";
+import { ArrowRight, Dumbbell, MessageSquare, ShieldCheck } from "lucide-react";
 import { PageHeading, Pill, formatDate } from "@/components/ui";
 
 export interface PortalHomeLink {
@@ -22,12 +22,17 @@ export function PortalHome({
   trainingHref,
   trainingLinkLabel,
   currentPlan,
+  newReplies = 0,
+  checkinHref,
 }: {
   links: PortalHomeLink[];
   trainingHref: string;
   trainingLinkLabel: string;
   /** Only passed when a delivered revision exists (demonstration for now). */
   currentPlan?: PortalCurrentPlan;
+  /** Replies of the professional to check-ins that the login has not seen yet (in-app marker; no e-mail). */
+  newReplies?: number;
+  checkinHref?: string;
 }) {
   return (
     <>
@@ -55,6 +60,27 @@ export function PortalHome({
           </p>
         </section>
       ))}
+      {newReplies > 0 && checkinHref && (
+        <section className="panel planned-panel" aria-labelledby="nova-resposta">
+          <span className="icon-tile">
+            <MessageSquare size={24} />
+          </span>
+          <div>
+            <p className="eyebrow">CHECK-IN</p>
+            <h2 id="nova-resposta">
+              {newReplies === 1 ? "Nova resposta do seu profissional" : `${newReplies} novas respostas do seu profissional`}
+            </h2>
+            <p>
+              {newReplies === 1
+                ? "O seu profissional respondeu a um check-in seu."
+                : "Há respostas novas do profissional nos seus check-ins."}
+            </p>
+            <Link className="text-link" href={checkinHref}>
+              {newReplies === 1 ? "Ver a resposta" : "Ver as respostas"} <ArrowRight size={15} />
+            </Link>
+          </div>
+        </section>
+      )}
       <section className="panel planned-panel">
         <span className="icon-tile">
           <Dumbbell size={24} />

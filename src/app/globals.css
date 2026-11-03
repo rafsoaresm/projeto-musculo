@@ -232,6 +232,14 @@ textarea:focus {
   font-weight: 400;
   line-height: 1.45;
 }
+.check-row.check-row-tap {
+  /* The whole row is the tap target: at least 44px tall even on one line. */
+  min-height: 44px;
+  align-items: center;
+}
+.check-row.check-row-tap input[type="checkbox"] {
+  margin-top: 0;
+}
 .check-row input[type="checkbox"],
 .check-row input[type="radio"] {
   width: 22px;
@@ -2178,6 +2186,101 @@ label.check input {
 }
 .profile-form .notice {
   margin-bottom: 0;
+}
+
+/* ---------- Check-ins (0.87): own questions, replies, form editor ---------- */
+.checkin-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+.checkin-item > p,
+.checkin-item > dl,
+.checkin-item > ol {
+  margin: 8px 0 0;
+}
+.checkin-answers {
+  display: grid;
+  gap: 8px;
+}
+.checkin-answers > div {
+  display: grid;
+  gap: 2px;
+}
+.checkin-answers dt {
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  color: var(--color-ink);
+  overflow-wrap: anywhere;
+}
+.checkin-answers dd {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.checkin-replies {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.checkin-replies > li {
+  border-left: 3px solid var(--color-primary);
+  background: var(--color-primary-soft);
+  border-radius: var(--radius-xs);
+  padding: 10px 14px;
+}
+.checkin-replies p {
+  margin: 0;
+}
+.checkin-reply-meta {
+  color: var(--color-muted);
+}
+.checkin-reply-body {
+  margin-top: 4px !important;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.checkin-reply-form {
+  margin-top: 12px;
+}
+.checkin-reply-form > summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--color-primary-strong);
+}
+.checkin-reply-form[open] > summary {
+  margin-bottom: 8px;
+}
+.checkin-question-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+}
+.checkin-question-text {
+  /* The whole question stays visible as it wraps (no hidden lines on a phone). */
+  field-sizing: content;
+  min-height: 3.2em;
+}
+.checkin-question-actions {
+  display: flex;
+  gap: 6px;
+}
+.checkin-question-actions .button.small {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 8px 12px;
+}
+@media (max-width: 520px) {
+  .checkin-question-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* ---------- Assessments ---------- */
