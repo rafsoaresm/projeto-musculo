@@ -1,7 +1,6 @@
 "use client";
 import { useRef, useState } from "react";
-import { formatCalendarDate } from "@/modules/training/format";
-import { chartGeometry } from "./evolution";
+import { chartGeometry, dateLabels } from "./evolution";
 
 const W = 360;
 const H = 150;
@@ -10,7 +9,8 @@ const AREA = { left: 46, top: 14, width: 296, height: 88 };
 /**
  * One measure over time: a thin line, round markers, three recessive guides and a label on the
  * last value only. The drawing is a supplement: every value is also in the table next to it, and
- * the pointer, the keyboard (arrow keys) and focus show the same readout.
+ * the pointer, the keyboard (arrow keys) and focus show the same readout. Two values of the same day (slice 0.84) come in the order they were
+ * recorded, side by side, each read with the time it was recorded (`recordedAt`).
  */
 export function MetricChart({
   title,
@@ -20,7 +20,7 @@ export function MetricChart({
 }: {
   title: string;
   unit: string | null;
-  points: Array<{ assessedOn: string; value: number; text: string }>;
+  points: Array<{ assessedOn: string; value: number; text: string; recordedAt?: string | null }>;
   /** Decimal places of the guides and of the last value's label (a density reads 1,0532, a waist 88,5). */
   digits?: number;
 }) {
@@ -28,6 +28,8 @@ export function MetricChart({
   const [active, setActive] = useState<number | null>(null);
   const box = useRef<SVGSVGElement>(null);
   const geometry = chartGeometry(points, AREA);
+  const labels = dateLabels(points);
+  const axisLabels = dateLabels(points, true);
   const suffix = unit ? ` ${unit}` : "";
   const last = geometry.points[geometry.points.length - 1];
   const shown = active !== null ? geometry.points[active] : null;
@@ -72,10 +74,10 @@ export function MetricChart({
           </g>
         ))}
         <text x={AREA.left} y={H - 8} textAnchor="start" className="chart-tick">
-          {formatCalendarDate(points[0].assessedOn)}
+          {axisLabels[0]}
         </text>
         <text x={AREA.left + AREA.width} y={H - 8} textAnchor="end" className="chart-tick">
-          {formatCalendarDate(points[points.length - 1].assessedOn)}
+          {axisLabels[axisLabels.length - 1]}
         </text>
         {shown && (
           <line x1={shown.x} x2={shown.x} y1={AREA.top} y2={AREA.top + AREA.height} className="chart-cross" />
@@ -108,7 +110,7 @@ export function MetricChart({
             {points[active].text}
             {suffix}
           </strong>
-          <span>{formatCalendarDate(points[active].assessedOn)}</span>
+          <span>{labels[active]}</span>
         </div>
       )}
     </div>

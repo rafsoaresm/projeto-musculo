@@ -1,6 +1,6 @@
 import { TriangleAlert } from "lucide-react";
 import { Pill } from "@/components/ui";
-import { formatCalendarDate } from "@/modules/training/format";
+import { dateLabels } from "../evolution";
 import { MetricChart } from "../metric-chart";
 import { CONVERSION_LABEL } from "./composition";
 import { BREAK_LABEL, resultEvolution, type ComparableSeries, type EvolutionPoint, type EvolutionSource, type ResultEvolution } from "./evolution";
@@ -26,15 +26,23 @@ function warning(group: ResultEvolution, title: string) {
   return `Metodologias diferentes; comparação de “${title}” pode não ser equivalente. Cada método tem a sua série.`;
 }
 
-function summary(code: string, points: EvolutionPoint[]) {
+/** The date of each value of a result, keyed by assessment: with the time it was recorded when another value of the result shares the date. */
+type DateOf = (point: EvolutionPoint) => string;
+function datesOf(points: EvolutionPoint[]): DateOf {
+  const labels = dateLabels(points);
+  const byAssessment = new Map(points.map((point, index) => [point.assessmentId, labels[index]]));
+  return (point) => byAssessment.get(point.assessmentId) ?? dateLabels([point])[0];
+}
+
+function summary(code: string, points: EvolutionPoint[], dateOf: DateOf) {
   const first = points[0];
   const last = points[points.length - 1];
   return points.length === 1
-    ? `Um valor: ${valueText(code, first)} em ${formatCalendarDate(first.assessedOn)}.`
-    : `${points.length} valores. Primeiro: ${valueText(code, first)} em ${formatCalendarDate(first.assessedOn)}. Último: ${valueText(code, last)} em ${formatCalendarDate(last.assessedOn)}.`;
+    ? `Um valor: ${valueText(code, first)} em ${dateOf(first)}.`
+    : `${points.length} valores. Primeiro: ${valueText(code, first)} em ${dateOf(first)}. Último: ${valueText(code, last)} em ${dateOf(last)}.`;
 }
 
-function Series({ group, series, title }: { group: ResultEvolution; series: ComparableSeries; title: string }) {
+function Series({ group, series, title, dateOf }: { group: ResultEvolution; series: ComparableSeries; title: string; dateOf: DateOf }) {
   const digits = resultDigits(group.code);
   const number = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: digits });
   const label = `${title}, ${methodLabel(series.method)}`;
@@ -50,13 +58,13 @@ function Series({ group, series, title }: { group: ResultEvolution; series: Comp
           </>
         )}
       </p>
-      <p className="small muted">{summary(group.code, series.points)}</p>
+      <p className="small muted">{summary(group.code, series.points, dateOf)}</p>
       {series.numeric.length >= 2 && (
         <MetricChart
           title={label}
           unit={series.unit}
           digits={digits}
-          points={series.numeric.map((point) => ({ assessedOn: point.assessedOn, value: point.value as number, text: number.format(point.value as number) }))}
+          points={series.numeric.map((point) => ({ assessedOn: point.assessedOn, recordedAt: point.recordedAt, value: point.value as number, text: number.format(point.value as number) }))}
         />
       )}
     </div>
@@ -66,14 +74,16 @@ function Series({ group, series, title }: { group: ResultEvolution; series: Comp
 /**
  * The results of the Avaliação Física over time (handoff 4.3, 5 and 9): per result, one series per way of obtaining it, each with its own
  * line; a change of protocol, of formula version or of conversion is marked where it happens and never joined to the values before it. The
- * values of the earlier format (method unknown) are listed apart. A rise or fall is never called better or worse.
+ * values of the earlier format (method unknown) are listed apart. A rise or fall is never called better or worse. Two assessments of the same
+ * date are in the order they were recorded and dated with the time (slice 0.84). The same panel serves the student's area (slice 0.84), read
+ * only, with its own heading id and title when the login is linked to more than one student.
  */
-export function ResultsEvolution({ history }: { history: EvolutionSource[] }) {
+export function ResultsEvolution({ history, headingId = "resultados-evolucao", heading = "Resultados ao longo do tempo" }: { history: EvolutionSource[]; headingId?: string; heading?: string }) {
   const groups = resultEvolution(history);
   return (
-    <section className="panel" aria-labelledby="resultados-evolucao">
+    <section className="panel" aria-labelledby={headingId}>
       <p className="eyebrow">RESULTADOS</p>
-      <h2 id="resultados-evolucao">Resultados ao longo do tempo</h2>
+      <h2 id={headingId}>{heading}</h2>
       <p className="muted">
         Cada série reúne só valores obtidos do mesmo jeito: o mesmo método ou protocolo, a mesma versão da fórmula e a mesma conversão. Um
         protocolo diferente começa outra série, com a sua própria linha. Os valores são os registrados ao finalizar cada avaliação, sem
@@ -82,6 +92,8 @@ export function ResultsEvolution({ history }: { history: EvolutionSource[] }) {
       {groups.length === 0 && <p>Nenhum resultado foi calculado nessas avaliações.</p>}
       {groups.map((group) => {
         const title = RESULT_LABEL[group.code] ?? group.code;
+        const dateOf = datesOf(group.timeline);
+        const legacyDates = dateLabels(group.legacy);
         return (
           <div key={group.code} className="series-block av2-evolution" role="group" aria-label={title}>
             <h3>{title}</h3>
@@ -92,7 +104,7 @@ export function ResultsEvolution({ history }: { history: EvolutionSource[] }) {
               </p>
             )}
             {group.series.map((series) => (
-              <Series key={series.key} group={group} series={series} title={title} />
+              <Series key={series.key} group={group} series={series} title={title} dateOf={dateOf} />
             ))}
             {group.timeline.length > 1 && (
               <details>
@@ -112,7 +124,7 @@ export function ResultsEvolution({ history }: { history: EvolutionSource[] }) {
                       {group.timeline.map((point, index) => (
                         <tr key={`${point.assessmentId}-${index}`} data-break={point.break ?? undefined}>
                           <th scope="row" data-label="Data">
-                            {formatCalendarDate(point.assessedOn)}
+                            {dateOf(point)}
                           </th>
                           <td data-label="Valor">{valueText(group.code, point)}</td>
                           <td data-label="Método">
@@ -156,7 +168,7 @@ export function ResultsEvolution({ history }: { history: EvolutionSource[] }) {
                 <ul className="av2-evolution-list">
                   {group.legacy.map((point, index) => (
                     <li key={`${point.assessmentId}-${index}`}>
-                      {formatCalendarDate(point.assessedOn)}: <strong>{valueText(group.code, point)}</strong>
+                      {legacyDates[index]}: <strong>{valueText(group.code, point)}</strong>
                     </li>
                   ))}
                 </ul>

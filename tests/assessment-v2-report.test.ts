@@ -294,6 +294,48 @@ describe("who gets the report (local D1)", () => {
     await db.prepare("UPDATE student_access SET revoked_at = NULL WHERE user_id = 'client-1'").run();
   });
 
+  it("the linked student reads the evolution of their own recorded ones: the amendment in place of the original, same date by time (0.84)", async () => {
+    const api = assessmentsFor(db, scope("tech-a"));
+    const record = async (id: string, weightKg: number, at: string) => {
+      let revision = (await api.sections(id))!.revision;
+      for (const [module, payload] of Object.entries({ screening: noParq, composition: { ...JP7, weightKg } })) {
+        const saved = await api.saveSection(id, { module: module as never, status: "IN_PROGRESS", payload, revision });
+        if (saved.status !== "saved") throw new Error(saved.status);
+        revision = saved.revision;
+      }
+      expect(await api.finalize(id, revision, new Date(at))).toEqual({ status: "recorded" });
+    };
+    // The draft of 04/11 is recorded at 15:00; a third of the same date at 17:00; the first (03/11) is amended.
+    await record(draft, 70, "2026-11-04T15:00:00Z");
+    const third = await api.startDraft("st-1", new Date("2026-11-04T16:00:00Z"));
+    if (third.status !== "started") throw new Error(third.status);
+    await record(third.id, 71, "2026-11-04T17:00:00Z");
+    const amended = await api.amend(recorded, "Peso digitado errado", new Date("2026-11-04T18:00:00Z"));
+    if (amended.status !== "started") throw new Error(amended.status);
+    await record(amended.id, 69.5, "2026-11-04T18:30:00Z");
+
+    const mine = await studentAssessmentsFor(db, "client-1", "st-1").evolution();
+    expect(mine.map((source) => [source.id, source.assessedOn, source.recordedAt, source.formatVersion])).toEqual([
+      [amended.id, "2026-11-03", "2026-11-04T18:30:00.000Z", 2],
+      [draft, "2026-11-04", "2026-11-04T15:00:00.000Z", 2],
+      [third.id, "2026-11-04", "2026-11-04T17:00:00.000Z", 2],
+    ]);
+    // The results as written at finalize, with method and formula version; the same ones the professional's history reads.
+    const bmi = mine.map((source) => source.results.find((result) => result.code === "bmi"));
+    expect(bmi.every((result) => result?.method === "weight_over_height_squared" && typeof result.formulaVersion === "string")).toBe(true);
+    const history = await api.history("st-1");
+    expect(history.map((item) => item.id)).toEqual(mine.map((source) => source.id));
+    expect(mine.map((source) => source.results)).toEqual(history.map((item) => item.results));
+    // Nobody else: another login, another student of the same login, the professional's id as a login, a blank login, a revoked link.
+    expect(await studentAssessmentsFor(db, "client-2", "st-1").evolution()).toEqual([]);
+    expect(await studentAssessmentsFor(db, "client-1", "st-2").evolution()).toEqual([]);
+    expect(await studentAssessmentsFor(db, "tech-a", "st-1").evolution()).toEqual([]);
+    expect(await studentAssessmentsFor(db, "", "st-1").evolution()).toEqual([]);
+    await db.prepare("UPDATE student_access SET revoked_at = '2026-11-05T00:00:00Z' WHERE user_id = 'client-1'").run();
+    expect(await studentAssessmentsFor(db, "client-1", "st-1").evolution()).toEqual([]);
+    await db.prepare("UPDATE student_access SET revoked_at = NULL WHERE user_id = 'client-1'").run();
+  });
+
   it("records who downloaded which report and when, never the content", async () => {
     await recordReportDownload(db, { organizationId: "org-a", actorUserId: "client-1", assessmentId: recorded }, new Date("2026-11-05T10:00:00Z"));
     expect(

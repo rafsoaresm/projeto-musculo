@@ -13,6 +13,8 @@ export const LEGACY_METHOD = "legacy_formula_unknown";
 export interface EvolutionSource {
   id: string;
   assessedOn: string;
+  /** When it was recorded (ISO): orders two assessments of the same date and dates their values with the time (slice 0.84). */
+  recordedAt?: string | null;
   formatVersion: number | null;
   results: ResultRow[];
 }
@@ -20,6 +22,7 @@ export interface EvolutionSource {
 export interface EvolutionPoint {
   assessmentId: string;
   assessedOn: string;
+  recordedAt: string | null;
   /** Null when the record holds no value: shown as "Sem valor", never as 0. */
   value: number | null;
   unit: string | null;
@@ -88,15 +91,24 @@ const conversionOf = (code: string, inputs: Record<string, unknown> | null) =>
 const isLegacy = (source: EvolutionSource, result: ResultRow) => source.formatVersion !== 2 || result.method === LEGACY_METHOD;
 const ORDER: readonly string[] = RESULT_CODES;
 
-/** The history of results, grouped by result (in the order the assessment lists them), each split in comparable series. `history` is oldest first. */
+/** Two of the same date: the one recorded first comes first; without both times, the order given. */
+const byRecorded = (a: string | null | undefined, b: string | null | undefined) => (a && b ? a.localeCompare(b) : 0);
+
+/**
+ * The history of results, grouped by result (in the order the assessment lists them), each split in comparable series. `history` is oldest
+ * first; two assessments of the same date are ordered by the time they were recorded (slice 0.84).
+ */
 export function resultEvolution(history: EvolutionSource[]): ResultEvolution[] {
-  const sorted = [...history].map((source, index) => ({ source, index })).sort((a, b) => a.source.assessedOn.localeCompare(b.source.assessedOn) || a.index - b.index);
+  const sorted = [...history]
+    .map((source, index) => ({ source, index }))
+    .sort((a, b) => a.source.assessedOn.localeCompare(b.source.assessedOn) || byRecorded(a.source.recordedAt, b.source.recordedAt) || a.index - b.index);
   const byCode = new Map<string, { fresh: EvolutionPoint[]; legacy: EvolutionPoint[] }>();
   for (const { source } of sorted) {
     for (const result of source.results) {
       const point: EvolutionPoint = {
         assessmentId: source.id,
         assessedOn: source.assessedOn,
+        recordedAt: source.recordedAt ?? null,
         value: typeof result.value === "number" && Number.isFinite(result.value) ? result.value : null,
         unit: result.unit,
         method: result.method,

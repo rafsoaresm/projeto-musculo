@@ -163,7 +163,7 @@ export function shapeFindings(rows: FindingRow[]): Pick<AssessmentDetail, "postu
 /** A recorded assessment as the evolution view reads it: no reviews, no drafts. */
 export type AssessmentSnapshot = Pick<
   AssessmentDetail,
-  "id" | "assessedOn" | "kind" | "formatVersion" | "riskStatus" | "reviewed" | "flags" | "posture" | "movement" | "metrics" | "photos" | "results"
+  "id" | "assessedOn" | "recordedAt" | "kind" | "formatVersion" | "riskStatus" | "reviewed" | "flags" | "posture" | "movement" | "metrics" | "photos" | "results"
 >;
 
 /**
@@ -525,6 +525,7 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
       return rows.map((row) => ({
         id: row.id,
         assessedOn: row.assessedOn,
+        recordedAt: row.recordedAt,
         kind: row.kind,
         formatVersion: row.formatVersion,
         riskStatus: row.riskStatus,
