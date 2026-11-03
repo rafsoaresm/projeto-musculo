@@ -14,6 +14,7 @@ import {
 import { SECTION_STATUSES, isModule, type AssessmentModule, type SectionStatus } from "@/modules/avaliacoes/catalog";
 import { COMPOSITION_MODULE, compositionSchema } from "@/modules/avaliacoes/v2/composition";
 import { PROFILE_MODULE, SCREENING_MODULE, profileSchema, screeningSchema } from "@/modules/avaliacoes/v2/screening";
+import { POSTURE_MODULE, postureSchema } from "@/modules/avaliacoes/v2/posture";
 import { recordedScreening, reviewDraft } from "@/modules/avaliacoes/v2/review";
 import { activeUser, assertContext, technicalAccessExists, type AuthenticatedContext } from "./students";
 
@@ -733,7 +734,9 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
       const profile = stored(PROFILE_MODULE) === undefined ? null : profileSchema.safeParse(stored(PROFILE_MODULE));
       const screening = stored(SCREENING_MODULE) === undefined ? null : screeningSchema.safeParse(stored(SCREENING_MODULE));
       const composition = stored(COMPOSITION_MODULE) === undefined ? null : compositionSchema.safeParse(stored(COMPOSITION_MODULE));
-      if ((profile && !profile.success) || (screening && !screening.success) || (composition && !composition.success)) return { status: "invalid" };
+      const posture = stored(POSTURE_MODULE) === undefined ? null : postureSchema.safeParse(stored(POSTURE_MODULE));
+      if ((profile && !profile.success) || (screening && !screening.success) || (composition && !composition.success) || (posture && !posture.success))
+        return { status: "invalid" };
       let original: { screening: ReturnType<typeof screeningSchema.parse> | null } | null = null;
       if (head.amendsId) {
         const raw = await db
@@ -748,6 +751,7 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
         profile: profile?.success ? profile.data : null,
         screening: screening?.success ? screening.data : null,
         composition: composition?.success ? composition.data : null,
+        posture: posture?.success ? posture.data : null,
         assessedOn: head.assessedOn,
         birthDate: typeof snapshot.birthDate === "string" ? snapshot.birthDate : null,
         original,

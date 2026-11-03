@@ -59,13 +59,13 @@ test("the Medidas step of the new format computes the preview, keeps values acro
   await page.getByRole("button", { name: "Iniciar avaliação física" }).click();
   await expect(page.getByRole("heading", { name: "Avaliação física de Aluno das medidas" })).toBeVisible();
 
-  // A new draft opens at step 1, the Triagem; the steps still to come are honest placeholders, with no field.
+  // A new draft opens at step 1, the Triagem.
   const steps = page.getByRole("navigation", { name: "Etapas da avaliação física" });
   await expect(steps.getByRole("button")).toHaveText(["1 Triagem", "2 Medidas", "3 Movimento", "4 Revisão"]);
   await expect(steps.getByRole("button", { name: "1 Triagem" })).toHaveAttribute("aria-current", "step");
   await expect(page.getByText("Sem alterações desde que a página abriu.")).toBeVisible();
   await steps.getByRole("button", { name: "3 Movimento" }).click();
-  await expect(page.getByText("Esta etapa chega numa próxima versão.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Postura e movimento" })).toBeVisible();
   await page.getByRole("button", { name: "Voltar" }).click();
   await expect(steps.getByRole("button", { name: "2 Medidas" })).toHaveAttribute("aria-current", "step");
   // The address keeps the step, so a reload (and the other tab below) opens it again.
@@ -493,4 +493,134 @@ test("the Triagem step takes the goals, the anamnesis, the activity and the PAR-
   await other.getByRole("button", { name: "1 Triagem" }).click();
   await expect(other.getByRole("region", { name: "Atividade física atual" }).getByLabel("Frequência (por semana)")).toHaveValue("3");
   await other.close();
+});
+
+/**
+ * The findings of every region shown in a card line up: the first chip of each region starts at the same x, and every chip has the same width (the
+ * columns are the same on every line, whatever the number of findings). Only what is on screen (the open tab) counts.
+ */
+async function findingsAligned(page: Page, card: string) {
+  return page.getByRole("region", { name: card }).evaluate((region) => {
+    const chips = [...region.querySelectorAll<HTMLElement>(".av2-finding-options")].filter((box) => box.offsetParent !== null).map((box) => [...box.children] as HTMLElement[]);
+    const firsts = chips.map((row) => row[0].getBoundingClientRect());
+    const widths = chips.flat().map((chip) => chip.getBoundingClientRect().width);
+    return (
+      chips.length > 0 &&
+      firsts.every((box) => Math.abs(box.left - firsts[0].left) <= 1) &&
+      widths.every((width) => Math.abs(width - widths[0]) <= 1)
+    );
+  });
+}
+const view = (page: Page, name: string) => page.getByRole("region", { name: "Avaliação postural" }).getByRole("tab", { name: new RegExp(`^${name}`) });
+
+// Slice 0.79: the "Movimento" step, posture in three views and the somatotype (handoff 3.3, Figma AV-05).
+test("the Movimento step records the posture in three views and the somatotype, never as a diagnosis nor computed, and saves itself", async ({ page }) => {
+  await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
+  await createProfessional(page, "Estúdio da postura");
+  await addStudent(page, "Aluno da postura");
+  await showStudentTab(page, "Avaliação Física");
+  await page.getByRole("button", { name: "Iniciar avaliação física" }).click();
+  await expect(page.getByRole("heading", { name: "Triagem e segurança" })).toBeVisible();
+  await page.getByRole("navigation", { name: "Etapas da avaliação física" }).getByRole("button", { name: "3 Movimento" }).click();
+  await expect(page.getByRole("heading", { name: "Postura e movimento" })).toBeVisible();
+
+  // Three views as tabs; nothing is observed by itself (a region is never "alinhado" by default).
+  const posture = page.getByRole("region", { name: "Avaliação postural" });
+  await expect(posture.getByRole("tab")).toHaveText(["Lateral · 0 de 8", "Posterior · 0 de 7", "Anterior · 0 de 4"]);
+  await expect(view(page, "Lateral")).toHaveAttribute("aria-selected", "true");
+  await expect(posture.getByRole("radiogroup")).toHaveCount(6);
+  await expect(posture.getByRole("radio", { name: "Não observado", checked: true })).toHaveCount(6);
+  await expect(posture.getByRole("checkbox", { checked: true })).toHaveCount(0);
+
+  // Findings that may coexist are several; the neutral one stands alone.
+  const shoulders = posture.getByRole("group", { name: "Ombros (visão lateral)" });
+  await expect(shoulders).toHaveAccessibleDescription("Pode marcar mais de um");
+  await shoulders.getByRole("checkbox", { name: "Protusos" }).check();
+  await shoulders.getByRole("checkbox", { name: "Rotação interna" }).check();
+  await expect(shoulders.getByRole("checkbox", { checked: true })).toHaveCount(2);
+  await shoulders.getByRole("checkbox", { name: "Alinhados" }).check();
+  await expect(shoulders.getByRole("checkbox", { checked: true })).toHaveCount(1);
+  await shoulders.getByRole("checkbox", { name: "Protusos" }).check();
+  await expect(shoulders.getByRole("checkbox", { name: "Alinhados" })).not.toBeChecked();
+  // A paired region with a finding that deviates asks the side (handoff 3.3: `laterality?`); "Alinhados" or no finding does not.
+  const shouldersSide = posture.getByRole("radiogroup", { name: "Lado (ombros, visão lateral)" });
+  await expect(shouldersSide.getByRole("radio", { name: "Não informado" })).toBeChecked();
+  await shouldersSide.getByRole("radio", { name: "Lado direito" }).check();
+  await expect(posture.getByRole("radiogroup", { name: "Lado (quadril, visão lateral)" })).toHaveCount(0);
+  const hip = posture.getByRole("radiogroup", { name: "Quadril (visão lateral)" });
+  await hip.getByRole("radio", { name: "Retroversão" }).check();
+  await hip.getByRole("radio", { name: "Anteversão" }).check();
+  await expect(view(page, "Lateral")).toHaveText("Lateral · 2 de 8");
+  // "Não observado" takes a choice back.
+  const knees = posture.getByRole("radiogroup", { name: "Joelhos (visão lateral)" });
+  await knees.getByRole("radio", { name: "Flexo" }).check();
+  await expect(view(page, "Lateral")).toHaveText("Lateral · 3 de 8");
+  await knees.getByRole("radio", { name: "Não observado" }).check();
+  await expect(view(page, "Lateral")).toHaveText("Lateral · 2 de 8");
+  expect(await findingsAligned(page, "Avaliação postural")).toBe(true);
+  await noHorizontalOverflow(page);
+
+  // The arrow keys move between the views (the ARIA tab pattern).
+  await view(page, "Lateral").focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(view(page, "Posterior")).toHaveAttribute("aria-selected", "true");
+  await expect(view(page, "Posterior")).toBeFocused();
+  await posture.getByRole("group", { name: "Escápulas (visão posterior)" }).getByRole("checkbox", { name: "Esquerda alada" }).check();
+  await posture.getByRole("radiogroup", { name: "Inclinação da cabeça (visão posterior)" }).getByRole("radio", { name: "Sem desvio observado" }).check();
+  await posture.getByLabel("Observações da visão posterior").fill("Escápula esquerda mais afastada");
+  expect(await findingsAligned(page, "Avaliação postural")).toBe(true);
+  await view(page, "Anterior").click();
+  await posture.getByRole("radiogroup", { name: "EIAS (visão anterior)" }).getByRole("radio", { name: "Direita deprimida" }).check();
+  await expect(posture.getByRole("tab")).toHaveText(["Lateral · 2 de 8", "Posterior · 2 de 7", "Anterior · 1 de 4"]);
+
+  // The somatotype is the professional's record: the components together, "Misto" alone; the Heath-Carter measures are kept, never computed.
+  const somatotype = page.getByRole("region", { name: "Somatotipo" });
+  const labels = somatotype.getByRole("group", { name: "Somatotipo" });
+  await labels.getByRole("checkbox", { name: "Endomorfo" }).check();
+  await labels.getByRole("checkbox", { name: "Mesomorfo" }).check();
+  await labels.getByRole("checkbox", { name: "Misto" }).check();
+  await expect(labels.getByRole("checkbox", { checked: true })).toHaveCount(1);
+  await labels.getByRole("checkbox", { name: "Endomorfo" }).check();
+  await labels.getByRole("checkbox", { name: "Mesomorfo" }).check();
+  await expect(labels.getByRole("checkbox", { name: "Misto" })).not.toBeChecked();
+  await expect(somatotype.getByText(/não é calculado nesta versão/)).toBeVisible();
+  const supraspinale = somatotype.getByLabel("Dobra supraespinhal (mm)");
+  await expect(supraspinale).toHaveAttribute("placeholder", "Sem aferição");
+  // A 0 is named, never stored; the rest still saves.
+  await supraspinale.fill("0");
+  const quietProblem = page.getByRole("status").filter({ hasText: "Confira o campo Dobra supraespinhal" });
+  await expect(quietProblem).toBeVisible({ timeout: BY_ITSELF });
+  await supraspinale.fill("8,5");
+  await expect(quietProblem).toHaveCount(0);
+  await expect(page.locator(".av2-cards")).not.toContainText(/significativ|normal|\bbom\b|ruim|excelente/i);
+  const wide = (page.viewportSize()?.width ?? 0) >= 1024;
+  const { lines } = await linesOf(page, "Somatotipo");
+  expect(lines.every((line) => line.aligned)).toBe(true);
+  if (wide) expect(lines.map((line) => line.fields)).toEqual([1, 2]);
+  await noHorizontalOverflow(page);
+
+  // Nobody clicks "Salvar rascunho": it saves itself, and a reload brings everything back on the same step.
+  await expect(savedLine(page)).toBeVisible({ timeout: BY_ITSELF });
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Postura e movimento" })).toBeVisible();
+  await expect(posture.getByRole("tab")).toHaveText(["Lateral · 2 de 8", "Posterior · 2 de 7", "Anterior · 1 de 4"]);
+  await expect(shoulders.getByRole("checkbox", { name: "Protusos" })).toBeChecked();
+  await expect(hip.getByRole("radio", { name: "Anteversão" })).toBeChecked();
+  await expect(shouldersSide.getByRole("radio", { name: "Lado direito" })).toBeChecked();
+  await expect(knees.getByRole("radio", { name: "Não observado" })).toBeChecked();
+  await view(page, "Posterior").click();
+  await expect(posture.getByRole("group", { name: "Escápulas (visão posterior)" }).getByRole("checkbox", { name: "Esquerda alada" })).toBeChecked();
+  await expect(posture.getByLabel("Observações da visão posterior")).toHaveValue("Escápula esquerda mais afastada");
+  await expect(labels.getByRole("checkbox", { checked: true })).toHaveCount(2);
+  await expect(supraspinale).toHaveValue("8,5");
+  await expect(somatotype.getByLabel("Perímetro do braço flexionado (cm)")).toHaveValue("");
+
+  // The Revisão says what was observed per view and the somatotype as recorded; nothing of it is a result.
+  await page.getByRole("navigation", { name: "Etapas da avaliação física" }).getByRole("button", { name: "4 Revisão" }).click();
+  const checklist = page.getByRole("region", { name: "Checklist por etapa" });
+  await expect(checklist.getByText("Postura: 5 de 19 regiões observadas (lateral 2 de 8, posterior 2 de 7, anterior 1 de 4)")).toBeVisible();
+  await expect(checklist.getByText("Somatotipo (registro do profissional): Endomorfo e Mesomorfo")).toBeVisible();
+  await expect(checklist.getByText("Medidas para Heath-Carter guardadas, sem cálculo: dobra supraespinhal")).toBeVisible();
+  await expect(checklist.getByText("Com registro")).toBeVisible();
+  await expect(page.getByText("Nenhum resultado calculável com o que foi medido.")).toBeVisible();
 });

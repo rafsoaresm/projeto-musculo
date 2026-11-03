@@ -11,8 +11,12 @@ import {
   ANAMNESIS,
   BONE_BREADTH_CODES,
   GOALS,
+  HEATH_CARTER_MEASURES,
   PARQ_DECISIONS,
   PERIMETERS_SIDED_OF,
+  POSTURE_REGIONS,
+  POSTURE_VIEW_CODES,
+  POSTURE_VIEW_SHORT,
   PERIMETER_SIDED_CODES,
   PERIMETER_SINGLE_CODES,
   PERIMETERS_SIDED,
@@ -32,6 +36,7 @@ import {
   type SkinfoldSite,
 } from "../formulas";
 import { AGGREGATION_LABEL, EQUATION_LABEL, PROTOCOL_CHIP, SITE_LABEL, bilateralObservation, bilateralSigned, requiredSites, type CompositionPayload } from "./composition";
+import { heathCarterTyped, observedIn, postureEmpty, regionsOf, somatotypeText, type PosturePayload } from "./posture";
 import {
   ANAMNESIS_CODES,
   EMPTY_SCREENING,
@@ -129,7 +134,7 @@ export function resultNote(code: string, value: number | null): string | null {
 export interface ModuleSummary {
   key: "triagem" | "medidas" | "movimento";
   title: string;
-  state: "ready" | "pending" | "partial" | "filled" | "not_done";
+  state: "ready" | "pending" | "partial" | "filled" | "observed" | "not_done";
   lines: string[];
 }
 
@@ -149,6 +154,8 @@ export interface ReviewInput {
   profile: ProfilePayload | null;
   screening: ScreeningPayload | null;
   composition: CompositionPayload | null;
+  /** The "Movimento" step (module "posture"): posture and somatotype. Absent or null: not done. */
+  posture?: PosturePayload | null;
   assessedOn: string;
   /** From the snapshot the draft took of the student's file. */
   birthDate: string | null;
@@ -350,6 +357,29 @@ function medidasSummary(composition: CompositionPayload | null): ModuleSummary {
 }
 
 /**
+ * The "Movimento" step in words (slice 0.79): how many regions of each view were observed, the somatotype as the professional recorded it, and the
+ * Heath-Carter measures kept (never a computed somatotype). Nothing observed is "Não realizado", never "alinhado". The Flexiteste comes later.
+ */
+function movimentoSummary(posture: PosturePayload | null): ModuleSummary {
+  if (!posture || postureEmpty(posture)) return { key: "movimento", title: "Movimento", state: "not_done", lines: ["Não realizado"] };
+  const lines: string[] = [];
+  const observed = POSTURE_VIEW_CODES.reduce((total, view) => total + observedIn(posture, view), 0);
+  lines.push(
+    observed === 0
+      ? "Postura: nenhuma região observada"
+      : `Postura: ${observed} de ${POSTURE_REGIONS.length} regiões observadas (${POSTURE_VIEW_CODES.map((view) => `${POSTURE_VIEW_SHORT[view].toLowerCase()} ${observedIn(posture, view)} de ${regionsOf(view).length}`).join(", ")})`,
+  );
+  const notes = POSTURE_VIEW_CODES.filter((view) => posture.notes[view].trim() !== "");
+  if (notes.length > 0) lines.push(`Observações escritas: ${list(notes.map((view) => POSTURE_VIEW_SHORT[view].toLowerCase()))}`);
+  const somatotype = somatotypeText(posture.somatotype.labels);
+  lines.push(somatotype ? `Somatotipo (registro do profissional): ${somatotype}` : "Somatotipo: não registrado");
+  const measures = heathCarterTyped(posture);
+  if (measures.length > 0) lines.push(`Medidas para Heath-Carter guardadas, sem cálculo: ${list(measures.map((code) => HEATH_CARTER_MEASURES[code].label.toLowerCase()))}`);
+  lines.push("Flexiteste: não registrado nesta versão");
+  return { key: "movimento", title: "Movimento", state: "observed", lines };
+}
+
+/**
  * The review of a draft: what blocks the finalize (the triagem: every PAR-Q question answered and, with any "Sim", the professional's decision with
  * a note; for an amendment with a new "Sim", that decision looked at again), the results that will be recorded, and why the others are not.
  */
@@ -368,7 +398,7 @@ export function reviewDraft(input: ReviewInput): DraftReview {
     modules: [
       triagemSummary(input.profile, input.screening, pending),
       medidasSummary(input.composition),
-      { key: "movimento", title: "Movimento", state: "not_done", lines: ["Não realizado: esta etapa chega numa próxima versão"] },
+      movimentoSummary(input.posture ?? null),
     ],
   };
 }
