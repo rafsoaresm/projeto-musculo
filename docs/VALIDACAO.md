@@ -13,6 +13,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Também:** a etapa atual fica visível na barra de etapas no celular; data vazia do Cooper aparece como "Sem registro".
 - **Verificado localmente:** tipos, lint e `npm run check` (116 arquivos, 1846 testes); e2e nos dois mounts (raiz e `/treinador`): 24 passaram em cada; capturas a 1440, 1280, 1024, 768 e 390.
 - **Não feito:** imagens dos movimentos do Flexiteste, nota por movimento, testes no histórico (a evolução é a 0.82); o texto de ressalva do relatório ("não equivale a exame médico") — o handoff 3.5 pede texto revisado que não fornece. **Não confirmado:** se o PDF usa "potência" também para o teste de membros superiores (a tela não afirma isso).
+- **CI e deploy:** o CI do PR #82 passou (`validate` e `validate (/treinador)`, no commit `6ca0a3b`); merge `6b78e94`; deploy `792ae31f` com sucesso em 03/11/2026 (sem migration).
 
 ## Fatia 0.79: Postura e somatotipo da Avaliação Física (handoff 3.3 e 6; Figma AV-05)
 
