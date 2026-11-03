@@ -57,6 +57,8 @@ import {
 import { HEATH_CARTER_NOTE, findingsText, postureEmpty, regionsOf, somatotypeText, type PosturePayload } from "./posture";
 import { FLAG_LABEL, RESULT_LABEL, formatResult, isResultEstimate, methodLabel, resultNote } from "./review";
 import { ANAMNESIS_CODES, PARQ_CODES, parqAnswer, type ProfilePayload, type ScreeningPayload } from "./screening";
+import { photoViewLabel, type PhotoView } from "../photos";
+import { recordedPhotoGroups } from "./posture-photos";
 import { NOT_INCLUDED, PART_LABEL, excludedPartsOf, isPartEnabled, isStepEnabled, templateLine, type EnabledParts, type TemplatePart } from "./template";
 
 /** The line every report carries in place of the institutional disclaimer the handoff asks for but does not give (handoff 3.5). */
@@ -71,7 +73,9 @@ export type ReportBlock =
   | { kind: "facts"; rows: { label: string; value: string }[] }
   | { kind: "subtitle"; text: string }
   | { kind: "text"; text: string; muted?: boolean }
-  | { kind: "results"; rows: { label: string; value: string; detail: string; flags: string[] }[] };
+  | { kind: "results"; rows: { label: string; value: string; detail: string; flags: string[] }[] }
+  /** The posture photos (slice 0.86): the PDF draws the image of each stored one; an erased one is a line that says when. */
+  | { kind: "photos"; items: { view: PhotoView; label: string; erasedOn: string | null }[] };
 export interface ReportSection {
   title: string;
   blocks: ReportBlock[];
@@ -119,7 +123,22 @@ export interface ReportInput {
   template?: { name: string; version: number } | null;
   /** The optional parts that model had on; a part that is off prints "Não incluído neste modelo", never "Não realizado". */
   enabled?: EnabledParts;
+  /**
+   * The index of the posture photos (slice 0.86: the student sees their own photos, user's decision of 03/11/2026, and the report goes to both):
+   * which views have one, when it was stored and, if erased, when. The image itself is never here.
+   */
+  photos?: readonly ReportPhoto[];
 }
+
+/** One posture photo of a recorded assessment, as the report knows it. */
+export interface ReportPhoto {
+  view: PhotoView;
+  createdAt: string;
+  erasedAt: string | null;
+}
+
+/** The line under the title of the photos, in the report and on the student's page. */
+export const REPORT_PHOTOS_NOTE = "Registro visual, não diagnóstico. Uma foto apagada não volta; fica só a data em que foi apagada.";
 
 const decimal = (value: number, digits = 2) => new Intl.NumberFormat("pt-BR", { maximumFractionDigits: digits }).format(value);
 const measured = (value: number | null | undefined, unit: string, digits = 2) =>
@@ -127,6 +146,9 @@ const measured = (value: number | null | undefined, unit: string, digits = 2) =>
 const yesNo = (value: "yes" | "no" | null) => (value === "yes" ? "Sim" : value === "no" ? "Não" : "Sem resposta");
 const orEmpty = (text: string) => (text.trim() === "" ? "Sem registro" : text.trim());
 const filled = (text: string) => text.trim() !== "";
+/** The day of an instant in Brasília time ("03/11/2026"). */
+export const reportDate = (iso: string) =>
+  new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(iso));
 /** An instant in Brasília time, as the screens show it. */
 export const reportDateTime = (iso: string) =>
   new Intl.DateTimeFormat("pt-BR", {
@@ -444,6 +466,22 @@ function testsSection(tests: TestsPayload | null, enabled: EnabledParts = null):
   return { title: "Testes físicos", blocks };
 }
 
+/** The posture photos of the record, by view of the posture (only when there is at least one, stored or erased). */
+function photosSection(photos: readonly ReportPhoto[]): ReportSection {
+  return {
+    title: "Fotos da postura",
+    blocks: [
+      { kind: "text", text: REPORT_PHOTOS_NOTE, muted: true },
+      {
+        kind: "photos",
+        items: recordedPhotoGroups(photos).flatMap((group) =>
+          group.photos.map((photo) => ({ view: photo.view, label: photoViewLabel(photo.view), erasedOn: photo.erasedAt ? reportDate(photo.erasedAt) : null })),
+        ),
+      },
+    ],
+  };
+}
+
 function conclusionSection(conclusion: ConclusionPayload | null, enabled: EnabledParts = null): ReportSection {
   if (!isPartEnabled(enabled, "conclusion")) return { title: "Considerações finais", blocks: [notIncluded()] };
   if (!conclusion || conclusionEmpty(conclusion)) return { title: "Considerações finais", blocks: [notDone("Não escritas.")] };
@@ -485,6 +523,7 @@ export function assessmentReport(input: ReportInput): AssessmentReport {
       measuresSection(input.composition, input.enabled ?? null),
       resultsSection(input.results),
       movementSection(input.posture, input.movement, input.results, input.enabled ?? null),
+      ...(input.photos && input.photos.length > 0 ? [photosSection(input.photos)] : []),
       testsSection(input.tests, input.enabled ?? null),
       conclusionSection(input.conclusion, input.enabled ?? null),
     ],
@@ -521,6 +560,10 @@ export async function reportFingerprint(input: ReportInput): Promise<string> {
     input.conclusion,
     // The model (slice 0.85) only when there is one, so the fingerprint of every report made before stays the same.
     ...(input.template ? [input.template, input.enabled ?? null] : []),
+    // The photos (slice 0.86) only when there are any, and only which view and when stored: an erasure later is not a change of the record.
+    ...(input.photos && input.photos.length > 0
+      ? [[...input.photos].map((photo) => [photo.view, photo.createdAt]).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))]
+      : []),
   ]);
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");

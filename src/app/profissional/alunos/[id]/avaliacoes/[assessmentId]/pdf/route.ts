@@ -1,5 +1,6 @@
 import { requireWorkspace } from "@/modules/auth/server";
 import { assessmentReportsFor, recordReportDownload } from "@/db/assessment-reports";
+import { photoBucketOrNull } from "@/db/binding";
 import { renderAssessmentPdf } from "@/modules/pdf/assessment-pdf";
 import { reportFileName } from "@/modules/avaliacoes/v2/report";
 
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string; assessmentId: string }> }) {
   const { db, context, user } = await requireWorkspace();
   const { id, assessmentId } = await params;
-  const source = await assessmentReportsFor(db, context).source(id, assessmentId);
+  const source = await assessmentReportsFor(db, context).source(id, assessmentId, await photoBucketOrNull());
   if (!source)
     return new Response("Página não encontrada.", {
       status: 404,
