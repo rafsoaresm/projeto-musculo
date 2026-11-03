@@ -14,6 +14,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Testes retirados e por quê:** os que só exercitavam o formulário antigo (triagem e registro, gráfico de evolução, envio de fotos pelo campo antigo, congelar e apagar foto ao registrar pela tela, menor de 18 pelo formulário). A cobertura de congelar e apagar fotos continua nos testes D1 e R2; o envio de foto é testado direto no endereço. O alerta que segura a aprovação foi para o novo projeto `assessments-legacy`, que grava avaliações do formato anterior direto no banco local (o código antigo de gravação ficou só como fixture de teste, `tests/helpers/legacy-assessments.ts`).
 - **Verificado localmente:** tipos, lint e `npm run check`; e2e nos dois mounts (raiz e `/treinador`): 27 passaram e 1 pulado (o teste de navegação só de computador no celular) em cada, mais 2 de `assessments-legacy` em cada; capturas a 1440, 1280, 1024, 768 e 390.
 - **Não verificado:** dados de produção com um rascunho antigo que tenha fotos e o armazenamento de fotos desligado (o descarte recusa com mensagem); capturas sob `/treinador`; o caminho "pedido apaga foto do rascunho e depois descartar" só tem teste D1. O painel de aprovação do plano ainda diz "Avaliação de {data}".
+- **CI e deploy:** o CI do PR #76 passou (`validate` e `validate (/treinador)`, no commit `fd8a689`); merge `96f1856`; deploy `e1b86bcb` com sucesso em 03/11/2026 (sem migration).
 
 ## Fatia 0.73: Remoção das travas jurídicas (decisão do usuário de 03/11/2026)
 
