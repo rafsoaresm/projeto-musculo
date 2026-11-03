@@ -6,7 +6,7 @@ import { assessmentsFor } from "@/db/assessments";
 import { assessmentPhotosFor } from "@/db/assessment-photos";
 import { getPhotoBucket } from "@/db/binding";
 import type { AssessmentModule } from "../catalog";
-import { COMPOSITION_MODULE, FIELD_LABEL, SITE_LABEL, compositionSchema, problemsMessage } from "./composition";
+import { COMPOSITION_MODULE, compositionSchema, issueNames, problemsMessage } from "./composition";
 import { PROFILE_MODULE, SCREENING_MODULE, draftScreening, profileSchema, screeningSchema } from "./screening";
 
 export type SaveSectionResult = { saved: true; revision: number } | { conflict: string } | { error: string };
@@ -68,13 +68,8 @@ async function storeSection(assessmentId: string, module: AssessmentModule, payl
 export async function saveCompositionSection(assessmentId: string, payload: unknown, revision: number): Promise<SaveSectionResult> {
   const parsed = compositionSchema.safeParse(payload);
   if (!parsed.success) {
-    const names = new Set<string>();
-    for (const issue of parsed.error.issues) {
-      const [first, second] = issue.path.map(String);
-      if (first === "skinfolds" && second && second in SITE_LABEL) names.add(SITE_LABEL[second as keyof typeof SITE_LABEL]);
-      else if (first && first in FIELD_LABEL) names.add(FIELD_LABEL[first as keyof typeof FIELD_LABEL]);
-    }
-    return { error: names.size > 0 ? problemsMessage([...names]) : "Confira as medidas: algum valor não é aceito." };
+    const names = issueNames(parsed.error.issues);
+    return { error: names.length > 0 ? problemsMessage(names) : "Confira as medidas: algum valor não é aceito." };
   }
   return storeSection(assessmentId, COMPOSITION_MODULE, parsed.data, revision, "Confira as medidas: algum valor não é aceito.");
 }

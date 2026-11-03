@@ -144,6 +144,40 @@ test("the Medidas step of the new format computes the preview, keeps values acro
   await page.getByRole("button", { name: "Remover leitura 2 de Peitoral" }).click();
   await expect(page.getByLabel("Peitoral, leitura 2 (mm)")).toHaveCount(0);
 
+  // Slice 0.78: perimeters (each side in its own field) and bone breadths, with the handoff's waist and hip (RCQ ~0,644) and the bilateral
+  // difference said as right − left, with no classification. An empty field is "sem aferição", never 0.
+  const perimeters = page.getByRole("region", { name: "Perímetros corporais • cm" });
+  await expect(perimeters.getByLabel("Relação cintura/quadril")).toHaveText("—");
+  await expect(perimeters.getByLabel("Relação cintura/quadril")).toHaveAccessibleDescription("Precisa da cintura e do quadril");
+  await perimeters.getByLabel("Cintura (cm)").fill("69,5");
+  await expect(perimeters.getByLabel("Relação cintura/quadril")).toHaveAccessibleDescription("Falta o quadril");
+  await perimeters.getByLabel("Quadril (cm)").fill("108");
+  await expect(perimeters.getByLabel("Relação cintura/quadril")).toHaveText("0,644");
+  await perimeters.getByLabel("Coxa direita (cm)").fill("56");
+  await expect(perimeters.getByRole("group", { name: "Coxa D / E" })).not.toContainText("D − E");
+  // One side only: the pair says which side is missing (as the Revisão does), and the unit is next to the pair, not only in the card title.
+  await expect(perimeters.getByRole("group", { name: "Coxa D / E · cm" })).toHaveAccessibleDescription("Falta o lado esquerdo");
+  await perimeters.getByLabel("Coxa esquerda (cm)").fill("56,6");
+  await expect(perimeters.getByRole("group", { name: "Coxa D / E" })).toHaveAccessibleDescription("D − E = −0,6 cm: esquerdo maior em 0,6 cm");
+  await perimeters.getByLabel("Braço direito (cm)", { exact: true }).fill("27");
+  await expect(perimeters.getByLabel("Ombro (cm)")).toHaveAttribute("placeholder", "Sem aferição");
+  await expect(perimeters).not.toContainText(/significativ|normal|bom|ruim/i);
+  const breadths = page.getByRole("region", { name: "Diâmetros ósseos • cm" });
+  await breadths.getByLabel("Biepicondilar do úmero (cm)").fill("6,4");
+  await breadths.getByLabel("Biestiloide (cm)").fill("5,7");
+  // The same alignment rule: 9 perimeters and the ratio are 4 + 4 + 2 on a computer, the 3 breadths one line; one per line on a phone.
+  for (const [card, wideLines] of [
+    ["Perímetros corporais • cm", [4, 4, 2]],
+    ["Diâmetros ósseos • cm", [3]],
+  ] as const) {
+    const { lines, cut } = await linesOf(page, card);
+    expect(cut, card).toBe(0);
+    expect(lines.every((line) => line.aligned), card).toBe(true);
+    if (wide) expect(lines.map((line) => line.fields), card).toEqual(wideLines);
+    else expect(lines.every((line) => line.fields === 1), card).toBe(true);
+  }
+  await noHorizontalOverflow(page);
+
   // Nobody clicks "Salvar rascunho": after a pause in the typing the draft saves itself, and a reload brings everything back.
   await expect(savedLine(page)).toBeVisible({ timeout: BY_ITSELF });
   await page.reload();
@@ -154,6 +188,12 @@ test("the Medidas step of the new format computes the preview, keeps values acro
   await expect(page.getByLabel("Referência da equação", { exact: true })).toHaveValue("male");
   for (const [name, value] of Object.entries(JP7)) await expect(site(page, name)).toHaveValue(value);
   await expect(result(page, "Gordura estimada")).toHaveText("17,3%");
+  await expect(perimeters.getByLabel("Cintura (cm)")).toHaveValue("69,5");
+  await expect(perimeters.getByLabel("Coxa esquerda (cm)")).toHaveValue("56,6");
+  await expect(perimeters.getByLabel("Braço esquerdo (cm)", { exact: true })).toHaveValue("");
+  await expect(perimeters.getByLabel("Relação cintura/quadril")).toHaveText("0,644");
+  await expect(breadths.getByLabel("Biestiloide (cm)")).toHaveValue("5,7");
+  await expect(breadths.getByLabel("Biepicondilar do fêmur (cm)")).toHaveValue("");
   await expect(page.getByText("Sem alterações desde que a página abriu.")).toBeVisible();
 
   // Leaving the step saves at once, before the pause would.

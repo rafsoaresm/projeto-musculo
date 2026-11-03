@@ -2,6 +2,7 @@
 import { useId } from "react";
 import { Plus, X } from "lucide-react";
 import { PROTOCOL_IDS, type AggregationRule, type EquationSelection, type SkinfoldSite } from "../formulas";
+import { BONE_BREADTHS, BONE_BREADTH_CODES, PERIMETERS_SIDED, PERIMETERS_SINGLE, PERIMETER_SIDED_CODES, PERIMETER_SINGLE_CODES } from "../catalog";
 import {
   AGGREGATIONS,
   AGGREGATION_LABEL,
@@ -12,13 +13,16 @@ import {
   PROTOCOL_CHIP,
   SITE_LABEL,
   ageAtAssessment,
+  bilateralNote,
   compositionPreview,
   otherSites,
   protocolTitle,
   requiredSites,
+  sideFieldLabel,
+  waistHipPreview,
   type CompositionForm,
 } from "./composition";
-import { ReadOnlyField, UnitField, UnitInput } from "./fields";
+import { ReadOnlyField, SidedField, UnitField, UnitInput } from "./fields";
 
 /**
  * One skinfold site: up to three readings, none of them a 0 when not measured. "+ leitura" sits right under the site's own readings (in the
@@ -94,6 +98,7 @@ export function CompositionStep({
   const others = otherSites(form.protocol, form.equation);
   const set = (patch: Partial<CompositionForm>) => onChange({ ...form, ...patch });
   const setSite = (site: SkinfoldSite, readings: string[]) => set({ skinfolds: { ...form.skinfolds, [site]: readings } });
+  const waistHip = waistHipPreview(form);
   const othersTyped = others.filter((site) => (form.skinfolds[site] ?? []).some((text) => text.trim() !== "")).length;
 
   return (
@@ -220,6 +225,59 @@ export function CompositionStep({
         <div aria-live="polite">
           {preview.status && <p className="av2-preview-status">{preview.status}</p>}
           {preview.flag && <p className="av2-flag">{preview.flag}</p>}
+        </div>
+      </section>
+
+      <section className="panel av2-card" aria-labelledby="av2-perimetros">
+        <h3 id="av2-perimetros">Perímetros corporais • cm</h3>
+        <p className="muted small">
+          Sem lateralidade e bilateral com campos separados (D direito, E esquerdo). A diferença bilateral é direito − esquerdo, sem
+          classificação.
+        </p>
+        <div className="av2-grid">
+          {PERIMETER_SINGLE_CODES.map((code) => (
+            <UnitField
+              key={code}
+              label={PERIMETERS_SINGLE[code]}
+              unit="cm"
+              value={form.perimeters[code] ?? ""}
+              placeholder="Sem aferição"
+              onChange={(text) => set({ perimeters: { ...form.perimeters, [code]: text } })}
+            />
+          ))}
+          {PERIMETER_SIDED_CODES.map((code) => {
+            const pair = form.sidedPerimeters[code] ?? { right: "", left: "" };
+            return (
+              <SidedField
+                key={code}
+                label={PERIMETERS_SIDED[code]}
+                rightLabel={sideFieldLabel(code, "right")}
+                leftLabel={sideFieldLabel(code, "left")}
+                unit="cm"
+                value={pair}
+                note={bilateralNote(pair)}
+                onChange={(next) => set({ sidedPerimeters: { ...form.sidedPerimeters, [code]: next } })}
+              />
+            );
+          })}
+          <ReadOnlyField label="Relação cintura/quadril" value={waistHip.value ?? "—"} note={waistHip.status} />
+        </div>
+      </section>
+
+      <section className="panel av2-card" aria-labelledby="av2-diametros">
+        <h3 id="av2-diametros">Diâmetros ósseos • cm</h3>
+        <p className="muted small">Medidas brutas, guardadas com a avaliação; nesta versão não geram resultado calculado.</p>
+        <div className="av2-grid">
+          {BONE_BREADTH_CODES.map((code) => (
+            <UnitField
+              key={code}
+              label={BONE_BREADTHS[code]}
+              unit="cm"
+              value={form.breadths[code] ?? ""}
+              placeholder="Sem aferição"
+              onChange={(text) => set({ breadths: { ...form.breadths, [code]: text } })}
+            />
+          ))}
         </div>
       </section>
     </div>

@@ -2,6 +2,17 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.78: Perímetros e diâmetros da Avaliação Física (handoff 3.2, 5 e 8; Figma AV-04)
+
+**Sem migration.** Dois cartões novos na etapa Medidas, dentro do módulo de composição (mesmo salvamento automático e revisão).
+
+- **Perímetros corporais (cm):** ombro, tórax, cintura, abdômen e quadril; braço, antebraço, coxa e panturrilha com direito e esquerdo separados. Vazio é "Sem aferição", nunca 0. Para cada par, a diferença direito − esquerdo com o sinal, o valor absoluto e o lado maior, sem dizer se é significativa (handoff 3.2 e 11); com um lado só, "Falta o lado …".
+- **Relação cintura/quadril:** cintura ÷ quadril, só com as duas medidas (exemplo do handoff: 69,5 / 108 = 0,644), sem classificação.
+- **Diâmetros ósseos (cm):** biepicondilar do úmero, biepicondilar do fêmur e biestiloide, guardados como medida (entram no somatotipo, 0.79).
+- **Finalizar** grava `waist_hip_ratio` e `bilateral_difference_<braço|antebraço|coxa|panturrilha>` com a versão da fórmula; o que falta não é gravado e a Revisão diz o motivo. A Revisão conta "Perímetros: N de 9 com medida" (um par conta só com os dois lados) e "Diâmetros ósseos: N de 3". RCQ, diferenças e IMC deixam de aparecer como "estimativa" (são conta direta); os cabeçalhos dizem quais são estimativa de estudo. O histórico não muda.
+- **Verificado localmente:** tipos, lint e `npm run check`; e2e nos dois mounts (raiz e `/treinador`): 20 passaram em cada (preencher, salvamento automático e recarregar, alinhamento 4+4+2 e 3 no computador e um por linha no celular, Revisão e avaliação registrada); capturas a 1440, 1280, 1024, 768 e 390.
+- **Não feito (do handoff 3.2):** local anatômico, condição relaxado/contraído e instrumento por perímetro; áreas musculares e massas muscular, óssea e residual; faixa plausível das medidas (fica com o técnico). Uma nota escrita pelo profissional por par não existe (a "observação" é a linha automática).
+
 ## Fatia 0.77: Finalizar, retificar e histórico da Avaliação Física (decisões do usuário de 02/11/2026, 1 a 3)
 
 **Sem migration.** A Avaliação Física pode ser registrada. A coluna antiga `risk_status` só aceita alerta ligado às seis perguntas do formato anterior; para o formato novo ela fica `CLEAR`, e o alerta e a revisão são lidos da triagem congelada (por todos os leitores: resumos, situação da triagem do plano, trava do plano e visão geral).

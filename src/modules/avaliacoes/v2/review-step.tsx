@@ -99,7 +99,7 @@ export function ReviewStep({
 
       <section className="panel av2-card" aria-labelledby="av2-resultados">
         <h3 id="av2-resultados">Resultados a registrar</h3>
-        <p className="muted small">Calculados com as fórmulas versionadas; são estimativas, sem classificação (nenhuma tabela está homologada).</p>
+        <p className="muted small">Calculados com as fórmulas versionadas, sem classificação (nenhuma tabela está homologada). Só os marcados como estimativa vêm da equação de um estudo; os demais são conta direta das medidas.</p>
         {review.results.length > 0 ? <ResultsList results={review.results} labelledBy="av2-resultados" /> : <p>Nenhum resultado calculável com o que foi medido.</p>}
         {review.notComputed.length > 0 && (
           <>

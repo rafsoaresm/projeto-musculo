@@ -182,10 +182,28 @@ describe("finalizing an Avaliação Física", () => {
 
   it("records only what can be computed: with no birth date, no body fat (and the reason is the screen's), but the BMI", async () => {
     const other = await started("st-3", day(11));
-    const revision = await fill(other, { screening: parq(), composition: { ...JP7, skinfolds: { ...JP7.skinfolds } } });
+    // Slice 0.78: with the perimeters of the handoff (waist 69,5, hip 108), the ratio and each bilateral difference with both sides are recorded;
+    // a side not measured gives no difference, and the bone breadths no result.
+    const composition = {
+      ...JP7,
+      skinfolds: { ...JP7.skinfolds },
+      perimetersCm: { waist: 69.5, hip: 108 },
+      sidedPerimetersCm: { thigh: { right: 56, left: 56.6 }, calf: { right: 40, left: null } },
+      boneBreadthsCm: { humerus: 6.4, femur: 9.4, wrist: 5.7 },
+    };
+    const revision = await fill(other, { screening: parq(), composition });
     expect(await a().finalize(other, revision, day(11))).toEqual({ status: "recorded" });
-    const codes = (await a().results(other)).map((row) => row.code);
-    expect(codes).toEqual(["bmi"]);
+    const results = await a().results(other);
+    expect(results.map((row) => row.code)).toEqual(["bmi", "waist_hip_ratio", "bilateral_difference_thigh"]);
+    const ratio = results.find((row) => row.code === "waist_hip_ratio")!;
+    expect(ratio.value).toBeCloseTo(0.644, 3);
+    expect(ratio).toMatchObject({ unit: null, method: "waist_over_hip", formulaVersion: FORMULA_VERSION });
+    expect(results.find((row) => row.code === "bilateral_difference_thigh")).toMatchObject({ unit: "cm", method: "right_minus_left", formulaVersion: FORMULA_VERSION });
+    // The raw measures stay in the module, frozen, as typed.
+    const stored = JSON.parse((await one<{ payload: string }>("SELECT payload FROM assessment_sections WHERE assessment_id = ?1 AND module = 'composition'", other))!.payload);
+    expect(stored).toMatchObject({ perimetersCm: composition.perimetersCm, sidedPerimetersCm: composition.sidedPerimetersCm, boneBreadthsCm: composition.boneBreadthsCm });
+    // The history keeps showing body fat and BMI only.
+    expect((await a().listForStudent("st-3")).find((row) => row.id === other)?.results.map((row) => row.code)).toEqual(["bmi"]);
     expect(await a().get(other)).toMatchObject({ riskStatus: "CLEAR", reviewed: false });
     const screening = JSON.parse((await one<{ payload: string }>("SELECT payload FROM assessment_sections WHERE assessment_id = ?1 AND module = 'screening'", other))!.payload);
     expect(screening.parq.riskFlag).toBe(false);

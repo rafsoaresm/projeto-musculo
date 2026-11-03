@@ -6199,6 +6199,19 @@ fieldset.yes-no legend {
 .av2-slash {
   color: var(--color-muted);
 }
+/* A pair of inputs with no unit drawn inside (the card's title says it): the typed value keeps the whole width of each input. */
+.av2-pair-plain > span {
+  min-width: 0;
+}
+.av2-pair-plain input {
+  width: 100%;
+  padding-left: 14px;
+  padding-right: 14px;
+}
+.av2-label-hint {
+  font-weight: 400;
+  color: var(--color-muted);
+}
 .av2-reading {
   display: flex;
   align-items: center;

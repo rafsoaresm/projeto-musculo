@@ -104,9 +104,18 @@ export const PARQ_DECISIONS = {
 // The nine skinfold sites of page 2 (mm) are with the protocols that use them: formulas/protocols.ts (SKINFOLD_SITES).
 export { SKINFOLD_SITES, type SkinfoldSite } from "./formulas/protocols";
 
-/** The perimeters of page 2 (cm): some single, some on each side. */
+/** The perimeters of page 2 (cm): some single, some on each side (handoff 3.2: each side in a field of its own). */
 export const PERIMETERS_SINGLE = { shoulder: "Ombro", chest: "Tórax", waist: "Cintura", abdomen: "Abdômen", hip: "Quadril" } as const;
 export const PERIMETERS_SIDED = { arm: "Braço", forearm: "Antebraço", thigh: "Coxa", calf: "Panturrilha" } as const;
+export type PerimeterSingle = keyof typeof PERIMETERS_SINGLE;
+export type PerimeterSided = keyof typeof PERIMETERS_SIDED;
+/** The stored codes, in the order of the screen (the order of page 2). */
+export const PERIMETER_SINGLE_CODES = ["shoulder", "chest", "waist", "abdomen", "hip"] as const satisfies readonly PerimeterSingle[];
+export const PERIMETER_SIDED_CODES = ["arm", "forearm", "thigh", "calf"] as const satisfies readonly PerimeterSided[];
+/** The sided perimeters with their article, for the sentences that name them ("do braço", "da coxa"). */
+export const PERIMETERS_SIDED_OF: Record<PerimeterSided, string> = { arm: "do braço", forearm: "do antebraço", thigh: "da coxa", calf: "da panturrilha" };
 
 /** The bone breadths of page 2 (cm). */
 export const BONE_BREADTHS = { humerus: "Biepicondilar do úmero", femur: "Biepicondilar do fêmur", wrist: "Biestiloide" } as const;
+export type BoneBreadth = keyof typeof BONE_BREADTHS;
+export const BONE_BREADTH_CODES = ["humerus", "femur", "wrist"] as const satisfies readonly BoneBreadth[];

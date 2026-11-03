@@ -40,16 +40,21 @@ export function UnitField({ label, unit, value, onChange, placeholder }: { label
 }
 
 /** A value the step shows but does not take (age, conversion): it wraps instead of being cut, and is read with its label. */
-export function ReadOnlyField({ label, value }: { label: string; value: string }) {
+export function ReadOnlyField({ label, value, note }: { label: string; value: string; note?: string }) {
   const id = useId();
   return (
     <div className="av2-field">
       <span id={id} className="av2-label">
         {label}
       </span>
-      <output className="av2-readonly" aria-labelledby={id} aria-live="off">
+      <output className="av2-readonly" aria-labelledby={id} aria-describedby={note ? `${id}-nota` : undefined} aria-live="off">
         {value}
       </output>
+      {note && (
+        <span id={`${id}-nota`} className="av2-note">
+          {note}
+        </span>
+      )}
     </div>
   );
 }
@@ -130,6 +135,60 @@ export function YesNoField({ label, value, onChange }: { label: string; value: "
         <option value="yes">Sim</option>
         <option value="no">Não</option>
       </select>
+    </div>
+  );
+}
+
+function PlainInput({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (value: string) => void; placeholder: string }) {
+  const id = useId();
+  return (
+    <span>
+      <label htmlFor={id} className="sr-only">
+        {label}
+      </label>
+      <input id={id} inputMode="decimal" autoComplete="off" value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
+    </span>
+  );
+}
+
+/**
+ * A measure taken on each side (handoff 3.2: "cada lado em campo separado"): one label for the pair ("Braço D / E"), two inputs side by side
+ * named by their side for screen readers, and a note under them (the bilateral difference) in the note row of the grid.
+ */
+export function SidedField({
+  label,
+  rightLabel,
+  leftLabel,
+  unit,
+  value,
+  onChange,
+  note,
+}: {
+  label: string;
+  rightLabel: string;
+  leftLabel: string;
+  unit: string;
+  value: { right: string; left: string };
+  onChange: (value: { right: string; left: string }) => void;
+  note?: string | null;
+}) {
+  const id = useId();
+  return (
+    <div className="av2-field" role="group" aria-labelledby={id} aria-describedby={note ? `${id}-nota` : undefined}>
+      <span id={id} className="av2-label">
+        {label} <span className="av2-label-hint">D / E · {unit}</span>
+      </span>
+      {/* Two inputs share one column: the unit sits in the pair's label and in each input's name, not drawn inside, so the typed value has room. */}
+      <span className="av2-pair-fields av2-pair-plain">
+        <PlainInput label={`${rightLabel} (${unit})`} value={value.right} placeholder="D" onChange={(right) => onChange({ ...value, right })} />
+        <span aria-hidden="true" className="av2-slash">/</span>
+        <PlainInput label={`${leftLabel} (${unit})`} value={value.left} placeholder="E" onChange={(left) => onChange({ ...value, left })} />
+      </span>
+      {note && (
+        <span id={`${id}-nota`} className="av2-note">
+          {note}
+        </span>
+      )}
     </div>
   );
 }

@@ -4,13 +4,17 @@ import {
   EMPTY_COMPOSITION,
   compositionPreview,
   compositionSchema,
+  bilateralNote,
+  bilateralText,
   formFromPayload,
   heightFromText,
+  issueNames,
   methodLine,
   otherSites,
   payloadFromForm,
   readComposition,
   requiredSites,
+  waistHipPreview,
   type CompositionForm,
 } from "@/modules/avaliacoes/v2/composition";
 import { PROTOCOL_VARIANTS } from "@/modules/avaliacoes/formulas";
@@ -59,6 +63,9 @@ describe("the schema of the Medidas step", () => {
       aggregation: "mean",
       conversion: "siri_1961",
       skinfolds: {},
+      perimetersCm: {},
+      sidedPerimetersCm: {},
+      boneBreadthsCm: {},
     });
   });
   it("accepts 1 to 3 positive readings per site and refuses 0, 4, a zero or a negative reading", () => {
@@ -177,5 +184,72 @@ describe("the preview", () => {
     expect(compositionPreview(form({ protocol: null }), 27).bmi).toBe("23,63");
     expect(compositionPreview(form({ height: "171" }), 27).bmi).toBe("23,63");
     expect(compositionPreview(form({ weight: "" }), 27)).toMatchObject({ fatPercent: "17,3%", fatMass: null, fatFree: null, bmi: null });
+  });
+});
+
+// Slice 0.78: perimeters and bone breadths (handoff 3.2, 5 and 8: waist 69,5 cm, hip 108 cm → RCQ ~0,644).
+describe("perimeters and bone breadths", () => {
+  it("stores perimeters, each side apart and bone breadths in cm, and refuses 0, a negative, an unknown code or a pair with no side", () => {
+    const parsed = compositionSchema.parse({
+      perimetersCm: { waist: 69.5, hip: 108 },
+      sidedPerimetersCm: { thigh: { right: 56, left: 56.6 }, arm: { right: 27 } },
+      boneBreadthsCm: { humerus: 6.4, femur: 9.4, wrist: 5.7 },
+    });
+    expect(parsed.sidedPerimetersCm.arm).toEqual({ right: 27, left: null });
+    expect(compositionSchema.safeParse({ perimetersCm: { waist: 0 } }).success).toBe(false);
+    expect(compositionSchema.safeParse({ perimetersCm: { waist: -1 } }).success).toBe(false);
+    expect(compositionSchema.safeParse({ perimetersCm: { neck: 38 } }).success).toBe(false);
+    expect(compositionSchema.safeParse({ sidedPerimetersCm: { arm: { right: null, left: null } } }).success).toBe(false);
+    expect(compositionSchema.safeParse({ sidedPerimetersCm: { arm: { right: 27, left: 27, average: 27 } } }).success).toBe(false);
+    expect(compositionSchema.safeParse({ boneBreadthsCm: { knee: 9 } }).success).toBe(false);
+    // A draft saved before this slice (no perimeters) still reads, with nothing measured.
+    expect(readComposition({ weightKg: 69.1 })).toMatchObject({ perimetersCm: {}, sidedPerimetersCm: {}, boneBreadthsCm: {} });
+  });
+  it("reads the screen's text: empty is not measured (never 0), one side may be missing, a wrong value is named by its field", () => {
+    const read = payloadFromForm(
+      form({
+        perimeters: { waist: "69,5", hip: "108", shoulder: "" },
+        sidedPerimeters: { thigh: { right: "56", left: "56,6" }, calf: { right: "40", left: "" }, arm: { right: "", left: "" } },
+        breadths: { humerus: "6,4", wrist: "" },
+      }),
+    );
+    expect(read.problems).toEqual([]);
+    expect(read.payload).toMatchObject({
+      perimetersCm: { waist: 69.5, hip: 108 },
+      sidedPerimetersCm: { thigh: { right: 56, left: 56.6 }, calf: { right: 40, left: null } },
+      boneBreadthsCm: { humerus: 6.4 },
+    });
+    expect(read.payload?.sidedPerimetersCm.arm).toBeUndefined();
+    expect(payloadFromForm(form({ perimeters: { waist: "0" }, sidedPerimeters: { thigh: { right: "56", left: "x" } }, breadths: { femur: "-9" } })).problems).toEqual([
+      "Cintura",
+      "Coxa esquerda",
+      "Biepicondilar do fêmur",
+    ]);
+    // And back to the screen, unchanged.
+    const shown = formFromPayload(read.payload!);
+    expect(shown.sidedPerimeters.calf).toEqual({ right: "40", left: "" });
+    expect(payloadFromForm(shown).payload).toEqual(read.payload);
+  });
+  it("names the fields of a payload refused on the server", () => {
+    const refused = compositionSchema.safeParse({ perimetersCm: { hip: 0 }, sidedPerimetersCm: { arm: { right: -1, left: 27 } }, boneBreadthsCm: { wrist: 0 } });
+    expect(refused.success).toBe(false);
+    expect(issueNames(refused.error!.issues)).toEqual(["Quadril", "Braço direito", "Biestiloide"]);
+  });
+  it("previews the waist-hip ratio of the handoff (69,5 / 108 ≈ 0,644) or says what is missing", () => {
+    expect(waistHipPreview(form({ perimeters: { waist: "69,5", hip: "108" } }))).toEqual({ value: "0,644", status: "Cintura ÷ quadril" });
+    expect(waistHipPreview(form())).toEqual({ value: null, status: "Precisa da cintura e do quadril" });
+    expect(waistHipPreview(form({ perimeters: { waist: "69,5" } }))).toEqual({ value: null, status: "Falta o quadril" });
+    expect(waistHipPreview(form({ perimeters: { waist: "0", hip: "108" } }))).toEqual({ value: null, status: "Falta a cintura" });
+  });
+  it("says the bilateral difference as right − left, with its size and the larger side, never “significant”", () => {
+    // The number and "cm" are joined by a no-break space, so the unit never wraps alone.
+    expect(bilateralText(56 - 56.6)).toBe("D − E = −0,6\u00a0cm: esquerdo maior em 0,6\u00a0cm");
+    expect(bilateralText(1.25)).toBe("D − E = +1,25\u00a0cm: direito maior em 1,25\u00a0cm");
+    expect(bilateralText(0)).toBe("D − E = 0\u00a0cm: lados iguais");
+    expect(bilateralNote({ right: "27", left: "27" })).toBe("D − E = 0\u00a0cm: lados iguais");
+    expect(bilateralNote({ right: "27", left: "" })).toBe("Falta o lado esquerdo");
+    expect(bilateralNote({ right: "", left: "27" })).toBe("Falta o lado direito");
+    expect(bilateralNote({ right: "", left: "" })).toBeNull();
+    expect(bilateralNote(undefined)).toBeNull();
   });
 });
