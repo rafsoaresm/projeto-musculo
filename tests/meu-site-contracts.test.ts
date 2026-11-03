@@ -378,12 +378,12 @@ describe("what stops a publication", () => {
     expect(messages(withBlocks([block("about", "a", { text: "Texto", stat: "10 anos", statLabel: "de profissão" })]))).toEqual([]);
     expect(messages(withBlocks([block("about", "a", { text: "Texto" })]))).toEqual([]);
   });
-  it("does not publish a testimony without the text, the author and the person's authorization; an empty one is said once (it is not on the site)", () => {
-    expect(messages(withBlocks([block("quote", "q")]))).toEqual([expect.stringContaining("escreva um depoimento autorizado")]);
-    expect(messages(withBlocks([block("quote", "q", { quote: "Gostei" })])).length).toBe(2);
+  it("asks a testimony for its text and its author, and for no authorization mark; an empty one is said once (it is not on the site)", () => {
+    expect(messages(withBlocks([block("quote", "q")]))).toEqual([expect.stringContaining("escreva um depoimento, ou tire o bloco")]);
+    expect(messages(withBlocks([block("quote", "q", { quote: "Gostei" })])).length).toBe(1);
     const ok = block("quote", "q", { quote: "Gostei", author: "Ana, aluna", authorized: true });
     expect(messages(withBlocks([ok]))).toEqual([]);
-    expect(messages(withBlocks([{ ...ok, authorized: false } as Block]))).toEqual([expect.stringContaining("autorizou")]);
+    expect(messages(withBlocks([{ ...ok, authorized: false } as Block]))).toEqual([]);
   });
   it("asks for every indicator to have its number and its caption", () => {
     expect(messages(withBlocks([block("stats", "s")])).length).toBe(2);
@@ -509,16 +509,16 @@ describe("what stops a publication and what only warns", () => {
     expect(stops(full({ title: "", blocks: [] }))).toEqual(["Dê um título ao site.", "Acrescente pelo menos um bloco."]);
     expect(warns(full({ title: "", blocks: [] }))).toEqual([]);
   });
-  it("stops for a testimony that the person did not authorize, wherever it is, and only for that", () => {
+  it("does not stop for a testimony without the authorization mark, wherever it is, and says nothing about it", () => {
     const quote = (id: string, over: object = {}) => block("quote", id, { quote: "Ótimo", author: "Ana", authorized: false, ...over } as never);
-    expect(stops(withBlocks([quote("q")]))).toEqual([expect.stringContaining("confirme que a pessoa autorizou")]);
-    expect(stops(withBlocks([box("c", [box("d", [quote("deep")])])]))).toEqual([expect.stringContaining("confirme que a pessoa autorizou")]);
-    expect(found(withBlocks([box("c", [quote("deep")])]))[0].blockId).toBe("deep");
+    expect(found(withBlocks([quote("q")]))).toEqual([]);
+    expect(found(withBlocks([box("c", [box("d", [quote("deep")])])]))).toEqual([]);
     expect(found(withBlocks([quote("q", { authorized: true })]))).toEqual([]);
-    // Its other loose ends are warnings: an empty testimony or one with no author is not a safeguard.
+    expect(found(withBlocks([box("c", [quote("deep", { author: "" })])]))[0]).toMatchObject({ blockId: "deep", severity: "warning" });
+    // Its loose ends are warnings: an empty testimony or one with no author.
     expect(stops(withBlocks([quote("q", { authorized: true, quote: "", author: "" })]))).toEqual([]);
     expect(warns(withBlocks([quote("q", { authorized: true, quote: "", author: "" })]))).toHaveLength(1);
-    // An empty testimony, even unauthorized, is not on the site: it only warns.
+    // An empty testimony is not on the site: it only warns.
     expect(stops(withBlocks([quote("q", { quote: "", author: "" })]))).toEqual([]);
   });
   it("only warns for every other loose end: the page is left without the part that is not ready, and the person decides", () => {
@@ -549,9 +549,9 @@ describe("what stops a publication and what only warns", () => {
     expect(all.some((i) => i.block === null && i.message.includes("logotipo"))).toBe(true);
   });
   it("always says which it is: nothing is left without a severity, and a page with both lists them in the order found", () => {
-    const mixed = full({ title: "", blocks: [block("hero", "h", { heading: "" }), block("quote", "q", { quote: "x", author: "y" } as never)] });
+    const mixed = full({ title: "", blocks: [block("hero", "h", { heading: "" }), block("quote", "q", { quote: "x", author: "" } as never)] });
     const all = found(mixed);
     expect(all.every((i) => i.severity === "blocking" || i.severity === "warning")).toBe(true);
-    expect(all.map((i) => i.severity)).toEqual(["blocking", "warning", "blocking"]);
+    expect(all.map((i) => i.severity)).toEqual(["blocking", "warning", "warning"]);
   });
 });

@@ -62,7 +62,7 @@ export async function createProfessional(
     page.getByRole("heading", { name: "Um espaço para seu método." }),
   ).toBeVisible(signUpPage);
   await page.getByLabel("Nome do espaço").fill(workspace);
-  await acceptProfessionalTerms(page);
+  await expectNoTermsBox(page);
   await page.getByRole("button", { name: "Criar meu espaço" }).click();
   await expect(page.getByRole("heading", { name: "Visão geral", level: 1 })).toBeVisible(signUpPage);
   return email;
@@ -116,18 +116,16 @@ export async function signOut(page: Page) {
   }).toPass({ timeout: 20_000 });
 }
 
-/** Joining the tool is where the terms are accepted, once: the professional when creating the space. */
-export async function acceptProfessionalTerms(page: Page) {
-  await page.getByLabel("Li e aceito os termos de uso.").check();
+/**
+ * Joining the tool asks for nothing to be ticked (decision of 03/11/2026): the terms can be read, folded, and there is no box of acceptance,
+ * of age or of photos. Used where a person creates a space or accepts an invitation, to say so.
+ */
+export async function expectNoTermsBox(page: Page) {
+  await expect(page.getByRole("checkbox")).toHaveCount(0);
+  await expect(page.getByText(/Tenho 18 anos completos|Li e aceito os termos|Autorizo o meu profissional a registrar fotos/)).toHaveCount(0);
 }
 
-/** The student, when accepting the invitation. The photos are a separate, optional choice. */
-export async function acceptStudentTerms(page: Page, options: { photos?: boolean } = {}) {
-  await page.getByLabel(/Tenho 18 anos completos, li e aceito/).check();
-  if (options.photos) await page.getByLabel(/Autorizo o meu profissional a registrar fotos/).check();
-}
-
-/** From a student's page: generates the invitation and signs the student up with it, terms not yet accepted. */
+/** From a student's page: generates the invitation and signs the student up with it, the invitation not yet accepted. */
 export async function openInvitation(page: Page, browser: Browser, baseURL: string | undefined, studentName: string) {
   await showStudentTab(page, "Acesso e dados");
   await page.getByRole("button", { name: "Gerar link de convite" }).click();
@@ -145,18 +143,17 @@ export async function openInvitation(page: Page, browser: Browser, baseURL: stri
 }
 
 /**
- * The student joins from the professional's page of that student: reads the invitation, accepts the
- * terms (the photos are an optional choice) and reaches their own area. The student's session is closed.
+ * The student joins from the professional's page of that student: accepts the invitation (nothing to tick)
+ * and reaches their own area. The student's session is closed.
  */
 export async function joinStudent(
   page: Page,
   browser: Browser,
   baseURL: string | undefined,
   studentName: string,
-  options: { photos?: boolean } = {},
 ) {
   const { client, email } = await openInvitation(page, browser, baseURL, studentName);
-  await acceptStudentTerms(client.page, options);
+  await expectNoTermsBox(client.page);
   await client.page.getByRole("button", { name: "Aceitar convite" }).click();
   // The invitation is accepted when the student area opens: closing before would cancel it.
   await expect(client.page).toHaveURL(/\/aluno\/?$/);

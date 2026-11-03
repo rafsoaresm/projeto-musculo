@@ -328,8 +328,8 @@ describe("reading the public page", () => {
   it("finds the page whatever the case of the address, and returns nothing of the organization", async () => {
     const found = (await publishedSiteBySlug(db, "MARINA-Treinos"))!;
     expect(Object.keys(found).sort()).toEqual(["content", "images", "inquiriesOpen", "number", "publishedAt", "slug"]);
-    // The site's own switch for the contact form is the only thing besides the release that the public reading says, and it is born closed.
-    expect(found.inquiriesOpen).toBe(false);
+    // The site's own switch for the contact form is the only thing besides the release that the public reading says, and it is born open.
+    expect(found.inquiriesOpen).toBe(true);
     expect(found.images).toEqual({});
     expect(JSON.stringify(found)).not.toContain("org-a");
     expect(JSON.stringify(found)).not.toContain("owner-a");
@@ -506,21 +506,20 @@ describe("a page with containers, a testimony and a look", () => {
     await expect(bad([{ id: "c", type: "columns", ratio: "wide", left: [], right: [] }])).rejects.toThrow();
     expect((await repo().overview())!.draft.revision).toBe(revision);
   });
-  it("does not publish a testimony without the person's authorization, and a button inside a container without its contact", async () => {
+  it("does not ask a testimony for an authorization mark; a button inside a container without its contact is a warning", async () => {
     const content = rich();
     const revision = (await repo().overview())!.draft.revision;
     const blocks = content.blocks.map((b) => (b.type === "quote" ? { ...b, authorized: false } : b));
     const saved = await repo().saveDraft({ ...content, blocks, contact: { whatsapp: "", email: "", instagram: "" } }, revision, at(113));
     if (saved.status !== "saved") throw new Error("not saved");
     const outcome = await repo().publish(saved.revision, at(114));
-    expect(outcome.status).toBe("invalid");
-    if (outcome.status === "invalid") {
-      expect(outcome.issues.map((i) => i.blockId).sort()).toEqual(["hero", "q", "r1"]);
-      expect(outcome.issues.some((i) => i.message.includes("autorizou"))).toBe(true);
-      // Only the testimony stops it; the buttons with no contact are warnings, and asking to publish anyway does not lift what stops it.
-      expect(outcome.issues.filter((i) => i.severity === "blocking").map((i) => i.blockId)).toEqual(["q"]);
+    expect(outcome.status).toBe("warnings");
+    if (outcome.status === "warnings") {
+      expect(outcome.issues.map((i) => i.blockId).sort()).toEqual(["hero", "r1"]);
+      expect(outcome.issues.some((i) => i.message.includes("autoriz"))).toBe(false);
+      expect(outcome.issues.filter((i) => i.severity === "blocking")).toEqual([]);
     }
-    expect((await repo().publish(saved.revision, at(115), { withWarnings: true })).status).toBe("invalid");
+    // Nothing was published without "publish anyway".
     expect((await publishedSiteBySlug(db, "estudio-d"))!.number).toBe(4);
   });
 });
@@ -692,7 +691,7 @@ describe("a site with more pages than the home page", () => {
     const served = (await publishedSiteBySlug(db, "estudio-d"))!;
     expect(served.content.pages![0].blocks[1]).toMatchObject({ items: [{ name: "Consultoria online", delivery: "ONLINE" }] });
   });
-  it("says which page a warning is about, publishes anyway when asked, and is stopped by what stops a page of the home kind", async () => {
+  it("says which page a warning is about, publishes anyway when asked, and does not stop for a testimony without the authorization mark", async () => {
     const content = withPages();
     content.pages![1].blocks[0] = { id: "planos-t", type: "text", eyebrow: "", heading: "Planos", text: "" };
     const revision = await save(content, 155);
@@ -702,9 +701,8 @@ describe("a site with more pages than the home page", () => {
     expect((await repo().publish(revision, at(157), { withWarnings: true })).status).toBe("published");
     const blocked = withPages();
     blocked.pages![1].blocks[0] = { id: "planos-q", type: "quote", eyebrow: "", quote: "Gostei", author: "Ana", authorized: false };
-    const stopped = await repo().publish(await save(blocked, 158), at(159), { withWarnings: true });
-    expect(stopped.status).toBe("invalid");
-    if (stopped.status === "invalid") expect(stopped.issues.filter((issue) => issue.severity === "blocking").map((issue) => [issue.page, issue.blockId])).toEqual([["p2", "planos-q"]]);
+    const notStopped = await repo().publish(await save(blocked, 158), at(159));
+    expect(notStopped.status).toBe("published");
   });
   it("refuses to save pages the contract does not accept: a repeated address, a reserved one, the home page's identifier, a block identifier repeated on another page, too many pages", async () => {
     const revision = (await repo().overview())!.draft.revision;

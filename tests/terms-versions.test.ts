@@ -2,10 +2,16 @@ import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import type { D1Database } from "@cloudflare/workers-types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ZodError } from "zod";
-import { hasCurrentAcceptance, photoAuthorizationFor, recordAcceptance } from "@/db/consent";
+import { latestAcceptance, recordAcceptance } from "@/db/consent";
 import { currentTerms, shownTerms, termsFor, versionNameAt } from "@/db/terms";
 import { BASELINE, BASELINE_VERSION, termsHash, type TermsContent } from "@/modules/consentimento/terms";
 import { ALL_MIGRATIONS, migrate } from "./helpers/migrate";
+
+/** Whether the latest acceptance is of the words in force: only read (nothing in the app is gated on it any more). */
+const hasCurrentAcceptance = async (database: D1Database, user: string, audience: "STUDENT" | "PROFESSIONAL") => {
+  const [latest, terms] = await Promise.all([latestAcceptance(database, user, audience), currentTerms(database, audience)]);
+  return latest !== null && latest.version === terms.version && latest.sha256 === terms.sha256;
+};
 
 // Real local D1 with the real migrations and triggers. The manager is a row in platform_admins, as the
 // server derives it from a verified session.
@@ -99,8 +105,9 @@ describe("publishing", () => {
     const before = await count("SELECT COUNT(*) AS n FROM terms_versions");
     const inForce = (await currentTerms(db, "STUDENT")).content;
     expect(await manager().publish("STUDENT", inForce, "igual", at(1))).toEqual({ status: "unchanged" });
-    const noPhotos = edited((c) => delete c.photos);
-    await expect(manager().publish("STUDENT", noPhotos, "", at(1))).rejects.toThrow(ZodError);
+    // The student's photos block is optional now (it holds no choice), but the professional's text still cannot have one.
+    const professionalWithPhotos = { ...(await currentTerms(db, "PROFESSIONAL")).content, photos: inForce.photos };
+    await expect(manager().publish("PROFESSIONAL", professionalWithPhotos, "", at(1))).rejects.toThrow(ZodError);
     await expect(manager().publish("STUDENT", { ...inForce, sections: [] }, "", at(1))).rejects.toThrow(ZodError);
     await expect(manager().publish("STUDENT", { ...inForce, extra: "x" }, "", at(1))).rejects.toThrow(ZodError);
     await expect(manager().publish("STUDENT", edited((c) => (c.title = "x")), "n".repeat(501), at(1))).rejects.toThrow("TERMS_NOTE_TOO_LONG");
@@ -134,10 +141,15 @@ describe("publishing", () => {
     expect(await count("SELECT COUNT(*) AS n FROM terms_versions")).toBe(before);
   });
 
-  it("never changes or loses a published version", async () => {
-    await expect(run("UPDATE terms_versions SET content_json = '{}'")).rejects.toThrow(/TERMS_APPEND_ONLY/);
-    await expect(run("UPDATE terms_versions SET sha256 = ?1", "b".repeat(64))).rejects.toThrow(/TERMS_APPEND_ONLY/);
-    await expect(run("DELETE FROM terms_versions")).rejects.toThrow(/TERMS_APPEND_ONLY/);
+  it("no longer keeps a published version append-only (migration 0035), and still rejects malformed rows", async () => {
+    await run("UPDATE terms_versions SET change_note = change_note");
+    await run(
+      `INSERT INTO terms_versions(id,audience,version,content_json,sha256,published_by_user_id,published_at)
+       VALUES ('throwaway','STUDENT','throwaway','{}',?1,'mgr-1','2000-01-01T00:00:00.000Z')`,
+      "d".repeat(64),
+    );
+    await run("DELETE FROM terms_versions WHERE id = 'throwaway'");
+    expect(await count("SELECT COUNT(*) AS n FROM terms_versions WHERE id = 'throwaway'")).toBe(0);
     const bad = (sha: string, json: string, audience = "STUDENT") =>
       run(
         `INSERT INTO terms_versions(id,audience,version,content_json,sha256,published_by_user_id,published_at)
@@ -152,7 +164,7 @@ describe("publishing", () => {
 });
 
 describe("what a new version does to the people who accepted the old one", () => {
-  it("asks everyone again, refuses an acceptance of words that are no longer in force, and counts who accepted what", async () => {
+  it("leaves an older acceptance as not current (only read, nothing is gated on it), records only the words in force, and counts who accepted what", async () => {
     // The professional's text has been "Primeiro" since the previous test; start from the approved student text of the baseline's era.
     const login = "client-2";
     expect(await hasCurrentAcceptance(db, login, "STUDENT")).toBe(false);
@@ -187,13 +199,12 @@ describe("what a new version does to the people who accepted the old one", () =>
     ]);
   });
 
-  it("closes the photos of a student whose acceptance is of an older text, until they accept the new one", async () => {
+  it("keeps an earlier acceptance readable as it was when a new text is published", async () => {
     await recordAcceptance(db, "client-1", "STUDENT", { photosAuthorized: true, shownVersion: (await currentTerms(db, "STUDENT")).version }, at(40));
-    expect(await photoAuthorizationFor(db, "org-a", "st-1")).toMatchObject({ status: "authorized" });
+    const before = await latestAcceptance(db, "client-1", "STUDENT");
     await manager().publish("STUDENT", edited((c) => (c.intro = "Introdução nova, mais curta.")), "", at(41));
-    expect(await photoAuthorizationFor(db, "org-a", "st-1")).toEqual({ status: "denied", reason: "OUTDATED" });
-    await recordAcceptance(db, "client-1", "STUDENT", { photosAuthorized: true, shownVersion: (await currentTerms(db, "STUDENT")).version }, at(42));
-    expect(await photoAuthorizationFor(db, "org-a", "st-1")).toMatchObject({ status: "authorized" });
+    expect(await latestAcceptance(db, "client-1", "STUDENT")).toEqual(before);
+    expect(await hasCurrentAcceptance(db, "client-1", "STUDENT")).toBe(false);
   });
 });
 

@@ -45,7 +45,7 @@ const whatsapp = (label: string, style?: Style): SiteNode => ({ ...emptyBlock("b
 const toPage = (kind: "button" | "link", label: string, page: string, style?: Style): SiteNode => ({ ...emptyBlock(kind), label, page, ...(style ? { style } : null) }) as SiteNode;
 const drawing = (illustration: Illustration, ratio: "4:5" | "4:3" | "16:9" | "3:4", style: Style = {}, size: "full" | "medium" = "full"): SiteNode =>
   ({ ...emptyBlock("image"), size, ratio, illustration, style: { radius: "24px", ...style } }) as SiteNode;
-const quote = (): SiteNode => ({ ...(emptyBlock("quote") as BlockOf<"quote">), name: "Depoimento autorizado" });
+const quote = (): SiteNode => ({ ...(emptyBlock("quote") as BlockOf<"quote">), name: "Depoimento" });
 
 const KICKER: Style = { fontSize: "13px", fontWeight: 700, letterSpacing: "2px", textTransform: "uppercase", color: "accent" };
 const LEAD: Style = { fontSize: "18px", color: "muted" };
@@ -403,7 +403,7 @@ export const GUIDED_SECTIONS: readonly GuidedSectionItem[] = [
   {
     key: "depoimentos",
     label: "Depoimentos",
-    hint: "Três depoimentos, só com autorização",
+    hint: "Três depoimentos",
     create: () => box("Depoimentos", "section", stack({ gap: "24px", padding: SECTION }), [blankTitle(), box("Lista de depoimentos", "div", GRID3, [quote(), quote(), quote()], GRID3_SIZES)]),
   },
   {

@@ -234,13 +234,13 @@ describe("publishing a page with components", () => {
     const content = page([instance("i", "plano", { "card-b": { channel: "instagram" } })], [card()], { contact: { whatsapp: "(11) 91234-5678", email: "", instagram: "" } });
     expect(issues(content).map((issue) => issue.message)).toEqual(["Bloco 1 (Componente “Plano”), camada 3 (Botão): o botão leva ao Instagram, mas esse contato não está preenchido ou é inválido."]);
   });
-  it("keeps what protects a person blocking: a testimony in a component asks for the authorization", () => {
+  it("publishes a testimony in a component without any authorization mark, and still sees one that is not written", () => {
     const testimony: ComponentDef = { id: "dep", name: "Depoimento", root: node("quote", "d-q", { quote: "Gostei", author: "Ana", authorized: false }) };
-    const found = issues(page([instance("i", "dep")], [testimony]));
-    expect(found.map((issue) => [issue.severity, issue.blockId])).toEqual([["blocking", "i"]]);
-    expect(found[0].message).toContain("autorizou");
+    expect(issues(page([instance("i", "dep")], [testimony]))).toEqual([]);
     const authorized: ComponentDef = { ...testimony, root: node("quote", "d-q", { quote: "Gostei", author: "Ana", authorized: true }) };
     expect(issues(page([instance("i", "dep")], [authorized]))).toEqual([]);
+    const noAuthor: ComponentDef = { ...testimony, root: node("quote", "d-q", { quote: "Gostei", author: "", authorized: false }) };
+    expect(issues(page([instance("i", "dep")], [noAuthor])).map((issue) => [issue.severity, issue.blockId])).toEqual([["warning", "i"]]);
   });
   it("warns about an instance of a component that is not there", () => {
     const found = issues(page([instance("i", "faltando")]));

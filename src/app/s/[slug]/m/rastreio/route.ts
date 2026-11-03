@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 type Params = { params: Promise<{ slug: string }> };
 
 /**
- * The script of a site with tagging (Meu Site 0.71), for both editors and the thank-you pages: the consent banner, the loader of the tools and the
+ * The script of a site with tagging (Meu Site 0.71), for both editors and the thank-you pages: the loader of the tools and the
  * events, with this site's settings embedded (public identifiers only). No session. An address that does not exist and a site with no tool on
  * answer the same 404. A static segment beside `m/[assetId]` (an image id is a UUID, so "rastreio" is never one). `no-cache` with the digest as
  * ETag: a change in the panel is seen at the next page, and an unchanged script costs a small answer.

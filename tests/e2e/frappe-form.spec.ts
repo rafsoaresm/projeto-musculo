@@ -59,7 +59,7 @@ test("frappe form: a form drawn with the editor's blocks is on the page only whe
   await publish(page, "contato", "Contato", body(node("h1", {}, { innerHTML: "Fale comigo" }), contactForm()));
   await publish(page, "boletim", "Boletim", body(node("h2", {}, { innerHTML: "Receba novidades" }), node("form", {}, { blockId: "news", children: [node("input", { type: "email", placeholder: "E-mail" }), node("button", {}, { innerHTML: "Assinar" })] })));
 
-  // ---- the panel: what each form can do, and the switch (the environment of this run has the public forms open; the site is off) ----
+  // ---- the panel: what each form can do, and the switch (the public forms are open by default; a new site is born receiving) ----
   await page.goto("./profissional/meu-site");
   await showTab(page, "Formulários e mensagens");
   const forms = panel(page).getByRole("list", { name: "Formulários das páginas no ar" });
@@ -67,6 +67,11 @@ test("frappe form: a form drawn with the editor's blocks is on the page only whe
   await expect(forms.getByRole("listitem").filter({ hasText: "/boletim" })).toContainText("incompleto e não aparece para quem visita: Falta o campo do nome: um campo de texto.");
   await showTab(page, "Formulários e mensagens");
   await expect(panel(page)).toContainText("Formulários abertos pela plataforma");
+  await showTab(page, "Formulários e mensagens");
+  await expect(panel(page)).toContainText("Recebimento ligado");
+  await expect(panel(page).getByText(/parecer jurídico|caixa do aviso de privacidade/)).toHaveCount(0);
+  // The site turns it off, to see the page without the form.
+  await panel(page).getByRole("button", { name: "Desligar o recebimento de mensagens" }).click();
   await showTab(page, "Formulários e mensagens");
   await expect(panel(page)).toContainText("Recebimento desligado");
 
@@ -77,7 +82,7 @@ test("frappe form: a form drawn with the editor's blocks is on the page only whe
   await expect(visitor.getByRole("heading", { name: "Fale comigo" })).toBeVisible();
   await expect(visitor.locator("form")).toHaveCount(0);
   const raw = (fields: Record<string, string>) => visitor.request.post(`./site/${slug}/m/contato`, { form: fields, maxRedirects: 0 });
-  expect((await raw({ pagina: "contato", formulario: "contact-form", aceite: "on" })).status()).toBe(404);
+  expect((await raw({ pagina: "contato", formulario: "contact-form" })).status()).toBe(404);
 
   // ---- the switch of the site ----
   await showTab(page, "Formulários e mensagens");
@@ -87,7 +92,7 @@ test("frappe form: a form drawn with the editor's blocks is on the page only whe
   await showTab(page, "Formulários e mensagens");
   await expect(panel(page)).toContainText("Recebimento ligado");
 
-  // ---- the page now has the form, as a plain form with the box of the notice and a bait that a person never meets ----
+  // ---- the page now has the form, as a plain form with no box to tick and a bait that a person never meets ----
   await visitor.reload();
   const form = visitor.locator("form");
   await expect(form).toHaveCount(1);
@@ -97,12 +102,12 @@ test("frappe form: a form drawn with the editor's blocks is on the page only whe
   expect((await bait.boundingBox())!.x).toBeLessThan(-5000);
   await expect(bait).toHaveAttribute("tabindex", "-1");
   await expect(bait.locator("xpath=ancestor::div[1]")).toHaveAttribute("aria-hidden", "true");
-  const notice = visitor.getByRole("link", { name: "aviso de privacidade" });
-  await expect(notice).toHaveAttribute("href", /\/aviso-de-privacidade-de-teste$/);
-  await expect(notice).toHaveAttribute("rel", "noopener noreferrer");
+  // No privacy notice is configured in this run: no link, and no consent box.
+  await expect(visitor.getByRole("link", { name: /aviso de privacidade/i })).toHaveCount(0);
+  await expect(form.locator('input[name="aceite"]')).toHaveCount(0);
   await expect(visitor.locator("script")).toHaveCount(0);
   expect(await visitor.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
-  // The browser itself asks for what the form needs: the name, a way to reach the person and the box of the notice.
+  // The browser itself asks for what the form needs: the name and a way to reach the person.
   await visitor.getByRole("button", { name: "Enviar mensagem" }).click();
   await expect(visitor).toHaveURL(new RegExp(`/site/${slug}/contato$`));
   expect(await form.evaluate((element) => (element as HTMLFormElement).checkValidity())).toBe(false);
@@ -112,7 +117,6 @@ test("frappe form: a form drawn with the editor's blocks is on the page only whe
   await visitor.getByRole("textbox", { name: "E-mail" }).fill("ana@example.test");
   await visitor.getByRole("combobox", { name: "Objetivo" }).selectOption({ label: "Ganhar massa" });
   await visitor.getByRole("textbox", { name: "Mensagem" }).fill("Quero saber dos planos.\nPode ser online?");
-  await visitor.getByRole("checkbox", { name: /Li o aviso de privacidade/ }).check();
   await visitor.getByRole("button", { name: "Enviar mensagem" }).click();
   await expect(visitor).toHaveURL(new RegExp(`/site/${slug}/m/enviado\\?pagina=contato$`));
   await expect(visitor.getByRole("heading", { name: "Mensagem enviada" })).toBeVisible();
@@ -122,11 +126,10 @@ test("frappe form: a form drawn with the editor's blocks is on the page only whe
   // ---- what the address refuses, whatever the browser did ----
   const html = await visitor.content();
   const version = /name="versao" value="([^"]+)"/.exec(html)![1]!;
-  const good = { pagina: "contato", formulario: "contact-form", versao: version, aceite: "on" };
+  const good = { pagina: "contato", formulario: "contact-form", versao: version };
   expect((await raw({ ...good, f1: "A", f2: "x@example.test" })).status()).toBe(400);
-  expect((await raw({ ...good, f1: "Caio Reis", f2: "caio@example.test", aceite: "" })).status()).toBe(400);
   expect((await raw({ ...good, f1: "Caio Reis", f2: "caio@example.test", f4: "9" })).status()).toBe(400);
-  expect((await raw({ pagina: "contato", formulario: "contact-form", aceite: "on", f1: "Caio Reis", f2: "caio@example.test" })).status(), "no version").toBe(409);
+  expect((await raw({ pagina: "contato", formulario: "contact-form", f1: "Caio Reis", f2: "caio@example.test" })).status(), "no version").toBe(409);
   expect((await raw({ ...good, formulario: "outro", f1: "Caio Reis", f2: "caio@example.test" })).status()).toBe(409);
   expect((await raw({ ...good, pagina: "boletim", formulario: "news", f1: "caio@example.test" })).status(), "a form that is not drawn").toBe(404);
   expect((await raw({ ...good, f1: "Robô", f2: "robo@example.test", empresa_extra: "http://spam.example" })).status()).toBe(303);
@@ -169,8 +172,7 @@ test("frappe form, from the editor itself: the form of the editor's own library,
   await page.goto("./profissional/meu-site");
   await showTab(page, "Formulários e mensagens");
   await expect(panel(page)).toBeVisible();
-  await showTab(page, "Formulários e mensagens");
-  await panel(page).getByRole("button", { name: "Ligar o recebimento de mensagens" }).click();
+  // A new site is born receiving messages.
   await showTab(page, "Formulários e mensagens");
   await expect(panel(page)).toContainText("Recebimento ligado");
 
@@ -218,7 +220,6 @@ test("frappe form, from the editor itself: the form of the editor's own library,
   await visitor.getByRole("textbox", { name: "Full Name" }).fill("Bia Lima");
   await visitor.getByRole("textbox", { name: "Email" }).fill("bia@example.test");
   await visitor.getByRole("textbox", { name: "Message" }).fill("Oi, quero começar.");
-  await visitor.getByRole("checkbox", { name: /Li o aviso de privacidade/ }).check();
   await visitor.getByRole("button", { name: "Submit" }).click();
   await expect(visitor).toHaveURL(new RegExp(`/site/${slug}/m/enviado\\?pagina=pages(%2F|/)page-[a-z0-9-]+$`));
   await expect(visitor.getByRole("heading", { name: "Mensagem enviada" })).toBeVisible();

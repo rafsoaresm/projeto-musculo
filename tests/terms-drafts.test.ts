@@ -234,19 +234,18 @@ describe("who may write, and what the database holds", () => {
         user,
         at(30).toISOString(),
       );
-    // Only an active manager starts a draft, and always at revision 1.
+    // Only an active manager starts a draft. The steps of the revision are the code's own lock now (migration 0035 dropped the database's copy).
     for (const who of ["mgr-gone", "mgr-off", "tech-a"]) await expect(insert(who), who).rejects.toThrow(/TERMS_ADMIN_REQUIRED/);
-    await expect(insert("mgr-1", 2)).rejects.toThrow(/TERMS_DRAFT_RULES/);
+    await insert("mgr-1", 2);
+    await run("DELETE FROM terms_drafts");
     await expect(insert("mgr-1", 1, "OTHER")).rejects.toThrow();
     await insert("mgr-1");
     // One draft per audience.
     await expect(insert("mgr-1")).rejects.toThrow();
-    // The sequence of revisions, the audience and the base cannot be bent.
+    // The database no longer checks the sequence of revisions (migration 0035).
     const update = (set: string, ...binds: unknown[]) => run(`UPDATE terms_drafts SET ${set} WHERE audience = 'STUDENT'`, ...binds);
-    await expect(update("revision = 3")).rejects.toThrow(/TERMS_DRAFT_RULES/);
-    await expect(update("revision = 1")).rejects.toThrow(/TERMS_DRAFT_RULES/);
-    await expect(update("audience = 'PROFESSIONAL', revision = 2")).rejects.toThrow(/TERMS_DRAFT_RULES/);
-    await expect(update("base_sha256 = ?1, revision = 2", "b".repeat(64))).rejects.toThrow(/TERMS_DRAFT_RULES/);
+    await update("revision = 3");
+    await update("revision = 1");
     // Only an active manager writes it.
     await expect(update("revision = 2, updated_by_user_id = 'mgr-gone'")).rejects.toThrow(/TERMS_ADMIN_REQUIRED/);
     await expect(update("revision = 2, updated_by_user_id = 'tech-a'")).rejects.toThrow(/TERMS_ADMIN_REQUIRED/);

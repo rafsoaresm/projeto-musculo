@@ -102,7 +102,7 @@ test("templates: six sections ready in the library, each one a tree of container
   await expect(editor(page).getByText("Rascunho salvo (revisão", { exact: false })).toBeVisible();
   await editor(page).getByRole("button", { name: "Publicar", exact: true }).click();
   await expect(editor(page).getByRole("list", { name: "O que falta para publicar" })).toHaveCount(0);
-  await expect(editor(page).getByRole("list", { name: "Avisos antes de publicar" })).toContainText("escreva um depoimento autorizado");
+  await expect(editor(page).getByRole("list", { name: "Avisos antes de publicar" })).toContainText("escreva um depoimento, ou tire o bloco");
   await expect(editor(page).getByRole("button", { name: "Publicar mesmo assim" })).toBeVisible();
 
   // Taking the testimonies out (Delete on the block selected) leaves the other warnings (the words that are still to be written).

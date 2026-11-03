@@ -17,8 +17,7 @@ import { adminGuard, type PlatformContext } from "./platform";
 /**
  * The words of the terms in force. The text the lawyer approved is the initial one and lives in the
  * application; the platform manager can publish another, one immutable row per version, and the
- * latest row of an audience is the one in force. Everyone who has accepted something else is asked
- * again at the next access (see `hasCurrentAcceptance`).
+ * latest row of an audience is the one in force. Nothing is gated on it: it is shown for reading.
  */
 const baselineCache = new Map<Audience, Promise<ResolvedTerms>>();
 

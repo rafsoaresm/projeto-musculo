@@ -98,8 +98,7 @@ export function NewEditorPanel({ slug, engine, engineFixed, published, pages, wa
         <p className="small muted">
           Desenhe o formulário no editor com os blocos do próprio editor: um <strong>Form</strong> com campos (o tipo de cada campo se escolhe no painel “Input”), uma área de texto e um botão. O campo
           de texto chamado <code>nome</code> (ou o primeiro campo de texto) é o <strong>nome</strong>; o campo do tipo <strong>Email</strong> e o do tipo <strong>Tel</strong> são o contato (um dos dois
-          basta); a primeira área de texto é a <strong>mensagem</strong>; os outros campos vão para a mensagem como “rótulo: valor”. A caixa do aviso de privacidade é posta pelo site, antes do primeiro
-          botão. A mensagem não vira lead sozinha: ela espera em Leads até você decidir.
+          basta); a primeira área de texto é a <strong>mensagem</strong>; os outros campos vão para a mensagem como “rótulo: valor”. A mensagem não vira lead sozinha: ela espera em Leads até você decidir.
         </p>
         <p className="small">
           {inquiries.platformOpen ? <Pill tone="success">Formulários abertos pela plataforma</Pill> : <Pill tone="neutral">Formulários fechados pela plataforma</Pill>}{" "}
@@ -107,8 +106,7 @@ export function NewEditorPanel({ slug, engine, engineFixed, published, pages, wa
         </p>
         {!inquiries.platformOpen && (
           <p className="small muted">
-            Os formulários públicos só abrem depois que o aviso de privacidade público e o parecer jurídico sobre leads existirem. Enquanto isso, o formulário não aparece para quem visita, mesmo com o
-            recebimento ligado.
+            A plataforma fechou os formulários públicos por enquanto. Enquanto isso, o formulário não aparece para quem visita, mesmo com o recebimento ligado.
           </p>
         )}
         {forms.forms.length === 0 ? (
@@ -202,7 +200,7 @@ export function NewEditorPanel({ slug, engine, engineFixed, published, pages, wa
             {!code.networkOpen && (
               <p className="small muted">
                 Se você liberar, o código passa a poder carregar scripts, estilos, imagens e quadros de endereços <code>https</code>, e quem visita a página <strong>manda o seu endereço de internet
-                a esses sites</strong>: o aviso de privacidade do seu site deve dizer isso.
+                a esses sites</strong>.
               </p>
             )}
             <div className="persist-actions">

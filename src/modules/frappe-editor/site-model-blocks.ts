@@ -83,7 +83,7 @@ const MARKERS: Record<string, string> = {
   "Especialidade do coach": "[Especialidade]",
 };
 const markerFor = (name: string | undefined, fallback = "[Escreva aqui]") => (name ? (MARKERS[name] ?? `[Escreva aqui: ${name}]`) : fallback);
-const QUOTE_MARKERS = { eyebrow: "[Nota da avaliação (opcional)]", quote: "[Depoimento de um aluno, com autorização]", author: "[Nome de quem deu o depoimento]" };
+const QUOTE_MARKERS = { eyebrow: "[Nota da avaliação (opcional)]", quote: "[Depoimento de um aluno]", author: "[Nome de quem deu o depoimento]" };
 const FAQ_ANSWER_MARKER = "[Escreva a resposta]";
 const PHOTO_ALT = "Troque pela sua foto";
 

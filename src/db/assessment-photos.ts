@@ -1,18 +1,17 @@
 import type { D1Database, R2Bucket, R2ObjectBody } from "@cloudflare/workers-types";
-import { ageOn } from "@/modules/ficha/contracts";
 import {
   isPhotoView,
   photoObjectKey,
   sanitizeJpeg,
   type PhotoView,
 } from "@/modules/avaliacoes/photos";
-import { latestStudentAcceptanceId, photoAuthorizationFor } from "./consent";
 import { activeUser, assertContext, technicalAccessExists, type AuthenticatedContext } from "./students";
 
 /**
  * Postural photos of an assessment. The image is in the private object storage and is reached
- * only through this repository: a professional with an active technical care assignment, and only
- * while the assessment is a draft for anything that changes it. The database holds the index and
+ * only through this repository: a professional with an active technical care assignment. A photo is
+ * stored or replaced only while the assessment is a draft; it can be removed at any time (the photo of
+ * a recorded assessment is erased: its frozen row stays, with a record of the erasure). The database holds the index and
  * the storage holds the bytes; each key is unguessable and never leaves the server.
  *
  * Order matters when the two stores cannot be changed together. Upload: the object first, then the
@@ -25,19 +24,18 @@ export interface PhotoRow {
   width: number;
   height: number;
   createdAt: string;
-  /** When it was erased on the student's request; null while it is stored. */
+  /** When it was erased (by the professional, or on the student's request); null while it is stored. */
   erasedAt: string | null;
 }
 export type PutOutcome =
   | { status: "stored"; replaced: boolean }
-  | { status: "consent_required"; reason: "NO_LOGIN" | "NOT_ACCEPTED" | "OUTDATED" | "DECLINED" }
-  | { status: "minor" }
   | { status: "invalid"; reason: "NOT_JPEG" | "TOO_LARGE" | "BAD_DIMENSIONS" | "TRUNCATED" | "VIEW" }
   | { status: "not_found" };
-export type RemoveOutcome = { status: "removed" } | { status: "not_found" };
+export type RemoveOutcome = { status: "removed" } | { status: "erased" } | { status: "not_found" };
 
 export const PHOTO_ADDED = "ASSESSMENT_PHOTO_ADDED";
 export const PHOTO_REMOVED = "ASSESSMENT_PHOTO_REMOVED";
+export const PHOTO_ERASED = "ASSESSMENT_PHOTO_ERASED";
 
 export function assessmentPhotosFor(
   db: D1Database,
@@ -78,30 +76,15 @@ export function assessmentPhotosFor(
       return result.results;
     },
 
-    /**
-     * Stores or replaces the photo of one view of an open draft. The authorization is the student's
-     * own, recorded when they joined: without it from the login linked to them, in the version of the
-     * terms in force, nothing is stored, and nothing the professional sends can stand in for it. Each
-     * photo keeps the id of the acceptance that authorized it. A student known to be under 18 is
-     * refused: the product does not support minors yet.
-     */
+    /** Stores or replaces the photo of one view of an open draft. */
     async put(assessmentId: string, view: string, body: Uint8Array, now = new Date()): Promise<PutOutcome> {
       if (!isPhotoView(view)) return { status: "invalid", reason: "VIEW" };
       const target = await db
-        .prepare(
-          `SELECT a.student_id AS studentId, sp.birth_date AS birthDate
-           FROM assessments a
-           LEFT JOIN student_profiles sp
-             ON sp.organization_id = a.organization_id AND sp.student_id = a.student_id
-           WHERE a.organization_id = ?1 AND a.id = ?3 AND a.state = 'DRAFT' AND ${reach("a")}`,
-        )
+        .prepare(`SELECT 1 AS ok FROM assessments a WHERE a.organization_id = ?1 AND a.id = ?3 AND a.state = 'DRAFT' AND ${reach("a")}`)
         .bind(organizationId, userId, assessmentId)
-        .first<{ studentId: string; birthDate: string | null }>();
+        .first();
       if (!target) return { status: "not_found" };
       const stamp = now.toISOString();
-      if (target.birthDate && ageOn(target.birthDate, stamp.slice(0, 10)) < 18) return { status: "minor" };
-      const authorization = await photoAuthorizationFor(db, organizationId, target.studentId);
-      if (authorization.status === "denied") return { status: "consent_required", reason: authorization.reason };
       const image = sanitizeJpeg(body);
       if (!image.ok) return { status: "invalid", reason: image.reason };
 
@@ -123,25 +106,21 @@ export function assessmentPhotosFor(
             .prepare(
               `INSERT INTO assessment_photos
                  (id, organization_id, assessment_id, view, object_key, content_type, size_bytes,
-                  width, height, consent_confirmed_by_user_id, created_at, consent_acceptance_id)
-               SELECT ?4, ?1, ?3, ?5, ?6, 'image/jpeg', ?7, ?8, ?9, ?2, ?10, ?11
-               WHERE ${openDraft} AND ?11 = ${latestStudentAcceptanceId("?1", "?12")}`,
+                  width, height, consent_confirmed_by_user_id, created_at)
+               SELECT ?4, ?1, ?3, ?5, ?6, 'image/jpeg', ?7, ?8, ?9, ?2, ?10
+               WHERE ${openDraft}`,
             )
             .bind(
               organizationId, userId, assessmentId, crypto.randomUUID(), view, key,
-              image.bytes.length, image.width, image.height, stamp, authorization.acceptanceId,
-              target.studentId,
+              image.bytes.length, image.width, image.height, stamp,
             ),
           audit(PHOTO_ADDED, assessmentId, stamp),
         ]);
         if (results[1].meta.changes === 0) throw new Error("PHOTO_NOT_STORED");
       } catch (error) {
         await bucket.delete(key).catch(() => undefined);
-        if (error instanceof Error && error.message === "PHOTO_NOT_STORED") {
-          // Either the draft was recorded meanwhile or the student's authorization changed meanwhile.
-          const again = await photoAuthorizationFor(db, organizationId, target.studentId);
-          return again.status === "denied" ? { status: "consent_required", reason: again.reason } : { status: "not_found" };
-        }
+        // The draft was recorded meanwhile.
+        if (error instanceof Error && error.message === "PHOTO_NOT_STORED") return { status: "not_found" };
         throw error;
       }
       // The replaced image is no longer referenced by anything: remove it.
@@ -170,30 +149,52 @@ export function assessmentPhotosFor(
       return object ? { studentId: row.studentId, body: object.body, size: object.size } : null;
     },
 
-    /** Removes the photo of one view of an open draft. */
+    /**
+     * Removes the photo of one view. On an open draft the photo and its row go. On a recorded assessment the row is frozen, so the bytes are
+     * removed from the private storage and an erasure is recorded (no request of the student is needed): the photo is shown as erased.
+     * Object first: if a step fails, the photo is still there and the removal can be tried again.
+     */
     async remove(assessmentId: string, view: string, now = new Date()): Promise<RemoveOutcome> {
       if (!isPhotoView(view)) return { status: "not_found" };
       const row = await db
         .prepare(
-          `SELECT p.object_key AS key FROM assessment_photos p
-           WHERE p.organization_id = ?1 AND p.assessment_id = ?3 AND p.view = ?4 AND ${openDraft}`,
+          `SELECT p.id, p.object_key AS key, a.state FROM assessment_photos p
+           JOIN assessments a ON a.organization_id = p.organization_id AND a.id = p.assessment_id
+           WHERE p.organization_id = ?1 AND p.assessment_id = ?3 AND p.view = ?4 AND ${reach("a")}
+             AND NOT EXISTS (SELECT 1 FROM photo_erasures e WHERE e.photo_id = p.id)`,
         )
         .bind(organizationId, userId, assessmentId, view)
-        .first<{ key: string }>();
+        .first<{ id: string; key: string; state: string }>();
       if (!row) return { status: "not_found" };
-      // Object first: if it fails the row stays and the removal can be tried again.
       await bucket.delete(row.key);
       const stamp = now.toISOString();
+      if (row.state === "DRAFT") {
+        const results = await db.batch([
+          db
+            .prepare(
+              `DELETE FROM assessment_photos
+               WHERE organization_id = ?1 AND assessment_id = ?3 AND view = ?4 AND ${openDraft}`,
+            )
+            .bind(organizationId, userId, assessmentId, view),
+          audit(PHOTO_REMOVED, assessmentId, stamp),
+        ]);
+        if (results[0].meta.changes > 0) return { status: "removed" };
+        // The draft was recorded meanwhile: the bytes are gone, so the erasure is recorded below.
+      }
       const results = await db.batch([
         db
           .prepare(
-            `DELETE FROM assessment_photos
-             WHERE organization_id = ?1 AND assessment_id = ?3 AND view = ?4 AND ${openDraft}`,
+            `INSERT INTO photo_erasures (photo_id, organization_id, assessment_id, view, request_id, erased_by_user_id, erased_at)
+             SELECT p.id, p.organization_id, p.assessment_id, p.view, NULL, ?2, ?5
+             FROM assessment_photos p
+             JOIN assessments a ON a.organization_id = p.organization_id AND a.id = p.assessment_id
+             WHERE p.id = ?4 AND p.organization_id = ?1 AND p.assessment_id = ?3 AND ${reach("a")}
+               AND NOT EXISTS (SELECT 1 FROM photo_erasures e WHERE e.photo_id = p.id)`,
           )
-          .bind(organizationId, userId, assessmentId, view),
-        audit(PHOTO_REMOVED, assessmentId, stamp),
+          .bind(organizationId, userId, assessmentId, row.id, stamp),
+        audit(PHOTO_ERASED, assessmentId, stamp),
       ]);
-      return results[0].meta.changes > 0 ? { status: "removed" } : { status: "not_found" };
+      return results[0].meta.changes > 0 ? { status: "erased" } : { status: "not_found" };
     },
   };
 }

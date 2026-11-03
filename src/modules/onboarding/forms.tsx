@@ -1,6 +1,6 @@
 "use client";
 import { useActionState, useTransition } from "react";
-import { ConsentFields } from "@/modules/consentimento/consent-fields";
+import { TermsReading } from "@/modules/consentimento/terms-reading";
 import type { ShownTerms } from "@/modules/consentimento/terms";
 import { setupWorkspace, addStudent } from "./actions";
 
@@ -48,7 +48,7 @@ export function WorkspaceForm({ name, terms }: { name: string; terms: ShownTerms
         Você será responsável pelos alunos cadastrados neste espaço. Fuso
         inicial: Brasília.
       </p>
-      <ConsentFields terms={terms} />
+      <TermsReading terms={terms} />
       {error && (
         <p role="alert" className="form-error">
           {error}

@@ -37,7 +37,7 @@ export async function GET(_request: Request, { params }: Params) {
     fontToken: () => null,
     url,
     // A sample: the contact form is drawn as it will be once the site receives messages, and is sent nowhere (this address answers no POST).
-    forms: { route: "", send: { action: "#", noticeUrl: "#" } },
+    forms: { route: "", send: { action: "#", noticeUrl: null } },
   });
   const html = buildDocument({
     rendered,

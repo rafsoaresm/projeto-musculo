@@ -170,116 +170,54 @@ describe("storing, replacing, reading and removing a photo", () => {
     expect({ objects: await objects(), rows: await rows() }).toEqual(before);
   });
 
-  it("does not accept a photo of a student under 18, and accepts an adult or an unknown age", async () => {
+  it("accepts a photo of a student under 18 like any other (migration 0035: no age lock)", async () => {
     const minor = await draftFor("st-minor", "tech-a", day(11));
     await profilesFor(db, scope("tech-a")).save("st-minor", { birthDate: "2015-03-10" }, day(11));
-    const before = await objects();
-    expect(await photos().put(minor, "ANTERIOR", jpeg(), day(11))).toEqual({ status: "minor" });
-    expect(await objects()).toEqual(before);
-    // The day they turn 18 counts: the age is read on the day of the upload.
-    await profilesFor(db, scope("tech-a")).save("st-minor", { birthDate: "2008-11-11" }, day(11));
     expect(await photos().put(minor, "ANTERIOR", jpeg(), day(11))).toEqual({ status: "stored", replaced: false });
-    await profilesFor(db, scope("tech-a")).save("st-minor", { birthDate: "2008-11-12" }, day(11));
-    expect(await photos().put(minor, "POSTERIOR", jpeg(), day(11))).toEqual({ status: "minor" });
-    // No birth date on file: the product cannot know, so it does not block.
     await profilesFor(db, scope("tech-a")).save("st-minor", {}, day(11));
     expect(await photos().put(minor, "POSTERIOR", jpeg(), day(11))).toEqual({ status: "stored", replaced: false });
   });
 });
 
-describe("the student's own authorization", () => {
-  const latestAcceptance = async (login: string) =>
-    (await db.prepare("SELECT id FROM consent_acceptances WHERE user_id = ?1 AND audience = 'STUDENT' ORDER BY accepted_at DESC, rowid DESC LIMIT 1").bind(login).first<{ id: string }>())!.id;
+describe("no authorization of the student is needed (migration 0035)", () => {
   const linked = async (assessmentId: string, view = "ANTERIOR") =>
     (await db.prepare("SELECT consent_acceptance_id AS id FROM assessment_photos WHERE assessment_id = ?1 AND view = ?2").bind(assessmentId, view).first<{ id: string | null }>())?.id;
 
-  it("accepts nothing without it, whatever the professional says, and says why", async () => {
-    const before = { objects: await objects(), rows: await rows() };
-    const cases: Array<[string, string]> = [
-      ["st-nologin", "NO_LOGIN"], // no one to have authorized
-      ["st-pending", "NOT_ACCEPTED"], // has a login that has not accepted yet
-      ["st-old", "OUTDATED"], // accepted an older version of the text
-      ["st-declined", "DECLINED"], // accepted, but did not authorize the photos
-    ];
-    for (const [student, reason] of cases) {
+  it("stores the photo whatever the student did or did not accept, and links no acceptance to it", async () => {
+    // No login, a login that has not accepted, an acceptance of an older text, a refusal of the photos.
+    for (const student of ["st-nologin", "st-pending", "st-old", "st-declined"]) {
       const draft = await draftFor(student, "tech-a", day(10));
-      expect(await photos().put(draft, "ANTERIOR", jpeg(), day(10)), student).toEqual({ status: "consent_required", reason });
+      expect(await photos().put(draft, "ANTERIOR", jpeg(), day(10)), student).toEqual({ status: "stored", replaced: false });
+      expect(await linked(draft), student).toBeNull();
     }
-    expect({ objects: await objects(), rows: await rows() }).toEqual(before);
   });
 
-  it("stores the photo with the id of the acceptance that authorized it", async () => {
+  it("keeps who uploaded it", async () => {
     const draft = await draftFor("st-race", "tech-a", day(10));
     expect(await photos().put(draft, "ANTERIOR", jpeg(), day(10))).toEqual({ status: "stored", replaced: false });
-    expect(await linked(draft)).toBe(await latestAcceptance("client-r"));
     expect((await db.prepare("SELECT consent_confirmed_by_user_id AS who FROM assessment_photos WHERE assessment_id = ?1").bind(draft).first<{ who: string }>())!.who).toBe("tech-a");
   });
 
-  it("follows the latest acceptance: withdrawing closes the photos and authorizing again reopens them", async () => {
+  it("does not follow the student's acceptance or access: a withdrawal or a revoked login changes nothing", async () => {
     const draft = (await assessmentsFor(db, scope("tech-a")).listForStudent("st-race")).find((a) => a.state === "DRAFT")!.id;
-    const first = await latestAcceptance("client-r");
     await recordAcceptance(db, "client-r", "STUDENT", { photosAuthorized: false, shownVersion: BASELINE_VERSION }, day(11));
-    expect(await photos().put(draft, "POSTERIOR", jpeg(), day(11))).toEqual({ status: "consent_required", reason: "DECLINED" });
-    // What was stored while it stood is kept, and still readable, until someone decides otherwise.
-    expect(await read(draft, "ANTERIOR")).not.toBeNull();
-    await recordAcceptance(db, "client-r", "STUDENT", { photosAuthorized: true, shownVersion: BASELINE_VERSION }, day(12));
-    expect(await photos().put(draft, "POSTERIOR", jpeg(), day(12))).toEqual({ status: "stored", replaced: false });
-    expect(await linked(draft, "POSTERIOR")).toBe(await latestAcceptance("client-r"));
-    expect(await linked(draft, "POSTERIOR")).not.toBe(first);
-  });
-
-  it("ends with the student's access: a revoked login authorizes nothing", async () => {
-    const draft = (await assessmentsFor(db, scope("tech-a")).listForStudent("st-race")).find((a) => a.state === "DRAFT")!.id;
+    expect(await photos().put(draft, "POSTERIOR", jpeg(), day(11))).toEqual({ status: "stored", replaced: false });
     await db.prepare("UPDATE student_access SET revoked_at = '2026-12-01T00:00:00.000Z' WHERE student_id = 'st-race'").run();
-    expect(await photos().put(draft, "LATERAL_LEFT", jpeg(), day(13))).toEqual({ status: "consent_required", reason: "NO_LOGIN" });
-    await db.prepare("UPDATE student_access SET revoked_at = NULL WHERE student_id = 'st-race'").run();
     expect(await photos().put(draft, "LATERAL_LEFT", jpeg(), day(13))).toEqual({ status: "stored", replaced: false });
+    await db.prepare("UPDATE student_access SET revoked_at = NULL WHERE student_id = 'st-race'").run();
   });
 
-  it("leaves no object behind when the student withdraws while the photo is being stored", async () => {
+  it("is not required by the database either: a row with no acceptance is accepted", async () => {
     const draft = (await assessmentsFor(db, scope("tech-a")).listForStudent("st-race")).find((a) => a.state === "DRAFT")!.id;
-    const before = { objects: await objects(), rows: await rows(draft) };
-    let raced = false;
-    const racing = new Proxy(db, {
-      get(target, property) {
-        const value = Reflect.get(target, property) as unknown;
-        if (property !== "batch") return typeof value === "function" ? value.bind(target) : value;
-        return async (statements: Parameters<D1Database["batch"]>[0]) => {
-          if (!raced) {
-            raced = true;
-            await recordAcceptance(db, "client-r", "STUDENT", { photosAuthorized: false, shownVersion: BASELINE_VERSION }, day(14));
-          }
-          return target.batch(statements);
-        };
-      },
-    });
-    const result = await assessmentPhotosFor(racing, bucket, scope("tech-a")).put(draft, "LATERAL_RIGHT", jpeg(), day(14));
-    expect(raced).toBe(true);
-    expect(result).toEqual({ status: "consent_required", reason: "DECLINED" });
-    expect({ objects: await objects(), rows: await rows(draft) }).toEqual(before);
-    await recordAcceptance(db, "client-r", "STUDENT", { photosAuthorized: true, shownVersion: BASELINE_VERSION }, day(15));
-  });
-
-  it("is also required by the database: no row without an acceptance that authorizes photos", async () => {
-    const draft = (await assessmentsFor(db, scope("tech-a")).listForStudent("st-race")).find((a) => a.state === "DRAFT")!.id;
-    const insert = (acceptanceId: string | null) =>
-      db
-        .prepare(
-          `INSERT INTO assessment_photos(id,organization_id,assessment_id,view,object_key,content_type,size_bytes,width,height,consent_confirmed_by_user_id,created_at,consent_acceptance_id)
-           VALUES (?1,'org-a',?2,'ANTERIOR','assessments/org-a/x/direct-key-0000000000.jpg','image/jpeg',10,10,10,'tech-a','2026-11-15T00:00:00.000Z',?3)`,
-        )
-        .bind(crypto.randomUUID(), draft, acceptanceId)
-        .run();
-    // The anterior view is taken, so a missing refusal would show as a different error: use a free key and view.
     await db.prepare("DELETE FROM assessment_photos WHERE assessment_id = ?1 AND view = 'ANTERIOR'").bind(draft).run();
-    await expect(insert(null)).rejects.toThrow(/PHOTO_AUTHORIZATION_REQUIRED/);
-    await expect(insert("no-such-acceptance")).rejects.toThrow(/PHOTO_AUTHORIZATION_REQUIRED|FOREIGN KEY/);
-    await expect(insert(await latestAcceptance("client-d"))).rejects.toThrow(/PHOTO_AUTHORIZATION_REQUIRED/);
-    // A professional's acceptance is not a student's authorization.
-    await recordAcceptance(db, "owner-a", "PROFESSIONAL", { photosAuthorized: false, shownVersion: BASELINE_VERSION }, day(15));
-    const professional = (await db.prepare("SELECT id FROM consent_acceptances WHERE user_id = 'owner-a'").first<{ id: string }>())!.id;
-    await expect(insert(professional)).rejects.toThrow(/PHOTO_AUTHORIZATION_REQUIRED/);
-    expect(await rows(draft).then((all) => all.filter((r) => r.view === "ANTERIOR"))).toEqual([]);
+    await db
+      .prepare(
+        `INSERT INTO assessment_photos(id,organization_id,assessment_id,view,object_key,content_type,size_bytes,width,height,consent_confirmed_by_user_id,created_at,consent_acceptance_id)
+         VALUES (?1,'org-a',?2,'ANTERIOR','assessments/org-a/x/direct-key-0000000000.jpg','image/jpeg',10,10,10,'tech-a','2026-11-15T00:00:00.000Z',NULL)`,
+      )
+      .bind(crypto.randomUUID(), draft)
+      .run();
+    expect((await rows(draft)).filter((r) => r.view === "ANTERIOR")).toHaveLength(1);
   });
 });
 
@@ -320,15 +258,27 @@ describe("a recorded assessment keeps its photos", () => {
     const before = { objects: await objects(), rows: await rows(draft) };
     expect(await photos().put(draft, "ANTERIOR", jpeg(), day(13))).toEqual({ status: "not_found" });
     expect(await photos().put(draft, "LATERAL_LEFT", jpeg(), day(13))).toEqual({ status: "not_found" });
-    expect(await photos().remove(draft, "LATERAL_LEFT", day(13))).toEqual({ status: "not_found" });
     expect({ objects: await objects(), rows: await rows(draft) }).toEqual(before);
     expect(await read(draft, "LATERAL_LEFT")).not.toBeNull();
+    // Nobody without the assignment erases it.
+    expect(await photos("tech-a2").remove(draft, "LATERAL_LEFT", day(13))).toEqual({ status: "not_found" });
     const run = (sql: string, ...binds: unknown[]) => db.prepare(sql).bind(...binds).run();
     await expect(run("DELETE FROM assessment_photos WHERE assessment_id = ?1", draft)).rejects.toThrow(/ASSESSMENT_FROZEN/);
     await expect(run("UPDATE assessment_photos SET view = 'POSTERIOR' WHERE assessment_id = ?1", draft)).rejects.toThrow(/ASSESSMENT_FROZEN/);
     await expect(
       run("INSERT INTO assessment_photos(id,organization_id,assessment_id,view,object_key,content_type,size_bytes,width,height,consent_confirmed_by_user_id,created_at,consent_acceptance_id) VALUES ('late','org-a',?1,'POSTERIOR','assessments/org-a/x/late-key-0000000000.jpg','image/jpeg',10,10,10,'tech-a','2026-11-13T00:00:00.000Z',(SELECT id FROM consent_acceptances WHERE user_id = 'client-1' LIMIT 1))", draft),
     ).rejects.toThrow(/ASSESSMENT_FROZEN/);
+    // The professional erases it without any request of the student (migration 0035): the file goes, the frozen row stays, and the photo is
+    // shown as erased.
+    const [frozen] = (await rows(draft)).filter((r) => r.view === "LATERAL_LEFT");
+    expect(await photos().remove(draft, "LATERAL_LEFT", day(14))).toEqual({ status: "erased" });
+    expect(await objects()).not.toContain(frozen.key);
+    expect((await rows(draft)).map((r) => r.view)).toContain("LATERAL_LEFT");
+    expect(await read(draft, "LATERAL_LEFT")).toBeNull();
+    expect((await photos().list(draft)).find((p) => p.view === "LATERAL_LEFT")?.erasedAt).toBe(day(14).toISOString());
+    expect(await db.prepare("SELECT request_id AS request, erased_by_user_id AS who FROM photo_erasures WHERE assessment_id = ?1").bind(draft).first()).toEqual({ request: null, who: "tech-a" });
+    expect(await photos().remove(draft, "LATERAL_LEFT", day(14))).toEqual({ status: "not_found" });
+    expect((await db.prepare("SELECT COUNT(*) AS n FROM access_audit_events WHERE action = 'ASSESSMENT_PHOTO_ERASED' AND subject_id = ?1").bind(draft).first<{ n: number }>())!.n).toBe(1);
   });
 
   it("leaves no object behind when the assessment is recorded while the photo is being stored", async () => {

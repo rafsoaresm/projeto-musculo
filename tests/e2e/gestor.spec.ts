@@ -271,11 +271,12 @@ test("the platform manager is activated once and manages organizations without s
   await expect(changes.getByText("Seção «Seção nova» adicionada")).toBeVisible();
   await expect(manager.page.getByRole("region", { name: "Termos de uso do profissional (versão 2)" })).toBeVisible();
   const publish = manager.page.getByRole("button", { name: "Publicar nova versão" });
-  await expect(publish).toBeDisabled();
+  await expect(publish).toBeEnabled();
   await manager.page.getByLabel(/Motivo da alteração/).fill("Ajuste de redação no teste.");
-  await manager.page.getByLabel(/revisado e aprovado por quem responde juridicamente/).check();
+  // No legal box to tick before publishing (decision of 03/11/2026).
+  await expect(manager.page.getByText(/revisado e aprovado por quem responde juridicamente/)).toHaveCount(0);
   await publish.click();
-  await expect(manager.page.getByText(/Versão \d{4}-\d{2}-\d{2}-\d{6} publicada\. Todos aceitam de novo no próximo acesso\./)).toBeVisible();
+  await expect(manager.page.getByText(/^Versão \d{4}-\d{2}-\d{2}-\d{6} publicada\.$/)).toBeVisible();
 
   // The draft went with the publication: nothing is left to continue.
   await manager.page.reload();
@@ -289,16 +290,15 @@ test("the platform manager is activated once and manages organizations without s
   await expect(history.getByText("Em vigor")).toHaveCount(1);
   await expect(history.getByText("2026-10-25-base")).toBeVisible();
 
-  // The professional who had accepted the old text is asked again, reads the new one, and gets back in.
+  // The professional is not asked to accept again: the area opens, and the new text is there to be read.
   await pro.page.goto("./profissional");
-  await expect(pro.page).toHaveURL(/\/aceite\?area=profissional/);
+  await expect(pro.page).toHaveURL(/\/profissional\/?$/);
+  await pro.page.goto("./aceite?area=profissional");
   const reading = pro.page.getByRole("region", { name: "Termos de uso do profissional (versão 2)" });
   await expect(reading).toBeVisible();
   await expect(reading.getByText("Segundo parágrafo.")).toBeVisible();
   await expect(reading.getByRole("heading", { name: "Seção nova" })).toBeVisible();
-  await pro.page.getByLabel("Li e aceito os termos de uso.").check();
-  await pro.page.getByRole("button", { name: "Aceitar e continuar" }).click();
-  await expect(pro.page).toHaveURL(/\/profissional\/?$/);
+  await expect(pro.page.getByRole("button", { name: "Aceitar e continuar" })).toHaveCount(0);
 
   // Publishing is on the trail, and the manager can start a new edit from an older version.
   await manager.page.goto("./gestor/auditoria");

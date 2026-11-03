@@ -40,7 +40,7 @@ test("a professional registers services and leads, moves them along the funnel, 
   await expect(page.getByRole("heading", { name: "Seu primeiro lead começa aqui." })).toBeVisible();
   await page.getByRole("link", { name: "Novo lead" }).click();
   await expect(page.getByRole("heading", { name: "Novo lead", level: 1 })).toBeVisible();
-  await expect(page.getByText("Não registre aqui dados de saúde", { exact: false }).first()).toBeVisible();
+  await expect(page.getByText("Não registre aqui dados de saúde", { exact: false })).toHaveCount(0);
 
   // A lead needs a way to be reached; nothing is saved without it.
   const form = page.getByRole("form", { name: "Novo lead" });

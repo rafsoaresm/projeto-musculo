@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createLead, updateLead } from "./actions";
 import type { LeadMatch } from "@/db/leads";
-import { HEALTH_WARNING, LEAD_SOURCES, LEAD_SOURCES_BY_HAND, LEAD_SOURCE_LABEL, LEAD_STAGE_LABEL, NOTE_MAX } from "./contracts";
+import { LEAD_SOURCES, LEAD_SOURCES_BY_HAND, LEAD_SOURCE_LABEL, LEAD_STAGE_LABEL, NOTE_MAX } from "./contracts";
 
 export interface ServiceOption {
   id: string;
@@ -142,7 +142,6 @@ export function LeadForm({
           <textarea value={values.note} onChange={set("note")} maxLength={NOTE_MAX} rows={3} />
         </label>
       )}
-      <p className="small muted">{HEALTH_WARNING}</p>
 
       {matches.length > 0 && (
         <div className="notice warning" role="alert">

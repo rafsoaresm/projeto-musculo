@@ -233,10 +233,10 @@ describe("what stops or warns when publishing, page by page", () => {
     expect(issues[0].message).toMatch(/^Página “sobre”: dê um título à página/);
     expect(issues[1].message).toMatch(/^Página “sobre”: a página está sem blocos/);
   });
-  it("still stops for the home page with no block, and for a testimony of a page without its authorization", () => {
+  it("still stops for the home page with no block, and not for a testimony of a page without the authorization mark", () => {
     expect(publishIssues(site([], [sub("p1", "sobre")]), none).filter((issue) => issue.severity === "blocking")).toEqual([expect.objectContaining({ page: null, message: "Acrescente pelo menos um bloco." })]);
     const quote = node("quote", "q", { quote: "Gostei", author: "Ana", authorized: false });
-    expect(publishIssues(site([paragraph("a")], [sub("p1", "depoimentos", [quote])]), none)).toEqual([expect.objectContaining({ page: "p1", severity: "blocking", blockId: "q" })]);
+    expect(publishIssues(site([paragraph("a")], [sub("p1", "depoimentos", [quote])]), none)).toEqual([]);
   });
   it("knows where a button to a page goes: the home page, a page, and one that is not there any more", () => {
     const content = site([goTo("a", HOME), goTo("b", "p1"), goTo("c", "gone")], [sub("p1", "sobre")]);

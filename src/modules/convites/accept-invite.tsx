@@ -1,13 +1,12 @@
 "use client";
 import { useActionState, useTransition } from "react";
-import { ConsentFields } from "@/modules/consentimento/consent-fields";
+import { TermsReading } from "@/modules/consentimento/terms-reading";
 import type { ShownTerms } from "@/modules/consentimento/terms";
 import { acceptInvite } from "./actions";
 
 /**
- * The student reads the terms and accepts them here, once, in the same step that accepts the
- * invitation. It sends from onSubmit because React 19 resets a form after its action, which would
- * clear the ticks whenever the server refused it.
+ * The student accepts the invitation here; the terms in force can be read, folded, and nothing has to be
+ * ticked. It sends from onSubmit because React 19 resets a form after its action.
  */
 export function AcceptInvite({ token, terms }: { token: string; terms: ShownTerms }) {
   const [error, action, pending] = useActionState(acceptInvite.bind(null, token), "");
@@ -21,7 +20,7 @@ export function AcceptInvite({ token, terms }: { token: string; terms: ShownTerm
         startTransition(() => action(data));
       }}
     >
-      <ConsentFields terms={terms} />
+      <TermsReading terms={terms} />
       {error && (
         <p role="alert" className="form-error">
           {error}

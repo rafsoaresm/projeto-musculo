@@ -69,7 +69,7 @@ test("models: a site of one page with pages from models, each at an address of i
   await save(page);
   await editor(page).getByRole("button", { name: "Publicar", exact: true }).click();
   await expect(editor(page).getByRole("list", { name: "O que falta para publicar" })).toHaveCount(0);
-  await expect(editor(page).getByRole("list", { name: "Avisos antes de publicar" })).toContainText("escreva um depoimento autorizado");
+  await expect(editor(page).getByRole("list", { name: "Avisos antes de publicar" })).toContainText("escreva um depoimento, ou tire o bloco");
   await editor(page).getByRole("button", { name: "Publicar mesmo assim" }).click();
   await expect(editor(page).getByText("Publicado: o site está no ar na versão 1.")).toBeVisible();
   await closeEditor(page);
@@ -189,11 +189,10 @@ test("models V1: four models of the handoff as cards with a picture, each seen w
   expect(html).not.toMatch(/R\$ \d|★/);
   const nav = visitor.getByRole("navigation", { name: "Páginas do site" });
   await expect(nav.getByRole("link", { name: "Contato" })).toHaveAttribute("href", /^#s-/);
-  // The site is not receiving messages, so the buttons go straight to WhatsApp, with the model's opening message (0.66).
-  const straight = `https://wa.me/5531999990000?text=${encodeURIComponent("Olá! Gostaria de conhecer seus treinos.")}`;
-  await expect(visitor.locator("header .site-header-cta")).toHaveAttribute("href", straight);
-  await expect(visitor.locator("main a.site-has-icon").first()).toHaveAttribute("href", straight);
-  await expect(visitor.locator("#site-whatsapp-form")).toHaveCount(0);
+  // A new site is born receiving messages, and the model asks first: the buttons open the form before WhatsApp (0.66), never wa.me directly.
+  await expect(visitor.locator("header .site-header-cta")).toHaveAttribute("href", "#site-whatsapp-form");
+  await expect(visitor.locator("main a.site-has-icon").first()).toHaveAttribute("href", "#site-whatsapp-form");
+  await expect(visitor.locator("#site-whatsapp-form")).toHaveCount(1);
   await visit.context.close();
 });
 

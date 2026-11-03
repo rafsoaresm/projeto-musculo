@@ -6,7 +6,7 @@ import {
   noHorizontalOverflow,
   password,
   uniqueEmail,
-  acceptProfessionalTerms,
+  expectNoTermsBox,
 } from "./helpers";
 
 test("the library offers the 64 system exercises and keeps each organization's own apart", async ({
@@ -102,7 +102,7 @@ test("the library offers the 64 system exercises and keeps each organization's o
   await other.page.getByLabel("Senha", { exact: true }).fill(password);
   await other.page.locator("form button").click();
   await other.page.getByLabel("Nome do espaço").fill("Outro estúdio da biblioteca");
-  await acceptProfessionalTerms(other.page);
+  await expectNoTermsBox(other.page);
   await other.page.getByRole("button", { name: "Criar meu espaço" }).click();
   await expect(other.page.getByRole("heading", { name: "Visão geral", level: 1 })).toBeVisible();
   await other.page.goto("./profissional/biblioteca");

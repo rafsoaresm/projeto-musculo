@@ -175,20 +175,15 @@ test("a professional builds a page in the visual editor, previews it, publishes 
   await inspector(page).getByLabel("O link leva a").selectOption({ label: "Outro bloco desta página" });
   await inspector(page).getByLabel("Bloco de destino").selectOption({ label: "Serviços · Serviços" });
 
-  // A testimony needs the person's authorization to be published: the editor says which block and goes to it.
+  // A testimony asks for no authorization mark: the inspector has no such box, and nothing stops the publication for it.
   await editor(page).getByRole("button", { name: "Salvar rascunho" }).click();
   await expect(editor(page).getByText("Rascunho salvo.")).toBeVisible();
   await expect(editor(page).getByText("Rascunho salvo (revisão 2)")).toBeVisible();
-  await editor(page).getByRole("button", { name: "Publicar", exact: true }).click();
-  // This one does stop the publication (it is a person's authorization, not a loose end): there is no way to publish anyway.
-  const issues = editor(page).getByRole("list", { name: "O que falta para publicar" });
-  await expect(issues).toContainText("confirme que a pessoa autorizou");
-  await expect(issues.getByRole("listitem")).toHaveCount(1);
-  await expect(editor(page).getByRole("button", { name: "Publicar mesmo assim" })).toHaveCount(0);
-  await issues.getByRole("button", { name: "Ir ao bloco" }).click();
+  await selectLayer(page, /Depoimento/);
   await panel(page, "Propriedades");
   await expect(inspector(page).getByRole("heading", { name: "Depoimento", level: 2 })).toBeVisible();
-  await inspector(page).getByLabel("Tenho a autorização da pessoa para publicar este depoimento.").check();
+  await expect(inspector(page).getByText("Tenho a autorização da pessoa para publicar este depoimento.")).toHaveCount(0);
+  await expect(inspector(page).getByRole("checkbox")).toHaveCount(0);
   await expect(editor(page).getByRole("list", { name: "O que falta para publicar" })).toHaveCount(0);
 
   // Undo and redo take back what was done, a step at a time.
@@ -218,9 +213,8 @@ test("a professional builds a page in the visual editor, previews it, publishes 
   await editor(page).getByRole("button", { name: "Voltar a editar" }).click();
   await noHorizontalOverflow(page);
 
-  // Save, then publish from the editor.
-  await editor(page).getByRole("button", { name: "Salvar rascunho" }).click();
-  await expect(editor(page).getByText("Rascunho salvo (revisão 3)")).toBeVisible();
+  // Publish from the editor (what was undone and redone left nothing new to save since revision 2).
+  await expect(editor(page).getByRole("button", { name: "Salvar rascunho" })).toBeDisabled();
   await editor(page).getByRole("button", { name: "Publicar", exact: true }).click();
   await expect(editor(page).getByText("Publicado: o site está no ar na versão 1.")).toBeVisible();
   await closeEditor(page);

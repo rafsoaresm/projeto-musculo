@@ -44,7 +44,8 @@ async function site(organizationId: string, ownerId: string, slug: string, optio
     const published = await repo.publish(saved.revision, at(-98), { withWarnings: true });
     if (published.status !== "published") throw new Error(JSON.stringify(published));
   }
-  if (options.open !== false) expect((await repo.setInquiriesOpen(true, at(-97))).status).toBe("saved");
+  // A new site is born receiving messages; a test that needs it closed turns it off.
+  if (options.open === false) expect((await repo.setInquiriesOpen(false, at(-97))).status).toBe("saved");
   return repo;
 }
 
@@ -81,15 +82,15 @@ afterAll(async () => {
 });
 
 describe("the switch of the site", () => {
-  it("is born closed, and the owner and a manager turn it on and off, with a line in the trail each time", async () => {
-    const closed = await site("org-e", "owner-e", "estudio-e", { open: false });
-    expect((await closed.overview())!.inquiries).toEqual({ open: false, waiting: 0 });
-    expect((await closed.setInquiriesOpen(true, at(1))).status).toBe("saved");
-    expect((await closed.overview())!.inquiries.open).toBe(true);
-    expect((await closed.setInquiriesOpen(false, at(2))).status).toBe("saved");
-    expect((await closed.overview())!.inquiries.open).toBe(false);
+  it("is born open, and the owner and a manager turn it off and on, with a line in the trail each time", async () => {
+    const born = await site("org-e", "owner-e", "estudio-e");
+    expect((await born.overview())!.inquiries).toEqual({ open: true, waiting: 0 });
+    expect((await born.setInquiriesOpen(false, at(1))).status).toBe("saved");
+    expect((await born.overview())!.inquiries.open).toBe(false);
+    expect((await born.setInquiriesOpen(true, at(2))).status).toBe("saved");
+    expect((await born.overview())!.inquiries.open).toBe(true);
     const trail = await db.prepare("SELECT action FROM access_audit_events WHERE organization_id = 'org-e' AND action LIKE 'SITE_INQUIRIES_%' ORDER BY created_at").all<{ action: string }>();
-    expect(trail.results.map((row) => row.action)).toEqual(["SITE_INQUIRIES_OPENED", "SITE_INQUIRIES_CLOSED"]);
+    expect(trail.results.map((row) => row.action)).toEqual(["SITE_INQUIRIES_CLOSED", "SITE_INQUIRIES_OPENED"]);
   });
   it("does not write a line when it already was so, and is not for a commercial member, a technical one or a stranger", async () => {
     const before = await count("SELECT 1 FROM access_audit_events WHERE organization_id = 'org-a' AND action LIKE 'SITE_INQUIRIES_%'");
@@ -181,13 +182,14 @@ describe("a message from the public page", () => {
     expect(await siteInquiriesFor(db, scope("owner-g", "org-g")).discard("bulk-1", at(401))).toEqual({ status: "discarded" });
     expect(await send("estudio-g", { name: "Quinhentos e um" }, null, 402)).toEqual({ status: "received" });
   });
-  it("is stopped by the database as well: an inquiry belongs to the organization of its site, and what was written is never edited", async () => {
+  it("is stopped by the database as well: an inquiry belongs to the organization of its site (what was written may now be edited)", async () => {
     const siteA = (await one<{ id: string }>("SELECT id FROM sites WHERE slug = 'marina-a'"))!.id;
     await expect(
       db.prepare("INSERT INTO site_inquiries (id, organization_id, site_id, name, email, email_key, notice_url) VALUES ('x1','org-b',?1,'Ana','a@e.test','a@e.test','https://example.test/aviso')").bind(siteA).run(),
     ).rejects.toThrow();
-    await expect(db.prepare("UPDATE site_inquiries SET name = 'Outro nome' WHERE name = 'Ana Souza'").run()).rejects.toThrow();
-    await expect(db.prepare("UPDATE site_inquiries SET message = 'mudou' WHERE name = 'Ana Souza'").run()).rejects.toThrow();
+    // The rule "what a visitor wrote is never edited" went away with migration 0035.
+    expect((await db.prepare("UPDATE site_inquiries SET name = 'Outro nome' WHERE name = 'Ana Souza'").run()).meta.changes).toBeGreaterThan(0);
+    await db.prepare("UPDATE site_inquiries SET name = 'Ana Souza' WHERE name = 'Outro nome'").run();
     // Neither a contact-less message, nor one whose keys do not match, is accepted.
     await expect(
       db.prepare("INSERT INTO site_inquiries (id, organization_id, site_id, name, notice_url) VALUES ('x2','org-a',?1,'Ana','https://example.test/aviso')").bind(siteA).run(),

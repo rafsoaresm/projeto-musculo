@@ -68,7 +68,7 @@ export function describeForm(definition: FormDefinition): string {
 }
 
 /** The names the fields of the form have in the page that carries it, apart from `f<n>`. */
-export const FORM_FIELD = { consent: FIELD.consent, bait: FIELD.bait, route: "pagina", form: "formulario", version: "versao" } as const;
+export const FORM_FIELD = { bait: FIELD.bait, route: "pagina", form: "formulario", version: "versao" } as const;
 /** Where the answers of a public form go, from the site's own folder (`/site/<slug>/…`). */
 export const FORM_SEND_PATH = "m/contato";
 export const FORM_THANKS_PATH = "m/enviado";
@@ -425,7 +425,6 @@ export function parseFormSubmission(definition: FormDefinition, form: Pick<FormD
   }
   if (name === null) return invalid(INQUIRY_FIELD_PROBLEM.name);
   if (email === null && phone === null) return invalid(INQUIRY_FIELD_PROBLEM.contact);
-  if (raw(FORM_FIELD.consent) !== "on") return invalid(INQUIRY_FIELD_PROBLEM.consent);
   const body = [message, extras.join("\n")].filter(Boolean).join("\n\n");
   if (body.length > INQUIRY_MESSAGE_MAX) return invalid(`O que foi escrito passou de ${INQUIRY_MESSAGE_MAX} letras no total. Encurte os textos e tente de novo.`);
   return { kind: "ok", value: { name, email, phone, message: body === "" ? null : body, page } };

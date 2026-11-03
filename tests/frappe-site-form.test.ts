@@ -218,7 +218,6 @@ describe("what a visitor sent, read against the form of the page", () => {
     [key("Idade")]: "31",
     [key("Objetivo")]: "1",
     [key("Aceito ligação")]: "on",
-    [FORM_FIELD.consent]: "on",
     [FORM_FIELD.version]: definition.version,
   });
   const send = (fields: Record<string, string>) => parseFormSubmission(definition, new URLSearchParams(fields), "contato");
@@ -234,7 +233,7 @@ describe("what a visitor sent, read against the form of the page", () => {
     const onlyPhone = send({ ...good(), [key("E-mail")]: "", [key("WhatsApp")]: "11 91234-5678" });
     expect(onlyPhone).toMatchObject({ kind: "ok", value: { email: null, phone: "11 91234-5678" } });
     // Without a message and without other fields the inbox keeps the contact alone.
-    const bare = parseFormSubmission(read(form(NAME, EMAIL)).definition, new URLSearchParams({ f1: "Ana", f2: "ana@example.test", aceite: "on", versao: read(form(NAME, EMAIL)).definition.version }), "");
+    const bare = parseFormSubmission(read(form(NAME, EMAIL)).definition, new URLSearchParams({ f1: "Ana", f2: "ana@example.test", versao: read(form(NAME, EMAIL)).definition.version }), "");
     expect(bare).toEqual({ kind: "ok", value: { name: "Ana", email: "ana@example.test", phone: null, message: null, page: "" } });
   });
 
@@ -263,7 +262,8 @@ describe("what a visitor sent, read against the form of the page", () => {
     expect(problem({ ...good(), [key("WhatsApp")]: "ana@example.test" })).toBe("Escreva um telefone com DDD em “WhatsApp”.");
     expect(problem({ ...good(), [key("WhatsApp")]: "12" })).toBe("Escreva um telefone com DDD em “WhatsApp”.");
     expect(problem({ ...good(), [key("E-mail")]: "" })).toBe("Escreva um e-mail ou um telefone (com DDD) para a resposta chegar até você.");
-    expect(problem({ ...good(), [FORM_FIELD.consent]: "" })).toBe("Marque que leu o aviso de privacidade para enviar.");
+    // No consent box is asked for: an old page that still sends one is read the same.
+    expect(problem({ ...good(), aceite: "" })).toBe("ok");
     expect(problem({ ...good(), [key("Idade")]: "trinta" })).toBe("Confira o campo “Idade”: o formato não é o esperado.");
     expect(problem({ ...good(), [key("Objetivo")]: "2" })).toBe("Escolha uma das opções de “Objetivo”.");
     expect(problem({ ...good(), [key("Objetivo")]: "Ganhar massa" })).toBe("Escolha uma das opções de “Objetivo”.");
@@ -285,7 +285,7 @@ describe("what a visitor sent, read against the form of the page", () => {
 
   it("a required choice or box must be picked; an optional one left empty adds no line", () => {
     const required = read(form(NAME, EMAIL, node("select", { required: "", "aria-label": "Plano" }, { children: [node("option", {}, { innerHTML: "A" })] }), node("input", { type: "checkbox", required: "", "aria-label": "Li as regras" }))).definition;
-    const base = { f1: "Ana", f2: "ana@example.test", aceite: "on", versao: required.version };
+    const base = { f1: "Ana", f2: "ana@example.test", versao: required.version };
     const run = (fields: Record<string, string>) => parseFormSubmission(required, new URLSearchParams({ ...base, ...fields }), "");
     expect(run({})).toEqual({ kind: "invalid", problem: "Escolha uma opção em “Plano”." });
     expect(run({ f3: "0" })).toEqual({ kind: "invalid", problem: "Marque o campo “Li as regras” para enviar." });

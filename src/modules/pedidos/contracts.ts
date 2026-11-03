@@ -35,7 +35,7 @@ export const REQUEST_KIND_HELP: Record<RequestKind, string> = {
     "O que a ferramenta mostra a você, você já baixa em “Baixar uma cópia dos meus dados”. Este pedido é para receber também o que o seu profissional guarda (ficha, avaliações, fotos e anotações): ele responde.",
   CORRECTION: "Diga qual dado está errado e como deveria ser.",
   PHOTOS_DELETION:
-    "Quando o seu profissional atender, as fotos guardadas são apagadas do armazenamento e deixam de aparecer. Fica o registro de que existiram e de que foram apagadas a seu pedido. Isso não retira a sua autorização para fotos novas: faça isso acima, em “Fotos de postura”.",
+    "Quando o seu profissional atender, as fotos guardadas são apagadas do armazenamento e deixam de aparecer. Fica o registro de que existiram e de que foram apagadas a seu pedido.",
   DATA_DELETION:
     "Alguns registros ficam congelados de propósito (treino entregue, avaliação registrada). O seu profissional responde o que pode ser apagado e o que a lei manda manter.",
   ACCEPTANCE_WITHDRAWAL: "O seu profissional responde o que muda no seu atendimento e nos seus dados.",

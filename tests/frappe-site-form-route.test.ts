@@ -59,7 +59,7 @@ const nameOf = (html: string, hint: string) => new RegExp(`<[a-z]+ [^>]*(?:place
 /** What a visitor's browser sends from the page as drawn now: the fields it shows with what they were given, and the hidden ones the page carries. */
 async function fromPage(slug: string, path: string[] | undefined, values: Record<string, string>) {
   const html = await (await open(slug, path)).text();
-  const sent: Record<string, string> = { pagina: hiddenOf(html, "pagina"), formulario: hiddenOf(html, "formulario"), versao: hiddenOf(html, "versao"), aceite: "on" };
+  const sent: Record<string, string> = { pagina: hiddenOf(html, "pagina"), formulario: hiddenOf(html, "formulario"), versao: hiddenOf(html, "versao") };
   for (const [hint, value] of Object.entries(values)) {
     const field = nameOf(html, hint);
     if (!field) throw new Error(`no field ${hint} in ${html.slice(0, 400)}`);
@@ -109,24 +109,29 @@ beforeEach(async () => {
 });
 
 describe("the form of a page of the new editor is drawn only where the environment and the site both opened it", () => {
-  it("closed by the environment, or by the site: the page is there and the form is not, and the page changes with it", async () => {
+  it("open by default; closed by the environment's emergency switch, or by the site: the page is there and the form is not", async () => {
     const opened = await (await open("marina-a", ["contato"])).text();
     expect(opened).toContain('<form method="post" action="../../site/marina-a/m/contato">');
-    expect(opened).toContain('name="aceite"');
+    expect(opened).toContain(`href="${NOTICE}"`);
+    expect(opened).not.toContain('name="aceite"');
+    // With no variable at all the form is there, without a link to a notice.
     state.env = { DB: db, AUTH_SECRET: OPEN.AUTH_SECRET };
+    const bare = await (await open("marina-a", ["contato"])).text();
+    expect(bare).toContain('<form method="post" action="../../site/marina-a/m/contato">');
+    expect(bare).not.toContain("Aviso de privacidade");
+    state.env = { DB: db, AUTH_SECRET: OPEN.AUTH_SECRET, PUBLIC_FORMS_ENABLED: "false" };
     const closedByEnvironment = await (await open("marina-a", ["contato"])).text();
     expect(closedByEnvironment).toContain("Fale comigo");
-    expect(closedByEnvironment).not.toMatch(/<form|<input|<textarea|aceite/);
+    expect(closedByEnvironment).not.toMatch(/<form|<input|<textarea/);
     state.env = { DB: db, ...OPEN };
     await db.prepare("UPDATE sites SET inquiries_open = 0 WHERE slug = 'marina-a'").run();
     const closedBySite = await (await open("marina-a", ["contato"])).text();
     expect(closedBySite).toBe(closedByEnvironment);
     // The environment's word can also come from the variables of the dashboard.
     state.env = { DB: db, AUTH_SECRET: OPEN.AUTH_SECRET };
-    process.env.PUBLIC_FORMS_ENABLED = "true";
-    process.env.PRIVACY_NOTICE_URL = NOTICE;
+    process.env.PUBLIC_FORMS_ENABLED = "false";
     await db.prepare("UPDATE sites SET inquiries_open = 1 WHERE slug = 'marina-a'").run();
-    expect(await (await open("marina-a", ["contato"])).text()).toContain('name="aceite"');
+    expect(await (await open("marina-a", ["contato"])).text()).not.toContain("<form");
   });
 
   it("the address it sends to leads out of the page from where the page is, under any mount path", async () => {
@@ -158,6 +163,13 @@ describe("sending the form of a page", () => {
     expect(await count("SELECT 1 FROM site_inquiries")).toBe(1);
   });
 
+  it("is kept with a neutral value in place of the notice when the environment has none", async () => {
+    state.env = { DB: db, AUTH_SECRET: OPEN.AUTH_SECRET };
+    const { sent } = await fromPage("marina-a", ["contato"], GOOD);
+    expect((await post("marina-a", sent)).status).toBe(303);
+    expect(await one("SELECT notice_url FROM site_inquiries")).toEqual({ notice_url: "sem-aviso" });
+  });
+
   it("reads the PUBLISHED form: a field only in the draft is not asked, and an edit that is not published changes nothing for the visitor", async () => {
     const { sent } = await fromPage("marina-a", ["contato"], GOOD);
     expect(Object.keys(sent)).not.toContain("Segredo");
@@ -186,10 +198,9 @@ describe("sending the form of a page", () => {
     const bad = await post("marina-a", { ...sent, [nameOf(await (await open("marina-a", ["contato"])).text(), "E-mail")]: "ana@" });
     expect(bad.status).toBe(400);
     expect(await bad.text()).toContain("Escreva um e-mail válido em “E-mail”.");
-    const noConsent = await post("marina-a", { ...sent, aceite: "" });
-    expect(noConsent.status).toBe(400);
-    expect(await noConsent.text()).toContain("Marque que leu o aviso de privacidade para enviar.");
     expect(await count("SELECT 1 FROM site_inquiries")).toBe(0);
+    // No consent box is asked for: the same message without one is kept.
+    expect((await post("marina-a", { ...sent, aceite: "" })).status).toBe(303);
   });
 
   it("a program that fills the bait is thanked and nothing is kept, even before the page is looked at", async () => {
@@ -225,9 +236,9 @@ describe("sending the form of a page", () => {
     expect(await count("SELECT 1 FROM site_inquiries WHERE organization_id = 'org-a'")).toBe(1);
   });
 
-  it("is closed, with nothing written and the same 404 as an unknown address, when the environment or the site did not open it", async () => {
+  it("is closed, with nothing written and the same 404 as an unknown address, when the environment or the site closed it", async () => {
     const { sent } = await fromPage("marina-a", ["contato"], GOOD);
-    for (const closed of [{}, { PUBLIC_FORMS_ENABLED: "false" }, { PUBLIC_FORMS_ENABLED: "true" }, { PRIVACY_NOTICE_URL: NOTICE }, { PUBLIC_FORMS_ENABLED: "true", PRIVACY_NOTICE_URL: "http://example.test/aviso" }]) {
+    for (const closed of [{ PUBLIC_FORMS_ENABLED: "false" }, { PUBLIC_FORMS_ENABLED: "false", PRIVACY_NOTICE_URL: NOTICE }]) {
       state.env = { DB: db, AUTH_SECRET: OPEN.AUTH_SECRET, ...closed };
       const answered = await post("marina-a", sent);
       expect(answered.status, JSON.stringify(closed)).toBe(404);

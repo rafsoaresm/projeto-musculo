@@ -13,14 +13,14 @@ export default async function DemoTerms() {
       <PageHeading
         eyebrow="PLATAFORMA"
         title="Termos"
-        description="O texto que profissionais e alunos leem e aceitam ao entrar. Edite aqui quando for preciso."
+        description="O texto que profissionais e alunos podem ler. Edite aqui quando for preciso."
         aside={<Pill tone="warning">Prévia · sem edição</Pill>}
       />
       <Notice>
         <p>
           Na demonstração o texto não é editado nem publicado. Na área real, o gestor muda as palavras, vê o que
-          mudou e como a pessoa vai ler, e publica uma nova versão: todos aceitam de novo no próximo acesso, e as
-          versões publicadas ficam no histórico, sem poder ser editadas ou apagadas.
+          mudou e como a pessoa vai ler, e publica uma nova versão, que fica no histórico. Entrar na ferramenta não
+          depende de aceitar os termos.
         </p>
       </Notice>
       <section className="panel">

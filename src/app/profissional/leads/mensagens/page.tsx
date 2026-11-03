@@ -5,7 +5,6 @@ import { siteInquiriesFor } from "@/db/site-inquiries";
 import { Notice, PageHeading } from "@/components/ui";
 import { canWorkLeads } from "@/modules/leads/access";
 import { InquiryList } from "@/modules/leads/inquiry-list";
-import { HEALTH_WARNING } from "@/modules/leads/contracts";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Mensagens do site" };
@@ -34,7 +33,6 @@ export default async function SiteMessages() {
           </Link>
         }
       />
-      <p className="small muted">{HEALTH_WARNING}</p>
       <InquiryList inquiries={inquiries} />
     </>
   );

@@ -52,10 +52,7 @@ export function ProfileSummary({
           )}
           {age !== null && age < 18 && (
             <p>
-              <Pill tone="danger">Menor de idade</Pill>{" "}
-              <span className="small muted">
-                O atendimento a menores ainda não é suportado pela ferramenta.
-              </span>
+              <Pill tone="warning">Menor de idade</Pill>
             </p>
           )}
         </>

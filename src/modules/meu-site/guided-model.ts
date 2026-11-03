@@ -100,8 +100,6 @@ export function fieldsOf(section: SiteNode): Field[] {
           own(entry, "eyebrow", "Sobretítulo", "text", EYEBROW_MAX),
           own(entry, "quote", "Depoimento", "multiline", QUOTE_MAX),
           own(entry, "author", "Autor", "text", AUTHOR_MAX),
-          // A testimony is published only with the person's authorization, confirmed here ("true" or "").
-          { key: `${entry.id}.authorized`, label: "A pessoa autorizou o uso deste depoimento no site", kind: "check", max: 4, value: entry.authorized ? "true" : "" },
         );
         break;
       case "stats":

@@ -7,7 +7,7 @@ import {
   noHorizontalOverflow,
   password,
   uniqueEmail,
-  acceptStudentTerms, showStudentTab
+  expectNoTermsBox, showStudentTab
 } from "./helpers";
 
 test("a client enters only by invitation and reaches nothing but the own area", async ({
@@ -41,7 +41,7 @@ test("a client enters only by invitation and reaches nothing but the own area", 
     .fill(uniqueEmail("client"));
   await client.page.getByLabel("Senha", { exact: true }).fill(password);
   await client.page.getByRole("button", { name: "Criar meu acesso" }).click();
-  await acceptStudentTerms(client.page);
+  await expectNoTermsBox(client.page);
   await client.page.getByRole("button", { name: "Aceitar convite" }).click();
   await expect(
     client.page.getByRole("heading", { name: "Seu acompanhamento." }),

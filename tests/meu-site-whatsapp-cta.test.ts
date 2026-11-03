@@ -59,8 +59,9 @@ describe("what the form before WhatsApp takes", () => {
     expect(parseWhatsAppLead(form({ ...GOOD, celular: "ana@example.test" }), true)).toEqual({ kind: "invalid", field: "phone" });
     expect(parseWhatsAppLead(form({ ...GOOD, objetivo: "x".repeat(161) }), true)).toEqual({ kind: "invalid", field: "goal" });
     expect(parseWhatsAppLead(form({ ...GOOD, objetivo: "a​b" }), true)).toEqual({ kind: "invalid", field: "goal" });
-    expect(parseWhatsAppLead(form({ ...GOOD, aceite: "" }), true)).toEqual({ kind: "invalid", field: "consent" });
-    expect(parseWhatsAppLead(form({ ...GOOD, aceite: "true" }), true)).toEqual({ kind: "invalid", field: "consent" });
+    // There is no consent box: with or without one, the same answer.
+    expect(parseWhatsAppLead(form({ ...GOOD, aceite: "" }), true)).toMatchObject({ kind: "ok" });
+    expect(parseWhatsAppLead(form({ ...GOOD, aceite: "on" }), true)).toMatchObject({ kind: "ok" });
   });
   it("is a program when the bait is filled", () => {
     expect(parseWhatsAppLead(form({ ...GOOD, empresa_extra: "x" }), true)).toEqual({ kind: "bot" });
@@ -92,21 +93,26 @@ describe("where the WhatsApp buttons go", () => {
     expect(html).toContain('name="celular"');
     expect(html).toContain('name="objetivo"');
     expect(html).toContain('name="empresa_extra"');
-    expect(html).toMatch(/<input type="checkbox" required="" name="aceite"\/>/);
-    expect(html).toContain(`<a href="${NOTICE}" target="_blank" rel="noopener noreferrer">aviso de privacidade</a>`);
+    expect(html).not.toContain('name="aceite"');
+    expect(html).not.toContain('type="checkbox"');
+    expect(html).toContain(`<a href="${NOTICE}" target="_blank" rel="noopener noreferrer">Aviso de privacidade</a>`);
     // Modal for a screen reader only once the script puts the page behind out of reach (it is not on the page without it).
     expect(html).toMatch(/role="dialog" aria-labelledby="site-whatsapp-form-title"/);
     expect(html).not.toContain("aria-modal");
-    // The consent says what is kept, the goal included when it is asked; the goal field says not to write health data.
-    expect(html).toContain("concordo que o meu nome, o meu celular e o objetivo, se eu escrever, fiquem com este profissional");
-    expect(html).toContain("Não escreva dados de saúde aqui.");
+    // No consent text and no legal tip on the goal field.
+    expect(html).not.toContain("concordo");
+    expect(html).not.toContain("Não escreva dados de saúde aqui.");
+    expect(html).toContain("Por exemplo, ganhar força ou voltar a treinar.");
     expect(html).toContain(`pattern="${MOBILE_PATTERN.replace(/&/g, "&amp;")}"`);
     expect(html).not.toContain("<script");
   });
-  it("without the goal when the site does not ask it, and the consent says only the name and the mobile", () => {
+  it("without the goal when the site does not ask it, and without a link when the environment has no notice", () => {
     const html = render(site({ message: MESSAGE, askFirst: true, askGoal: false }), LIVE);
     expect(html).not.toContain('name="objetivo"');
-    expect(html).toContain("concordo que o meu nome, o meu celular fiquem com este profissional");
+    expect(html).toContain('name="celular"');
+    const bare = render(site({ message: MESSAGE, askFirst: true, askGoal: false }), { ...LIVE, noticeUrl: null });
+    expect(bare).toMatch(/<form class="site-form" action="\.\/marina\/m\/whatsapp" method="post">/);
+    expect(bare).not.toContain("Aviso de privacidade");
   });
   it("makes the contact form of a site that asks first that same form, sent to the WhatsApp address with its own button text", () => {
     const content: SiteContent = { ...site(), blocks: [...site().blocks, { id: "f1", type: "contactForm", eyebrow: "", heading: "Fale comigo", text: "", buttonLabel: "Quero começar" }] };

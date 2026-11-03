@@ -63,7 +63,7 @@ export interface ReviewRow {
 export interface PhotoIndexRow {
   view: PhotoView;
   createdAt: string;
-  /** When the photo was erased on the student's request; null while it is stored. Never shown again once set. */
+  /** When the photo was erased (with or without a request of the student); null while it is stored. Never shown again once set. */
   erasedAt: string | null;
 }
 export interface MovementRow {

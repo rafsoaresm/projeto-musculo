@@ -113,7 +113,7 @@ describe("pasting blocks", () => {
     expect(ids(outcome.content, "c")).toHaveLength(2);
     expect(ids(outcome.content, outcome.ids[0])).toHaveLength(2);
   });
-  it("drops what only made sense where it came from: another site's images, services that are not on offer here, an authorization", () => {
+  it("drops what only made sense where it came from: another site's images, services that are not on offer here; a testimony comes as it was", () => {
     const source = page([
       { ...emptyBlock("image", "i1"), assetId: "mine", alt: "Estúdio" } as SiteNode,
       { ...emptyBlock("image", "i2"), assetId: "theirs", alt: "De outro" } as SiteNode,
@@ -133,7 +133,7 @@ describe("pasting blocks", () => {
     expect(background).not.toHaveProperty("styleTablet");
     expect(services).toMatchObject({ serviceIds: ["here"] });
     expect(services).not.toHaveProperty("items");
-    expect(quote).toMatchObject({ authorized: false, quote: "Gostei" });
+    expect(quote).toMatchObject({ authorized: true, quote: "Gostei", author: "Ana" });
     valid(outcome.content);
   });
   it("makes a link to a block of the copy follow the copy, keeps one that goes to a block that is here, and drops one that goes nowhere here", () => {

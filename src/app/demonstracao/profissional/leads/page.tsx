@@ -19,7 +19,7 @@ export default async function DemoLeads() {
           Na demonstração não há espaço nem leads. Na área real, cada interessado entra com nome, um contato, a origem
           (Instagram, WhatsApp, indicação, presencial) e o serviço que pediu, e anda pelo funil: novo, em contato,
           avaliação ou conversa, proposta, contratado ou perdido (com o motivo). Um lead contratado vira aluno sem
-          duplicar quem já é aluno. Não se registram dados de saúde em um lead.
+          duplicar quem já é aluno.
         </p>
       </Notice>
     </>

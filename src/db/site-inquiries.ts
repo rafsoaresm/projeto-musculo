@@ -4,6 +4,7 @@ import {
   INQUIRIES_PER_SITE_PER_HOUR,
   INQUIRIES_WAITING_MAX,
   contactKeys,
+  storedNotice,
   type InquiryValue,
 } from "@/modules/meu-site/inquiries";
 import { slugSchema } from "@/modules/meu-site/contracts";
@@ -55,7 +56,8 @@ const PUBLIC_SITE = `(EXISTS (SELECT 1 FROM site_published p WHERE p.site_id = s
  */
 export async function receiveInquiry(
   db: D1Database,
-  input: { slug: string; value: InquiryValue; noticeUrl: string; sender: string | null; via?: InquiryVia },
+  /** `noticeUrl`: the privacy notice the form linked to, or null when the environment has none (a neutral value is stored then). */
+  input: { slug: string; value: InquiryValue; noticeUrl: string | null; sender: string | null; via?: InquiryVia },
   now = new Date(),
 ): Promise<ReceiveOutcome> {
   const slug = slugSchema.safeParse(input.slug);
@@ -84,7 +86,7 @@ export async function receiveInquiry(
         keys.emailKey,
         keys.phoneKey,
         input.value.message,
-        input.noticeUrl,
+        storedNotice(input.noticeUrl),
         input.sender,
         stamp,
         slug.data,

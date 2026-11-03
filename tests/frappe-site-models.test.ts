@@ -103,7 +103,7 @@ describe.each(SITE_MODELS_V1.map((model) => [model.key, model] as const))("the s
     expect(texts.some((text) => text === "[Seu nome]" || text === "[Nome do profissional]")).toBe(true);
     expect(texts).toContain("[Preço do plano]");
     expect(texts).toContain("[Número]");
-    expect(texts).toContain("[Depoimento de um aluno, com autorização]");
+    expect(texts).toContain("[Depoimento de um aluno]");
   });
 
   it("sends the contact buttons to the organization's contacts, and without one says what is missing and goes nowhere (never a made-up number)", () => {
@@ -145,12 +145,13 @@ describe.each(SITE_MODELS_V1.map((model) => [model.key, model] as const))("the s
     expect(out.body).toContain("<path d=\"M14.56");
     expect(out.body).not.toContain("<iframe");
     expect(out.fonts.has("Inter")).toBe(true);
-    // The form receives messages where the forms are open: a name and a way back, with the privacy box the server adds.
+    // The form receives messages where the forms are open: a name and a way back, with no consent box (the notice is only linked).
     expect(out.forms).toHaveLength(1);
     expect(out.forms[0]!.problems).toEqual([]);
     expect(out.forms[0]!.fields.map((field) => field.kind)).toEqual(["name", "email", "phone", "message"]);
     expect(out.body).toMatch(/<form [^>]*method="post"[^>]*action="m\/contato"/);
-    expect(out.body).toContain('name="aceite"');
+    expect(out.body).not.toContain('name="aceite"');
+    expect(out.body).toContain('href="../privacidade"');
     // Closed, the form is read but not drawn.
     expect(draw(root, false).body).not.toContain("<form");
     expect(out.rules.join("\n")).not.toContain("var(--site-");

@@ -95,12 +95,12 @@ describe("hiding a section from the site", () => {
     const located = renderToStaticMarkup(createElement(SiteRenderer, { content: hidden, images: () => null, locate: { selected: null } }));
     expect(located).toContain(target.id);
     expect(buildSiteCss(hidden, { imageUrl: () => null })).toMatch(/display:\s*none/);
-    // A written testimony without authorization stops a publication; hidden from the site, it does not.
-    const quoteSection = { ...site.blocks[1]!, type: "quote", eyebrow: "", quote: "Ótimo", author: "Ana", authorized: false } as unknown as SiteContent["blocks"][number];
+    // A testimony with no author is a warning; hidden from the site, it is not mentioned at all.
+    const quoteSection = { ...site.blocks[1]!, type: "quote", eyebrow: "", quote: "Ótimo", author: "", authorized: false } as unknown as SiteContent["blocks"][number];
     const withQuote = { ...site, blocks: [site.blocks[0]!, quoteSection, ...site.blocks.slice(2)] } as SiteContent;
-    const stops = (content: SiteContent) => publishIssues(content, new Set()).filter((issue) => issue.severity === "blocking");
-    expect(stops(withQuote)).toHaveLength(1);
-    expect(stops(setSectionHidden(withQuote, HOME, quoteSection.id, true))).toEqual([]);
+    const about = (content: SiteContent) => publishIssues(content, new Set()).filter((issue) => issue.blockId === quoteSection.id);
+    expect(about(withQuote).map((issue) => issue.severity)).toEqual(["warning"]);
+    expect(about(setSectionHidden(withQuote, HOME, quoteSection.id, true))).toEqual([]);
   });
 });
 

@@ -5,7 +5,6 @@ import { Camera, Trash2 } from "lucide-react";
 import { Notice } from "@/components/ui";
 import { useMountPath } from "@/components/use-mount-path";
 import type { PhotoIndexRow } from "@/db/assessments";
-import { PHOTO_DENIAL_MESSAGE, type PhotoDenial } from "@/modules/consentimento/photo-authorization";
 import { PhotoImage } from "./photo-image";
 import { PHOTO_VIEWS, UPLOAD_LONG_SIDE, photoViewLabel, type PhotoView } from "./photos";
 
@@ -35,17 +34,12 @@ export function PhotosFieldset({
   studentId,
   assessmentId,
   photos,
-  minor,
   storageReady,
-  photoDenial,
 }: {
   studentId: string;
   assessmentId: string;
   photos: PhotoIndexRow[];
-  minor: boolean;
   storageReady: boolean;
-  /** Why the student's own authorization is missing; null when it stands. */
-  photoDenial: PhotoDenial | null;
 }) {
   const router = useRouter();
   const mountPath = useMountPath();
@@ -56,7 +50,7 @@ export function PhotosFieldset({
   const address = (view: PhotoView) =>
     `${mountPath()}/profissional/alunos/${studentId}/avaliacoes/${assessmentId}/fotos/${view}`;
   const headers = { "x-photo-request": "1" };
-  const canSend = storageReady && !minor && photoDenial === null;
+  const canSend = storageReady;
 
   async function send(view: PhotoView, file: File) {
     setBusy(view);
@@ -112,37 +106,16 @@ export function PhotosFieldset({
       <p className="small muted">
         Registro visual, não diagnóstico. As fotos ficam no armazenamento privado
         da ferramenta e só você as vê, enquanto tiver o aluno sob o seu
-        atendimento. Depois que a avaliação for registrada, as fotos não mudam.
+        atendimento. Depois que a avaliação for registrada, as fotos não mudam; cada uma ainda pode ser excluída.
         A ferramenta remove os dados do aparelho (posição, data e modelo) antes de guardar.
       </p>
-      {!storageReady ? (
+      {!storageReady && (
         <Notice tone="warning">
           <p>
-            <strong>Fotos indisponíveis neste ambiente.</strong> As fotos ainda não foram liberadas:
-            dependem da revisão jurídica do texto que o aluno aceita, então a ferramenta não aceita
-            fotos por enquanto. O resto da avaliação funciona normalmente.
+            <strong>Fotos indisponíveis neste ambiente.</strong> O armazenamento de fotos não está ligado aqui. O resto da avaliação funciona
+            normalmente.
           </p>
         </Notice>
-      ) : minor ? (
-        <Notice tone="warning">
-          <p>
-            <strong>Menor de idade.</strong> Pela data de nascimento da ficha, este aluno tem menos de 18
-            anos. A ferramenta ainda não suporta responsável, permissões e consentimentos próprios
-            para menores, então não aceita fotos dele.
-          </p>
-        </Notice>
-      ) : photoDenial ? (
-        <Notice tone="warning">
-          <p>
-            <strong>Fotos ainda não autorizadas pelo aluno.</strong> {PHOTO_DENIAL_MESSAGE[photoDenial]}
-          </p>
-        </Notice>
-      ) : (
-        <p className="small muted">
-          O aluno autorizou as fotos da postura. A autorização é dele, pode ser retirada por ele a qualquer
-          momento (o que impede fotos novas) e cada foto guarda qual aceite a autorizou. A base legal e o
-          texto do consentimento ainda dependem de revisão jurídica.
-        </p>
       )}
       <div className="photo-grid">
         {PHOTO_VIEWS.map((view) => {

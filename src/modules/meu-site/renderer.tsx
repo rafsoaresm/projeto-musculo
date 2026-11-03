@@ -61,8 +61,8 @@ export interface ResolvedImage {
 export type ImageResolver = (assetId: string) => ResolvedImage | null;
 
 /**
- * Where the contact form of a published page is sent and which privacy notice it points to. It is given to the renderer only when the form is open
- * (see inquiries.ts: the environment and the site both said yes). `null` is a published page whose form is closed: the block is not there. Absent
+ * Where the contact form of a published page is sent and which privacy notice it may link to. It is given to the renderer only when the form is
+ * open (see inquiries.ts: the environment did not close the forms and the site's own switch is on). `null` is a published page whose form is closed: the block is not there. Absent
  * (the editor's canvas and the preview) it is drawn as a sample that sends nothing.
  */
 export interface PublicForm {
@@ -72,7 +72,8 @@ export interface PublicForm {
   whatsappAction: string;
   /** The page the form is on, as its address ("" for the home page): it comes back with the message. */
   page: string;
-  noticeUrl: string;
+  /** The privacy notice configured for the environment, linked under the form; null when there is none. */
+  noticeUrl: string | null;
 }
 
 export interface EditHooks {
@@ -622,20 +623,13 @@ function ContactFormView({ node, ctx }: { node: ContactFormNode; ctx: Ctx }) {
               </label>
             </div>
           )}
-          <label className="site-form-consent">
-            <input type="checkbox" name={FIELD.consent} required />
-            <span>
-              Li o{" "}
-              {live ? (
-                <a href={live.noticeUrl} target="_blank" rel="noopener noreferrer">
-                  aviso de privacidade
-                </a>
-              ) : (
-                "aviso de privacidade"
-              )}{" "}
-              e concordo em ser contatado(a) por este profissional.
-            </span>
-          </label>
+          {live?.noticeUrl && (
+            <p className="site-form-hint">
+              <a href={live.noticeUrl} target="_blank" rel="noopener noreferrer">
+                Aviso de privacidade
+              </a>
+            </p>
+          )}
         </fieldset>
         {ctx.edit ? (
           <span className="button primary site-button-stand-in">
@@ -956,7 +950,7 @@ function WhatsAppLeadForm({ content, forms, prefix, submit }: { content: SiteCon
             Seu objetivo (opcional)
             <input id={field("objetivo")} name={WHATSAPP_FIELD.goal} maxLength={WHATSAPP_GOAL_MAX} autoComplete="off" aria-describedby={field("objetivo-dica")} />
             <span id={field("objetivo-dica")} className="site-form-hint">
-              Por exemplo, ganhar força ou voltar a treinar. Não escreva dados de saúde aqui.
+              Por exemplo, ganhar força ou voltar a treinar.
             </span>
           </label>
         )}
@@ -966,16 +960,13 @@ function WhatsAppLeadForm({ content, forms, prefix, submit }: { content: SiteCon
             <input name={WHATSAPP_FIELD.bait} tabIndex={-1} autoComplete="off" />
           </label>
         </div>
-        <label className="site-form-consent">
-          <input type="checkbox" name={WHATSAPP_FIELD.consent} required />
-          <span>
-            Li o{" "}
+        {forms.noticeUrl && (
+          <p className="site-form-hint">
             <a href={forms.noticeUrl} target="_blank" rel="noopener noreferrer">
-              aviso de privacidade
-            </a>{" "}
-            e concordo que o meu nome, o meu celular{goal ? " e o objetivo, se eu escrever," : ""} fiquem com este profissional para ele me responder.
-          </span>
-        </label>
+              Aviso de privacidade
+            </a>
+          </p>
+        )}
       </fieldset>
       <button type="submit" className="button site-whatsapp site-has-icon">
         <WhatsAppIcon />

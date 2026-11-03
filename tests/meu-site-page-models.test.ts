@@ -93,14 +93,13 @@ describe("the models of a page", () => {
     expect(pageModel("about")!.build().map((node) => node.type)).toEqual(["about", "box", "cta"]);
     expect(pageModel("faq")!.build().map((node) => node.type)).toEqual(["faq", "cta"]);
   });
-  it("bring the authorization of a testimony unticked and the testimony empty: a warning, since an empty one is not on the site, and a written one asks for the authorization", () => {
+  it("bring the testimony empty: a warning, since an empty one is not on the site, and nothing asks for an authorization", () => {
     const quotes = allNodes(pageModel("testimonials")!.build()).filter((node) => node.type === "quote");
     expect(quotes).toHaveLength(3);
-    for (const quote of quotes) expect((quote as { authorized: boolean }).authorized).toBe(false);
     const content = base({ pages: [{ id: "p1", slug: "depoimentos", title: "Depoimentos", description: "", blocks: pageModel("testimonials")!.build() }] });
     const blocking = publishIssues(content, new Set()).filter((issue) => issue.severity === "blocking");
     expect(blocking).toEqual([]);
-    const warnings = publishIssues(content, new Set()).filter((issue) => issue.message.includes("escreva um depoimento autorizado"));
+    const warnings = publishIssues(content, new Set()).filter((issue) => issue.message.includes("escreva um depoimento, ou tire o bloco"));
     expect(warnings.map((issue) => issue.page)).toEqual(["p1", "p1", "p1"]);
   });
   it("do not stop a publication for being empty: everything they leave to write is a warning", () => {

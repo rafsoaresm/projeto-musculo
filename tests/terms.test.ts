@@ -84,10 +84,11 @@ describe("words typed by the manager", () => {
     expect(parsed.sections[0].text).toBe("Primeiro parágrafo.\n\nSegundo parágrafo.");
   });
 
-  it("keeps the photos block for the student and refuses one for the professional", () => {
+  it("lets the student's text keep or drop the photos block (it holds no choice any more) and refuses one for the professional", () => {
     const withoutPhotos = copy(student);
     delete withoutPhotos.photos;
-    expect(() => parseTermsContent("STUDENT", withoutPhotos)).toThrow(ZodError);
+    expect(parseTermsContent("STUDENT", withoutPhotos).photos).toBeUndefined();
+    expect(parseTermsContent("STUDENT", copy(student)).photos).toEqual(student.photos);
     expect(() => parseTermsContent("PROFESSIONAL", { ...copy(professional), photos: student.photos })).toThrow(ZodError);
   });
 
