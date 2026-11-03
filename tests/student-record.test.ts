@@ -13,6 +13,9 @@ const assessment = (over: Partial<AssessmentSummary>): AssessmentSummary => ({
   riskStatus: "CLEAR",
   recordedAt: "2026-10-20T12:00:00.000Z",
   reviewed: false,
+  amendsAssessmentId: null,
+  amendedById: null,
+  results: [],
   formatVersion: 2,
   ...over,
 });

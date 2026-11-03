@@ -107,6 +107,19 @@ export function useDraftAutosave(initialRevision: number, modules: Record<string
     if (waiting && runQueued(true, next, stillDirty)) void request(waiting === "button" ? "pause" : waiting);
   }, []);
 
+  /**
+   * Waits for a save on the way and sends what is still unsaved (as the button does). True when everything on the screen is stored and the draft
+   * still saves (no conflict): what the server holds is what the screen shows, so it can be finalized.
+   */
+  const flush = useCallback(async (): Promise<boolean> => {
+    for (let waited = 0; busy.current && waited < 150; waited += 1) await new Promise((resolve) => setTimeout(resolve, 100));
+    if (busy.current || halted.current) return false;
+    const pending = (now: typeof latest.current) => Object.keys(now.modules).some((key) => now.modules[key].content !== now.saved[key]);
+    if (pending(latest.current)) await request("button");
+    const after = latest.current;
+    return !after.stand.stopped && !busy.current && !pending(after);
+  }, [request]);
+
   // The pause: the timer starts again with every change, and runs only while a pause would do something.
   const armed = autosaveArmed({ dirty, inFlight, stopped: stand.stopped, refused: stand.refused, content });
   useEffect(() => {
@@ -134,6 +147,9 @@ export function useDraftAutosave(initialRevision: number, modules: Record<string
     inFlight,
     stopped: stand.stopped,
     request,
+    flush,
+    /** The revision the next save (or the finalize) is based on. */
+    revision: () => revision.current,
     /** No more saves from this screen (the draft is being discarded). */
     halt: () => {
       halted.current = true;

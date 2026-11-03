@@ -14,6 +14,7 @@ import { DiscardDraftButton } from "@/modules/avaliacoes/v2/discard-button";
 import { COMPOSITION_MODULE, readComposition } from "@/modules/avaliacoes/v2/composition";
 import { PROFILE_MODULE, SCREENING_MODULE, readProfile, readScreening } from "@/modules/avaliacoes/v2/screening";
 import { ASSESSMENT_NAME, assessmentTitle } from "@/modules/avaliacoes/names";
+import { RecordedAssessmentView } from "@/modules/avaliacoes/v2/recorded-view";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: ASSESSMENT_NAME };
@@ -40,15 +41,26 @@ export default async function Assessment({
   );
 
   if (detail.state === "DRAFT" && detail.formatVersion === 2) {
-    const [v2, snapshot] = await Promise.all([api.sections(assessmentId), api.studentSnapshot(assessmentId)]);
+    const [v2, snapshot, suggestedEquation, original] = await Promise.all([
+      api.sections(assessmentId),
+      api.studentSnapshot(assessmentId),
+      // A reassessment suggests the reference of the previous one (decision 2); an amendment already carries its own.
+      detail.kind === "REASSESSMENT" && !detail.amendsAssessmentId ? api.previousEquation(assessmentId) : Promise.resolve(null),
+      detail.amendsAssessmentId ? api.sections(detail.amendsAssessmentId) : Promise.resolve(null),
+    ]);
     const section = (module: string) => v2?.sections.find((item) => item.module === module)?.payload;
+    const originalScreening = original?.sections.find((item) => item.module === SCREENING_MODULE)?.payload;
     const { etapa } = await searchParams;
     return (
       <>
         <PageHeading
           eyebrow={workspace.name}
           title={`${assessmentTitle(detail)} de ${student.displayName}`}
-          description={`Rascunho de ${formatCalendarDate(detail.assessedOn)}.`}
+          description={
+            detail.amendsAssessmentId
+              ? `Rascunho que retifica a avaliação de ${formatCalendarDate(detail.assessedOn)}. Motivo: ${detail.amendReason ?? ""}`
+              : `Rascunho de ${formatCalendarDate(detail.assessedOn)}.`
+          }
         />
         <AssessmentShell
           studentId={student.id}
@@ -60,6 +72,12 @@ export default async function Assessment({
           profile={readProfile(section(PROFILE_MODULE))}
           screening={readScreening(section(SCREENING_MODULE))}
           initialStep={isStepKey(etapa) ? etapa : undefined}
+          suggestedEquation={suggestedEquation}
+          amendment={
+            detail.amendsAssessmentId
+              ? { reason: detail.amendReason ?? "", originalScreening: originalScreening === undefined ? null : readScreening(originalScreening) }
+              : null
+          }
         />
         {back}
       </>
@@ -90,6 +108,35 @@ export default async function Assessment({
         {back}
       </>
     );
+
+  if (detail.formatVersion === 2) {
+    const [v2, openDraft] = await Promise.all([
+      api.sections(assessmentId),
+      api.listForStudent(student.id).then((list) => list.find((item) => item.state === "DRAFT") ?? null),
+    ]);
+    const section = (module: string) => v2?.sections.find((item) => item.module === module)?.payload;
+    const screening = section(SCREENING_MODULE) === undefined ? null : readScreening(section(SCREENING_MODULE));
+    const reviewer = screening?.parq.professionalReview.reviewerUserId;
+    const decidedBy = reviewer ? await api.professionalName(reviewer) : null;
+    return (
+      <>
+        <PageHeading
+          eyebrow={workspace.name}
+          title={`${assessmentTitle(detail)} de ${formatCalendarDate(detail.assessedOn)}`}
+          description={student.displayName}
+        />
+        <RecordedAssessmentView
+          detail={detail}
+          profile={section(PROFILE_MODULE) === undefined ? null : readProfile(section(PROFILE_MODULE))}
+          screening={screening}
+          composition={section(COMPOSITION_MODULE) === undefined ? null : readComposition(section(COMPOSITION_MODULE))}
+          decidedBy={decidedBy}
+          canAmend={openDraft === null && detail.amendedById === null}
+        />
+        {back}
+      </>
+    );
+  }
 
   return (
     <>

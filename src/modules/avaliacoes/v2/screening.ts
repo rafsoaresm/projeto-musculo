@@ -88,7 +88,18 @@ export const screeningSchema = z
         /** A question with no entry reads as "Não respondido". */
         answers: z.partialRecord(z.enum(PARQ_CODES), z.enum(PARQ_ANSWER_CODES)).default({}),
         /** The professional's decision on a "Sim" (handoff 6: parq.professionalReview); reviewer and time are added at finalize. */
-        professionalReview: z.object({ decision: z.enum(PARQ_DECISION_CODES).nullable().default(null), notes: text }).strict().prefault({}),
+        professionalReview: z
+          .object({
+            decision: z.enum(PARQ_DECISION_CODES).nullable().default(null),
+            notes: text,
+            /** Written by the server when the assessment is finalized (who decided and when), never taken from a save: see `draftScreening`. */
+            reviewedAt: z.string().max(40).optional(),
+            reviewerUserId: z.string().max(80).optional(),
+          })
+          .strict()
+          .prefault({}),
+        /** Any "Sim" (handoff 6: parq.riskFlag), derived and written by the server when the assessment is finalized; absent in a draft. */
+        riskFlag: z.boolean().optional(),
       })
       .strict()
       .prefault({}),
@@ -105,6 +116,15 @@ export function readProfile(raw: unknown): ProfilePayload {
 export function readScreening(raw: unknown): ScreeningPayload {
   const parsed = screeningSchema.safeParse(raw ?? {});
   return parsed.success ? parsed.data : EMPTY_SCREENING;
+}
+
+/**
+ * The screening as a draft keeps it: what the server writes at finalize (the derived flag, who decided and when) is never taken from a save, so a
+ * screen cannot claim a decision was recorded.
+ */
+export function draftScreening(payload: ScreeningPayload): ScreeningPayload {
+  const { decision, notes } = payload.parq.professionalReview;
+  return { ...payload, parq: { instrument: payload.parq.instrument, version: payload.parq.version, answers: payload.parq.answers, professionalReview: { decision, notes } } };
 }
 
 /* ---------- The PAR-Q rules ---------- */

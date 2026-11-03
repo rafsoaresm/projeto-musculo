@@ -79,11 +79,14 @@ export function CompositionStep({
   onChange,
   assessedOn,
   birthDate,
+  suggestedEquation = null,
 }: {
   form: CompositionForm;
   onChange: (form: CompositionForm) => void;
   assessedOn: string;
   birthDate: string | null;
+  /** A reassessment offers the reference of the previous assessment (decision 2 of the user); it is applied only when the person chooses it. */
+  suggestedEquation?: "male" | "female" | null;
 }) {
   const age = ageAtAssessment(birthDate, assessedOn);
   const preview = compositionPreview(form, age);
@@ -157,6 +160,14 @@ export function CompositionStep({
             </select>
           </div>
         </div>
+        {suggestedEquation && form.equation === "not_selected" && (
+          <p className="av2-suggestion">
+            Na avaliação anterior a referência da equação foi <strong>{EQUATION_LABEL[suggestedEquation]}</strong>.{" "}
+            <button type="button" className="av2-add" onClick={() => set({ equation: suggestedEquation })}>
+              Usar a mesma referência
+            </button>
+          </p>
+        )}
       </section>
 
       <section className="panel av2-card" aria-labelledby="av2-dobras">
