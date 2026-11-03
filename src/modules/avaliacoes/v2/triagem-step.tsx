@@ -26,8 +26,10 @@ import {
 } from "./screening";
 
 /**
- * One question answered with chips (a radio group named by the question): the question on the left and the answers in a column of the same
- * width on every line, as in the Figma frame AV-02, so the answers of all questions line up; on a narrow card the answers go under the question.
+ * One question answered with chips: a fieldset whose legend is the question, so a screen reader reads the question with each answer. The question
+ * on the left and the answers in a column of the same width on every line, as in the Figma frame AV-02, so the answers of all questions line up;
+ * on a narrow card the answers go under the question. `blank` is the answer that means "no answer yet" (the PAR-Q's "Não respondido"): chosen,
+ * it is drawn as an empty outline, never as a given answer. `required`: finalizing needs an answer here (the draft saves without it).
  * The description shows when the answer is "Sim", and stays while it holds text, so nothing typed is hidden.
  */
 function Question<A extends string>({
@@ -37,6 +39,8 @@ function Question<A extends string>({
   labels,
   value,
   onChange,
+  blank,
+  required,
   children,
 }: {
   name: string;
@@ -45,26 +49,33 @@ function Question<A extends string>({
   labels: Record<A, string>;
   value: A | null;
   onChange: (value: A) => void;
+  blank?: A;
+  required?: boolean;
   children?: React.ReactNode;
 }) {
   const id = useId();
   return (
-    <li className="av2-question" data-answer={value ?? undefined}>
-      <span id={id} className="av2-question-text">
-        {question}
-      </span>
-      <div className="av2-answers" role="radiogroup" aria-labelledby={id}>
-        {answers.map((answer) => (
-          <label key={answer} className="av2-chip" data-tone={answer === "yes" ? "attention" : undefined}>
-            <input type="radio" name={name} checked={value === answer} onChange={() => onChange(answer)} />
-            <span>{labels[answer]}</span>
-          </label>
-        ))}
-      </div>
-      {children}
+    <li className="av2-question-item">
+      <fieldset className="av2-question" role="radiogroup" aria-labelledby={id} aria-required={required || undefined} data-answer={value ?? undefined}>
+        <legend id={id} className="av2-question-text">
+          {question}
+        </legend>
+        <div className="av2-answers">
+          {answers.map((answer) => (
+            <label key={answer} className="av2-chip" data-tone={answer === "yes" ? "attention" : answer === blank ? "blank" : undefined}>
+              <input type="radio" name={name} checked={value === answer} onChange={() => onChange(answer)} />
+              <span>{labels[answer]}</span>
+            </label>
+          ))}
+        </div>
+        {children}
+      </fieldset>
     </li>
   );
 }
+
+/** The band of the Figma frame AV-02 when any PAR-Q answer is "Sim". */
+const ATTENTION_TEXT = "Atenção: pelo menos uma resposta positiva. Registrar decisão profissional antes de finalizar.";
 
 /**
  * The "Triagem" step (handoff 3.1, Figma AV-02): the goals of the training, the clinical anamnesis, current and past physical activity, and the
@@ -130,7 +141,7 @@ export function TriagemStep({ form, onChange }: { form: TriagemForm; onChange: (
 
       <section className="panel av2-card" aria-labelledby="av2-atividade-atual">
         <h3 id="av2-atividade-atual">Atividade física atual</h3>
-        <p className="muted small">Frequência em vezes por semana; campo vazio é “não informado”, nunca zero.</p>
+        <p className="muted small">Frequência em vezes por semana; campo vazio fica sem resposta, nunca zero.</p>
         <div className="av2-grid">
           <YesNoField label={ACTIVITY_CURRENT.practices} value={form.current.practices} onChange={(practices) => setCurrent({ practices })} />
           <TextField label={ACTIVITY_CURRENT.activities} value={form.current.activities} onChange={(activities) => setCurrent({ activities })} />
@@ -165,9 +176,15 @@ export function TriagemStep({ form, onChange }: { form: TriagemForm; onChange: (
               labels={PARQ_ANSWERS}
               value={form.parq[code]}
               onChange={(answer) => set({ parq: { ...form.parq, [code]: answer } })}
+              blank="unanswered"
+              required
             />
           ))}
         </ul>
+        {/* The band of attention appears with the decision card below; this line says it as it appears (a region added with its text is not read). */}
+        <p className="sr-only" aria-live="polite">
+          {withYes ? ATTENTION_TEXT : ""}
+        </p>
         <p className="av2-preview-status" aria-live="polite">
           {unanswered === 0
             ? "Todas as perguntas do PAR-Q respondidas."
@@ -179,15 +196,14 @@ export function TriagemStep({ form, onChange }: { form: TriagemForm; onChange: (
         <section className="panel av2-card" aria-labelledby="av2-decisao">
           {withYes && (
             <p className="av2-attention">
-              <TriangleAlert size={18} aria-hidden="true" /> Atenção: pelo menos uma resposta positiva. Registrar decisão profissional antes de
-              finalizar.
+              <TriangleAlert size={18} aria-hidden="true" /> {ATTENTION_TEXT}
             </p>
           )}
           <h3 id="av2-decisao">Decisão profissional</h3>
           <p className="muted small">
             A decisão é sua: o sistema não declara aptidão nem inaptidão. Quem registrou e quando ficam gravados ao finalizar a avaliação.
           </p>
-          <div className="av2-chips av2-decisions" role="radiogroup" aria-labelledby="av2-decisao">
+          <div className="av2-chips av2-decisions" role="radiogroup" aria-labelledby="av2-decisao" aria-required="true">
             {PARQ_DECISION_CODES.map((decision) => (
               <label key={decision} className="av2-chip">
                 <input type="radio" name="av2-decisao" checked={form.decision === decision} onChange={() => set({ decision })} />
@@ -202,6 +218,7 @@ export function TriagemStep({ form, onChange }: { form: TriagemForm; onChange: (
               onChange={(decisionNotes) => set({ decisionNotes })}
               note="Obrigatória para finalizar: orientação, encaminhamento ou o motivo da decisão."
               rows={3}
+              required
             />
           </div>
         </section>

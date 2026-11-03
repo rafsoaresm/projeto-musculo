@@ -435,4 +435,22 @@ test("the Triagem step takes the goals, the anamnesis, the activity and the PAR-
   await expect(page.getByLabel("Peso (kg)")).toBeVisible();
   await page.getByRole("button", { name: "1 Triagem" }).click();
   await expect(question(page, PARQ.other_reason).getByRole("radio", { name: "Não respondido" })).toBeChecked();
+  // "Não respondido" chosen is drawn as no answer (an outline), not as the solid chip of a given answer.
+  const blankChip = question(page, PARQ.other_reason).locator("label", { has: page.getByRole("radio", { name: "Não respondido" }) }).locator("span");
+  const noChip = question(page, PARQ.heart_condition).locator("label", { has: page.getByRole("radio", { name: "Não", exact: true }) }).locator("span");
+  const background = (chip: typeof blankChip) => chip.evaluate((element) => getComputedStyle(element).backgroundColor);
+  expect(await background(blankChip)).not.toBe(await background(noChip));
+  await expect(parq.getByRole("radiogroup").first()).toHaveAttribute("aria-required", "true");
+
+  // An invalid value left in Triagem never holds back the Medidas step: its weight saves by itself, the Triagem value is still named.
+  await current.getByLabel("Frequência (por semana)").fill("3x");
+  await page.getByRole("button", { name: "Próximo" }).click();
+  await page.getByLabel("Peso (kg)").fill("69,1");
+  await expect(page.getByRole("status").filter({ hasText: "Confira o campo Frequência (atual)" })).toBeVisible({ timeout: BY_ITSELF });
+  const other = await page.context().newPage();
+  await other.goto(page.url());
+  await expect(other.getByLabel("Peso (kg)")).toHaveValue("69,1");
+  await other.getByRole("button", { name: "1 Triagem" }).click();
+  await expect(other.getByRole("region", { name: "Atividade física atual" }).getByLabel("Frequência (por semana)")).toHaveValue("3");
+  await other.close();
 });

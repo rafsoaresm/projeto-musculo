@@ -72,7 +72,10 @@ export function TextField({ label, value, onChange, note }: { label: string; val
   );
 }
 
-/** A longer text that takes the whole line of the grid (notes, descriptions). `context` completes the name for screen readers. */
+/**
+ * A longer text that takes the whole line of the grid (notes, descriptions). `context` completes the name for screen readers. `required`: needed to
+ * finalize (not to save the draft), so it is said to screen readers (aria-required) without the browser's own check on a form.
+ */
 export function TextAreaField({
   label,
   context,
@@ -80,6 +83,7 @@ export function TextAreaField({
   onChange,
   note,
   rows = 2,
+  required,
 }: {
   label: string;
   context?: string;
@@ -87,6 +91,7 @@ export function TextAreaField({
   onChange: (value: string) => void;
   note?: string;
   rows?: number;
+  required?: boolean;
 }) {
   const id = useId();
   return (
@@ -95,7 +100,14 @@ export function TextAreaField({
         {label}
         {context && <span className="sr-only"> {context}</span>}
       </label>
-      <textarea id={id} rows={rows} value={value} onChange={(event) => onChange(event.target.value)} aria-describedby={note ? `${id}-nota` : undefined} />
+      <textarea
+        id={id}
+        rows={rows}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        aria-describedby={note ? `${id}-nota` : undefined}
+        aria-required={required || undefined}
+      />
       {note && (
         <span id={`${id}-nota`} className="av2-note">
           {note}

@@ -6441,20 +6441,31 @@ fieldset.yes-no legend {
   padding: 0;
   list-style: none;
 }
+.av2-question-item {
+  padding: 12px 0;
+  border-top: 1px solid var(--color-line);
+}
+.av2-question-item:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+/* Each question is a fieldset (its legend is the question): the browser's frame and padding go, and the legend floats so it is a grid item like
+   the answers instead of sitting in the fieldset's border. */
 .av2-question {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   column-gap: 24px;
   row-gap: 10px;
   align-items: center;
-  padding: 12px 0;
-  border-top: 1px solid var(--color-line);
-}
-.av2-question:first-child {
-  border-top: 0;
-  padding-top: 0;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 .av2-question-text {
+  float: left;
+  width: 100%;
+  padding: 0;
   font-size: var(--font-size-base);
   color: var(--color-ink);
   line-height: 1.4;
@@ -6481,6 +6492,12 @@ fieldset.yes-no legend {
   color: var(--color-warning-text);
   box-shadow: inset 0 0 0 2px var(--color-warning-text);
 }
+/* "Não respondido" chosen is no answer yet: a neutral outline on the card's own colour, never the solid chip of a given answer. */
+.av2-chip[data-tone="blank"] input:checked + span {
+  background: var(--color-surface);
+  color: var(--color-ink);
+  box-shadow: inset 0 0 0 2px var(--color-line-strong);
+}
 .av2-attention {
   display: flex;
   align-items: flex-start;
@@ -6500,7 +6517,9 @@ fieldset.yes-no legend {
 .av2-decisions {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
-@container (max-width: 640px) {
+/* Below the width of the fields' grid, the answers go under the question: beside it, a fixed column of three chips left the question text only a
+   narrow column (four or five lines at 768 and 1024). */
+@container (max-width: 760px) {
   .av2-question {
     grid-template-columns: minmax(0, 1fr);
   }
