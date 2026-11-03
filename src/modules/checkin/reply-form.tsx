@@ -2,8 +2,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { replyToCheckin } from "./actions";
-
-const REPLY_LIMIT = 1000;
+import { REPLY_MAX } from "./contracts";
 
 /**
  * The professional's reply to a check-in. The student sees it with the name and the time; it is not changed nor deleted afterwards.
@@ -36,7 +35,8 @@ export function ReplyCheckinForm({ checkinId, replied }: { checkinId: string; re
           <textarea
             rows={3}
             value={body}
-            maxLength={REPLY_LIMIT}
+            maxLength={REPLY_MAX}
+            aria-describedby={`resposta-limite-${checkinId}`}
             required
             onChange={(event) => {
               setBody(event.target.value);
@@ -44,6 +44,9 @@ export function ReplyCheckinForm({ checkinId, replied }: { checkinId: string; re
             }}
           />
         </label>
+        <p className="small muted" id={`resposta-limite-${checkinId}`}>
+          Até {REPLY_MAX} caracteres ({body.length} usados).
+        </p>
         {message && (
           <p role={failed ? "alert" : "status"} className={failed ? "form-error" : "small muted"}>
             {message}

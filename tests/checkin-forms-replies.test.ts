@@ -240,6 +240,15 @@ describe("the professional's reply", () => {
     await pro().reply(id, "Como está hoje?", noon(18));
     expect(await mine().unseenReplies("st-1")).toBe(1);
     expect((await mine().recent("st-1", 30, noon(18))).find((row) => row.id === id)).toMatchObject({ newReply: true });
+    // "Seen" is up to the newest reply the page showed: a reply that arrives after the render stays new.
+    await pro().reply(id, "E o sono?", noon(19));
+    await mine().markRepliesSeen("st-1", noon(20), noon(18).toISOString());
+    expect(await mine().unseenReplies("st-1")).toBe(1);
+    // Never later than now, and a malformed time counts as now.
+    await mine().markRepliesSeen("st-1", noon(18), "2099-01-01T00:00:00.000Z");
+    expect(await mine().unseenReplies("st-1")).toBe(1);
+    await mine().markRepliesSeen("st-1", noon(20), "ontem");
+    expect(await mine().unseenReplies("st-1")).toBe(0);
     // A revoked link reads nothing.
     await run("UPDATE student_access SET revoked_at = '2026-12-01T00:00:00.000Z' WHERE user_id = 'client-1'");
     expect(await mine().unseenReplies("st-1")).toBe(0);
@@ -254,5 +263,47 @@ describe("the professional's reply", () => {
     expect(await pro().list("st-1")).toEqual([]);
     expect(await pro().form("st-1")).toBeNull();
     await run("UPDATE care_assignments SET revoked_at = NULL WHERE student_id = 'st-1'");
+  });
+});
+
+describe("questions changed while a screen was open", () => {
+  const ownPro = () => pro("tech-a2");
+  const student = () => mine("client-2");
+  it("refuses a stale editor instead of silently undoing another professional's version", async () => {
+    const base = { askEffort: true, askRecovery: true, askNotes: true };
+    // Both editors opened on the default (no version yet).
+    expect(await ownPro().saveForm("st-2", { ...base, questions: [{ text: "Dormiu bem?" }] }, noon(10), null)).toEqual({
+      status: "saved",
+      version: 1,
+    });
+    expect(await ownPro().saveForm("st-2", { ...base, askEffort: false, questions: [] }, noon(10), null)).toEqual({
+      status: "conflict",
+    });
+    // The same draft as the current version is not a conflict: nothing would be lost.
+    const v1 = (await ownPro().form("st-2"))!;
+    expect(await ownPro().saveForm("st-2", { ...base, questions: v1.form.questions }, noon(10), null)).toEqual({ status: "unchanged" });
+    expect(await ownPro().saveForm("st-2", { ...base, askEffort: false, questions: v1.form.questions }, noon(10), 1)).toEqual({
+      status: "saved",
+      version: 2,
+    });
+    expect(await count("SELECT COUNT(*) AS n FROM checkin_form_versions WHERE student_id = 'st-2'")).toBe(2);
+  });
+
+  it("refuses the student's check-in answered with another version, writing nothing and dropping nothing", async () => {
+    const v2 = (await student().currentForm("st-2"))!;
+    const question = v2.form.questions[0].id;
+    const answer = { answers: [{ questionId: question, answer: "Sim" }] };
+    expect(await student().save("st-2", { ...answer, formVersion: 1 }, noon(10))).toEqual({ status: "form_changed" });
+    expect(await student().save("st-2", { ...answer, formVersion: null }, noon(10))).toEqual({ status: "form_changed" });
+    expect(await checkinOf("st-2", "2026-11-10")).toBeNull();
+    expect(await student().save("st-2", { ...answer, formVersion: 2 }, noon(10))).toMatchObject({ status: "saved", created: true });
+    const [row] = await student().recent("st-2", 30, noon(10));
+    expect(row).toMatchObject({ checkedOn: "2026-11-10", formVersion: 2, answers: [{ questionId: question, answer: "Sim" }] });
+    // A correction is read against the check-in's own version.
+    expect(await student().save("st-2", { ...answer, formVersion: 1 }, noon(10))).toEqual({ status: "form_changed" });
+    expect(await student().save("st-2", { ...answer, notes: "x", formVersion: 2 }, noon(10))).toMatchObject({
+      status: "saved",
+      created: false,
+    });
   });
 });

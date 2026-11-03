@@ -45,12 +45,15 @@ export function CheckinForm({
   oldest,
   rows,
   currentForm,
+  currentVersion,
 }: {
   studentId: string;
   today: string;
   oldest: string;
   rows: StudentCheckin[];
   currentForm: CheckinFormShape;
+  /** The number of the current version (null for the default): sent back so a change of questions meanwhile is refused, not dropped. */
+  currentVersion: number | null;
 }) {
   const router = useRouter();
   const initial = rows.find((row) => row.checkedOn === today) ?? null;
@@ -91,6 +94,7 @@ export function CheckinForm({
     startTransition(async () => {
       const result = await saveCheckin(studentId, {
         checkedOn: day,
+        formVersion: opened ? opened.formVersion : currentVersion,
         effort: form.askEffort && values.effort !== "" ? Number(values.effort) : null,
         recovery: form.askRecovery && values.recovery !== "" ? Number(values.recovery) : null,
         discomfort: values.discomfort,
@@ -101,6 +105,8 @@ export function CheckinForm({
       if (result.error || !result.saved) {
         setFailed(true);
         setMessage(result.error ?? "Não foi possível salvar. Tente novamente.");
+        // The questions changed: the page brings the new ones; what was typed stays on the screen.
+        if (result.formChanged) router.refresh();
         return;
       }
       setFailed(false);
@@ -149,10 +155,11 @@ export function CheckinForm({
             min={oldest}
             max={today}
             required
+            aria-describedby={`checkin-janela-${studentId}`}
             onChange={(event) => event.target.value && chooseDay(event.target.value)}
           />
         </label>
-        <p className="small muted">
+        <p className="small muted" id={`checkin-janela-${studentId}`}>
           Hoje ou um dos dias anteriores, a partir de {formatCalendarDate(oldest)}. Um check-in por dia.
         </p>
       </fieldset>
@@ -189,7 +196,7 @@ export function CheckinForm({
             </select>
           </label>
         )}
-        <label className="check-row">
+        <label className="check-row check-row-tap">
           <input
             type="checkbox"
             checked={values.discomfort}
@@ -203,7 +210,8 @@ export function CheckinForm({
             <textarea
               rows={3}
               value={values.discomfortNotes}
-              maxLength={500}
+              maxLength={ANSWER_MAX}
+              aria-describedby={`checkin-limite-${studentId}`}
               onChange={(event) => set("discomfortNotes", event.target.value)}
             />
           </label>
@@ -215,6 +223,7 @@ export function CheckinForm({
               rows={2}
               value={values.answers[question.id] ?? ""}
               maxLength={ANSWER_MAX}
+              aria-describedby={`checkin-limite-${studentId}`}
               onChange={(event) => set("answers", { ...values.answers, [question.id]: event.target.value })}
             />
           </label>
@@ -225,10 +234,16 @@ export function CheckinForm({
             <textarea
               rows={3}
               value={values.notes}
-              maxLength={500}
+              maxLength={ANSWER_MAX}
+              aria-describedby={`checkin-limite-${studentId}`}
               onChange={(event) => set("notes", event.target.value)}
             />
           </label>
+        )}
+        {(values.discomfort || form.questions.length > 0 || form.askNotes) && (
+          <p className="small muted" id={`checkin-limite-${studentId}`}>
+            Cada resposta em texto tem até {ANSWER_MAX} caracteres.
+          </p>
         )}
       </fieldset>
 

@@ -2,14 +2,16 @@
 import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
 import { requireStudent, requireWorkspace } from "@/modules/auth/server";
-import { REPLY_MAX, checkinsFor, studentCheckinsFor } from "@/db/student-checkins";
+import { checkinsFor, studentCheckinsFor } from "@/db/student-checkins";
 import { MAX_DAYS_BACK } from "@/modules/execucao/contracts";
-import { MAX_OWN_QUESTIONS, QUESTION_MAX } from "./contracts";
+import { ANSWER_MAX, MAX_OWN_QUESTIONS, QUESTION_MAX, REPLY_MAX } from "./contracts";
 
 export type CheckinResult = {
   error?: string;
   saved?: { id: string; created: boolean; discomfort: boolean };
   removed?: boolean;
+  /** The questions changed while the page was open: nothing was saved and the page shows the new ones. */
+  formChanged?: boolean;
 };
 export type AcknowledgeCheckinResult = { error?: string; recorded?: boolean };
 export type CheckinFormResult = { error?: string; saved?: { version: number } | "unchanged" };
@@ -21,7 +23,7 @@ function messageFor(error: unknown): string {
   if (error instanceof ZodError) {
     if (error.issues.some((issue) => issue.message === "CHECKIN_EMPTY"))
       return "Responda pelo menos uma pergunta.";
-    return "Confira os campos: o esforço vai de 0 a 10, a recuperação de 1 a 5 e cada resposta tem até 500 caracteres.";
+    return `Confira os campos: o esforço vai de 0 a 10, a recuperação de 1 a 5 e cada resposta tem até ${ANSWER_MAX} caracteres.`;
   }
   return "Não foi possível salvar. Tente novamente.";
 }
@@ -50,6 +52,13 @@ export async function saveCheckin(studentId: string, payload: unknown): Promise<
         return { error: `Escolha hoje ou um dos últimos ${MAX_DAYS_BACK} dias.` };
       case "conflict":
         return { error: "Já existe um check-in neste dia. Recarregue a página." };
+      case "form_changed":
+        refreshStudent();
+        return {
+          error:
+            "O seu profissional mudou as perguntas do check-in enquanto você respondia, e nada foi salvo. As perguntas novas já estão na tela: confira e salve de novo.",
+          formChanged: true,
+        };
       default:
         return { error: "Check-in não encontrado no seu acompanhamento." };
     }
@@ -110,10 +119,15 @@ export async function replyToCheckin(checkinId: string, body: string): Promise<A
 }
 
 /** What the student's check-in asks. Saved as a new version: past check-ins keep the questions they were answered with. */
-export async function saveCheckinForm(studentId: string, payload: unknown): Promise<CheckinFormResult> {
+export async function saveCheckinForm(
+  studentId: string,
+  payload: unknown,
+  expectedVersion: number | null,
+): Promise<CheckinFormResult> {
   const { db, context } = await requireWorkspace();
+  if (expectedVersion !== null && !Number.isInteger(expectedVersion)) return { error: "Não foi possível salvar. Tente novamente." };
   try {
-    const outcome = await checkinsFor(db, context).saveForm(studentId, payload);
+    const outcome = await checkinsFor(db, context).saveForm(studentId, payload, new Date(), expectedVersion);
     switch (outcome.status) {
       case "saved":
         refreshProfessional();
@@ -122,7 +136,10 @@ export async function saveCheckinForm(studentId: string, payload: unknown): Prom
       case "unchanged":
         return { saved: "unchanged" };
       case "conflict":
-        return { error: "Outra pessoa salvou as perguntas agora. Recarregue a página." };
+        return {
+          error:
+            "Outra pessoa mudou as perguntas depois que você abriu esta tela, e nada foi salvo. Recarregue a página para ver a versão atual.",
+        };
       default:
         return { error: "Aluno não encontrado no seu atendimento." };
     }
@@ -135,9 +152,12 @@ export async function saveCheckinForm(studentId: string, payload: unknown): Prom
   }
 }
 
-/** The student has seen the professional's replies (the in-app marker). Only for a student the login is linked to. */
-export async function markCheckinRepliesSeen(studentId: string): Promise<void> {
+/**
+ * The student has seen the professional's replies (the in-app marker), up to the newest reply the page showed. Only for a student the
+ * login is linked to.
+ */
+export async function markCheckinRepliesSeen(studentId: string, upTo: string): Promise<void> {
   const { db, user, links } = await requireStudent();
-  if (!links.some((link) => link.studentId === studentId)) return;
-  await studentCheckinsFor(db, user.id).markRepliesSeen(studentId);
+  if (!links.some((link) => link.studentId === studentId) || typeof upTo !== "string") return;
+  await studentCheckinsFor(db, user.id).markRepliesSeen(studentId, new Date(), upTo);
 }

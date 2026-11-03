@@ -33,7 +33,12 @@ export default async function StudentCheckin() {
         description="Como você está, com as perguntas do seu profissional. Um por dia, hoje ou de dias anteriores."
       />
       {perStudent.map(({ link, rows, form }) => {
-        const fresh = new Set(rows.filter((row) => row.newReply).map((row) => row.id));
+        const freshRows = rows.filter((row) => row.newReply);
+        const fresh = new Set(freshRows.map((row) => row.id));
+        // The newest reply this page shows: only what was shown counts as seen.
+        const newestShown = freshRows
+          .flatMap((row) => row.replies.map((reply) => reply.createdAt))
+          .reduce<string | null>((newest, at) => (newest === null || at > newest ? at : newest), null);
         return (
           <div key={link.studentId}>
             {links.length > 1 && (
@@ -50,12 +55,13 @@ export default async function StudentCheckin() {
                 oldest={oldest}
                 rows={rows}
                 currentForm={form.form}
+                currentVersion={form.version}
               />
             </section>
             <section className="panel" aria-labelledby={`checkin-historico-${link.studentId}`}>
               <h2 id={`checkin-historico-${link.studentId}`}>Os seus últimos check-ins</h2>
               <CheckinHistory rows={rows} audience="student" newReplies={fresh} />
-              <RepliesSeen studentId={link.studentId} pending={fresh.size > 0} />
+              <RepliesSeen studentId={link.studentId} upTo={newestShown} />
             </section>
           </div>
         );

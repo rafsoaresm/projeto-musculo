@@ -232,6 +232,14 @@ textarea:focus {
   font-weight: 400;
   line-height: 1.45;
 }
+.check-row.check-row-tap {
+  /* The whole row is the tap target: at least 44px tall even on one line. */
+  min-height: 44px;
+  align-items: center;
+}
+.check-row.check-row-tap input[type="checkbox"] {
+  margin-top: 0;
+}
 .check-row input[type="checkbox"],
 .check-row input[type="radio"] {
   width: 22px;

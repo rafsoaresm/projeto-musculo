@@ -70,9 +70,13 @@ export function PortalHome({
             <h2 id="nova-resposta">
               {newReplies === 1 ? "Nova resposta do seu profissional" : `${newReplies} novas respostas do seu profissional`}
             </h2>
-            <p>O seu profissional respondeu a um check-in seu.</p>
+            <p>
+              {newReplies === 1
+                ? "O seu profissional respondeu a um check-in seu."
+                : "Há respostas novas do profissional nos seus check-ins."}
+            </p>
             <Link className="text-link" href={checkinHref}>
-              Ver a resposta <ArrowRight size={15} />
+              {newReplies === 1 ? "Ver a resposta" : "Ver as respostas"} <ArrowRight size={15} />
             </Link>
           </div>
         </section>

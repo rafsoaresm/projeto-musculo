@@ -1,6 +1,7 @@
 import type { D1Database, D1PreparedStatement } from "@cloudflare/workers-types";
 import {
   DEFAULT_CHECKIN_FORM,
+  REPLY_MAX,
   checkinDayAllowed,
   parseCheckin,
   parseCheckinForm,
@@ -74,6 +75,8 @@ export type SaveCheckinOutcome =
   | { status: "locked" }
   | { status: "out_of_range" }
   | { status: "conflict" }
+  /** The page answered other questions than the ones this check-in is asked with now: nothing is written, nothing is dropped. */
+  | { status: "form_changed" }
   | { status: "not_found" };
 export type RemoveCheckinOutcome = { status: "removed" } | { status: "locked" } | { status: "not_found" };
 export type AcknowledgeCheckinOutcome = { status: "recorded" } | { status: "not_found" };
@@ -87,7 +90,6 @@ export type SaveCheckinFormOutcome =
 export const CHECKIN_READ = "CHECKIN_READ";
 export const CHECKIN_REPLY = "CHECKIN_REPLY";
 export const CHECKIN_FORM_CHANGED = "CHECKIN_FORM_CHANGED";
-export const REPLY_MAX = 1000;
 
 const columns = `c.id, c.checked_on AS checkedOn, c.effort, c.recovery, c.discomfort_reported AS discomfort,
   c.discomfort_notes AS discomfortNotes, c.notes, c.created_at AS createdAt, c.answers AS answersJson,
@@ -271,8 +273,13 @@ export function studentCheckinsFor(db: D1Database, userId: string) {
       return row?.n ?? 0;
     },
 
-    /** The login has seen the replies up to now. Only for a student it is linked to. */
-    async markRepliesSeen(studentId: string, now = new Date()): Promise<void> {
+    /**
+     * The login has seen the replies up to `upTo`: the newest reply the page actually showed (never later than now), so a reply that
+     * arrives after the page was rendered stays new. Without `upTo`, up to now. Only for a student it is linked to.
+     */
+    async markRepliesSeen(studentId: string, now = new Date(), upTo?: string): Promise<void> {
+      const shown = typeof upTo === "string" ? Date.parse(upTo) : Number.NaN;
+      const seenAt = new Date(Number.isNaN(shown) ? now.getTime() : Math.min(shown, now.getTime())).toISOString();
       await db
         .prepare(
           `INSERT INTO checkin_reply_seen (organization_id, student_id, user_id, seen_at)
@@ -280,17 +287,20 @@ export function studentCheckinsFor(db: D1Database, userId: string) {
            WHERE sa.student_id = ?2 AND sa.user_id = ?1 AND sa.revoked_at IS NULL AND ${activeUser("?1")}
            ON CONFLICT (student_id, user_id) DO UPDATE SET seen_at = excluded.seen_at WHERE excluded.seen_at > checkin_reply_seen.seen_at`,
         )
-        .bind(userId, studentId, now.toISOString())
+        .bind(userId, studentId, seenAt)
         .run();
     },
 
     /**
      * Creates the check-in of a day (today, or one of the last days of the window), or corrects it on the day it was made while it is
      * still editable. The answers are read against the form of that check-in: the current one for a new check-in, the one it was
-     * answered with for a correction. Throws a ZodError for a malformed or empty check-in, which nothing is written for.
+     * answered with for a correction. `formVersion` is the version the page asked with (null for the default); when it is sent and is
+     * no longer the one this check-in is read against, nothing is written (form_changed), so no typed answer is silently dropped.
+     * Throws a ZodError for a malformed or empty check-in, which nothing is written for.
      */
     async save(studentId: string, raw: unknown, now = new Date()): Promise<SaveCheckinOutcome> {
-      const { checkedOn, ...rest } = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+      const { checkedOn, formVersion, ...rest } = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+      const askedWith = (version: number | null) => formVersion === undefined || formVersion === version;
       const stamp = now.toISOString();
       const today = todayInBrazil(now);
       const day = checkedOn === undefined || checkedOn === null ? today : checkedOn;
@@ -322,6 +332,7 @@ export function studentCheckinsFor(db: D1Database, userId: string) {
 
       try {
         if (existing) {
+          if (!askedWith(existing.formVersion)) return { status: "form_changed" };
           const input = parseCheckin(rest, formOf(existing));
           const result = await db
             .prepare(
@@ -338,6 +349,7 @@ export function studentCheckinsFor(db: D1Database, userId: string) {
           return { status: "saved", id: existing.id, created: false, discomfort: input.discomfort };
         }
         const current = await currentForm(studentId);
+        if (!askedWith(current.version)) return { status: "form_changed" };
         const input = parseCheckin(rest, current.form);
         const id = crypto.randomUUID();
         const result = await db
@@ -449,13 +461,21 @@ export function checkinsFor(db: D1Database, context: AuthenticatedContext | null
 
     /**
      * Saves what the student's check-in asks as a new version. Past check-ins keep the version they were answered with; a save that
-     * asks the same as the current version writes nothing. Throws a ZodError for a malformed form.
+     * asks the same as the current version writes nothing. `expectedVersion` is the version the editor started from (null for the
+     * default): when it is given and someone saved another version since, nothing is written (conflict), so a stale editor never
+     * silently undoes the other change. Throws a ZodError for a malformed form.
      */
-    async saveForm(studentId: string, raw: unknown, now = new Date()): Promise<SaveCheckinFormOutcome> {
+    async saveForm(
+      studentId: string,
+      raw: unknown,
+      now = new Date(),
+      expectedVersion?: number | null,
+    ): Promise<SaveCheckinFormOutcome> {
       const current = await form(studentId);
       if (!current) return { status: "not_found" };
       const next = parseCheckinForm(raw);
       if (sameCheckinForm(next, current.form)) return { status: "unchanged" };
+      if (expectedVersion !== undefined && expectedVersion !== current.version) return { status: "conflict" };
       const version = (current.version ?? 0) + 1;
       const id = crypto.randomUUID();
       const stamp = now.toISOString();

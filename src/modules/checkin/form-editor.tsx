@@ -3,7 +3,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import { saveCheckinForm } from "./actions";
-import { MAX_OWN_QUESTIONS, QUESTION_MAX, type CheckinFormShape } from "./contracts";
+import { ANSWER_MAX, MAX_OWN_QUESTIONS, QUESTION_MAX, type CheckinFormShape } from "./contracts";
 
 interface Draft {
   askEffort: boolean;
@@ -60,12 +60,17 @@ export function CheckinFormEditor({
   function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     startTransition(async () => {
-      const result = await saveCheckinForm(studentId, {
-        askEffort: draft.askEffort,
-        askRecovery: draft.askRecovery,
-        askNotes: draft.askNotes,
-        questions: draft.questions.map((item) => ({ id: item.id, text: item.text })),
-      });
+      // The version this editor started from: if someone saved another one since, the server refuses instead of undoing it.
+      const result = await saveCheckinForm(
+        studentId,
+        {
+          askEffort: draft.askEffort,
+          askRecovery: draft.askRecovery,
+          askNotes: draft.askNotes,
+          questions: draft.questions.map((item) => ({ id: item.id, text: item.text })),
+        },
+        version,
+      );
       if (result.error || !result.saved) {
         setFailed(true);
         setMessage(result.error ?? "Não foi possível salvar. Tente novamente.");
@@ -85,31 +90,32 @@ export function CheckinFormEditor({
     <form className="stack-form profile-form" onSubmit={save} aria-label="Perguntas do check-in">
       <fieldset disabled={pending}>
         <legend>Perguntas que já existem</legend>
-        <label className="check-row">
+        <label className="check-row check-row-tap">
           <input type="checkbox" checked={draft.askEffort} onChange={(event) => change({ askEffort: event.target.checked })} />
           Esforço percebido nos últimos dias (0 a 10)
         </label>
-        <label className="check-row">
+        <label className="check-row check-row-tap">
           <input
             type="checkbox"
             checked={draft.askRecovery}
             onChange={(event) => change({ askRecovery: event.target.checked })}
           />
-          Quanto sente que recuperou
+          Quanto você sente que recuperou
         </label>
-        <label className="check-row">
+        <label className="check-row check-row-tap">
           <input type="checkbox" checked={draft.askNotes} onChange={(event) => change({ askNotes: event.target.checked })} />
           Observações
         </label>
-        <label className="check-row">
+        <label className="check-row check-row-tap">
           <input type="checkbox" checked disabled />
           Dor ou desconforto (sempre perguntado)
         </label>
       </fieldset>
       <fieldset disabled={pending}>
         <legend>Suas perguntas</legend>
-        <p className="small muted">
-          O aluno responde com texto. Até {MAX_OWN_QUESTIONS} perguntas, com até {QUESTION_MAX} caracteres cada.
+        <p className="small muted" id={`${studentId}-limites-perguntas`}>
+          O aluno responde com texto, com até {ANSWER_MAX} caracteres. Até {MAX_OWN_QUESTIONS} perguntas, com até{" "}
+          {QUESTION_MAX} caracteres cada.
         </p>
         {draft.questions.length === 0 && <p className="small muted">Nenhuma pergunta sua ainda.</p>}
         {draft.questions.map((item, index) => (
@@ -117,8 +123,10 @@ export function CheckinFormEditor({
             <label>
               Pergunta {index + 1}
               <textarea
-                rows={2}
+                // field-sizing grows the box where supported; elsewhere the rows follow the length, so no line is hidden.
+                rows={Math.min(7, Math.max(2, Math.ceil(item.text.length / 32)))}
                 className="checkin-question-text"
+                aria-describedby={`${studentId}-limites-perguntas`}
                 aria-label={`Pergunta ${index + 1}`}
                 value={item.text}
                 maxLength={QUESTION_MAX}
@@ -180,7 +188,7 @@ export function CheckinFormEditor({
       </div>
       <p className="small muted">
         {version === null
-          ? "Hoje o aluno responde as perguntas padrão."
+          ? "Hoje o aluno responde às perguntas padrão."
           : `Em uso: versão ${version}.`}{" "}
         Os check-ins já feitos continuam com as perguntas com que foram respondidos.
       </p>

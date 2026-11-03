@@ -58,6 +58,8 @@ export const DEFAULT_CHECKIN_FORM: CheckinFormShape = { askEffort: true, askReco
 export const MAX_OWN_QUESTIONS = 5;
 export const QUESTION_MAX = 200;
 export const ANSWER_MAX = 500;
+/** The longest reply of the professional to a check-in (also enforced by migration 0037). A product limit, not a clinical one. */
+export const REPLY_MAX = 1000;
 
 const QUESTION_ID = /^[a-z0-9-]{1,40}$/;
 
