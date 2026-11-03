@@ -1,6 +1,7 @@
 import { requireWorkspace } from "@/modules/auth/server";
 import { getPhotoBucket } from "@/db/binding";
 import { assessmentPhotosFor } from "@/db/assessment-photos";
+import { recordStudentRead } from "@/db/student-reads";
 import { MAX_PHOTO_BYTES } from "@/modules/avaliacoes/photos";
 
 export const dynamic = "force-dynamic";
@@ -21,9 +22,9 @@ const json = (body: unknown, status = 200) =>
 async function photos() {
   const { db, context } = await requireWorkspace();
   try {
-    return { repo: assessmentPhotosFor(db, await getPhotoBucket(), context) };
+    return { db, context, repo: assessmentPhotosFor(db, await getPhotoBucket(), context) };
   } catch (error) {
-    if (error instanceof Error && error.message === "PHOTO_STORAGE_UNAVAILABLE") return { repo: null };
+    if (error instanceof Error && error.message === "PHOTO_STORAGE_UNAVAILABLE") return { db, context, repo: null };
     throw error;
   }
 }
@@ -31,11 +32,13 @@ const sameOriginRequest = (request: Request) => request.headers.get("x-photo-req
 
 export async function GET(_request: Request, { params }: Params) {
   const { id, assessmentId, view } = await params;
-  const { repo } = await photos();
+  const { db, context, repo } = await photos();
   if (!repo) return text("Armazenamento de fotos indisponível.", 503);
   const photo = await repo.read(assessmentId, view);
   // The assessment must belong to the student in the address, not just to this professional.
   if (!photo || photo.studentId !== id) return text("Página não encontrada.", 404);
+  // The views of one assessment, opened together, leave one line per interval.
+  await recordStudentRead(db, context, photo.studentId, "PHOTOS");
   return new Response(photo.body as unknown as BodyInit, {
     headers: {
       ...NO_STORE,

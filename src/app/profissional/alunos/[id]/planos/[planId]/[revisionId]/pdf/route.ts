@@ -1,6 +1,7 @@
 import { requireWorkspace } from "@/modules/auth/server";
 import { planDocumentsFor, recordPdfDownload } from "@/db/plan-documents";
 import { pdfFileName, renderPlanPdf } from "@/modules/pdf/plan-pdf";
+import { recordStudentRead } from "@/db/student-reads";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,7 @@ export async function GET(
     { organizationId: context.organizationId, actorUserId: user.id, revisionId },
     now,
   );
+  await recordStudentRead(db, context, source.studentId, "PLAN_PDF", now);
   return new Response(bytes as BodyInit, {
     headers: {
       "Content-Type": "application/pdf",
