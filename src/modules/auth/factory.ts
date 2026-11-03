@@ -1,7 +1,7 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { betterAuth } from "better-auth";
 import { twoFactor } from "better-auth/plugins";
-import { createAuthMiddleware, isAPIError } from "better-auth/api";
+import { createAuthMiddleware, getSessionFromCtx, isAPIError } from "better-auth/api";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { drizzle } from "drizzle-orm/d1";
 import type { PasswordResetSender } from "@/modules/email/service";
@@ -23,13 +23,19 @@ export interface AuthSettings {
 
 /** The two routes that finish a sign-in which asked for the code of the second step. */
 const SECOND_STEP_ROUTES = new Set(["/two-factor/verify-totp", "/two-factor/verify-backup-code"]);
-const WRONG_CODE = new Set(["INVALID_CODE", "INVALID_BACKUP_CODE", "TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE"]);
+/**
+ * TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE is left out on purpose: the library discards the pending sign-in before it throws it, so that last
+ * attempt cannot be tied to anyone (PENDENCIAS).
+ */
+const WRONG_CODE = new Set(["INVALID_CODE", "INVALID_BACKUP_CODE"]);
 
 /**
  * A line for each failed sign-in (PENDENCIAS B9, slice 0.88): a wrong address or password, a wrong code of the second step. It runs after
  * the library answered and never changes that answer; failing to write it is logged and nothing else. The verification of a code while the
- * person is already signed in (turning the second step on in "Minha conta") is not a sign-in: it carries no cookie of a pending sign-in and
- * leaves nothing here. Too many requests, refused before the library runs, leave nothing either.
+ * person is already signed in (turning the second step on in "Minha conta") is not a sign-in and leaves nothing here: the library then checks
+ * the code of the session's user and ignores any cookie of a pending sign-in, which may still be in the browser and point to someone else
+ * (a sign-in left at the code screen on a shared browser), so a request with a session is never tied to that cookie. Too many requests,
+ * refused before the library runs, leave nothing either.
  */
 function signInFailureTrail(db: D1Database, secret: string) {
   return createAuthMiddleware(async (ctx) => {
@@ -45,6 +51,8 @@ function signInFailureTrail(db: D1Database, secret: string) {
       if (!SECOND_STEP_ROUTES.has(ctx.path)) return;
       const reason = code === "ACCOUNT_TEMPORARILY_LOCKED" ? "SECOND_STEP_LOCKED" : WRONG_CODE.has(String(code)) ? "SECOND_STEP_CODE" : null;
       if (!reason) return;
+      // Same order as the library: with a session, the code was the session user's, and that is not a sign-in.
+      if (await getSessionFromCtx(ctx)) return;
       // The pending sign-in: the signed cookie the library set after the password, pointing to who it is. After too many wrong codes the
       // library has already discarded it, and that last attempt cannot be tied to anyone.
       const pending = await ctx.getSignedCookie(ctx.context.createAuthCookie("two_factor").name, ctx.context.secret);

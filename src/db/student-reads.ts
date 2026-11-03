@@ -25,6 +25,9 @@ export const STUDENT_READ_LABEL: Record<StudentReadKind, string> = {
   PLAN_PDF: "PDF do plano de treino",
 };
 
+/** The same kinds as the student reads them about themselves in "Minha conta": no third person. */
+export const OWN_STUDENT_READ_LABEL: Record<StudentReadKind, string> = { ...STUDENT_READ_LABEL, STUDENT_RECORD: "Ficha" };
+
 /** A product choice of this slice, not a rule of anyone else: one line per person, student and kind in this interval. */
 export const READ_DEDUP_MINUTES = 10;
 const MAX_ROWS = 50;

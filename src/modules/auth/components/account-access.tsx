@@ -28,7 +28,7 @@ export async function AccountAccess() {
           validUntil: formatDateTime(device.expiresAt),
         }))}
       />
-      <h3>Entradas recentes</h3>
+      <h3 className="account-subheading">Entradas recentes</h3>
       {recent.length === 0 ? (
         <p className="small muted">A lista começa na primeira entrada feita depois desta atualização.</p>
       ) : (
@@ -43,12 +43,12 @@ export async function AccountAccess() {
       )}
       <h3 className="account-subheading">Tentativas de entrada que falharam</h3>
       {failures.length === 0 ? (
-        <p className="small muted">Nenhuma tentativa falha registrada. A lista começa nas tentativas feitas depois desta atualização.</p>
+        <p className="small muted">Nenhuma tentativa de entrada que falhou foi registrada. A lista começa nas tentativas feitas depois desta atualização.</p>
       ) : (
         <>
           <p className="small muted">
             As últimas vezes em que alguém errou a senha deste e-mail ou o código da verificação em duas etapas. Se não foi você, troque a
-            senha.
+            senha. Por enquanto nenhuma linha é apagada.
           </p>
           <ul className="sign-in-list" aria-label="Tentativas de entrada que falharam">
             {failures.map((failure, index) => (

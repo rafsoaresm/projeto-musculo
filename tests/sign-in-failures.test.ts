@@ -146,6 +146,25 @@ describe("a wrong code of the second step", () => {
     expect(reasons.filter((reason) => reason === "SECOND_STEP_LOCKED").length).toBe(statuses.filter((status) => status === 429).length);
   });
 
+  it("ties nothing to a pending sign-in left in the browser when the code is checked for a signed-in session", async () => {
+    // Shared browser: A passes the password and stops at the code screen; B signs in on the same browser and types a wrong code while
+    // turning the second step on. The library checks B's code and ignores A's cookie; no line may name A (or B).
+    const first = await signUp("left-pending");
+    const enabledA = await request("two-factor/enable", { password }, first.cookie);
+    const keyA = secretOf(((await enabledA.json()) as { totpURI: string }).totpURI);
+    expect((await request("two-factor/verify-totp", { code: totpCode(keyA) }, first.cookie)).status).toBe(200);
+    const pendingA = jar("", await request("sign-in/email", { email: first.address, password }));
+    const second = await signUp("same-browser");
+    const shared = jar(pendingA, await request("sign-in/email", { email: second.address, password }));
+    expect(shared).toContain("two_factor");
+    const enabledB = await request("two-factor/enable", { password }, shared);
+    const keyB = secretOf(((await enabledB.json()) as { totpURI: string }).totpURI);
+    const wrong = totpCode(keyB) === "123456" ? "654321" : "123456";
+    expect((await request("two-factor/verify-totp", { code: wrong }, shared)).status).toBe(401);
+    expect(await of(first.id)).toEqual([]);
+    expect(await of(second.id)).toEqual([]);
+  });
+
   it("without the cookie of a pending sign-in, records nothing", async () => {
     const before = (await all()).length;
     expect((await request("two-factor/verify-totp", { code: "123456" })).status).toBe(401);

@@ -9,10 +9,13 @@ import type { D1Database } from "@cloudflare/workers-types";
 export const SIGN_IN_FAILURE_REASONS = ["PASSWORD", "SECOND_STEP_CODE", "SECOND_STEP_LOCKED"] as const;
 export type SignInFailureReason = (typeof SIGN_IN_FAILURE_REASONS)[number];
 
+/**
+ * Read only by the person the row names, so the address was theirs: a PASSWORD row is always a wrong password for that reader.
+ */
 export const SIGN_IN_FAILURE_LABEL: Record<SignInFailureReason, string> = {
-  PASSWORD: "E-mail ou senha errados",
+  PASSWORD: "Senha errada",
   SECOND_STEP_CODE: "Código da verificação em duas etapas errado",
-  SECOND_STEP_LOCKED: "Código tentado com a verificação em duas etapas bloqueada",
+  SECOND_STEP_LOCKED: "Código enviado com a verificação em duas etapas bloqueada",
 };
 
 export interface SignInFailure {

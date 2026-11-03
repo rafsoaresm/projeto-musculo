@@ -12,7 +12,7 @@ export function StudentReadsPanel({ reads }: { reads: StudentRead[] }) {
       <h2 id="acessos-aluno">Acessos aos dados do aluno</h2>
       <p className="muted">
         Quem da equipe abriu a ficha, uma avaliação, um plano, as fotos ou um PDF deste aluno, e quando. O conteúdo não fica
-        registrado. Abrir o mesmo item de novo em menos de {READ_DEDUP_MINUTES} minutos não gera outra linha.
+        registrado. Abrir o mesmo item de novo em menos de {READ_DEDUP_MINUTES} minutos não gera outra linha. Por enquanto nenhuma linha é apagada.
       </p>
       {reads.length === 0 ? (
         <p className="small muted">Nenhum acesso registrado. A lista começa nos acessos feitos depois desta atualização.</p>
