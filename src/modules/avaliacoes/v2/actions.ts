@@ -31,7 +31,7 @@ export async function startAssessment(studentId: string): Promise<{ error?: stri
 
 /**
  * Discards an open draft, of either format, and goes back to the student's assessments, where a new one can be started. Its postural photos
- * (only a draft of the earlier format can have them) are removed from the private storage first; without the storage such a draft stays, and
+ * (a draft of either format can have them) are removed from the private storage first; without the storage such a draft stays, and
  * says why. A recorded assessment is never discarded.
  */
 export async function discardAssessmentDraft(studentId: string, assessmentId: string): Promise<{ error?: string }> {

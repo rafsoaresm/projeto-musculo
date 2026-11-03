@@ -2,6 +2,8 @@ import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import type { D1Database, R2Bucket } from "@cloudflare/workers-types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { assessmentPhotosFor } from "@/db/assessment-photos";
+import { assessmentsFor } from "@/db/assessments";
+import { recordedPhotoGroups, storedPhotos } from "@/modules/avaliacoes/v2/posture-photos";
 import { recordAcceptance } from "@/db/consent";
 import { BASELINE_VERSION } from "@/modules/consentimento/terms";
 import { profilesFor } from "@/db/student-profile";
@@ -346,5 +348,89 @@ describe("discarding an open draft that has photos (decision of 03/11/2026: a dr
     expect(await repo.discardDraft(draft, day(21))).toEqual({ status: "discarded" });
     expect(await repo.get(draft)).toBeNull();
     expect(await db.prepare("SELECT COUNT(*) AS n FROM photo_erasures WHERE assessment_id = ?1").bind(draft).first("n")).toBe(0);
+  });
+});
+
+// 0.83: the optional photos of the posture of the Avaliação Física (handoff 3.3) go through the same storage, route and triggers.
+describe("photos of the posture of an Avaliação Física (format 2)", () => {
+  const PARQ_CODES = ["heart_condition", "chest_pain_activity", "chest_pain_month", "dizziness", "bone_joint", "blood_pressure_medication", "other_reason"];
+  const screening = { parq: { answers: Object.fromEntries(PARQ_CODES.map((code) => [code, "no"])), professionalReview: { decision: null, notes: "" } } };
+  const v2 = (user = "tech-a", org = "org-a") => assessmentsFor(db, scope(user, org));
+  let draft = "";
+  let recorded = "";
+
+  it("are stored on an open draft of the new format, one per view (the lateral view takes both sides), and only for whoever attends the student", async () => {
+    await db.batch([
+      db.prepare("INSERT INTO students(id,organization_id,display_name) VALUES ('st-v2','org-a','Format Two')"),
+      db.prepare("INSERT INTO care_assignments(organization_id,student_id,professional_id) VALUES ('org-a','st-v2','pro-a')"),
+    ]);
+    const started = await v2().startDraft("st-v2", day(22));
+    if (started.status !== "started") throw new Error(started.status);
+    draft = started.id;
+    expect((await v2().get(draft))?.formatVersion).toBe(2);
+    for (const view of ["LATERAL_LEFT", "LATERAL_RIGHT", "POSTERIOR", "ANTERIOR"])
+      expect(await photos().put(draft, view, dirty(), day(22))).toEqual({ status: "stored", replaced: false });
+    expect(await photos().put(draft, "ANTERIOR", jpeg(), day(22))).toEqual({ status: "stored", replaced: true });
+    expect((await rows(draft)).map((r) => r.view)).toEqual(["ANTERIOR", "LATERAL_LEFT", "LATERAL_RIGHT", "POSTERIOR"]);
+    expect(new TextDecoder().decode((await read(draft, "LATERAL_LEFT"))!.bytes)).not.toContain("GPSLatitude");
+    // Nobody else: another professional of the organization without the assignment, another organization.
+    expect(await photos("tech-a2").put(draft, "ANTERIOR", jpeg(), day(22))).toEqual({ status: "not_found" });
+    expect(await photos("tech-b", "org-b").put(draft, "ANTERIOR", jpeg(), day(22))).toEqual({ status: "not_found" });
+    expect(await read(draft, "ANTERIOR", "tech-a2")).toBeNull();
+    expect(await photos("tech-b", "org-b").read(draft, "ANTERIOR")).toBeNull();
+    expect(await photos("tech-b", "org-b").list(draft)).toEqual([]);
+    // The page of the draft reads them through the assessment (its index), as the screen's photos.
+    const detail = await v2().get(draft);
+    expect(storedPhotos(detail!.photos).map((photo) => photo.view).sort()).toEqual(["ANTERIOR", "LATERAL_LEFT", "LATERAL_RIGHT", "POSTERIOR"]);
+    expect(recordedPhotoGroups(detail!.photos).map((group) => [group.view, group.photos.map((photo) => photo.view)])).toEqual([
+      ["lateral", ["LATERAL_LEFT", "LATERAL_RIGHT"]],
+      ["posterior", ["POSTERIOR"]],
+      ["anterior", ["ANTERIOR"]],
+    ]);
+    // A photo is not a module: it moves no revision, so it never conflicts with the autosave of the text.
+    expect((await v2().sections(draft))!.revision).toBe(1);
+    expect(await photos().remove(draft, "POSTERIOR", day(22))).toEqual({ status: "removed" });
+  });
+
+  it("freeze when the draft is finalized (migration 0011 triggers, whatever the format) and can still be erased one by one", async () => {
+    const saved = await v2().saveSection(draft, { module: "screening", status: "IN_PROGRESS", payload: screening, revision: 1 });
+    if (saved.status !== "saved") throw new Error(saved.status);
+    expect(await v2().finalize(draft, saved.revision, day(23))).toEqual({ status: "recorded" });
+    recorded = draft;
+    const before = { objects: await objects(), rows: await rows(recorded) };
+    expect(await photos().put(recorded, "POSTERIOR", jpeg(), day(23))).toEqual({ status: "not_found" });
+    expect(await photos().put(recorded, "ANTERIOR", jpeg(), day(23))).toEqual({ status: "not_found" });
+    expect({ objects: await objects(), rows: await rows(recorded) }).toEqual(before);
+    await expect(db.prepare("DELETE FROM assessment_photos WHERE assessment_id = ?1").bind(recorded).run()).rejects.toThrow(/ASSESSMENT_FROZEN/);
+    expect(await read(recorded, "ANTERIOR")).not.toBeNull();
+    // "Excluir foto" (0.73): the file goes, the frozen row stays, and the photo reads as erased.
+    expect(await photos("tech-a2").remove(recorded, "LATERAL_RIGHT", day(24))).toEqual({ status: "not_found" });
+    expect(await photos().remove(recorded, "LATERAL_RIGHT", day(24))).toEqual({ status: "erased" });
+    expect(await read(recorded, "LATERAL_RIGHT")).toBeNull();
+    const detail = await v2().get(recorded);
+    expect(detail!.photos.find((photo) => photo.view === "LATERAL_RIGHT")?.erasedAt).toBe(day(24).toISOString());
+    expect(storedPhotos(detail!.photos).map((photo) => photo.view).sort()).toEqual(["ANTERIOR", "LATERAL_LEFT"]);
+  });
+
+  it("an amendment starts without photos (the corrected assessment keeps its own); new ones go on the amendment", async () => {
+    const amended = await v2().amend(recorded, "Foto da vista errada", day(25));
+    if (amended.status !== "started") throw new Error(amended.status);
+    expect(await rows(amended.id)).toEqual([]);
+    expect((await v2().get(amended.id))!.photos).toEqual([]);
+    expect((await rows(recorded)).map((r) => r.view)).toEqual(["ANTERIOR", "LATERAL_LEFT", "LATERAL_RIGHT"]);
+    expect(await photos().put(amended.id, "POSTERIOR", jpeg(), day(25))).toEqual({ status: "stored", replaced: false });
+    expect(await read(recorded, "ANTERIOR")).not.toBeNull();
+    draft = amended.id;
+  });
+
+  it("discarding a draft of the new format removes its photos first (the action's path), leaving nothing in the storage", async () => {
+    const [stored] = await rows(draft);
+    const repo = v2();
+    expect(await repo.discardDraft(draft)).toEqual({ status: "photos_left" });
+    for (const photo of await photos().list(draft)) expect(await photos().remove(draft, photo.view, day(25))).toEqual({ status: "removed" });
+    expect(await repo.discardDraft(draft)).toEqual({ status: "discarded" });
+    expect(await objects()).not.toContain(stored.key);
+    expect(await rows(draft)).toEqual([]);
+    expect(await read(recorded, "ANTERIOR")).not.toBeNull();
   });
 });

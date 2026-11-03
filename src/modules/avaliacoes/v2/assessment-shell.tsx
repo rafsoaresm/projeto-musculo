@@ -31,6 +31,9 @@ import {
 import { TriagemStep } from "./triagem-step";
 import { POSTURE_MODULE, postureFormFrom, postureFromForm, postureProblemsMessage, type PostureForm, type PosturePayload } from "./posture";
 import { PostureStep } from "./posture-step";
+import { PosturePhotosField, PosturePhotosStatus } from "./posture-photos-field";
+import { usePosturePhotos } from "./use-posture-photos";
+import type { PhotoStamp } from "./posture-photos";
 import { MOVEMENT_MODULE, movementFormFrom, movementFromForm, movementProblemsMessage, type MovementForm, type MovementPayload } from "./flexitest";
 import { FlexitestCard } from "./flexitest-card";
 import { TESTS_MODULE, testsFormFrom, testsFromForm, testsProblemsMessage, type TestsForm, type TestsPayload } from "./physical-tests";
@@ -81,6 +84,8 @@ export function AssessmentShell({
   initialStep = "triagem",
   suggestedEquation = null,
   amendment = null,
+  photos: initialPhotos = [],
+  photoStorage = false,
 }: {
   studentId: string;
   assessmentId: string;
@@ -101,6 +106,10 @@ export function AssessmentShell({
   suggestedEquation?: "male" | "female" | null;
   /** For an amendment (retificação): its reason and the screening of the assessment it amends, as recorded. */
   amendment?: { reason: string; originalScreening: ScreeningPayload | null } | null;
+  /** The posture photos already stored on this draft (handoff 3.3, optional). */
+  photos?: PhotoStamp[];
+  /** Whether the private photo storage is on here; when it is off, the rest of the assessment works and no photo is sent. */
+  photoStorage?: boolean;
 }) {
   const [step, setStep] = useState<StepKey>(initialStep);
   const [form, setForm] = useState<CompositionForm>(() => formFromPayload(composition));
@@ -187,7 +196,9 @@ export function AssessmentShell({
   });
   const status = draft.status;
   const alert = discardError ?? draft.alert;
-  useUnsavedGuard(draft.unsaved);
+  const photos = usePosturePhotos(studentId, assessmentId, initialPhotos);
+  // A photo being sent is not saved yet either: leaving the page would lose it.
+  useUnsavedGuard(draft.unsaved || photos.busy !== null);
 
   // The review is computed from what is on the screen with the same rule the server finalizes with; a value that is not accepted is named.
   const profileRead = profileFromForm(triagem);
@@ -222,6 +233,11 @@ export function AssessmentShell({
   const finalize = () =>
     startFinalize(async () => {
       setFinalizeError(null);
+      // A photo still on its way would be refused once the assessment is recorded: finalizing waits until it arrives (or fails).
+      if (photos.busy !== null) {
+        setFinalizeError({ text: "Uma foto da postura ainda está sendo enviada. Espere terminar e finalize de novo." });
+        return;
+      }
       if (!(await draft.flush())) {
         setFinalizeError({ text: "Não foi possível salvar tudo antes de finalizar. Confira a mensagem acima e tente de novo." });
         return;
@@ -310,7 +326,25 @@ export function AssessmentShell({
       ) : step === "medidas" ? (
         <CompositionStep form={form} onChange={edit} assessedOn={assessedOn} birthDate={birthDate} suggestedEquation={suggestedEquation} />
       ) : step === "movimento" ? (
-        <PostureStep form={postureForm} onChange={editPosture} after={<FlexitestCard form={movementForm} onChange={editMovement} />} />
+        <PostureStep
+          form={postureForm}
+          onChange={editPosture}
+          after={<FlexitestCard form={movementForm} onChange={editMovement} />}
+          photos={{
+            field: (view) => (
+              <PosturePhotosField
+                studentId={studentId}
+                assessmentId={assessmentId}
+                view={view}
+                photos={photos}
+                storageReady={photoStorage}
+                amendment={amendment !== null}
+              />
+            ),
+            status: <PosturePhotosStatus photos={photos} />,
+            onView: photos.clearNotice,
+          }}
+        />
       ) : step === "testes" ? (
         <TestsStep form={testsForm} onChange={editTests} />
       ) : (
@@ -342,7 +376,8 @@ export function AssessmentShell({
           <DiscardDraftButton
             studentId={studentId}
             assessmentId={assessmentId}
-            busy={draft.inFlight}
+            // A photo on its way would land after the discard looked at the draft's photos: discarding waits for it, like finalizing.
+            busy={draft.inFlight || photos.busy !== null}
             // Nothing more is saved from this screen while the draft goes; if it stays (an error), saving comes back.
             onConfirm={() => {
               draft.halt();

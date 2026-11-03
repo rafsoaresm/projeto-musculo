@@ -3,6 +3,10 @@ import { Download } from "lucide-react";
 import { Notice, formatDateTime } from "@/components/ui";
 import type { AssessmentDetail, ResultRow } from "@/db/assessments";
 import { formatCalendarDate } from "@/modules/training/format";
+import { PhotoImage } from "../photo-image";
+import { PhotoEraseButton } from "../photo-erase-button";
+import { photoViewLabel } from "../photos";
+import { photoName, recordedPhotoGroups } from "./posture-photos";
 import {
   ACTIVITY_CURRENT,
   ACTIVITY_PAST,
@@ -303,9 +307,10 @@ export function RecordedAssessmentView({
 
       <section className="panel av2-card" aria-labelledby="av2-r-movimento">
         <h3 id="av2-r-movimento">Postura e movimento</h3>
-        {(posture && !postureEmpty(posture)) || (movement && !movementEmpty(movement)) ? (
+        {(posture && !postureEmpty(posture)) || (movement && !movementEmpty(movement)) || detail.photos.length > 0 ? (
           <>
             {posture && !postureEmpty(posture) ? <RecordedPosture posture={posture} /> : <p className="muted">Postura e somatotipo: não realizados.</p>}
+            {detail.photos.length > 0 && <RecordedPhotos detail={detail} />}
             <h4 className="av2-subtitle">Flexiteste</h4>
             {movement && !movementEmpty(movement) ? <RecordedFlexitest movement={movement} results={detail.results} /> : <p className="muted">Não realizado.</p>}
           </>
@@ -400,6 +405,42 @@ function RecordedPerimeters({ composition }: { composition: CompositionPayload }
           ))}
         </dl>
       )}
+    </>
+  );
+}
+
+/**
+ * The posture photos of a recorded assessment (handoff 3.3), by view of the posture, as thumbnails read through the private route (only the
+ * professional who attends the student reaches it). An erased one says when; each stored one can still be erased ("Excluir foto": the file
+ * leaves the storage, the frozen record stays). They are not in the PDF.
+ */
+function RecordedPhotos({ detail }: { detail: AssessmentDetail }) {
+  return (
+    <>
+      <h4 className="av2-subtitle" id="av2-r-fotos">
+        Fotos da postura
+      </h4>
+      <p className="muted small av2-card-note">Registro visual, não diagnóstico. Só quem atende o aluno vê as fotos; elas não entram no relatório em PDF.</p>
+      <div className="av2-grid av2-photo-grid" role="group" aria-labelledby="av2-r-fotos">
+        {recordedPhotoGroups(detail.photos).flatMap((group) =>
+          group.photos.map((photo) => (
+            <figure key={photo.view} className="av2-field av2-photo-slot">
+              <figcaption className="av2-label">{photoViewLabel(photo.view)}</figcaption>
+              <PhotoImage
+                studentId={detail.studentId}
+                assessmentId={detail.id}
+                view={photo.view}
+                stamp={photo.createdAt}
+                erasedAt={photo.erasedAt}
+                alt={`${photoName(photo.view)} de ${formatCalendarDate(detail.assessedOn)}`}
+              />
+              <div className="av2-photo-actions">
+                {!photo.erasedAt && <PhotoEraseButton studentId={detail.studentId} assessmentId={detail.id} view={photo.view} />}
+              </div>
+            </figure>
+          )),
+        )}
+      </div>
     </>
   );
 }

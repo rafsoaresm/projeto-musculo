@@ -6606,6 +6606,49 @@ fieldset.yes-no legend {
 .av2-view-notes {
   margin-top: 16px;
 }
+/* The posture photos (0.83): one slot per stored view, in the card's columns (.av2-grid); its three rows (name, picture, buttons) line up
+   across the slots. The picture keeps a portrait frame and never grows past a thumbnail on a one-column card. */
+.av2-photos {
+  margin-top: 24px;
+}
+.av2-photo-slot {
+  margin: 0 0 16px;
+}
+.av2-photo-slot .posture-photo {
+  max-width: 15rem;
+}
+.av2-photo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+/* A label that is a button (the file picker): the icon beside the words, like the other buttons (labels are columns by default). */
+.av2-photo-actions label.button {
+  flex-direction: row;
+}
+/* The photo buttons (send, replace, remove; erase and its confirmation on a recorded assessment) reach the 44px touch target. */
+.av2-photo-actions .button {
+  min-height: 44px;
+}
+/* The file picker is a hidden input under its label: the label shows the focus ring when the input has it from the keyboard. */
+.av2-photo-actions:has(input:focus-visible) label.button {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 3px;
+}
+/* While a photo is on its way the picker waits: the shared aria-disabled look, and no click reaches the hidden input. */
+.av2-photo-actions label.button[aria-disabled="true"] {
+  pointer-events: none;
+}
+.av2-photo-actions:empty {
+  display: none;
+}
+.av2-photo-status {
+  margin-top: 12px;
+}
+.av2-photo-status p {
+  margin: 0;
+}
 .av2-somatotypes {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }

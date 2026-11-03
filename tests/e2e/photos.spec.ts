@@ -1,9 +1,9 @@
 import { test, expect, type Page } from "@playwright/test";
 import { addStudent, browserJpeg, createProfessional, joinStudent, localIP, newActor, showStudentTab, signIn } from "./helpers";
 
-// The photo field of the earlier form went away with that form (user's decision of 03/11/2026: only the Avaliação Física); the posture step
-// of the Avaliação Física, which will take the photos again, is a later slice. What stays and is checked here is the private route the photos
-// go through (and will go through): what it stores and serves, what it refuses, and to whom. Storing, freezing with a recorded assessment and
+// The photo field of the earlier form went away with that form (user's decision of 03/11/2026: only the Avaliação Física); since 0.83 the
+// posture step of the Avaliação Física takes the photos again (assessment-posture-photos.spec.ts). Checked here is the private route the photos
+// go through: what it stores and serves, what it refuses, and to whom. Storing, freezing with a recorded assessment and
 // erasing are also covered against the real D1 and R2 in tests/assessment-photos.test.ts.
 
 const absolute = (page: Page, path: string) => new URL(path, page.url()).href;
