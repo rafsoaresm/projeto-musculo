@@ -94,7 +94,9 @@ export interface ExportPlan {
   title: string;
   revisionNumber: number;
   deliveredAt: string;
+  /** As named at the moment of the delivery (slice 0.90). */
   deliveredBy: string | null;
+  deliveredOrganizationName: string | null;
   startDate: string;
   endDate: string;
   phases: Array<{
@@ -203,6 +205,7 @@ export function buildExport(source: ExportSource) {
         revisao: plan.revisionNumber,
         entregueEm: plan.deliveredAt,
         entreguePor: plan.deliveredBy,
+        espacoNaEntrega: plan.deliveredOrganizationName,
         inicio: plan.startDate,
         fim: plan.endDate,
         fases: plan.phases.map((phase) => ({

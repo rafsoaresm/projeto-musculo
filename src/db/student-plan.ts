@@ -44,8 +44,13 @@ export interface StudentTrainingPlan {
   title: string;
   revisionNumber: number;
   deliveredAt: string;
-  /** Display name of the professional who delivered it, as the professional chose to show it. */
+  /**
+   * Display name of the professional who delivered it, as it was at the moment of the delivery (slice 0.90; a later rename in Configurações does
+   * not change it). Null when they had no professional record then.
+   */
   deliveredBy: string | null;
+  /** Name of the workspace at the moment of the delivery (slice 0.90). Null only for a row that somehow lacks it. */
+  deliveredOrganizationName: string | null;
   startDate: string;
   endDate: string;
   phases: StudentPhase[];
@@ -60,6 +65,7 @@ export interface DeliveredRevisionRow {
   revisionNumber: number;
   deliveredAt: string;
   deliveredBy: string | null;
+  deliveredOrganizationName: string | null;
   startDate: string;
   endDate: string;
   scheduleJson: string;
@@ -97,6 +103,7 @@ export async function assembleDelivered(
       revisionNumber: revision.revisionNumber,
       deliveredAt: revision.deliveredAt,
       deliveredBy: revision.deliveredBy,
+      deliveredOrganizationName: revision.deliveredOrganizationName,
       startDate: revision.startDate,
       endDate: revision.endDate,
       phases: schedule.phases.map((phase) => ({
@@ -142,8 +149,7 @@ export async function studentTrainingFor(
     .prepare(
       `SELECT p.id AS planId, p.title, r.id AS revisionId, r.organization_id AS organizationId,
          r.revision_number AS revisionNumber, r.delivered_at AS deliveredAt,
-         (SELECT pr.display_name FROM professionals pr
-           WHERE pr.organization_id = r.organization_id AND pr.user_id = r.delivered_by_user_id) AS deliveredBy,
+         r.delivered_by_name AS deliveredBy, r.delivered_organization_name AS deliveredOrganizationName,
          r.start_date AS startDate, r.end_date AS endDate, r.schedule_json AS scheduleJson
        FROM student_access sa
        JOIN students s ON s.organization_id = sa.organization_id AND s.id = sa.student_id

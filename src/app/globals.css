@@ -7373,3 +7373,25 @@ fieldset.yes-no legend {
 .av2-templates th .cell-sub {
   font-weight: 400;
 }
+/* Earlier names in Configurações (slice 0.90): a sub-part of the panel, under the form; names may be long, so the cells wrap instead of
+   making the table scroll sideways (the global table rule keeps cells on one line). */
+.name-history {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-line);
+}
+.name-history h3 {
+  margin: 0 0 8px;
+}
+.name-history th,
+.name-history td {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+}
+/* Stacked on a phone: the label of each line stays on one line and the value takes the rest. */
+.name-history table.stack td::before,
+.name-history table.stack th[scope="row"]::before {
+  white-space: nowrap;
+  flex: none;
+}

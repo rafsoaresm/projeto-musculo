@@ -230,6 +230,7 @@ export function studentExportFor(db: D1Database, userId: string) {
         revisionNumber: plan.revisionNumber,
         deliveredAt: plan.deliveredAt,
         deliveredBy: plan.deliveredBy,
+        deliveredOrganizationName: plan.deliveredOrganizationName,
         startDate: plan.startDate,
         endDate: plan.endDate,
         phases: plan.phases.map((phase) => ({

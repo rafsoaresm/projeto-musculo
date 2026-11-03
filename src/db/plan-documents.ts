@@ -57,9 +57,7 @@ export function planDocumentsFor(db: D1Database, context: AuthenticatedContext |
         .prepare(
           `SELECT p.id AS planId, p.title, r.id AS revisionId, r.organization_id AS organizationId,
              r.revision_number AS revisionNumber, r.delivered_at AS deliveredAt,
-             (SELECT pr.display_name FROM professionals pr
-               WHERE pr.organization_id = r.organization_id
-                 AND pr.user_id = r.delivered_by_user_id) AS deliveredBy,
+             r.delivered_by_name AS deliveredBy, r.delivered_organization_name AS deliveredOrganizationName,
              r.start_date AS startDate, r.end_date AS endDate, r.schedule_json AS scheduleJson,
              s.id AS studentId, s.display_name AS studentName, o.name AS organizationName
            FROM training_plans p

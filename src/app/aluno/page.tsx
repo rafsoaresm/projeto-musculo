@@ -3,6 +3,7 @@ import { requireStudent } from "@/modules/auth/server";
 import { studentTrainingFor } from "@/db/student-plan";
 import { formatDate } from "@/components/ui";
 import { formatCalendarDate } from "@/modules/training/format";
+import { deliveredByText } from "@/modules/configuracoes/delivered-by";
 import { PortalHome } from "@/modules/portal/portal-home";
 import { studentCheckinsFor } from "@/db/student-checkins";
 
@@ -37,7 +38,7 @@ export default async function StudentHome() {
           ? {
               title: latest.title,
               detail: `Ciclo de ${formatCalendarDate(latest.startDate)} a ${formatCalendarDate(latest.endDate)}, com ${latest.phases.length} fases.`,
-              delivered: `Revisão ${latest.revisionNumber}, entregue em ${formatDate(latest.deliveredAt)}.`,
+              delivered: `Revisão ${latest.revisionNumber}, entregue em ${formatDate(latest.deliveredAt)}${deliveredByText(latest.deliveredBy, latest.deliveredOrganizationName)}.`,
             }
           : undefined
       }

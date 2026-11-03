@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ClipboardPen, Download } from "lucide-react";
-import { Pill } from "@/components/ui";
+import { Pill, formatDate } from "@/components/ui";
+import { deliveredByText } from "@/modules/configuracoes/delivered-by";
 import type { StudentPhase, StudentTrainingPlan } from "@/db/student-plan";
 import { describeDose } from "@/modules/prescricao/describe";
 import { formatCalendarDate } from "@/modules/training/format";
@@ -40,6 +41,10 @@ export function StudentTraining({
         {formatCalendarDate(plan.endDate)}
       </p>
       <h2 id={`plano-${plan.planId}`}>{plan.title}</h2>
+      <p className="small muted">
+        Entregue em {formatDate(plan.deliveredAt)}
+        {deliveredByText(plan.deliveredBy, plan.deliveredOrganizationName)}.
+      </p>
       {pdfHref && (
         <p>
           <Link className="button secondary small" href={pdfHref} download prefetch={false}>

@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { Notice, Pill, formatDateTime } from "@/components/ui";
 import { NOT_CLEARANCE_TEXT, REVIEW_REQUIRED_TEXT } from "@/modules/avaliacoes/contracts";
 import { formatCalendarDate } from "@/modules/training/format";
+import { deliveredByText } from "@/modules/configuracoes/delivered-by";
 import type { PlanActionResult } from "./actions";
 import { approveRevision, deliverRevision } from "./actions";
 
@@ -32,6 +33,8 @@ export function ApprovalPanel({
   workouts,
   approvedAt,
   deliveredAt,
+  deliveredByName = null,
+  deliveredOrganizationName = null,
   portal,
   studentHref,
   screening,
@@ -44,6 +47,9 @@ export function ApprovalPanel({
   workouts: number;
   approvedAt: string | null;
   deliveredAt: string | null;
+  /** Who delivered it and the workspace, as named at the moment of the delivery (slice 0.90). */
+  deliveredByName?: string | null;
+  deliveredOrganizationName?: string | null;
   portal: "ACTIVE" | "INVITED" | "NONE";
   studentHref: string;
   screening: ScreeningInfo;
@@ -142,7 +148,13 @@ export function ApprovalPanel({
         <>
           <p>
             <Pill tone="success">Entregue</Pill>
-            {deliveredAt && <> em {formatDateTime(deliveredAt)}.</>} Esta
+            {deliveredAt && (
+              <>
+                {" "}em {formatDateTime(deliveredAt)}
+                {deliveredByText(deliveredByName, deliveredOrganizationName)}.
+              </>
+            )}{" "}
+            Esta
             revisão não muda mais. Para alterar o treino, crie uma nova
             revisão: o aluno continua vendo esta até você entregar a nova.
           </p>

@@ -5,6 +5,7 @@ import { formatDate, PageHeading } from "@/components/ui";
 import { MEMBERSHIP_ROLE_LABEL } from "@/modules/platform/areas";
 import { renameSelf, renameWorkspace } from "@/modules/configuracoes/actions";
 import { NameForm } from "@/modules/configuracoes/name-form";
+import { NameHistory } from "@/modules/configuracoes/name-history";
 import { ROLE_PERMISSION_NOTICE } from "@/modules/configuracoes/contracts";
 
 export const dynamic = "force-dynamic";
@@ -25,8 +26,8 @@ export default async function Settings() {
         <p className="eyebrow">ESPAÇO</p>
         <h2 id="espaco">Nome do espaço</h2>
         <p className="muted">
-          Aparece para os seus alunos no convite e na área deles, e no PDF do plano. Espaço criado em{" "}
-          {formatDate(view.createdAt)}.
+          Aparece para os seus alunos no convite e na área deles, e no PDF do plano. Treinos já entregues e avaliações já
+          registradas continuam com o nome que o espaço tinha naquele momento. Espaço criado em {formatDate(view.createdAt)}.
         </p>
         {view.canRenameWorkspace ? (
           <NameForm
@@ -48,6 +49,7 @@ export default async function Settings() {
             </div>
           </dl>
         )}
+        <NameHistory id="espaco-historico" title="Nomes anteriores do espaço" changes={view.workspaceNames} />
       </section>
       {view.displayName !== null && (
         <section className="panel" aria-labelledby="exibicao">
@@ -55,7 +57,7 @@ export default async function Settings() {
           <h2 id="exibicao">Seu nome de exibição</h2>
           <p className="muted">
             É o nome que o aluno vê como o seu profissional, no convite e na área dele, e que aparece como quem entregou
-            o treino. Mudá-lo muda também como os treinos já entregues dizem quem os entregou; o conteúdo deles não muda.
+            o treino. Treinos já entregues e avaliações já registradas continuam com o nome que você tinha naquele momento.
           </p>
           <NameForm
             label="Nome de exibição"
@@ -64,6 +66,7 @@ export default async function Settings() {
             save={renameSelf}
             savedText="Nome de exibição salvo."
           />
+          <NameHistory id="exibicao-historico" title="Seus nomes anteriores" changes={view.myNames} />
         </section>
       )}
       <section className="panel" aria-labelledby="acesso">

@@ -75,4 +75,5 @@ export const ALL_MIGRATIONS = [
   "0036_assessment_templates.sql",
   "0037_checkin_forms_replies.sql",
   "0038_read_trail_sign_in_failures.sql",
+  "0039_delivery_names.sql",
 ];

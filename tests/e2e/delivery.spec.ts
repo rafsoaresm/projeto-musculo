@@ -143,6 +143,40 @@ test("a plan reaches the client only after the professional approves and deliver
   await client.page.goto(revisionURL);
   await expect(client.page).toHaveURL(/\/aluno$/);
 
+  // Slice 0.90: the delivery names who delivered it and the workspace as they were at that moment, and a later rename does not change it.
+  const deliveredBy = "por Profissional E2E (Estúdio da entrega)";
+  await page.goto(revisionURL);
+  await expect(page.getByRole("region", { name: "Entregue ao aluno" }).getByText(deliveredBy, { exact: false })).toBeVisible();
+  await client.page.goto("./aluno/treino");
+  await expect(client.page.getByText(deliveredBy, { exact: false })).toBeVisible();
+  await page.goto("./profissional/configuracoes");
+  await expect(page.getByRole("table", { name: "Nomes anteriores do espaço" })).toHaveCount(0);
+  await expect(page.getByText("Nenhuma mudança registrada.", { exact: false }).first()).toBeVisible();
+  const workspaceForm = page.getByRole("form", { name: "Alterar o nome do espaço" });
+  await workspaceForm.getByRole("textbox", { name: "Nome do espaço" }).fill("Estúdio renomeado da entrega");
+  await workspaceForm.getByRole("button", { name: "Salvar" }).click();
+  await expect(page.getByText("Nome do espaço salvo.")).toBeVisible();
+  const ownForm = page.getByRole("form", { name: "Alterar o nome de exibição" });
+  await ownForm.getByRole("textbox", { name: "Nome de exibição" }).fill("Profissional Renomeado");
+  await ownForm.getByRole("button", { name: "Salvar" }).click();
+  await expect(page.getByText("Nome de exibição salvo.")).toBeVisible();
+  await page.reload();
+  await expect(
+    page.getByRole("table", { name: "Nomes anteriores do espaço" }).getByRole("row", { name: /Estúdio da entrega.*Estúdio renomeado da entrega/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("table", { name: "Seus nomes anteriores" }).getByRole("row", { name: /Profissional E2E.*Profissional Renomeado/ }),
+  ).toBeVisible();
+  await noHorizontalOverflow(page);
+  await page.goto(revisionURL);
+  await expect(page.getByRole("region", { name: "Entregue ao aluno" }).getByText(deliveredBy, { exact: false })).toBeVisible();
+  await client.page.goto("./aluno/treino");
+  await expect(client.page.getByText(deliveredBy, { exact: false })).toBeVisible();
+  // The header of the student area names the professional as they are now; the delivery keeps the name it was made with.
+  await expect(client.page.getByRole("region", { name: "Plano entregue" }).getByText("Profissional Renomeado", { exact: false })).toHaveCount(0);
+  await client.page.goto("./aluno");
+  await expect(client.page.getByText(`entregue em`, { exact: false }).filter({ hasText: deliveredBy })).toBeVisible();
+
   // A new draft revision never reaches the client, and the delivered one does not change.
   await page.getByRole("button", { name: "Criar nova revisão" }).click();
   await expect(page.getByText("Revisão 2", { exact: false }).first()).toBeVisible();

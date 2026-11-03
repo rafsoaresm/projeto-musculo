@@ -46,6 +46,11 @@ export interface PlanRevisionSummary {
   approvedAt: string | null;
   deliveredAt: string | null;
 }
+/** Who delivered a revision, as the names were at the moment of the delivery (slice 0.90). Null: not delivered, or no name then. */
+export interface DeliveredNames {
+  deliveredByName: string | null;
+  deliveredOrganizationName: string | null;
+}
 export interface PlanSummary {
   id: string;
   title: string;
@@ -55,7 +60,7 @@ export interface PlanSummary {
 }
 export interface PlanRevisionDetail {
   plan: { id: string; studentId: string; title: string };
-  revision: PlanRevisionSummary & {
+  revision: PlanRevisionSummary & DeliveredNames & {
     basedOnRevisionId: string | null;
     input: PeriodizationInput;
     schedule: PeriodizationSchedule;
@@ -258,6 +263,7 @@ export function plansFor(
              r.total_weeks AS totalWeeks, r.total_sessions AS totalSessions,
              r.updated_at AS updatedAt, r.ready_at AS readyAt,
              r.approved_at AS approvedAt, r.delivered_at AS deliveredAt,
+             r.delivered_by_name AS deliveredByName, r.delivered_organization_name AS deliveredOrganizationName,
              r.based_on_revision_id AS basedOnRevisionId,
              r.input_json AS inputJson, r.schedule_json AS scheduleJson
            FROM training_plans p
@@ -267,7 +273,7 @@ export function plansFor(
         )
         .bind(organizationId, userId, planId, revisionId)
         .first<
-          Omit<PlanRevisionSummary, "id"> & {
+          Omit<PlanRevisionSummary, "id"> & DeliveredNames & {
             planId: string;
             studentId: string;
             title: string;
@@ -292,6 +298,8 @@ export function plansFor(
           readyAt: row.readyAt,
           approvedAt: row.approvedAt,
           deliveredAt: row.deliveredAt,
+          deliveredByName: row.deliveredByName,
+          deliveredOrganizationName: row.deliveredOrganizationName,
           basedOnRevisionId: row.basedOnRevisionId,
           input: periodizationInputSchema.parse(JSON.parse(row.inputJson)),
           schedule: JSON.parse(row.scheduleJson) as PeriodizationSchedule,
@@ -480,7 +488,8 @@ export function plansFor(
     /**
      * APPROVED to DELIVERED: the student can see exactly this revision from now on. Delivery is
      * refused while the student's newest assessment is an alert nobody has reviewed, also when
-     * that assessment was recorded after the approval.
+     * that assessment was recorded after the approval. The names of who delivered (the professional and the workspace, as they are now) are
+     * written with it by the database (migration 0039) and never change afterwards.
      */
     async deliver(planId: string, revisionId: string, now = new Date()): Promise<DeliverOutcome> {
       const stamp = now.toISOString();

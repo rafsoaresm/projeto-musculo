@@ -195,10 +195,11 @@ describe("renaming oneself", () => {
     for (const user of ["owner-a", "gone-a", "blocked-a", "owner-off"]) expect(await displayName(user)).not.toBe("Outro nome");
   });
 
-  it("changes how a delivery names its professional, never the delivered revision itself", async () => {
-    // The name is read where it is shown; the prescription does not carry a copy of it.
+  it("keeps the names of a delivery as they were when it was made (slice 0.90; tests/delivery-names.test.ts covers the reads)", async () => {
+    // Since 0039 a delivery carries a copy of the names of that moment, so a rename here does not change it.
     const columns = (await db.prepare("PRAGMA table_info(plan_revisions)").all<{ name: string }>()).results.map((row) => row.name);
-    expect(columns).not.toContain("delivered_by_name");
+    expect(columns).toContain("delivered_by_name");
+    expect(columns).toContain("delivered_organization_name");
     expect(columns).toContain("delivered_by_user_id");
   });
 });

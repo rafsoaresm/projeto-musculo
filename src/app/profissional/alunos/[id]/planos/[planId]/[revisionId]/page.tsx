@@ -73,6 +73,8 @@ export default async function PlanRevision({
         workouts={progress.length}
         approvedAt={revision.approvedAt}
         deliveredAt={revision.deliveredAt}
+        deliveredByName={revision.deliveredByName}
+        deliveredOrganizationName={revision.deliveredOrganizationName}
         portal={access?.access ?? "NONE"}
         studentHref={`/profissional/alunos/${student.id}`}
         screening={screening}
