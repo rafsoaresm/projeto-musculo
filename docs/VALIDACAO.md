@@ -2,6 +2,15 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.91: Cópia dos dados legível (PENDENCIAS B14)
+
+**Sem migration.** "Baixar meus dados" (0.28) dava só JSON. Agora há também uma **página** (`/aluno/conta/meus-dados/ver`) e um **PDF** (pdf-lib, como os outros PDFs), com o mesmo conteúdo do JSON organizado em seções: sobre a cópia (o que traz e o que não traz), dados de acesso, aceites dos termos, profissional, check-ins (com as perguntas próprias e as respostas do profissional), treinos registrados, treino entregue (cada exercício com os 8 campos, "Não definido" quando vazio, numerado como no PDF do plano) e pedidos. Campo vazio por extenso ("Não informado", "Sem registro", "Não definido"), nunca zero nem em branco. O JSON continua ("Baixar em JSON").
+
+- **Acesso:** o mesmo da cópia em JSON (o aluno, pelos vínculos verificados); ver na tela usa o mesmo limite por hora da cópia (escolha da ferramenta, mantida).
+- **Aviso:** "A cópia tem dados de saúde: guarde-a em um lugar seguro." na página e no rodapé de cada página do PDF.
+- **Verificado localmente:** tipos, lint e `npm run check`; e2e nos dois mounts (raiz e `/treinador`) com `export`; capturas a 1440, 1280, 1024, 768 e 390 e o PDF renderizado (3 páginas).
+- **Não verificado:** o PDF com um histórico muito longo (centenas de check-ins) no Worker; leitores de tela no PDF (sem marcação de acessibilidade).
+
 ## Fatia 0.90: Nome de quem entregou no momento da entrega (PENDENCIAS B15)
 
 **Migration `0039_delivery_names.sql`** (aditiva): `plan_revisions.delivered_by_name` e `delivered_organization_name`; `assessments.recorded_by_name` e `recorded_organization_name`; tabela `name_history` (nome antigo, novo, quem mudou e quando; nunca alterada nem apagada).

@@ -9,6 +9,7 @@ import {
   type ExportLinkSource,
   type ExportRequest,
   type ExportSession,
+  type ExportSource,
   type StudentDataExport,
 } from "@/modules/pedidos/export";
 import { portalLinksFor, type PortalLink } from "./student-access";
@@ -44,7 +45,7 @@ function readReplies(json: string | null): ExportCheckin["replies"] {
 export const EXPORT_GENERATED = "STUDENT_DATA_EXPORTED";
 
 export type GenerateExportOutcome =
-  | { status: "generated"; document: StudentDataExport }
+  | { status: "generated"; document: StudentDataExport; source: ExportSource }
   | { status: "rate_limited" }
   | { status: "not_found" };
 
@@ -290,15 +291,14 @@ export function studentExportFor(db: D1Database, userId: string) {
         )
         .bind(userId)
         .all<{ termsVersion: string; termsSha256: string; photosAuthorized: number; acceptedAt: string }>();
-      return {
-        status: "generated",
-        document: buildExport({
-          generatedAt: now,
-          account,
-          acceptances: acceptances.results.map((row) => ({ ...row, photosAuthorized: Boolean(row.photosAuthorized) })),
-          links: await Promise.all(allowed.map(collect)),
-        }),
+      // The page and the PDF (slice 0.91) are drawn from this same source, so the three say the same thing.
+      const source: ExportSource = {
+        generatedAt: now,
+        account,
+        acceptances: acceptances.results.map((row) => ({ ...row, photosAuthorized: Boolean(row.photosAuthorized) })),
+        links: await Promise.all(allowed.map(collect)),
       };
+      return { status: "generated", document: buildExport(source), source };
     },
   };
 }

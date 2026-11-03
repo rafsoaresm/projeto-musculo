@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Download, FileText } from "lucide-react";
 import { requireStudent, recoveryAvailable } from "@/modules/auth/server";
 import { latestAcceptance } from "@/db/consent";
 import { studentRequestsFor } from "@/db/data-requests";
@@ -68,16 +69,17 @@ export default async function StudentAccount() {
         <p className="eyebrow">SEUS DADOS</p>
         <h2 id="baixar-conta">Baixar uma cópia dos meus dados</h2>
         <p className="muted">
-          Gera na hora um arquivo com o que a ferramenta mostra a você. Está em JSON, um formato que outros programas
-          leem e que também abre em um editor de texto.
+          Gera na hora uma cópia do que a ferramenta mostra a você. Você pode ler na tela, baixar em PDF ou baixar em
+          JSON, um formato que outros programas leem e que também abre em um editor de texto. As três trazem o mesmo
+          conteúdo.
         </p>
-        <p>O arquivo traz:</p>
+        <p>A cópia traz:</p>
         <ul>
           {EXPORT_INCLUDED.map((item) => (
             <li key={item}>{item}</li>
           ))}
         </ul>
-        <p>Ele não traz:</p>
+        <p>Ela não traz:</p>
         <ul>
           {EXPORT_NOT_INCLUDED.map((item) => (
             <li key={item}>{item}</li>
@@ -85,12 +87,21 @@ export default async function StudentAccount() {
         </ul>
         <p className="muted">
           Para receber também o que o seu profissional guarda, faça o pedido “Receber uma cópia dos meus dados” logo
-          abaixo. Cada download fica registrado (quando, nunca o conteúdo) e há um limite de {EXPORTS_PER_HOUR} por
-          hora. O arquivo tem dados de saúde: guarde-o em um lugar seguro.
+          abaixo. Cada cópia gerada (na tela, em PDF ou em JSON) fica registrada (quando, nunca o conteúdo) e há um
+          limite de {EXPORTS_PER_HOUR} por hora, somando as três. A cópia tem dados de saúde: guarde-a em um lugar
+          seguro.
         </p>
-        <Link className="button secondary" href="/aluno/conta/meus-dados" download prefetch={false}>
-          Baixar meus dados
-        </Link>
+        <div className="student-assessment-actions copy-actions">
+          <Link className="button primary" href="/aluno/conta/meus-dados/ver" prefetch={false}>
+            <FileText size={18} /> Ver na tela
+          </Link>
+          <Link className="button secondary" href="/aluno/conta/meus-dados/pdf" download prefetch={false}>
+            <Download size={18} /> Baixar em PDF
+          </Link>
+          <Link className="button secondary" href="/aluno/conta/meus-dados" download prefetch={false}>
+            <Download size={18} /> Baixar em JSON
+          </Link>
+        </div>
       </section>
       <section className="panel" id="pedidos" aria-labelledby="pedidos-conta">
         <p className="eyebrow">SEUS DIREITOS</p>

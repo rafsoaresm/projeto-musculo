@@ -15,6 +15,7 @@ import {
   serializeExport,
   type StudentDataExport,
 } from "@/modules/pedidos/export";
+import { readableExport } from "@/modules/pedidos/export-readable";
 import { ALL_MIGRATIONS, migrate } from "./helpers/migrate";
 
 // Real local D1 with every migration, triggers included. Identities are rows, as the server derives
@@ -294,6 +295,23 @@ describe("what a student's copy holds", () => {
     const names = delivered[0].fases[0].treinos[0].exercicios.map((item) => item.nome);
     expect(names).toContain("Exercício da revisão 2");
     expect(everything(document)).not.toContain("RASCUNHO-NAO-ENTREGUE");
+  });
+});
+
+describe("the readable copy (0.91)", () => {
+  it("is drawn from the same source as the file, under the same trail and limit", async () => {
+    const when = hoursAfter(500);
+    const before = await count(`SELECT COUNT(*) AS n FROM access_audit_events WHERE actor_user_id = 'client-1' AND action = ?1`, EXPORT_GENERATED);
+    const outcome = await studentExportFor(db, "client-1").generate(when);
+    if (outcome.status !== "generated") throw new Error(`expected a copy, got ${outcome.status}`);
+    // One generation, one line per link, whatever format is drawn from it afterwards.
+    expect(await count(`SELECT COUNT(*) AS n FROM access_audit_events WHERE actor_user_id = 'client-1' AND action = ?1`, EXPORT_GENERATED)).toBe(before + 2);
+    expect(outcome.source.links.map((link) => link.organizationName)).toEqual(outcome.document.vinculos.map((link) => link.organizacao));
+    const readable = readableExport(outcome.source);
+    const all = JSON.stringify(readable);
+    for (const expected of ["Aluno Um", "Aluno Um na B", "cansada", "boa sessão", "Exercício 1", "Nota 1", "meu nome está errado"]) expect(all).toContain(expected);
+    // Nothing of the professional's record, nor of other students.
+    for (const absent of [SECRET, "Aluno Dois", "Aluno B\"", "st-1", "org-a"]) expect(all).not.toContain(absent);
   });
 });
 
