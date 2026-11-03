@@ -21,7 +21,7 @@ const preview = (page: Page) => page.getByRole("region", { name: "Prévia calcul
 async function linesOf(page: Page, card: string) {
   return page.getByRole("region", { name: card }).evaluate((region) => {
     const lines = new Map<number, number[]>();
-    for (const field of region.querySelectorAll<HTMLElement>(".av2-grid > .av2-field")) {
+    for (const field of region.querySelectorAll<HTMLElement>(":scope > .av2-grid > .av2-field")) {
       if (field.offsetParent === null) continue;
       const top = Math.round(field.getBoundingClientRect().top);
       const control = field.children[1] as HTMLElement;
@@ -142,7 +142,7 @@ test("the Medidas step of the new format computes the preview, keeps values acro
   // The open draft is the student's one draft: the panel continues it.
   await page.goto(studentURL);
   await showStudentTab(page, "Avaliação Física");
-  await page.getByRole("link", { name: "Continuar a avaliação física" }).click();
+  await page.getByRole("link", { name: "Continuar a avaliação física", exact: true }).click();
   await expect(page).toHaveURL(draftURL);
   await expect(page.getByRole("navigation", { name: "Etapas da avaliação física" })).toBeVisible();
 });
@@ -180,7 +180,7 @@ test("a draft is discarded, and the student can start the Avaliação Física ag
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Descartar rascunho" }).click();
   await expect(page.getByRole("button", { name: "Iniciar avaliação física" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Continuar a avaliação física" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Continuar a avaliação física", exact: true })).toHaveCount(0);
   await page.goto(studentURL);
   await showStudentTab(page, "Avaliação Física");
   await expect(page.getByRole("button", { name: "Iniciar avaliação física" })).toBeVisible();

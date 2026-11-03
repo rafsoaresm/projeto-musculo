@@ -10,6 +10,9 @@ import { addStudent, createProfessional, localIP, noHorizontalOverflow, readyPla
  * runs alone, after the other scenarios (project `assessments-legacy`), because a write from another process while others read can make the
  * local worker answer a request with a server error. Production never has a second process on the database.
  */
+// One after the other in one worker: two writers on the local database at once can lock each other.
+test.describe.configure({ mode: "default" });
+
 function sql(command: string) {
   execFileSync("npx", ["wrangler", "d1", "execute", "DB", "--local", "--command", command], {
     stdio: "ignore",
