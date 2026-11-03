@@ -19,6 +19,7 @@ import { MOVEMENT_MODULE, movementSchema } from "@/modules/avaliacoes/v2/flexite
 import { TESTS_MODULE, testsSchema } from "@/modules/avaliacoes/v2/physical-tests";
 import { CONCLUSION_MODULE, conclusionSchema } from "@/modules/avaliacoes/v2/conclusion";
 import { recordedScreening, reviewDraft } from "@/modules/avaliacoes/v2/review";
+import { readClassification, type Classification } from "@/modules/avaliacoes/classifications";
 import { excludedWithData, readEnabledParts, type EnabledParts, type TemplatePart } from "@/modules/avaliacoes/v2/template";
 import { activeUser, assertContext, technicalAccessExists, type AuthenticatedContext } from "./students";
 
@@ -80,6 +81,11 @@ export interface ResultRow {
   formulaVersion: string | null;
   inputs: Record<string, unknown> | null;
   flags: string[];
+  /**
+   * Slice 0.92: the classification by a reference table, as written at finalize. Absent (never null, so a record made before keeps the same
+   * fingerprint in its report) for a result no table classifies and for every result recorded before the tables.
+   */
+  classification?: Classification;
 }
 export type FinalizeOutcome =
   | { status: "recorded" }
@@ -317,22 +323,37 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
       return fallback;
     }
   };
-  type RawResult = { assessmentId: string; code: string; value: number | null; unit: string | null; method: string; formulaVersion: string | null; inputs: string | null; flags: string | null };
-  const asResult = (row: RawResult): ResultRow => ({
-    code: row.code,
-    value: row.value,
-    unit: row.unit,
-    method: row.method,
-    formulaVersion: row.formulaVersion,
-    inputs: parseJson<Record<string, unknown> | null>(row.inputs, null),
-    flags: parseJson<unknown>(row.flags, []) instanceof Array ? (parseJson<unknown[]>(row.flags, []).filter((flag) => typeof flag === "string") as string[]) : [],
-  });
+  type RawResult = {
+    assessmentId: string;
+    code: string;
+    value: number | null;
+    unit: string | null;
+    method: string;
+    formulaVersion: string | null;
+    inputs: string | null;
+    flags: string | null;
+    classification: string | null;
+  };
+  const asResult = (row: RawResult): ResultRow => {
+    const classification = readClassification(parseJson<unknown>(row.classification, null));
+    return {
+      code: row.code,
+      value: row.value,
+      unit: row.unit,
+      method: row.method,
+      formulaVersion: row.formulaVersion,
+      inputs: parseJson<Record<string, unknown> | null>(row.inputs, null),
+      flags: parseJson<unknown>(row.flags, []) instanceof Array ? (parseJson<unknown[]>(row.flags, []).filter((flag) => typeof flag === "string") as string[]) : [],
+      ...(classification ? { classification } : {}),
+    };
+  };
   /** The results of some assessments whose ids came from a gated query (organization and access already checked). */
   const resultsOf = async (ids: string[], codes: readonly string[] | null): Promise<RawResult[]> => {
     if (ids.length === 0) return [];
     const rows = await db
       .prepare(
-        `SELECT r.assessment_id AS assessmentId, r.code, r.value, r.unit, r.method, r.formula_version AS formulaVersion, r.inputs, r.flags
+        `SELECT r.assessment_id AS assessmentId, r.code, r.value, r.unit, r.method, r.formula_version AS formulaVersion, r.inputs, r.flags,
+           r.classification
          FROM assessment_results r
          WHERE r.organization_id = ?1 AND r.assessment_id IN (SELECT value FROM json_each(?2))
            AND (?3 IS NULL OR r.code IN (SELECT value FROM json_each(?3)))
@@ -860,8 +881,8 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
         ...review.results.map((result) =>
           db
             .prepare(
-              `INSERT INTO assessment_results (id, assessment_id, organization_id, code, value, unit, method, formula_version, inputs, flags, created_at)
-               SELECT ?6, ?3, ?1, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?5 WHERE ${ours}`,
+              `INSERT INTO assessment_results (id, assessment_id, organization_id, code, value, unit, method, formula_version, inputs, flags, classification, created_at)
+               SELECT ?6, ?3, ?1, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?5 WHERE ${ours}`,
             )
             .bind(
               organizationId,
@@ -877,6 +898,8 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
               result.formulaVersion,
               JSON.stringify(result.inputs),
               JSON.stringify(result.flags),
+              // Slice 0.92: the classification by the reference table, frozen with the result (null: no table classifies this result).
+              result.classification ? JSON.stringify(result.classification) : null,
             ),
         ),
         db

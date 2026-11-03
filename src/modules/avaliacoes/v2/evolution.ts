@@ -1,11 +1,13 @@
 import type { ResultRow } from "@/db/assessments";
 import { RESULT_CODES } from "./review";
+import type { Classification } from "../classifications";
 
 /**
  * The evolution of the results of the Avaliação Física (handoff 4.3, 5 and 9): one series per result and per way of obtaining it. Two values are
  * in the same series only when they share the code, the method (protocol and equation variant, or the arithmetic), the version of the formula,
  * the conversion (Siri) and the unit; anything else starts another series and is never drawn on the same line. The results of the earlier format
- * (method unknown, `legacy_formula_unknown`) are kept apart. Nothing is classified, and a value that was not computed stays empty, never 0.
+ * (method unknown, `legacy_formula_unknown`) are kept apart. A value carries the classification written when it was recorded (slice 0.92), never
+ * one computed now; a value that was not computed stays empty, never 0.
  */
 export const LEGACY_METHOD = "legacy_formula_unknown";
 
@@ -31,6 +33,8 @@ export interface EvolutionPoint {
   /** The conversion from density to % fat written in the inputs (e.g. "siri_1961"); null when the result has none. */
   conversion: string | null;
   flags: string[];
+  /** Slice 0.92: the classification written at finalize, or null (no table, or recorded before the tables). */
+  classification: Classification | null;
 }
 
 /** Values of one result obtained the same way: the only ones that are compared with each other. */
@@ -115,6 +119,7 @@ export function resultEvolution(history: EvolutionSource[]): ResultEvolution[] {
         formulaVersion: result.formulaVersion,
         conversion: conversionOf(result.code, result.inputs),
         flags: result.flags,
+        classification: result.classification ?? null,
       };
       const entry = byCode.get(result.code) ?? { fresh: [], legacy: [] };
       (isLegacy(source, result) ? entry.legacy : entry.fresh).push(point);

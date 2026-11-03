@@ -1,3 +1,4 @@
+import { BEFORE_TABLES, classificationDetail, classificationLevel, isClassifiedCode, type Classification } from "../classifications";
 import { FLAG_LABEL, RESULT_LABEL, formatResult, isResultEstimate, methodLabel, resultNote } from "./review";
 
 export interface ResultItem {
@@ -7,12 +8,29 @@ export interface ResultItem {
   method: string;
   formulaVersion: string | null;
   flags: string[];
+  /** Slice 0.92: the classification by a reference table; absent or null for a result no table classifies, or one recorded before the tables. */
+  classification?: Classification | null;
+}
+
+/** The classification line of a result: the level (or what the table does not say) and the table, column, source and precision. */
+export function ResultClassification({ result }: { result: Pick<ResultItem, "code" | "classification"> }) {
+  if (!isClassifiedCode(result.code)) return null;
+  const classification = result.classification ?? null;
+  return (
+    <span className="av2-result-class">
+      <span>
+        Classificação: <strong>{classification ? classificationLevel(classification) : BEFORE_TABLES}</strong>
+      </span>
+      {classification && <span className="small muted">{classificationDetail(classification)}</span>}
+    </span>
+  );
 }
 
 /**
  * The results of an assessment, each with its value, its method and the version of the formula, and the flags of the method (e.g. outside the
- * original validation population). An estimate is said to be one; there is no classification (none is homologated). Used by the "Revisão" step
- * (what will be recorded) and by the recorded assessment (what was).
+ * original validation population). An estimate is said to be one. Slice 0.92: the body fat, BMI, waist-hip ratio, Flexiteste total and Cooper
+ * distance carry their classification by the reference table, with the table, the column, the source and the precision of the comparison; one
+ * recorded before the tables says so. Used by the "Revisão" step (what will be recorded) and by the recorded assessment (what was).
  */
 export function ResultsList({ results, labelledBy }: { results: ResultItem[]; labelledBy?: string }) {
   return (
@@ -27,6 +45,7 @@ export function ResultsList({ results, labelledBy }: { results: ResultItem[]; la
             {result.formulaVersion ? ` · fórmula ${result.formulaVersion}` : ""}
             {isResultEstimate(result.code, result.method) ? " · estimativa" : ""}
           </span>
+          <ResultClassification result={result} />
           {result.flags.length > 0 && (
             <span className="av2-result-flags">
               {result.flags.map((flag) => (

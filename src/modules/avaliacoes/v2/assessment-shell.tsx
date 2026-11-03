@@ -60,7 +60,14 @@ const STEPS = [
     modules: [POSTURE_MODULE, MOVEMENT_MODULE],
   },
   { key: "testes", label: "Testes", title: STEP_TITLE.testes, description: "Resistência abdominal, resistência de membros superiores e Cooper 12 minutos", modules: [TESTS_MODULE] },
-  { key: "revisao", label: "Revisão", title: STEP_TITLE.revisao, description: "Pendências, resultados calculados, considerações finais e finalização", modules: [CONCLUSION_MODULE] },
+  // "Revisão" also holds the "Referência das tabelas" of the classifications (slice 0.92), stored with the Medidas module.
+  {
+    key: "revisao",
+    label: "Revisão",
+    title: STEP_TITLE.revisao,
+    description: "Pendências, resultados calculados e classificados, considerações finais e finalização",
+    modules: [CONCLUSION_MODULE, COMPOSITION_MODULE],
+  },
 ] as const satisfies readonly { key: StepKey; label: string; title: string; description: string | null; modules: readonly string[] }[];
 
 /**
@@ -380,6 +387,12 @@ export function AssessmentShell({
           onFinalize={finalize}
           onOpenTriagem={() => goTo("triagem")}
           conclusion={on("conclusion") ? <ConclusionCard form={conclusionForm} onChange={editConclusion} /> : null}
+          reference={
+            // Only where a table that depends on it can classify something: the skinfolds (body fat), the perimeters (RCQ) or the Cooper test.
+            on("skinfolds") || on("perimeters") || on("cooper")
+              ? { equation: form.equation, chosen: form.tableReference, onChange: (tableReference) => edit({ ...form, tableReference }) }
+              : null
+          }
         />
       )}
 

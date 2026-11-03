@@ -5,13 +5,14 @@ import { MetricChart } from "../metric-chart";
 import { CONVERSION_LABEL } from "./composition";
 import { BREAK_LABEL, resultEvolution, type ComparableSeries, type EvolutionPoint, type EvolutionSource, type ResultEvolution } from "./evolution";
 import { FLAG_LABEL, RESULT_LABEL, formatResult, isResultEstimate, methodLabel, resultDigits } from "./review";
+import { BEFORE_TABLES, classificationDetail, classificationLevel, isClassifiedCode } from "../classifications";
 
 const valueText = (code: string, point: Pick<EvolutionPoint, "value" | "unit">) =>
   point.value === null ? "Sem valor" : formatResult(code, point.value, point.unit);
 const conversionText = (conversion: string | null) =>
   conversion === null ? null : (CONVERSION_LABEL[conversion as keyof typeof CONVERSION_LABEL] ?? conversion);
 
-/** How a series was obtained, in words: formula version, conversion, estimate. Never a classification. */
+/** How a series was obtained, in words: formula version, conversion, estimate. The classification of each value is in the table of values. */
 function methodLine(code: string, series: Pick<ComparableSeries, "method" | "formulaVersion" | "conversion">) {
   const parts = [series.formulaVersion ? `fórmula ${series.formulaVersion}` : null, conversionText(series.conversion) ? `conversão ${conversionText(series.conversion)}` : null];
   if (isResultEstimate(code, series.method)) parts.push("estimativa");
@@ -95,8 +96,8 @@ export function ResultsEvolution({ history, headingId = "resultados-evolucao", h
       <h2 id={headingId}>{heading}</h2>
       <p className="muted">
         Cada série reúne só valores obtidos do mesmo jeito: o mesmo método ou protocolo, a mesma versão da fórmula e a mesma conversão. Um
-        protocolo diferente começa outra série, com a sua própria linha. Os valores são os registrados ao finalizar cada avaliação, sem
-        classificação: a ferramenta não diz se uma mudança é melhor ou pior.
+        protocolo diferente começa outra série, com a sua própria linha. Os valores são os registrados ao finalizar cada avaliação, com a
+        classificação registrada naquele momento pela tabela de referência indicada, quando há; a ferramenta não diz se uma mudança é melhor ou pior.
       </p>
       {groups.length === 0 && <p>Nenhum resultado foi calculado nessas avaliações.</p>}
       {groups.map((group) => {
@@ -126,6 +127,7 @@ export function ResultsEvolution({ history, headingId = "resultados-evolucao", h
                         <th scope="col">Data</th>
                         <th scope="col">Valor</th>
                         <th scope="col">Método</th>
+                        {isClassifiedCode(group.code) && <th scope="col">Classificação</th>}
                         <th scope="col">Comparação</th>
                       </tr>
                     </thead>
@@ -150,6 +152,18 @@ export function ResultsEvolution({ history, headingId = "resultados-evolucao", h
                               ))}
                             </span>
                           </td>
+                          {isClassifiedCode(group.code) && (
+                            <td data-label="Classificação">
+                              {point.classification ? (
+                                <span className="av2-evolution-method-cell">
+                                  <strong>{classificationLevel(point.classification)}</strong>
+                                  <span className="small muted">{classificationDetail(point.classification)}</span>
+                                </span>
+                              ) : (
+                                <span className="muted">{BEFORE_TABLES}</span>
+                              )}
+                            </td>
+                          )}
                           <td data-label="Comparação">
                             {index === 0 ? (
                               <span className="muted">Primeiro valor</span>

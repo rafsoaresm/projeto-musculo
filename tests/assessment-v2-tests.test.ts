@@ -75,6 +75,8 @@ describe("the Flexiteste (module “movement”)", () => {
         formulaVersion: FORMULA_VERSION,
         inputs: { variant: "pdf_15_movements_1_to_4", levels: fullLevels },
         flags: [],
+        // Slice 0.92: classified by the user's Flexiteste table (no age, no reference): 31 – 40 is "Médio negativo".
+        classification: expect.objectContaining({ table: "flexitest", status: "in_range", levels: ["Médio negativo"], comparedValue: 32, sex: null, ageYears: null }),
       },
     ]);
     expect(complete.modules.find((module) => module.key === "movimento")?.lines).toContain("Flexiteste: 15 de 15 preenchidos; total 32 pontos");
@@ -88,7 +90,7 @@ describe("the Flexiteste (module “movement”)", () => {
     expect(totalText(null)).toBe("Só com os 15 movimentos");
     expect(totalText(32)).toBe("32 pontos");
     expect(formatResult("flexitest_total", 32, "pontos")).toBe("32 pontos");
-    // Arithmetic on the levels, not an estimate, and no classification in the result.
+    // Arithmetic on the levels, not an estimate.
     expect(isEstimate(EXACT_METHODS.flexitest)).toBe(false);
   });
   it("says the professional's classification is theirs, and the step is “Não realizado” when nothing was filled", () => {
@@ -184,7 +186,7 @@ describe("the physical tests (module “tests”)", () => {
         "Resistência abdominal: 0 repetições completas",
         "Resistência de membros superiores: 22 repetições completas · Flexão de braço",
         "Cooper: não realizado",
-        "Classificação: escrita pelo profissional (nenhuma tabela homologada)",
+        "Classificação manual: escrita pelo profissional",
       ],
     });
   });

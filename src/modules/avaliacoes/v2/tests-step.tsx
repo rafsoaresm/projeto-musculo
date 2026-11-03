@@ -48,7 +48,8 @@ function RepetitionCard({ test, form, onChange }: { test: RepetitionTestKey; for
 /**
  * The "Testes físicos" step (handoff 3.5, Figma AV-06): abdominal and upper-limb endurance as complete repetitions, and the Cooper 12-minute test
  * with the distance, its date, place, conditions and contraindications. The speed and the estimated VO₂max are a preview with the same versioned
- * formulas the finalize records; nothing is classified by the system (the classification is the professional's text).
+ * formulas the finalize records; the Cooper distance is classified by the Cooper (1982) table in "Revisão" (slice 0.92); the professional's
+ * manual classification stays apart.
  */
 export function TestsStep({
   form,

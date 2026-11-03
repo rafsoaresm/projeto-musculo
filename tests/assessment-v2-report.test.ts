@@ -96,7 +96,7 @@ describe("the report of a recorded Avaliação Física (pure)", () => {
     expect(text).toContain('"label":"Altura","value":"Sem aferição"');
     expect(text).toContain("D 40 cm / E Sem aferição");
     expect(text).toContain('"label":"Classificação (manual)","value":"Médio"');
-    expect(text).toContain("Escrita pelo profissional. O sistema não classifica");
+    expect(text).toContain("Escrita pelo profissional, à parte da classificação automática do total");
     expect(text).toContain("2.200 m em 12 min");
     expect(text).toContain("1 de 15 preenchido");
   });
@@ -182,7 +182,7 @@ describe("the report as a PDF", () => {
     const text = textOf(doc);
     for (const expected of [
       "AVALIAÇÃO FÍSICA · RELATÓRIO", "Avaliação física de 03/11/2026", "Aluno Exemplo", "Pro A", "Studio A", "PAR-Q sem", // the curly quotes are WinAnsi 0x93/0x94, not latin1
-      "Sem classificação automática;", "Um campo vazio aparece escrito por extenso", "Triagem", "Entorse em 2024", "69,1 kg", "1,71 m", "Jackson & Pollock · 7", "Cintura", "69,5 cm",
+      "Classificação automática só pelas tabelas de referência indicadas", "Um campo vazio aparece escrito por extenso", "Triagem", "Entorse em 2024", "69,1 kg", "1,71 m", "Jackson & Pollock · 7", "Cintura", "69,5 cm",
       "Cooper, VO2máx estimado", "37,90 ml/kg/min", "Recomendações", "Treinar 3 vezes por semana.", "Não realizado.", "Gerado em 04/11/2026",
     ])
       expect(text, expected).toContain(expected);

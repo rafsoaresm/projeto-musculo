@@ -258,4 +258,5 @@ export const testsProblemsMessage = (problems: string[]) =>
     : `Confira ${problems.length === 1 ? "o campo" : "os campos"} ${problems.join(", ")}: repetições são um número inteiro (0 ou mais), duração em segundos e distância em metros são positivas, a data é um dia do calendário e cada texto tem até ${MAX_TEXT} caracteres.`;
 
 /** The line said wherever a test's classification shows: it is the professional's, not the system's. */
-export const TESTS_CLASSIFICATION_NOTE = "Escrita pelo profissional. O sistema não classifica: nenhuma tabela de referência está homologada.";
+export const TESTS_CLASSIFICATION_NOTE =
+  "Escrita pelo profissional. As resistências abdominal e de membros superiores não têm tabela de referência; a distância do Cooper é classificada pela tabela de Cooper (1982), em “Resultados”.";

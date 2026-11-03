@@ -39,7 +39,7 @@ function Movement({ code, label, level, onChange }: { code: FlexitestMovement; l
 /**
  * The Flexiteste of the "Movimento" step (handoff 3.4, Figma AV-05): the 15 movements of the PDF, each with a quick choice of level 1 to 4 (touch
  * targets of 44px) or "Não avaliado"; how many are filled and the total, which exists only with all 15 (never a partial sum); the professional's
- * own classification and notes. Nothing is classified by the system: the PDF gives no table.
+ * own classification and notes. The total is classified by the user's Flexiteste table at finalize (slice 0.92), shown in "Revisão".
  */
 export function FlexitestCard({ form, onChange }: { form: MovementForm; onChange: (form: MovementForm) => void }) {
   const tally = flexitest(form.levels);
