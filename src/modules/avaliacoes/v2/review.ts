@@ -157,6 +157,9 @@ const DIGITS: Record<string, number> = {
 };
 const MIN_DIGITS: Record<string, number> = { bmi: 2, waist_hip_ratio: 3, cooper_speed_kmh: 1, cooper_vo2_estimate: 2 };
 
+/** Decimal places a result is shown with, at most (a bilateral difference in cm has two). */
+export const resultDigits = (code: string): number => (code.startsWith("bilateral_difference_") ? 2 : (DIGITS[code] ?? 2));
+
 /** A value as the screens show it (rounded only here; the record keeps the full precision), with its unit. */
 export function formatResult(code: string, value: number, unit: string | null): string {
   if (code.startsWith("bilateral_difference_")) return bilateralSigned(value);

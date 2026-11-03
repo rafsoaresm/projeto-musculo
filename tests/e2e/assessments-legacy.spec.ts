@@ -102,6 +102,9 @@ test("a recorded assessment of the earlier format stays readable under its own n
   await page.goto(`${studentURL}/evolucao`);
   await expect(page.getByText("1 avaliação registrada", { exact: false })).toBeVisible();
   await expect(page.getByRole("cell", { name: "Inicial (formato anterior)" })).toBeVisible();
+  // Slice 0.82: with no Avaliação Física and no result, the earlier measures keep their section, and no series of results appears.
+  await expect(page.getByRole("heading", { name: "Medidas ao longo do tempo" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Resultados ao longo do tempo" })).toHaveCount(0);
 });
 
 test("an open draft of the earlier format cannot be filled any more: it is discarded, and the Avaliação Física starts in its place", async ({ page }) => {

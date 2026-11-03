@@ -7,6 +7,7 @@ import { MetricChart } from "./metric-chart";
 import { PhotoImage } from "./photo-image";
 import { PHOTO_VIEWS } from "./photos";
 import { ScreeningPill } from "./screening-pill";
+import { ResultsEvolution } from "./v2/results-evolution";
 
 const AREA_LABEL = { SCREENING: "Triagem", POSTURE: "Postura", MOVEMENT: "Movimento" } as const;
 
@@ -32,79 +33,91 @@ export function EvolutionView({
       </section>
     );
   const series = buildSeries(history);
-  const pairs = history.slice(1).map((after, index) => ({ before: history[index], after })).reverse();
+  // The item-by-item comparison reads the screening, posture and movement of the earlier format; the Avaliação Física keeps them in its
+  // modules, so a pair with one of it is not compared here (saying "no differences" would be false).
+  const earlier = history.filter((assessment) => assessment.formatVersion === null);
+  const pairs = earlier.slice(1).map((after, index) => ({ before: earlier[index], after })).reverse();
+  // Slice 0.82: the results of the Avaliação Física (and the body fat of the earlier format, method unknown) in comparable series. The measures
+  // typed in the earlier format keep their own section, apart, as before; with no Avaliação Física and no result, only that section shows.
+  const withResults = history.some((assessment) => assessment.formatVersion === 2 || assessment.results.length > 0);
+  const withMetrics = !withResults || history.some((assessment) => assessment.metrics.length > 0);
+  const counted = `${history.length} ${history.length === 1 ? "avaliação registrada" : "avaliações registradas"}, de ${formatCalendarDate(history[0].assessedOn)} a ${formatCalendarDate(history[history.length - 1].assessedOn)}.`;
   return (
     <>
-      <section className="panel" aria-labelledby="indicadores-evolucao">
-        <p className="eyebrow">INDICADORES</p>
-        <h2 id="indicadores-evolucao">Medidas ao longo do tempo</h2>
-        <p className="muted">
-          {history.length} {history.length === 1 ? "avaliação registrada" : "avaliações registradas"}, de{" "}
-          {formatCalendarDate(history[0].assessedOn)} a{" "}
-          {formatCalendarDate(history[history.length - 1].assessedOn)}. Os valores são os digitados;
-          a ferramenta não diz se uma mudança é melhor ou pior.
-        </p>
-        {series.length === 0 && <p>Nenhum indicador foi registrado nessas avaliações.</p>}
-        {series.map((item) => {
-          const title = seriesTitle(item);
-          const first = item.points[0];
-          const last = item.points[item.points.length - 1];
-          const unit = item.unit ? ` ${item.unit}` : "";
-          return (
-            <div key={item.key} className="series-block" role="group" aria-label={title}>
-              <h3>
-                {title}
-                {item.unit && <span className="small muted"> · {item.unit}</span>}
-              </h3>
-              <p className="small muted">
-                {item.points.length === 1
-                  ? `Uma medição: ${first.valueText}${unit} em ${formatCalendarDate(first.assessedOn)}.`
-                  : `Primeira: ${first.valueText}${unit} em ${formatCalendarDate(first.assessedOn)}. Última: ${last.valueText}${unit} em ${formatCalendarDate(last.assessedOn)}.`}
-              </p>
-              {item.numeric.length >= 2 && (
-                <MetricChart
-                  title={title}
-                  unit={item.unit}
-                  points={item.numeric.map((point) => ({
-                    assessedOn: point.assessedOn,
-                    value: point.valueNumber as number,
-                    text: point.valueText,
-                  }))}
-                />
-              )}
-              {item.points.length > 1 && (
-                <details>
-                  <summary>Ver os valores</summary>
-                  <div className="table-wrap">
-                    <table className="data-table stack">
-                      <caption className="sr-only">Valores de {title}</caption>
-                      <thead>
-                        <tr>
-                          <th scope="col">Data</th>
-                          <th scope="col">Valor</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {item.points.map((point) => (
-                          <tr key={point.assessmentId}>
-                            <th scope="row" data-label="Data">
-                              {formatCalendarDate(point.assessedOn)}
-                            </th>
-                            <td data-label="Valor">
-                              {point.valueText}
-                              {unit}
-                            </td>
+      <p className="muted evolution-count">{counted}</p>
+      {withResults && <ResultsEvolution history={history} />}
+      {withMetrics && (
+        <section className="panel" aria-labelledby="indicadores-evolucao">
+          <p className="eyebrow">{withResults ? "FORMATO ANTERIOR" : "INDICADORES"}</p>
+          <h2 id="indicadores-evolucao">{withResults ? "Medidas do formato anterior" : "Medidas ao longo do tempo"}</h2>
+          <p className="muted">
+            {withResults
+              ? "Digitadas nas avaliações do formato anterior, sem método registrado: não se misturam com os resultados acima. "
+              : ""}
+            Os valores são os digitados; a ferramenta não diz se uma mudança é melhor ou pior.
+          </p>
+          {series.length === 0 && <p>Nenhum indicador foi registrado nessas avaliações.</p>}
+          {series.map((item) => {
+            const title = seriesTitle(item);
+            const first = item.points[0];
+            const last = item.points[item.points.length - 1];
+            const unit = item.unit ? ` ${item.unit}` : "";
+            return (
+              <div key={item.key} className="series-block" role="group" aria-label={title}>
+                <h3>
+                  {title}
+                  {item.unit && <span className="small muted"> · {item.unit}</span>}
+                </h3>
+                <p className="small muted">
+                  {item.points.length === 1
+                    ? `Uma medição: ${first.valueText}${unit} em ${formatCalendarDate(first.assessedOn)}.`
+                    : `Primeira: ${first.valueText}${unit} em ${formatCalendarDate(first.assessedOn)}. Última: ${last.valueText}${unit} em ${formatCalendarDate(last.assessedOn)}.`}
+                </p>
+                {item.numeric.length >= 2 && (
+                  <MetricChart
+                    title={title}
+                    unit={item.unit}
+                    points={item.numeric.map((point) => ({
+                      assessedOn: point.assessedOn,
+                      value: point.valueNumber as number,
+                      text: point.valueText,
+                    }))}
+                  />
+                )}
+                {item.points.length > 1 && (
+                  <details>
+                    <summary>Ver os valores</summary>
+                    <div className="table-wrap">
+                      <table className="data-table stack">
+                        <caption className="sr-only">Valores de {title}</caption>
+                        <thead>
+                          <tr>
+                            <th scope="col">Data</th>
+                            <th scope="col">Valor</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </details>
-              )}
-            </div>
-          );
-        })}
-      </section>
+                        </thead>
+                        <tbody>
+                          {item.points.map((point) => (
+                            <tr key={point.assessmentId}>
+                              <th scope="row" data-label="Data">
+                                {formatCalendarDate(point.assessedOn)}
+                              </th>
+                              <td data-label="Valor">
+                                {point.valueText}
+                                {unit}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </details>
+                )}
+              </div>
+            );
+          })}
+        </section>
+      )}
 
       {history.some((assessment) => assessment.photos.length > 0) && (
         <section className="panel" aria-labelledby="fotos-evolucao">
@@ -183,8 +196,14 @@ export function EvolutionView({
       <section className="panel" aria-labelledby="mudancas">
         <p className="eyebrow">COMPARAÇÃO</p>
         <h2 id="mudancas">O que mudou entre avaliações</h2>
+        {withResults && (
+          <p className="muted">
+            A comparação item a item da triagem, da postura e do movimento lê só as avaliações do formato anterior. As da Avaliação Física têm
+            os resultados nas séries acima, e cada registro abre pela linha do tempo.
+          </p>
+        )}
         {pairs.length === 0 ? (
-          <p className="muted">Há uma avaliação só. A comparação aparece a partir da segunda.</p>
+          withResults ? null : <p className="muted">Há uma avaliação só. A comparação aparece a partir da segunda.</p>
         ) : (
           pairs.map(({ before, after }, index) => {
             const changes = changesBetween(before, after);

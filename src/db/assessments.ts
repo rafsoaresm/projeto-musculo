@@ -163,7 +163,7 @@ export function shapeFindings(rows: FindingRow[]): Pick<AssessmentDetail, "postu
 /** A recorded assessment as the evolution view reads it: no reviews, no drafts. */
 export type AssessmentSnapshot = Pick<
   AssessmentDetail,
-  "id" | "assessedOn" | "kind" | "formatVersion" | "riskStatus" | "reviewed" | "flags" | "posture" | "movement" | "metrics" | "photos"
+  "id" | "assessedOn" | "kind" | "formatVersion" | "riskStatus" | "reviewed" | "flags" | "posture" | "movement" | "metrics" | "photos" | "results"
 >;
 
 /**
@@ -468,7 +468,7 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
 
     /**
      * The recorded assessments of a student, oldest first, with everything the evolution view
-     * compares. Only the newest `limit` are read. Drafts never appear.
+     * compares (the results with their method and formula version included). Only the newest `limit` are read. Drafts never appear.
      */
     async history(studentId: string, limit = 24): Promise<AssessmentSnapshot[]> {
       const rows = (
@@ -488,7 +488,7 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
       if (rows.length === 0) return [];
       // The ids below came from the gated query above.
       const ids = JSON.stringify(rows.map((row) => row.id));
-      const [metrics, findings, photoRows] = await Promise.all([
+      const [metrics, findings, photoRows, results] = await Promise.all([
         db
           .prepare(
             `SELECT m.assessment_id AS assessmentId, m.metric_type AS metricType, m.name,
@@ -519,6 +519,8 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
           )
           .bind(organizationId, ids)
           .all<PhotoIndexRow & { assessmentId: string }>(),
+        // Every result written when each was finalized (and the body fat of the earlier format, method unknown), for the comparable series.
+        resultsOf(rows.map((row) => row.id), null),
       ]);
       return rows.map((row) => ({
         id: row.id,
@@ -545,6 +547,7 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
         photos: photoRows.results
           .filter((photo) => photo.assessmentId === row.id)
           .map((photo) => ({ view: photo.view, createdAt: photo.createdAt, erasedAt: photo.erasedAt })),
+        results: results.filter((result) => result.assessmentId === row.id).map(asResult),
       }));
     },
 
