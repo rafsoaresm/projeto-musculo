@@ -27,7 +27,7 @@ const thanks = (page: string, submission: string | null = null) => {
 
 /**
  * The contact form of a published page. No session and no cookie: the organization is the one of the site the address names, never anything the
- * visitor sent, and nothing is written unless the environment opened the public forms AND the site opened its own switch AND the site is public.
+ * visitor sent, and nothing is written unless the environment did not close the public forms AND the site opened its own switch AND the site is public.
  * The form is a plain HTML form (no script), so every answer is a page; a program that fills the bait field is thanked and nothing is kept.
  */
 export async function POST(request: Request, { params }: Params) {

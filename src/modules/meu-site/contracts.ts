@@ -123,9 +123,6 @@ export const BLOCK_LABEL: Record<BlockType, string> = {
   component: "Componente",
 };
 
-export const PUBLIC_WARNING =
-  "Esta página é pública, para qualquer pessoa. Não coloque aqui dados, nomes ou fotos de alunos, nem promessas de resultado de saúde.";
-
 /** Plain text of at most `max` characters; line breaks stay, control and invisible characters do not. */
 const plain = (max: number) =>
   z
@@ -180,7 +177,7 @@ const quoteShape = {
   eyebrow,
   quote: plain(QUOTE_MAX),
   author: plain(AUTHOR_MAX),
-  /** The professional says the person authorized this testimony; publishing asks for it. */
+  /** An old mark ("the person authorized this testimony"). Kept so documents saved with it still read; nothing asks for it any more. */
   authorized: z.boolean(),
 };
 const statsShape = {
@@ -206,7 +203,7 @@ const ctaShape = {
 /**
  * The contact form: a name, a way to reach the person, an optional message and the box that says the privacy notice was read. The fields and their
  * texts are the tool's, not the page's (what a visitor is asked is not a promise a professional makes); the page owns the title, a line above the
- * fields and the text of the button. It appears on the public page only when the environment has opened the public forms and the site has been opened
+ * fields and the text of the button. It appears on the public page only when the environment has not closed the public forms and the site has been opened
  * for messages: otherwise it is not there at all.
  */
 const contactFormShape = {
@@ -960,8 +957,7 @@ export interface PublishIssue {
   blockId: string | null;
   message: string;
   /**
-   * "blocking" stops the publication: there is nothing to publish (no title, no block) or a safeguard that the person has to
-   * state (a testimony's authorization). "warning" is something to look at that does not stop it: the page is published without
+   * "blocking" stops the publication: there is nothing to publish (no title, no block). "warning" is something to look at that does not stop it: the page is published without
    * the part that is not ready (the public page leaves out a button with no contact, an incomplete question, an image that is
    * not there) when the person chooses "publish anyway".
    */
@@ -1072,12 +1068,11 @@ export function publishIssues(
       case "quote":
         // An empty testimony (no text, no author) is not on the page: it only waits to be written. Once anything is written, the rules hold.
         if (!b.quote && !b.author) {
-          add(at, b.id, `${label}: escreva um depoimento autorizado, ou tire o bloco (vazio, ele não aparece no site).`);
+          add(at, b.id, `${label}: escreva um depoimento, ou tire o bloco (vazio, ele não aparece no site).`);
           break;
         }
         if (!b.quote) add(at, b.id, `${label}: escreva o depoimento.`);
         if (!b.author) add(at, b.id, `${label}: diga de quem é o depoimento.`);
-        if (!b.authorized) add(at, b.id, `${label}: confirme que a pessoa autorizou o uso do depoimento.`, "blocking");
         break;
       case "stats": {
         const filled = b.items.filter((item) => item.value && item.label);

@@ -1,8 +1,6 @@
 "use server";
 import { requireIdentity, requireWorkspace } from "@/modules/auth/server";
 import { provisionWorkspace, workspaceInput } from "@/db/workspaces";
-import { recordAcceptance } from "@/db/consent";
-import { CONSENT_FAILED, CONSENT_REQUIRED, TERMS_OUTDATED, readConsent } from "@/modules/consentimento/input";
 import { createStudent, studentInput } from "@/db/create-student";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
@@ -17,17 +15,7 @@ export async function setupWorkspace(
     professionalName: form.get("professionalName"),
   });
   if (!parsed.success) return "Preencha os nomes com 2 a 160 caracteres.";
-  // Joining the tool is the moment of the acceptance: it is recorded before the space exists, so the
-  // person never reaches the area without it.
-  const consent = readConsent(form);
-  if (!consent.accepted) return CONSENT_REQUIRED;
   try {
-    const outcome = await recordAcceptance(db, user.id, "PROFESSIONAL", {
-      photosAuthorized: false,
-      shownVersion: consent.shownVersion,
-    });
-    if (outcome.status === "outdated") return TERMS_OUTDATED;
-    if (outcome.status === "refused") return CONSENT_FAILED;
     await provisionWorkspace(db, user.id, parsed.data);
   } catch {
     return "Não foi possível criar o espaço. Atualize a página e tente novamente.";

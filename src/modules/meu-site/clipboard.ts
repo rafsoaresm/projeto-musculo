@@ -24,7 +24,7 @@ import { styleSchema, type Style } from "./style";
  * What goes to the clipboard when blocks, or the style of a block, are copied: a short text that is JSON with a name of its own, so a paste of
  * anything else is recognized and ignored. What comes back is **not trusted**: it may have been copied from another site, or written by hand. It is
  * read as strictly as a document is (`parseNode`), has new identifiers, and loses what only made sense where it came from: the images of
- * another site's library, services that are not on offer here, a testimony's "authorized" (the person has to confirm again), links to blocks
+ * another site's library, services that are not on offer here, links to blocks
  * that are not on this page. An instance of a component that is on this site stays an instance (it follows the component); one of a component this
  * site does not have comes back as plain blocks, from the definition the copy carries.
  */
@@ -162,8 +162,7 @@ function clean(entry: SiteNode, context: PasteContext, renamed: ReadonlyMap<stri
     const { items: dropped, ...rest } = out;
     void dropped;
     out = { ...rest, serviceIds: out.serviceIds.filter((serviceId) => context.serviceIds.has(serviceId)) };
-  } else if (out.type === "quote") out = { ...out, authorized: false };
-  else if ((out.type === "button" || out.type === "link") && out.anchor) {
+  } else if ((out.type === "button" || out.type === "link") && out.anchor) {
     const target = renamed.get(out.anchor) ?? (existing.has(out.anchor) ? out.anchor : undefined);
     const { anchor: dropped, ...rest } = out;
     void dropped;

@@ -8,7 +8,7 @@ import { useMountPath } from "@/components/use-mount-path";
 import { useUnsavedGuard } from "@/components/use-unsaved-guard";
 import type { AssetRow } from "@/db/site-assets";
 import type { ReleaseRow, ServiceChoice } from "@/db/sites";
-import { PUBLIC_WARNING, pagesOf, type PublishIssue, type SiteContent } from "./contracts";
+import { pagesOf, type PublishIssue, type SiteContent } from "./contracts";
 import { SiteTabs } from "./site-tabs";
 import type { SiteTab } from "./site-tab-names";
 import { EDIT_SITE_EVENT } from "./edit-site-button";
@@ -303,7 +303,6 @@ export function SiteWorkspace({ slug, initial, live, releases, services, images,
           </p>
         )}
         {unpublished && <p className="small">Há alterações salvas que ainda não foram publicadas.</p>}
-        <p className="small muted">{PUBLIC_WARNING}</p>
         {!editorOpen && <PublishIssues issues={issues} pending={pending} onPublishAnyway={() => publish(stateNote, true)} />}
         <div className="persist-actions">
           <Link className="button secondary" href="/profissional/meu-site/previa">
@@ -465,8 +464,7 @@ export function SiteWorkspace({ slug, initial, live, releases, services, images,
         </p>
         {!inquiries.platformOpen && (
           <p className="small muted">
-            Os formulários públicos só abrem depois que o aviso de privacidade público e o parecer jurídico sobre leads existirem. Enquanto isso, o bloco aparece só no editor e
-            na prévia, e ligar o recebimento não o mostra para quem visita.
+            A plataforma fechou os formulários públicos por enquanto. Enquanto isso, o formulário não aparece para quem visita, mesmo com o recebimento ligado.
           </p>
         )}
         {canEdit && (

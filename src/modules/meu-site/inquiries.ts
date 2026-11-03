@@ -3,10 +3,10 @@ import { pageSlug } from "./contracts";
 
 /**
  * The contact form of the public page. What is in this file is the rule, outside the routes and the screens: when the form is open at all
- * (it is closed until the environment opens it on purpose), what a visitor may send, and how much. Nothing here reads a database or a request.
+ * (open unless the environment closes it on purpose), what a visitor may send, and how much. Nothing here reads a database or a request.
  */
 
-/** The environment's own switch (`PUBLIC_FORMS_ENABLED`, exactly "true") and the address of the public privacy notice (`PRIVACY_NOTICE_URL`). */
+/** The environment's emergency switch (`PUBLIC_FORMS_ENABLED`: exactly "false" closes the forms) and an optional privacy notice (`PRIVACY_NOTICE_URL`). */
 export interface FormsEnv {
   PUBLIC_FORMS_ENABLED?: string;
   PRIVACY_NOTICE_URL?: string;
@@ -26,18 +26,25 @@ export function noticeAddress(raw: string | undefined): string | null {
   return null;
 }
 
-export type FormsGate = { open: true; noticeUrl: string } | { open: false; why: "off" | "no-notice" };
+/** `noticeUrl`: the privacy notice the form may link to, when the environment has one; null when there is none (nothing is required then). */
+export type FormsGate = { open: true; noticeUrl: string | null } | { open: false; why: "off" };
 
 /**
- * The forms of the public pages are open only when the environment says so on purpose AND there is a privacy notice to point to. A variable declared
+ * The forms of the public pages are open by default. `PUBLIC_FORMS_ENABLED="false"` closes them all, as an emergency switch. A variable declared
  * on the Worker wins; one created in the Webflow dashboard reaches `process.env` instead (the same two roads as the photos).
  */
 export function formsGate(env: FormsEnv, processEnv: Record<string, string | undefined>): FormsGate {
   const switchValue = env.PUBLIC_FORMS_ENABLED || processEnv.PUBLIC_FORMS_ENABLED;
-  if (switchValue !== "true") return { open: false, why: "off" };
-  const noticeUrl = noticeAddress(env.PRIVACY_NOTICE_URL || processEnv.PRIVACY_NOTICE_URL);
-  return noticeUrl ? { open: true, noticeUrl } : { open: false, why: "no-notice" };
+  if (switchValue?.trim().toLowerCase() === "false") return { open: false, why: "off" };
+  return { open: true, noticeUrl: noticeAddress(env.PRIVACY_NOTICE_URL || processEnv.PRIVACY_NOTICE_URL) };
 }
+
+/**
+ * What `site_inquiries.notice_url` keeps when no notice is configured. The column is NOT NULL with a CHECK of 8 to 300 characters (migration
+ * 0026), so a fixed neutral value is stored instead of rebuilding the table. It is never shown as an address.
+ */
+export const NO_NOTICE = "sem-aviso";
+export const storedNotice = (noticeUrl: string | null): string => noticeUrl ?? NO_NOTICE;
 
 /** Technical limits, to keep the inbox and the database from being filled by one sender or one wave. They are not a legal period of anything. */
 export const INQUIRIES_PER_SENDER_PER_HOUR = 5;
@@ -51,14 +58,13 @@ export const INQUIRY_CONTACT_MAX = 254;
 export const INQUIRY_MESSAGE_MAX = 1000;
 
 /** The names of the fields of the form: in Portuguese, as the visitor's browser sends them. `empresa_extra` is the bait a person never sees. */
-export const FIELD = { name: "nome", contact: "contato", message: "mensagem", consent: "aceite", page: "pagina", bait: "empresa_extra" } as const;
+export const FIELD = { name: "nome", contact: "contato", message: "mensagem", page: "pagina", bait: "empresa_extra" } as const;
 
-export type InquiryField = "name" | "contact" | "message" | "consent";
+export type InquiryField = "name" | "contact" | "message";
 export const INQUIRY_FIELD_PROBLEM: Record<InquiryField, string> = {
   name: "Escreva o seu nome (de 2 a 160 letras).",
   contact: "Escreva um e-mail ou um telefone (com DDD) para a resposta chegar até você.",
   message: "A mensagem passou de 1000 letras ou tem caracteres que não podem ser enviados.",
-  consent: "Marque que leu o aviso de privacidade para enviar.",
 };
 
 export interface InquiryValue {
@@ -100,7 +106,7 @@ const text = (form: Pick<FormData, "get">, name: string): string | null => {
 
 /**
  * What the form sent, as a value or the first thing wrong with it. A filled bait field is a program: it is told "bot" and the route answers as if
- * it worked, so the program learns nothing. The box that says the notice was read must be ticked.
+ * it worked, so the program learns nothing.
  */
 export function parseInquiry(form: Pick<FormData, "get">): ParsedInquiry {
   if ((text(form, FIELD.bait) ?? "") !== "") return { kind: "bot" };
@@ -111,7 +117,6 @@ export function parseInquiry(form: Pick<FormData, "get">): ParsedInquiry {
   const { email, phone } = contact;
   const rawMessage = clean(text(form, FIELD.message) ?? "");
   if (rawMessage.length > INQUIRY_MESSAGE_MAX || hasHidden(rawMessage, true)) return { kind: "invalid", field: "message" };
-  if (text(form, FIELD.consent) !== "on") return { kind: "invalid", field: "consent" };
   const page = pageSlug.safeParse(text(form, FIELD.page) ?? "");
   return { kind: "ok", value: { name, email, phone, message: rawMessage === "" ? null : rawMessage, page: page.success ? page.data : "" } };
 }
@@ -172,15 +177,14 @@ export async function readLimitedBody(request: Request, max: number = INQUIRY_BO
 export const WHATSAPP_SEND_PATH = "m/whatsapp";
 export const WHATSAPP_NAME_MAX = 100;
 export const WHATSAPP_GOAL_MAX = 160;
-/** The fields of the form before WhatsApp. The name, the consent, the page and the bait are the contact form's own names. */
-export const WHATSAPP_FIELD = { name: FIELD.name, phone: "celular", goal: "objetivo", consent: FIELD.consent, page: FIELD.page, bait: FIELD.bait } as const;
+/** The fields of the form before WhatsApp. The name, the page and the bait are the contact form's own names. */
+export const WHATSAPP_FIELD = { name: FIELD.name, phone: "celular", goal: "objetivo", page: FIELD.page, bait: FIELD.bait } as const;
 
-export type WhatsAppLeadField = "name" | "phone" | "goal" | "consent";
+export type WhatsAppLeadField = "name" | "phone" | "goal";
 export const WHATSAPP_FIELD_PROBLEM: Record<WhatsAppLeadField, string> = {
   name: "Escreva o seu nome (de 2 a 100 letras).",
   phone: "Escreva o seu celular com DDD (por exemplo, 31 99999-9999).",
   goal: "O objetivo passou de 160 letras ou tem caracteres que não podem ser enviados.",
-  consent: "Marque que leu o aviso de privacidade para continuar.",
 };
 export interface WhatsAppLeadValue {
   name: string;
@@ -203,7 +207,7 @@ export function readMobile(raw: string): string | null {
 
 /**
  * What the form before WhatsApp sent: a name and a mobile always, the goal only when the site asks it (`askGoal`; it is optional for the visitor
- * and nothing is read from it otherwise), and the box of the privacy notice ticked. A filled bait field is a program.
+ * and nothing is read from it otherwise). A filled bait field is a program.
  */
 export function parseWhatsAppLead(form: Pick<FormData, "get">, askGoal: boolean): ParsedWhatsAppLead {
   if ((text(form, WHATSAPP_FIELD.bait) ?? "") !== "") return { kind: "bot" };
@@ -215,7 +219,6 @@ export function parseWhatsAppLead(form: Pick<FormData, "get">, askGoal: boolean)
   if (phone === null) return { kind: "invalid", field: "phone" };
   const rawGoal = askGoal ? clean(text(form, WHATSAPP_FIELD.goal) ?? "") : "";
   if (rawGoal.length > WHATSAPP_GOAL_MAX || hasHidden(rawGoal, false)) return { kind: "invalid", field: "goal" };
-  if (text(form, WHATSAPP_FIELD.consent) !== "on") return { kind: "invalid", field: "consent" };
   const page = pageSlug.safeParse(text(form, WHATSAPP_FIELD.page) ?? "");
   return { kind: "ok", value: { name, phone, goal: rawGoal === "" ? null : rawGoal, page: page.success ? page.data : "" } };
 }

@@ -252,7 +252,7 @@ export function StylePanel({
             <input type="checkbox" checked={style.bgRepeat === true} onChange={(event) => onStyle({ bgRepeat: event.target.checked ? true : undefined })} />
             <span>Repetir a imagem</span>
           </label>
-          <p className="small muted">A imagem de fundo é pública quando a página for publicada. Não use fotos de alunos.</p>
+          <p className="small muted">A imagem de fundo é pública quando a página for publicada.</p>
         </>
       )}
     </Section>,

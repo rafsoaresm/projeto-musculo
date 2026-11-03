@@ -64,8 +64,8 @@ export function TrackingPanel({ settings, canEdit }: { settings: TrackingSetting
     <section className="panel tracking-panel" aria-labelledby="rastreamento">
       <h2 id="rastreamento">Rastreamento e conversões</h2>
       <p className="small muted">
-        Ligue o Google Analytics 4, o Google Ads e o Meta Pixel nas páginas publicadas do site. Nada disso é carregado antes de quem visita aceitar, no aviso de cookies que
-        aparece no site; quem recusar não é medido. O texto do aviso ainda passa por revisão jurídica.
+        Ligue o Google Analytics 4, o Google Ads e o Meta Pixel nas páginas publicadas do site. As ferramentas que você configurar carregam junto com a página, para
+        todas as visitas.
       </p>
       <p className="small">{tools.length > 0 ? <Pill tone="success">Ativo: {tools.join(", ")}</Pill> : <Pill>Nenhuma ferramenta ligada</Pill>}</p>
 
@@ -150,7 +150,7 @@ export function TrackingPanel({ settings, canEdit }: { settings: TrackingSetting
             "privacyUrl",
             "Endereço do aviso de privacidade do seu site",
             settings.privacyUrl ?? "",
-            <>Aparece no aviso de cookies. Ele deve dizer quais ferramentas o site usa e para quê. Começa com https://.</>,
+            <>Opcional. Fica guardado com estas configurações. Começa com https://.</>,
             { type: "url", inputMode: "url", placeholder: "https://" },
           )}
         </fieldset>

@@ -26,7 +26,7 @@ export function publicMetadata(site: PublicSite | null, pageId: string): Metadat
 }
 
 /**
- * The form of the page, if it is open: the environment opened the public forms (`gate`) AND the site opened its own switch for messages. Null
+ * The form of the page, if it is open: the environment did not close the public forms (`gate`) AND the site's own switch for messages is on. Null
  * otherwise, and then the block is not on the page at all.
  */
 export function publicFormOf(site: PublicSite, pageId: string, gate: FormsGate): PublicForm | null {
@@ -43,7 +43,7 @@ export function publicFormOf(site: PublicSite, pageId: string, gate: FormsGate):
 export { formsGate };
 
 /**
- * `tracking`: the site has a tool of tagging on (Meu Site 0.71), so the page loads the site's script (consent banner, tools, events). Only the
+ * `tracking`: the site has a tool of tagging on (Meu Site 0.71), so the page loads the site's script (tools and events). Only the
  * published pages draw this component, so the preview, the editor and the models never load it; without it the page is exactly what it was.
  */
 export function PublicSitePage({ site, pageId, gate, tracking = false }: { site: PublicSite; pageId: string; gate: FormsGate; tracking?: boolean }) {

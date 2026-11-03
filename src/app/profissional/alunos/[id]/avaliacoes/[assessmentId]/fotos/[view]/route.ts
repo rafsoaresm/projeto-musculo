@@ -2,7 +2,6 @@ import { requireWorkspace } from "@/modules/auth/server";
 import { getPhotoBucket } from "@/db/binding";
 import { assessmentPhotosFor } from "@/db/assessment-photos";
 import { MAX_PHOTO_BYTES } from "@/modules/avaliacoes/photos";
-import { PHOTO_DENIAL_MESSAGE } from "@/modules/consentimento/photo-authorization";
 
 export const dynamic = "force-dynamic";
 
@@ -59,10 +58,6 @@ export async function PUT(request: Request, { params }: Params) {
   switch (result.status) {
     case "stored":
       return json({ stored: true, replaced: result.replaced });
-    case "consent_required":
-      return json({ error: PHOTO_DENIAL_MESSAGE[result.reason] }, 403);
-    case "minor":
-      return json({ error: "Fotos de menores de idade não são suportadas pela ferramenta." }, 422);
     case "invalid":
       return json(
         {
@@ -86,5 +81,6 @@ export async function DELETE(request: Request, { params }: Params) {
   const { repo } = await photos();
   if (!repo) return text("Armazenamento de fotos indisponível.", 503);
   const result = await repo.remove(assessmentId, view);
-  return result.status === "removed" ? json({ removed: true }) : text("Página não encontrada.", 404);
+  if (result.status === "not_found") return text("Página não encontrada.", 404);
+  return json({ removed: true, erased: result.status === "erased" });
 }

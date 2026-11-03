@@ -125,7 +125,7 @@ export function ImagePicker({
           onChange={(event) => void pick(event.target.files?.[0])}
         />
       </div>
-      <p className="small muted">JPEG ou PNG; a imagem é reduzida e limpa dos dados da câmera antes de ser guardada. Não use fotos de alunos.</p>
+      <p className="small muted">JPEG ou PNG; a imagem é reduzida e limpa dos dados da câmera antes de ser guardada.</p>
       {note && (
         <p role={note.failed ? "alert" : "status"} className={note.failed ? "form-error" : "small muted"}>
           {note.text}

@@ -25,7 +25,7 @@ export interface RenderInput {
    * The forms of the page: the route they are on (as the inbox keeps it) and where they send. Without `send` (the forms are closed, or this is
    * only a reading of the page) a form is read but not drawn: a form that goes nowhere would only take what a visitor writes.
    */
-  forms?: { route: string; send: { action: string; noticeUrl: string } | null };
+  forms?: { route: string; send: { action: string; noticeUrl: string | null } | null };
   /**
    * Where the frame of a block of free code is served from (a relative address, from the page). Without it free code is read but not drawn: the box
    * stays, empty. The code of a page never goes into the page itself.
@@ -152,7 +152,7 @@ interface State {
 
 interface ActiveForm {
   built: BuiltForm;
-  /** The consent box, the bait and the hidden fields, to be written before the first button that sends. */
+  /** The link to the privacy notice (when there is one), the bait and the hidden fields, to be written before the first button that sends. */
   extras: string;
   placed: boolean;
 }
@@ -219,12 +219,13 @@ function formId(block: Block, state: State): string {
 
 const hidden = (name: string, value: string) => `<input type="hidden" name="${name}" value="${escapeAttribute(value)}">`;
 
-/** What a form carries that the person did not draw: the box for the privacy notice, the bait a person never sees, and where the message comes from. */
-function formExtras(definition: FormDefinition, route: string, noticeUrl: string): string {
+/** What a form carries that the person did not draw: a link to the privacy notice when there is one, the bait a person never sees, and where the message comes from. */
+function formExtras(definition: FormDefinition, route: string, noticeUrl: string | null): string {
   return (
-    `<div style="display: block; width: 100%; margin: 8px 0; font-size: 0.875rem; text-align: left;"><label style="display: flex; gap: 8px; align-items: flex-start;">` +
-    `<input type="checkbox" name="${FORM_FIELD.consent}" required style="margin-top: 3px; flex: none;"><span>Li o ` +
-    `<a href="${escapeAttribute(noticeUrl)}" target="_blank" rel="noopener noreferrer">aviso de privacidade</a> e concordo em ser contatado(a) por este profissional.</span></label></div>` +
+    (noticeUrl
+      ? `<div style="display: block; width: 100%; margin: 8px 0; font-size: 0.875rem; text-align: left;">` +
+        `<a href="${escapeAttribute(noticeUrl)}" target="_blank" rel="noopener noreferrer">Aviso de privacidade</a></div>`
+      : "") +
     `<div aria-hidden="true" style="position: absolute; left: -10000px; top: auto; width: 1px; height: 1px; overflow: hidden;"><label>Não preencha este campo` +
     `<input type="text" name="${FORM_FIELD.bait}" tabindex="-1" autocomplete="off"></label></div>` +
     hidden(FORM_FIELD.route, route) +

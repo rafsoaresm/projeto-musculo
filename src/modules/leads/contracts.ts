@@ -53,9 +53,6 @@ export const DELIVERY_LABEL: Record<Delivery, string> = {
 export const NOTE_MAX = 1000;
 export const SERVICE_DESCRIPTION_MAX = 1000;
 
-export const HEALTH_WARNING =
-  "Não registre aqui dados de saúde (lesões, doenças, medicamentos). Isso é coletado com a pessoa já como aluno, na ficha.";
-
 /** Controls and invisible formatting characters would make two different texts look the same. */
 const plain = (max: number) =>
   z

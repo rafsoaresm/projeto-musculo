@@ -333,8 +333,8 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
         const results = await db.batch([
           db
             .prepare(
-              `INSERT INTO sites (id, organization_id, slug, engine, engine_fixed, created_by, created_at, updated_at)
-               SELECT ?3, ?1, ?4, ?6, 1, ?2, ?5, ?5 WHERE ${writes}
+              `INSERT INTO sites (id, organization_id, slug, engine, engine_fixed, inquiries_open, created_by, created_at, updated_at)
+               SELECT ?3, ?1, ?4, ?6, 1, 1, ?2, ?5, ?5 WHERE ${writes}
                  AND NOT EXISTS (SELECT 1 FROM sites o WHERE o.organization_id = ?1)`,
             )
             .bind(organizationId, userId, siteId, slug, stamp, engine),
@@ -371,7 +371,8 @@ export function sitesFor(db: D1Database, context: AuthenticatedContext | null) {
 
     /**
      * Opens or closes the site's own switch for the messages of the contact form (owner and manager). Closing takes effect at the next request:
-     * the page is read with the switch, not from the release. Opening does nothing alone while the environment keeps the public forms closed.
+     * the page is read with the switch, not from the release. A new site is created with it on. Opening does nothing while the environment closes the
+     * public forms (its emergency switch).
      */
     async setInquiriesOpen(open: boolean, now = new Date()): Promise<InquiriesSwitchOutcome> {
       const draft = await draftRow();

@@ -31,7 +31,7 @@ const thanks = (page: string, submission: string | null = null) => {
 /**
  * The form of a page made in the new editor. No session and no cookie: the organization is the one of the site the address names, and what the
  * form IS (its fields, what each one means, what each may hold) is read here from the published page, never from what the visitor sent; the
- * visitor only supplies values for fields that page really has. Nothing is written unless the environment opened the public forms AND the site
+ * visitor only supplies values for fields that page really has. Nothing is written unless the environment did not close the public forms AND the site
  * opened its own switch AND the site is public. Like the form of the first editor, it is a plain HTML form (no script): every answer is a page,
  * and a program that fills the bait field is thanked and nothing is kept.
  */

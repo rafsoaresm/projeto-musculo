@@ -17,7 +17,10 @@ const text = (value: unknown) => (typeof value === "string" ? value : "");
 const flag = (value: unknown) => Number(value) === 1 || value === true;
 
 /** What a page is drawn from, the same for the document a visitor gets and for the reading of its forms when a message arrives. */
-function renderInput(found: PublicPage, depth: number, noticeUrl: string | null): RenderInput {
+/** `forms`: the public forms are open (with the privacy notice to link to, or null when there is none); null when the environment closed them. */
+export type OpenForms = { noticeUrl: string | null } | null;
+
+function renderInput(found: PublicPage, depth: number, forms: OpenForms): RenderInput {
   const tokenValue = new Map(found.tokens.map((token) => [token.name, token.value]));
   return {
     blocks: found.blocks,
@@ -26,8 +29,8 @@ function renderInput(found: PublicPage, depth: number, noticeUrl: string | null)
     url: urlContext(found.slug, depth),
     // The frame of a block of free code is the document `/site/<address>/m/codigo/<page>/<n>`, written from where the page is.
     code: { src: (index) => `${toMountRoot(depth)}site/${found.slug}/${CODE_PATH}/${encodeURIComponent(text(found.page.name))}/${index}` },
-    // A form is drawn only when the environment opened the public forms (a privacy notice to point to) AND the site opened its own switch.
-    forms: { route: found.route, send: noticeUrl && found.inquiriesOpen ? { action: `${toMountRoot(depth)}site/${found.slug}/${FORM_SEND_PATH}`, noticeUrl } : null },
+    // A form is drawn only when the environment did not close the public forms AND the site's own switch is on.
+    forms: { route: found.route, send: forms && found.inquiriesOpen ? { action: `${toMountRoot(depth)}site/${found.slug}/${FORM_SEND_PATH}`, noticeUrl: forms.noticeUrl } : null },
   };
 }
 
@@ -47,12 +50,12 @@ export const codeOfPage = (found: PublicPage): CodeBlock[] => contentOfPage(foun
 export const trackingScriptUrl = (slug: string, depth: number) => `${toMountRoot(depth)}s/${slug}/m/rastreio`;
 
 /**
- * `noticeUrl` is the address of the privacy notice when the environment has opened the public forms, otherwise null. `tracking`: the site has a
+ * `forms` says the public forms are open (and which privacy notice to link to, if any); null draws no form. `tracking`: the site has a
  * tool of tagging on (Meu Site 0.71), so the page loads its script; only the published page asks for it (never the preview or a model).
  */
-export function publicDocument(found: PublicPage, depth: number, noticeUrl: string | null = null, tracking = false): string {
+export function publicDocument(found: PublicPage, depth: number, forms: OpenForms = null, tracking = false): string {
   const url = urlContext(found.slug, depth);
-  const rendered = renderBlocks(renderInput(found, depth, noticeUrl));
+  const rendered = renderBlocks(renderInput(found, depth, forms));
   const { page, settings } = found;
   const meta: PageMeta = {
     title: text(page.page_title) || text(page.page_name) || "Página",

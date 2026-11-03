@@ -1,21 +1,22 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireIdentity } from "@/modules/auth/server";
 import { portalLinksFor } from "@/db/student-access";
 import { workspaceFor } from "@/db/workspaces";
-import { hasCurrentAcceptance } from "@/db/consent";
+import { latestAcceptance } from "@/db/consent";
 import { shownTerms } from "@/db/terms";
-import { SignOut } from "@/modules/auth/components/sign-out";
-import { ConsentForm } from "@/modules/consentimento/consent-form";
+import { TermsBlock } from "@/modules/consentimento/terms-block";
+import { formatCalendarDate } from "@/modules/training/format";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Termos", robots: { index: false, follow: false } };
 
 /**
- * Where someone lands when they have an area but have not accepted the terms in force. The area comes
- * from the address only as a request: it is checked against what this login really has.
+ * The terms in force for an area, to read. Nothing is gated on them: entering the area does not depend on an acceptance. An acceptance
+ * recorded earlier stays readable here. The area comes from the address only as a request: it is checked against what this login really has.
  */
-export default async function AcceptTerms({
+export default async function ReadTerms({
   searchParams,
 }: {
   searchParams: Promise<{ area?: string }>;
@@ -27,15 +28,21 @@ export default async function AcceptTerms({
   const entitled =
     area === "aluno" ? (await portalLinksFor(db, user.id)).length > 0 : Boolean(await workspaceFor(db, user.id));
   if (!entitled) redirect("/acesso");
-  if (await hasCurrentAcceptance(db, user.id, audience)) redirect(area === "aluno" ? "/aluno" : "/profissional");
+  const [terms, accepted] = await Promise.all([shownTerms(db, audience), latestAcceptance(db, user.id, audience)]);
   return (
     <section className="account-card consent-card">
-      <p className="eyebrow">ANTES DE CONTINUAR</p>
-      <h1>Leia e aceite os termos.</h1>
-      <p>Você aceita uma única vez. Se o texto mudar, será pedido de novo.</p>
-      <ConsentForm area={area} terms={await shownTerms(db, audience)} />
+      <p className="eyebrow">TERMOS</p>
+      <h1>Termos de uso</h1>
+      {accepted && (
+        <p className="muted">
+          Você registrou o aceite da versão {accepted.version} em {formatCalendarDate(accepted.termsAcceptedAt.slice(0, 10))}.
+        </p>
+      )}
+      <TermsBlock terms={terms} />
       <div className="account-toolbar">
-        <SignOut />
+        <Link className="button secondary" href={area === "aluno" ? "/aluno" : "/profissional"}>
+          Voltar
+        </Link>
       </div>
     </section>
   );

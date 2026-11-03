@@ -245,7 +245,7 @@ export const CATALOGUE: readonly CatalogueItem[] = [
   { key: "text", group: "section", label: "Texto", hint: "Título e texto", create: element("text") },
   { key: "services", group: "section", label: "Serviços", hint: "Da sua lista", create: element("services") },
   { key: "about", group: "section", label: "Sobre mim", hint: "Apresentação", create: element("about") },
-  { key: "quote", group: "section", label: "Depoimento", hint: "Com autorização", create: element("quote") },
+  { key: "quote", group: "section", label: "Depoimento", hint: "Fala de um aluno", create: element("quote") },
   { key: "stats", group: "section", label: "Indicadores", hint: "Números do método", create: element("stats") },
   { key: "faq", group: "section", label: "Perguntas frequentes", hint: "Respostas curtas", create: element("faq") },
   { key: "cta", group: "section", label: "Chamada para contato", hint: "Chamada com botão", create: element("cta") },

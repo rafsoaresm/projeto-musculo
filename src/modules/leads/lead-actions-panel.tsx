@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { addLeadNote, convertLead, deleteLead, moveLead } from "./actions";
 import type { StudentMatch } from "@/db/leads";
 import {
-  HEALTH_WARNING,
   LEAD_STAGES,
   LEAD_STAGE_LABEL,
   LOST_REASONS,
@@ -117,7 +116,6 @@ export function NoteLead({ leadId }: { leadId: string }) {
         Anotação
         <textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={NOTE_MAX} rows={3} required />
       </label>
-      <p className="small muted">{HEALTH_WARNING}</p>
       <Answer message={message} failed={failed} />
       <div className="persist-actions">
         <button className="button secondary" disabled={pending}>

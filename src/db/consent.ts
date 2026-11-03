@@ -4,9 +4,9 @@ import { currentTerms } from "./terms";
 import { activeUser, assertContext, technicalAccessExists, type AuthenticatedContext } from "./students";
 
 /**
- * The acceptance of the terms, once, when a person joins the tool. The table only grows: the state
- * of a person is their latest row for that audience. The text itself is in the application; a row
- * keeps the version and the SHA-256 of the exact words that were accepted.
+ * Acceptances of the terms recorded earlier (until 03/11/2026 a person accepted when joining the tool). Nothing is gated on them any more:
+ * they stay readable, and the latest row of a person for an audience is what is shown. A row keeps the version and the SHA-256 of the exact
+ * words that were accepted.
  */
 export interface Acceptance {
   id: string;
@@ -43,12 +43,6 @@ export async function latestAcceptance(
 
 const isCurrentOf = (acceptance: Acceptance | null, terms: ResolvedTerms) =>
   acceptance !== null && acceptance.version === terms.version && acceptance.sha256 === terms.sha256;
-
-/** Whether the latest acceptance is of the version and of the exact words in force now. */
-export async function hasCurrentAcceptance(db: D1Database, userId: string, audience: Audience): Promise<boolean> {
-  const [latest, terms] = await Promise.all([latestAcceptance(db, userId, audience), currentTerms(db, audience)]);
-  return isCurrentOf(latest, terms);
-}
 
 /** `outdated`: the words changed between the moment the person read them and the moment they accepted. */
 export type AcceptOutcome = { status: "accepted" } | { status: "already" } | { status: "refused" } | { status: "outdated" };
@@ -91,7 +85,7 @@ export interface StudentConsent {
   /** The student has a login that is linked to them right now. */
   hasLogin: boolean;
   accepted: boolean;
-  /** The acceptance is of the version in force; an older one asks again at the next access. */
+  /** The acceptance is of the version in force. */
   current: boolean;
   photosAuthorized: boolean;
   /** When the terms in force were first accepted. */
@@ -153,38 +147,3 @@ export async function studentConsentFor(
     photosChoiceAt: found.acceptance?.acceptedAt ?? null,
   };
 }
-
-/**
- * Whether photos of a student may be taken now: their linked login has accepted the terms in force
- * and, in that same latest acceptance, authorized the photos. The professional cannot supply or
- * change this. Like `studentLoginAcceptance`, it does not check who is asking.
- */
-export type PhotoAuthorization =
-  | { status: "authorized"; acceptanceId: string }
-  | { status: "denied"; reason: "NO_LOGIN" | "NOT_ACCEPTED" | "OUTDATED" | "DECLINED" };
-
-export async function photoAuthorizationFor(
-  db: D1Database,
-  organizationId: string,
-  studentId: string,
-): Promise<PhotoAuthorization> {
-  const found = await studentLoginAcceptance(db, organizationId, studentId);
-  if (!found) return { status: "denied", reason: "NO_LOGIN" };
-  if (!found.acceptance) return { status: "denied", reason: "NOT_ACCEPTED" };
-  if (!isCurrentOf(found.acceptance, await currentTerms(db, "STUDENT"))) return { status: "denied", reason: "OUTDATED" };
-  if (!found.acceptance.photosAuthorized) return { status: "denied", reason: "DECLINED" };
-  return { status: "authorized", acceptanceId: found.acceptance.id };
-}
-
-/**
- * The same lookup as `photoAuthorizationFor`, as a SQL expression, so that an insert can confirm in
- * the very statement that the acceptance it relies on is still the latest one. The id of the latest
- * acceptance of the login linked to the student; no row when there is none.
- */
-export const latestStudentAcceptanceId = (organization: string, student: string) =>
-  `(SELECT c.id FROM consent_acceptances c
-    WHERE c.audience = 'STUDENT'
-      AND c.user_id = (SELECT sa.user_id FROM student_access sa
-        WHERE sa.organization_id = ${organization} AND sa.student_id = ${student} AND sa.revoked_at IS NULL
-        ORDER BY sa.created_at DESC LIMIT 1)
-    ORDER BY c.accepted_at DESC, c.rowid DESC LIMIT 1)`;

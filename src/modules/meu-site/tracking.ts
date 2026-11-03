@@ -22,7 +22,7 @@ export interface TrackingSettings {
   leadValueCents: number | null;
   /** Which contacts count as conversions for Google Ads and Meta. */
   count: Record<ContactMethod, boolean>;
-  /** The site's own privacy notice (https), linked from the banner. */
+  /** The site's own privacy notice (https), optional; kept with the settings. */
   privacyUrl: string | null;
 }
 
@@ -214,7 +214,7 @@ export function readTracking(input: TrackingInput): TrackingRead {
   };
 }
 
-/** The tools a site has on, by name, in the order the panel and the banner name them. */
+/** The tools a site has on, by name, in the order the panel names them. */
 export function activeTools(settings: Pick<TrackingSettings, "ga4Id" | "adsId" | "metaPixelId">): string[] {
   const tools: string[] = [];
   if (settings.ga4Id) tools.push("GA4");

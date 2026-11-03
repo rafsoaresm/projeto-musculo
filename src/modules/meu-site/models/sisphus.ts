@@ -107,7 +107,7 @@ function build(title: string, mode: ModelMode): SiteContent {
     "surface",
     [
       testimony(
-        "Depoimento autorizado",
+        "Depoimento",
         "Finalmente encontrei um método que se encaixa na minha rotina e me faz evoluir.",
         "Aluna do acompanhamento personalizado",
         { background: "transparent", padding: ZERO, fontSize: "38px", fontWeight: 700 },
@@ -294,9 +294,9 @@ function build(title: string, mode: ModelMode): SiteContent {
   const testimonials = band("Histórias e resultados", "bg", [
     eyebrow(say(mode, "RESULTADOS"), "Rótulo dos depoimentos"),
     h2(say(mode, "Histórias reais. Evoluções possíveis."), 46, 32, "ink", "Título dos depoimentos"),
-    lead(mode === "preview" ? "Use depoimentos consentidos, dados comprováveis e imagens autorizadas." : ""),
+    lead(""),
     testimony(
-      "Depoimento autorizado",
+      "Depoimento",
       "Os treinos ficaram mais consistentes, a orientação foi clara e o acompanhamento fez toda a diferença.",
       "Aluno do acompanhamento personalizado",
       { background: "surface", radius: "18px", padding: sides("30px", "30px"), fontSize: "30px", fontWeight: 600 },

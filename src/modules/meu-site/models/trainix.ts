@@ -228,7 +228,7 @@ function build(title: string, mode: ModelMode): SiteContent {
   // A testimony is the quote block: it is published only once the person's authorization is confirmed (an empty one is not on the page).
   const testimonyNode = {
     ...(emptyBlock("quote") as BlockOf<"quote">),
-    name: "Depoimento autorizado",
+    name: "Depoimento",
     eyebrow: say(mode, "★★★★★"),
     quote: say(mode, "Os treinos ficaram mais consistentes, a orientação foi clara e o acompanhamento fez toda a diferença."),
     author: say(mode, "Aluno do acompanhamento personalizado"),
@@ -239,7 +239,7 @@ function build(title: string, mode: ModelMode): SiteContent {
   const testimonials = band("Histórias e resultados", "bg", [
     eyebrow(say(mode, "RESULTADOS"), "Rótulo dos depoimentos"),
     h2(say(mode, "Histórias reais. Evoluções possíveis."), 46, 32, "Título dos depoimentos"),
-    lead(mode === "preview" ? "Use depoimentos consentidos, dados comprováveis e imagens autorizadas." : ""),
+    lead(""),
     testimonyNode,
   ]);
 

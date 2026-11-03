@@ -2,13 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { requireStudent, recoveryAvailable } from "@/modules/auth/server";
 import { latestAcceptance } from "@/db/consent";
-import { shownTerms } from "@/db/terms";
 import { studentRequestsFor } from "@/db/data-requests";
 import { formatCalendarDate } from "@/modules/training/format";
 import { PageHeading } from "@/components/ui";
 import { SecurityPanel } from "@/modules/auth/components/security-panel";
 import { AccountAccess } from "@/modules/auth/components/account-access";
-import { PhotosChoice } from "@/modules/consentimento/photos-choice";
 import { StudentRequests } from "@/modules/pedidos/student-requests";
 import { EXPORTS_PER_HOUR, EXPORT_INCLUDED, EXPORT_NOT_INCLUDED } from "@/modules/pedidos/export";
 
@@ -18,9 +16,8 @@ export const metadata: Metadata = { title: "Minha conta · Área do aluno" };
 export default async function StudentAccount() {
   const { user, db, links } = await requireStudent();
   const recovery = await recoveryAvailable();
-  // What this person accepted, in their own words: the date and the photos choice they made.
+  // An acceptance recorded earlier stays readable; nothing depends on it.
   const accepted = await latestAcceptance(db, user.id, "STUDENT");
-  const terms = await shownTerms(db, "STUDENT");
   // The students come from the verified links of this login, never from the address.
   const requests = studentRequestsFor(db, user.id);
   const perStudent = await Promise.all(links.map(async (link) => ({ link, rows: await requests.list(link.studentId) })));
@@ -53,16 +50,9 @@ export default async function StudentAccount() {
       <AccountAccess />
       <section className="panel" aria-labelledby="solicitacoes-conta">
         <p className="eyebrow">SEUS DADOS</p>
-        <h2 id="solicitacoes-conta">Consentimentos e solicitações</h2>
-        {accepted && (
-          <>
-            <p>Você aceitou os termos em {formatCalendarDate(accepted.termsAcceptedAt.slice(0, 10))}.</p>
-            <PhotosChoice
-              authorized={accepted.photosAuthorized}
-              terms={terms}
-            />
-          </>
-        )}
+        <h2 id="solicitacoes-conta">Termos</h2>
+        {accepted && <p>Você aceitou os termos em {formatCalendarDate(accepted.termsAcceptedAt.slice(0, 10))}.</p>}
+        <Link href="/aceite?area=aluno">Ler os termos</Link>
       </section>
       <section className="panel" id="baixar" aria-labelledby="baixar-conta">
         <p className="eyebrow">SEUS DADOS</p>

@@ -63,7 +63,7 @@ export const PAGE_MODELS: readonly PageModel[] = [
   {
     key: "testimonials",
     label: "Depoimentos",
-    hint: "Três depoimentos (cada um precisa da autorização de quem o deu)",
+    hint: "Três depoimentos",
     title: "Depoimentos",
     build: () => [section("template-testimonials"), callToContact()],
   },
