@@ -6631,6 +6631,49 @@ fieldset.yes-no legend {
   }
 }
 
+/* ---------- Avaliação Física: Flexiteste, testes físicos e considerações finais (0.80) ---------- */
+/* The Flexiteste: each movement is a question like the PAR-Q's, its levels a fixed column of the same width on every line (four 44px chips and
+   "Não avaliado"), so the levels of all 15 movements line up. Under the width of the fields' grid they go under the movement, sharing the line. */
+.av2-answers.av2-levels {
+  grid-template-columns: repeat(4, 3.25rem) 8.5rem;
+}
+.av2-levels .av2-chip span {
+  min-height: 44px;
+  padding: 8px 6px;
+}
+/* The tally has two items: only the columns it fills (no empty columns), each as wide as a field below it and never narrower than its text. */
+.av2-flex-tally {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), max-content));
+  column-gap: 32px;
+  margin-top: 16px;
+}
+.av2-flex-notes {
+  margin-top: 16px;
+}
+.av2-method-note {
+  margin: 16px 0 0;
+  padding: 10px 14px;
+  border-radius: var(--radius-card);
+  background: var(--color-primary-soft);
+  color: var(--color-ink);
+  overflow-wrap: anywhere;
+}
+/* What the professional wrote, one per line, keeping its line breaks. */
+.av2-facts.av2-facts-wide {
+  grid-template-columns: minmax(0, 1fr);
+}
+.av2-prose {
+  white-space: pre-wrap;
+}
+@container (max-width: 760px) {
+  .av2-answers.av2-levels {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(0, 2fr);
+  }
+  .av2-flex-tally {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* ---------- Avaliação Física: Revisão, registro e retificação (0.77) ---------- */
 .av2-subtitle {
   margin: 20px 0 8px;

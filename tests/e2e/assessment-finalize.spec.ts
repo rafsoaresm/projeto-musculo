@@ -45,7 +45,7 @@ test("the Revisão step finalizes the Avaliação Física, the record shows the 
   await expect(page.getByRole("heading", { name: "Triagem e segurança" })).toBeVisible();
 
   // Revisão with nothing filled: the PAR-Q blocks, Medidas and Movimento are "Não realizado", and nothing can be finalized.
-  await step(page, "4 Revisão").click();
+  await step(page, "5 Revisão").click();
   const pending = page.getByRole("region", { name: "Pendências para finalizar" });
   await expect(pending.getByText("PAR-Q: 7 de 7 perguntas sem resposta")).toBeVisible();
   const checklist = page.getByRole("region", { name: "Checklist por etapa" });
@@ -59,7 +59,7 @@ test("the Revisão step finalizes the Avaliação Física, the record shows the 
   await step(page, "1 Triagem").click();
   for (const text of Object.values(PARQ)) await question(page, text).getByRole("radio", { name: "Não", exact: true }).check();
   await question(page, PARQ.dizziness).getByRole("radio", { name: "Sim" }).check();
-  await step(page, "4 Revisão").click();
+  await step(page, "5 Revisão").click();
   await expect(pending.getByText("PAR-Q com “Sim”: registre a decisão profissional")).toBeVisible();
   await expect(pending.getByText("PAR-Q com “Sim”: escreva a nota da decisão")).toBeVisible();
   await expect(finalize).toHaveAttribute("aria-disabled", "true");
@@ -69,7 +69,7 @@ test("the Revisão step finalizes the Avaliação Física, the record shows the 
   // The pending items say where they are fixed: the button goes to the Triagem.
   await pending.getByRole("button", { name: "Abrir a etapa Triagem" }).click();
   await expect(page.getByRole("heading", { name: "Triagem e segurança" })).toBeVisible();
-  await step(page, "4 Revisão").click();
+  await step(page, "5 Revisão").click();
   // The last step has no "Próximo": the next action is the finalize card.
   await expect(page.getByRole("button", { name: "Próximo" })).toHaveCount(0);
 
@@ -105,7 +105,7 @@ test("the Revisão step finalizes the Avaliação Física, the record shows the 
   await posture.getByRole("radiogroup", { name: "EIAS (visão anterior)" }).getByRole("radio", { name: "Direita deprimida" }).check();
   await page.getByRole("region", { name: "Somatotipo" }).getByRole("checkbox", { name: "Mesomorfo" }).check();
 
-  await step(page, "4 Revisão").click();
+  await step(page, "5 Revisão").click();
   await expect(pending.getByText("Nada pendente: a avaliação pode ser finalizada.")).toBeVisible();
   const toRecord = page.getByRole("list", { name: "Resultados a registrar" });
   await expect(toRecord.getByRole("listitem").filter({ hasText: "Gordura estimada" })).toContainText("17,3%");
@@ -177,12 +177,12 @@ test("the Revisão step finalizes the Avaliação Física, the record shows the 
   await expect(page.getByText(/Motivo: Resposta do PAR-Q sobre articulações registrada errada/)).toBeVisible();
   await expect(question(page, PARQ.dizziness).getByRole("radio", { name: "Sim" })).toBeChecked();
   await question(page, PARQ.bone_joint).getByRole("radio", { name: "Sim" }).check();
-  await step(page, "4 Revisão").click();
+  await step(page, "5 Revisão").click();
   await expect(pending.getByText("Retificação com nova resposta “Sim” no PAR-Q: revise a decisão profissional e a nota")).toBeVisible();
   await shots(page, "retificacao", testInfo.project.name);
   await step(page, "1 Triagem").click();
   await decision.getByLabel("Nota da decisão").fill("Encaminhado ao cardiologista e ao ortopedista antes de treinos intensos.");
-  await step(page, "4 Revisão").click();
+  await step(page, "5 Revisão").click();
   await page.getByRole("button", { name: "Finalizar retificação" }).click();
   await page.getByRole("button", { name: "Confirmar e finalizar" }).click();
   await expect(page.getByRole("heading", { name: /^Retificação da avaliação física de \d{2}\/\d{2}\/\d{4}$/, level: 1 })).toBeVisible();

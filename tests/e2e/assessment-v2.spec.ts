@@ -61,7 +61,7 @@ test("the Medidas step of the new format computes the preview, keeps values acro
 
   // A new draft opens at step 1, the Triagem.
   const steps = page.getByRole("navigation", { name: "Etapas da avaliação física" });
-  await expect(steps.getByRole("button")).toHaveText(["1 Triagem", "2 Medidas", "3 Movimento", "4 Revisão"]);
+  await expect(steps.getByRole("button")).toHaveText(["1 Triagem", "2 Medidas", "3 Movimento", "4 Testes", "5 Revisão"]);
   await expect(steps.getByRole("button", { name: "1 Triagem" })).toHaveAttribute("aria-current", "step");
   await expect(page.getByText("Sem alterações desde que a página abriu.")).toBeVisible();
   await steps.getByRole("button", { name: "3 Movimento" }).click();
@@ -616,11 +616,133 @@ test("the Movimento step records the posture in three views and the somatotype, 
   await expect(somatotype.getByLabel("Perímetro do braço flexionado (cm)")).toHaveValue("");
 
   // The Revisão says what was observed per view and the somatotype as recorded; nothing of it is a result.
-  await page.getByRole("navigation", { name: "Etapas da avaliação física" }).getByRole("button", { name: "4 Revisão" }).click();
+  await page.getByRole("navigation", { name: "Etapas da avaliação física" }).getByRole("button", { name: "5 Revisão" }).click();
   const checklist = page.getByRole("region", { name: "Checklist por etapa" });
   await expect(checklist.getByText("Postura: 5 de 19 regiões observadas (lateral 2 de 8, posterior 2 de 7, anterior 1 de 4)")).toBeVisible();
   await expect(checklist.getByText("Somatotipo (registro do profissional): Endomorfo e Mesomorfo")).toBeVisible();
   await expect(checklist.getByText("Medidas para Heath-Carter guardadas, sem cálculo: dobra supraespinhal")).toBeVisible();
   await expect(checklist.getByText("Com registro")).toBeVisible();
   await expect(page.getByText("Nenhum resultado calculável com o que foi medido.")).toBeVisible();
+});
+
+// Slice 0.80: the Flexiteste of "Movimento", the "Testes físicos" step and the final considerations of "Revisão" (handoff 3.4, 3.5; AV-05, AV-06).
+const FLEXITEST_PDF = [2, 3, 2, 2, 1, 1, 2, 3, 3, 2, 2, 3, 2, 2, 2];
+test("the Flexiteste, the physical tests and the final considerations save themselves and are recorded with no classification by the system", async ({ page }) => {
+  test.setTimeout(240_000);
+  await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
+  await createProfessional(page, "Estúdio dos testes físicos");
+  await addStudent(page, "Aluno dos testes");
+  await showStudentTab(page, "Avaliação Física");
+  await page.getByRole("button", { name: "Iniciar avaliação física" }).click();
+  const steps = page.getByRole("navigation", { name: "Etapas da avaliação física" });
+  await expect(page.getByRole("heading", { name: "Triagem e segurança" })).toBeVisible();
+  for (const text of Object.values(PARQ)) await page.getByRole("radiogroup", { name: text, exact: true }).getByRole("radio", { name: "Não", exact: true }).check();
+
+  // The Flexiteste: 15 movements, each "Não avaliado" until a level is chosen; the total only with all 15.
+  await steps.getByRole("button", { name: "3 Movimento" }).click();
+  const flexitest = page.getByRole("region", { name: "Flexiteste · 15 movimentos" });
+  const movements = flexitest.getByRole("radiogroup");
+  await expect(movements).toHaveCount(15);
+  await expect(flexitest.getByRole("radio", { name: "Não avaliado", checked: true })).toHaveCount(15);
+  const tally = flexitest.getByRole("definition");
+  await expect(tally).toHaveText(["0 de 15 preenchidos", "Só com os 15 movimentos"]);
+  for (const [index, level] of FLEXITEST_PDF.entries()) {
+    if (index === 11) continue;
+    await movements.nth(index).getByRole("radio", { name: `Nível ${level}` }).check();
+  }
+  await expect(tally).toHaveText(["14 de 15 preenchidos", "Só com os 15 movimentos"]);
+  await flexitest.getByRole("radiogroup", { name: "Flexão do joelho" }).getByRole("radio", { name: "Nível 3" }).check();
+  await expect(tally).toHaveText(["15 de 15 preenchidos", "32 pontos"]);
+  // Taken back: no level again, never a 0.
+  await flexitest.getByRole("radiogroup", { name: "Flexão do joelho" }).getByRole("radio", { name: "Não avaliado" }).check();
+  await expect(tally).toHaveText(["14 de 15 preenchidos", "Só com os 15 movimentos"]);
+  await flexitest.getByRole("radiogroup", { name: "Flexão do joelho" }).getByRole("radio", { name: "Nível 3" }).check();
+  await flexitest.getByLabel("Classificação (manual)").fill("Médio (-)");
+  await expect(flexitest.getByLabel("Classificação (manual)")).toHaveAccessibleDescription(/O sistema não classifica/);
+  await noHorizontalOverflow(page);
+
+  // Testes físicos: a step of its own.
+  await steps.getByRole("button", { name: "4 Testes" }).click();
+  await expect(page.getByRole("heading", { name: "Testes físicos", level: 2 })).toBeVisible();
+  const abdominal = page.getByRole("region", { name: "Resistência abdominal" });
+  await expect(abdominal.getByText(/“potência abdominal” \(Pollock e Wilmore, 1993\).*não mede potência/)).toBeVisible();
+  await abdominal.getByLabel("Exercício ou protocolo").fill("Abdominal em 1 minuto");
+  await abdominal.getByLabel("Repetições completas (rep)").fill("35");
+  await abdominal.getByLabel("Duração (s)").fill("60");
+  // Handoff 3.5: conditions for the upper-limb test and Cooper, not for the abdominal one.
+  await expect(abdominal.getByLabel("Condições")).toHaveCount(0);
+  const upper = page.getByRole("region", { name: "Resistência de membros superiores" });
+  await expect(upper.getByLabel("Condições")).toHaveCount(1);
+  // A fraction of a repetition is named, never rounded; 0 is a result.
+  await upper.getByLabel("Repetições completas (rep)").fill("22,5");
+  const problem = page.getByRole("status").filter({ hasText: "Confira o campo Repetições completas (resistência de membros superiores)" });
+  await expect(problem).toBeVisible({ timeout: BY_ITSELF });
+  await upper.getByLabel("Repetições completas (rep)").fill("0");
+  await expect(problem).toHaveCount(0);
+  const cooper = page.getByRole("region", { name: "Teste de Cooper · 12 minutos" });
+  await expect(cooper.getByLabel("Velocidade média")).toHaveText("Sem distância");
+  // As the PDF writes it: "2.200" is 2200 m.
+  await cooper.getByLabel("Distância percorrida (m)").fill("2.200");
+  await expect(cooper.getByLabel("Velocidade média")).toHaveText("11,0 km/h");
+  await expect(cooper.getByLabel("VO₂máx estimado")).toHaveText("37,90 ml/kg/min");
+  await expect(cooper.getByText(/\(distância − 504,9\) ÷ 44,73/)).toBeVisible();
+  await cooper.getByLabel("Local").fill("Pista do clube");
+  await expect(page.locator(".av2-cards")).not.toContainText(/\bbom\b|ruim|excelente|fraco/i);
+  const wide = (page.viewportSize()?.width ?? 0) >= 1024;
+  for (const card of ["Resistência abdominal", "Teste de Cooper · 12 minutos"]) {
+    const { lines, cut } = await linesOf(page, card);
+    expect(lines.every((line) => line.aligned)).toBe(true);
+    expect(cut).toBe(0);
+    if (wide && card === "Teste de Cooper · 12 minutos") expect(lines.map((line) => line.fields)).toEqual([4, 3, 1, 1]);
+  }
+  await noHorizontalOverflow(page);
+
+  // The final considerations, in Revisão.
+  await steps.getByRole("button", { name: "5 Revisão" }).click();
+  const considerations = page.getByRole("region", { name: "Considerações finais" });
+  await considerations.getByLabel("Considerações do profissional").fill("Boa mobilidade geral.\nQuadril esquerdo aduzido.");
+  await considerations.getByLabel("Orientações e encaminhamentos").fill("Avaliação com fisioterapeuta.");
+  await expect(savedLine(page)).toBeVisible({ timeout: BY_ITSELF });
+
+  // A reload brings everything back.
+  await page.reload();
+  await expect(considerations.getByLabel("Considerações do profissional")).toHaveValue("Boa mobilidade geral.\nQuadril esquerdo aduzido.");
+  // On any width the current step is in view inside its own row (the row scrolls, the page does not).
+  const currentBox = await steps.locator('[aria-current="step"]').boundingBox();
+  const rowBox = await steps.locator("ol").boundingBox();
+  expect(currentBox && rowBox && currentBox.x >= rowBox.x - 1 && currentBox.x + currentBox.width <= rowBox.x + rowBox.width + 1).toBe(true);
+  const checklist = page.getByRole("region", { name: "Checklist por etapa" });
+  await expect(checklist.getByText("Flexiteste: 15 de 15 preenchidos; total 32 pontos")).toBeVisible();
+  await expect(checklist.getByText("Classificação do Flexiteste escrita pelo profissional: Médio (-)")).toBeVisible();
+  await expect(checklist.getByText("Resistência abdominal: 35 repetições completas · Abdominal em 1 minuto")).toBeVisible();
+  await expect(checklist.getByText("Resistência de membros superiores: 0 repetições completas")).toBeVisible();
+  await expect(checklist.getByText("Cooper: 2.200 m em 12 min")).toBeVisible();
+  const toRecord = page.getByRole("list", { name: "Resultados a registrar" });
+  await expect(toRecord.getByRole("listitem").filter({ hasText: "Flexiteste, soma dos 15 níveis" })).toContainText("32 pontos");
+  const vo2Row = toRecord.getByRole("listitem").filter({ hasText: "Cooper, VO₂máx estimado" });
+  await expect(vo2Row).toContainText("37,90 ml/kg/min");
+  await expect(vo2Row).toContainText("fórmula av2-2026-11 · estimativa");
+  await expect(toRecord.getByRole("listitem").filter({ hasText: "Cooper, velocidade média" })).toContainText("11,0 km/h");
+  await noHorizontalOverflow(page);
+
+  // Finalized: the record shows the levels, the tests as typed and the texts; the results with their method.
+  await page.getByRole("button", { name: "Finalizar avaliação" }).click();
+  await page.getByRole("button", { name: "Confirmar e finalizar" }).click();
+  await expect(page.getByRole("heading", { name: /^Avaliação física de \d{2}\/\d{2}\/\d{4}$/, level: 1 })).toBeVisible();
+  const results = page.getByRole("list", { name: "Resultados" });
+  await expect(results.getByRole("listitem").filter({ hasText: "Flexiteste, soma dos 15 níveis" })).toContainText("32 pontos");
+  await expect(results.getByRole("listitem").filter({ hasText: "Cooper, VO₂máx estimado" })).toContainText("37,90 ml/kg/min");
+  const recordedMovement = page.getByRole("region", { name: "Postura e movimento" });
+  await expect(recordedMovement.getByText("15 de 15 preenchidos · total: 32 pontos", { exact: false })).toBeVisible();
+  await expect(recordedMovement.getByRole("definition").filter({ hasText: /^Nível \d$/ })).toHaveCount(15);
+  await expect(recordedMovement.getByText(/Classificação \(manual\): Médio \(-\)/)).toBeVisible();
+  const recordedTests = page.getByRole("region", { name: "Testes físicos" });
+  await expect(recordedTests.getByRole("definition").filter({ hasText: /^35 repetições$/ })).toBeVisible();
+  await expect(recordedTests.getByRole("definition").filter({ hasText: /^0 repetições$/ })).toBeVisible();
+  await expect(recordedTests.getByRole("definition").filter({ hasText: /^2\.200 m em 12 min$/ })).toBeVisible();
+  const recordedConclusion = page.getByRole("region", { name: "Considerações finais" });
+  await expect(recordedConclusion).toContainText("Quadril esquerdo aduzido.");
+  await expect(recordedConclusion).toContainText("Avaliação com fisioterapeuta.");
+  await expect(page.getByRole("textbox", { name: "Considerações do profissional" })).toHaveCount(0);
+  await noHorizontalOverflow(page);
 });

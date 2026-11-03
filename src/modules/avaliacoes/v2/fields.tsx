@@ -22,7 +22,24 @@ export function UnitInput({ label, unit, value, onChange, placeholder }: { label
   );
 }
 
-export function UnitField({ label, unit, value, onChange, placeholder }: { label: string; unit: string; value: string; onChange: (value: string) => void; placeholder?: string }) {
+export function UnitField({
+  label,
+  unit,
+  value,
+  onChange,
+  placeholder,
+  integer,
+  note,
+}: {
+  label: string;
+  unit: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  /** A whole number (a count): the numeric keyboard, without the decimal key. */
+  integer?: boolean;
+  note?: string;
+}) {
   const id = useId();
   return (
     <div className="av2-field">
@@ -32,9 +49,40 @@ export function UnitField({ label, unit, value, onChange, placeholder }: { label
       </label>
       {/* A long unit ("por semana") keeps more room at the end of the field, so the typed value never runs under it. */}
       <span className="av2-unit" data-long={unit.length > 5 || undefined}>
-        <input id={id} inputMode="decimal" autoComplete="off" value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
+        <input
+          id={id}
+          inputMode={integer ? "numeric" : "decimal"}
+          autoComplete="off"
+          value={value}
+          placeholder={placeholder}
+          aria-describedby={note ? `${id}-nota` : undefined}
+          onChange={(event) => onChange(event.target.value)}
+        />
         <span aria-hidden="true">{unit}</span>
       </span>
+      {note && (
+        <span id={`${id}-nota`} className="av2-note">
+          {note}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** A date of the calendar (the day a test was done), in the grid like the other fields; empty is "not said", never today. */
+export function DateField({ label, value, onChange, note }: { label: string; value: string; onChange: (value: string) => void; note?: string }) {
+  const id = useId();
+  return (
+    <div className="av2-field">
+      <label htmlFor={id} className="av2-label">
+        {label}
+      </label>
+      <input id={id} type="date" value={value} onChange={(event) => onChange(event.target.value)} aria-describedby={note ? `${id}-nota` : undefined} />
+      {note && (
+        <span id={`${id}-nota`} className="av2-note">
+          {note}
+        </span>
+      )}
     </div>
   );
 }
@@ -60,10 +108,10 @@ export function ReadOnlyField({ label, value, note }: { label: string; value: st
 }
 
 /** A field of free text on one line (activities, time of practice), in the grid like the number fields. */
-export function TextField({ label, value, onChange, note }: { label: string; value: string; onChange: (value: string) => void; note?: string }) {
+export function TextField({ label, value, onChange, note, wide }: { label: string; value: string; onChange: (value: string) => void; note?: string; wide?: boolean }) {
   const id = useId();
   return (
-    <div className="av2-field">
+    <div className={wide ? "av2-field av2-field-wide" : "av2-field"}>
       <label htmlFor={id} className="av2-label">
         {label}
       </label>

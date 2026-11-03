@@ -1,5 +1,5 @@
 "use client";
-import { useId, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
+import { useId, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import {
   HEATH_CARTER_CODES,
   HEATH_CARTER_MEASURES,
@@ -113,7 +113,7 @@ const findingColumns = (view: PostureView) =>
  * anterior"), and the somatotype recorded by the professional. Observations, never a diagnosis; a region with no finding is not observed, never
  * "alinhado". Nothing is computed here: the somatotype is the professional's record, and the Heath-Carter measures are kept as typed.
  */
-export function PostureStep({ form, onChange }: { form: PostureForm; onChange: (form: PostureForm) => void }) {
+export function PostureStep({ form, onChange, after = null }: { form: PostureForm; onChange: (form: PostureForm) => void; /** The cards after it in the step (the Flexiteste). */ after?: ReactNode }) {
   const [view, setView] = useState<PostureView>("lateral");
   const tabs = useRef<Record<string, HTMLButtonElement | null>>({});
   const baseId = useId();
@@ -241,6 +241,7 @@ export function PostureStep({ form, onChange }: { form: PostureForm; onChange: (
           ))}
         </div>
       </section>
+      {after}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { CircleCheck, Info, TriangleAlert } from "lucide-react";
 import { ResultsList } from "./results-list";
 import type { DraftReview, ModuleSummary } from "./review";
@@ -26,6 +26,7 @@ export function ReviewStep({
   error,
   onFinalize,
   onOpenTriagem,
+  conclusion = null,
 }: {
   review: DraftReview;
   /** A value on the screen that is not accepted (named), which would not be saved. */
@@ -36,6 +37,8 @@ export function ReviewStep({
   onFinalize: () => void;
   /** Goes to step 1 (Triagem), where what blocks the finalize is filled in. */
   onOpenTriagem: () => void;
+  /** The final considerations card (module "conclusion"), edited here before the finalize. */
+  conclusion?: ReactNode;
 }) {
   const [confirming, setConfirming] = useState(false);
   const blockers = [...problems, ...review.pending];
@@ -44,7 +47,7 @@ export function ReviewStep({
     <div className="av2-cards">
       <section className="panel av2-card" aria-labelledby="av2-pendencias">
         <h3 id="av2-pendencias">Pendências para finalizar</h3>
-        <p className="muted small">A triagem precisa estar completa. Medidas e movimento podem ficar parciais: o que não foi feito fica como “Não realizado”.</p>
+        <p className="muted small">A triagem precisa estar completa. Medidas, movimento e testes físicos podem ficar parciais: o que não foi feito fica como “Não realizado”.</p>
         {blocked ? (
           <>
             <ul className="av2-pending">
@@ -113,6 +116,8 @@ export function ReviewStep({
           </>
         )}
       </section>
+
+      {conclusion}
 
       <section className="panel av2-card" aria-labelledby="av2-finalizar">
         <h3 id="av2-finalizar">{amendment ? "Finalizar a retificação" : "Finalizar avaliação"}</h3>

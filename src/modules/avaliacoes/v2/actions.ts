@@ -9,6 +9,9 @@ import type { AssessmentModule } from "../catalog";
 import { COMPOSITION_MODULE, compositionSchema, issueNames, problemsMessage } from "./composition";
 import { PROFILE_MODULE, SCREENING_MODULE, draftScreening, profileSchema, screeningSchema } from "./screening";
 import { POSTURE_MODULE, issueNames as postureIssueNames, postureProblemsMessage, postureSchema } from "./posture";
+import { MOVEMENT_MODULE, movementIssueNames, movementProblemsMessage, movementSchema } from "./flexitest";
+import { TESTS_MODULE, testsIssueNames, testsProblemsMessage, testsSchema } from "./physical-tests";
+import { CONCLUSION_MODULE, conclusionIssueNames, conclusionProblemsMessage, conclusionSchema } from "./conclusion";
 
 export type SaveSectionResult = { saved: true; revision: number } | { conflict: string } | { error: string };
 
@@ -102,6 +105,27 @@ export async function savePostureSection(assessmentId: string, payload: unknown,
   const parsed = postureSchema.safeParse(payload);
   if (!parsed.success) return { error: postureProblemsMessage(postureIssueNames(parsed.error.issues)) };
   return storeSection(assessmentId, POSTURE_MODULE, parsed.data, revision, postureProblemsMessage([]));
+}
+
+/** Saves the Flexiteste of the "Movimento" step (module "movement"), checked with the module's schema: each level is 1 to 4 or absent, never 0. */
+export async function saveMovementSection(assessmentId: string, payload: unknown, revision: number): Promise<SaveSectionResult> {
+  const parsed = movementSchema.safeParse(payload);
+  if (!parsed.success) return { error: movementProblemsMessage(movementIssueNames(parsed.error.issues)) };
+  return storeSection(assessmentId, MOVEMENT_MODULE, parsed.data, revision, movementProblemsMessage([]));
+}
+
+/** Saves the "Testes físicos" step (module "tests"), checked with the module's schema: counts are whole numbers, distances and durations positive. */
+export async function saveTestsSection(assessmentId: string, payload: unknown, revision: number): Promise<SaveSectionResult> {
+  const parsed = testsSchema.safeParse(payload);
+  if (!parsed.success) return { error: testsProblemsMessage(testsIssueNames(parsed.error.issues)) };
+  return storeSection(assessmentId, TESTS_MODULE, parsed.data, revision, testsProblemsMessage([]));
+}
+
+/** Saves the final considerations of the "Revisão" step (module "conclusion"), checked with the module's schema. */
+export async function saveConclusionSection(assessmentId: string, payload: unknown, revision: number): Promise<SaveSectionResult> {
+  const parsed = conclusionSchema.safeParse(payload);
+  if (!parsed.success) return { error: conclusionProblemsMessage(conclusionIssueNames(parsed.error.issues)) };
+  return storeSection(assessmentId, CONCLUSION_MODULE, parsed.data, revision, conclusionProblemsMessage([]));
 }
 
 export type FinalizeResult = { error: string; pending?: string[]; conflict?: boolean };
