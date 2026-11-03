@@ -4,8 +4,9 @@
  * file holds the pure parts (the shape, the validation, the hash) and the INITIAL text, which is the
  * one the lawyer approved on 25/10/2026 and which is in force until the manager publishes another.
  *
- * The database keeps, with every acceptance, the version and the SHA-256 of the exact words shown.
- * Changing any word is a new version, and the next access of everyone asks for the new acceptance.
+ * The database keeps, with every acceptance already recorded, the version and the SHA-256 of the exact words
+ * shown. Changing any word is a new version. Nothing in the tool waits for an acceptance any more: the terms
+ * are there to be read, and the acceptances recorded before stay readable.
  */
 import { z } from "zod";
 
@@ -20,7 +21,7 @@ export interface TermsContent {
   sections: Array<{ heading: string; text: string }>;
   /** The required acknowledgement, said by the person. */
   confirmation: string;
-  /** Only for students: a separate, optional choice inside the same acceptance. */
+  /** Only for students, and optional: the paragraph about posture photos (it no longer authorizes or blocks anything). */
   photos?: { heading: string; text: string; label: string };
 }
 
@@ -150,14 +151,12 @@ const contentSchema = z
   .strict();
 
 /**
- * Validates words typed by the manager. The student's terms must keep the photos block (the optional
- * choice of the acceptance lives there) and the professional's must not have one. Throws a ZodError.
+ * Validates words typed by the manager. The student's terms may keep or drop the photos block (it no
+ * longer holds any choice); the professional's must not have one. Throws a ZodError.
  */
 export function parseTermsContent(audience: Audience, raw: unknown): TermsContent {
   const parsed = contentSchema
     .superRefine((value, context) => {
-      if (audience === "STUDENT" && !value.photos)
-        context.addIssue({ code: "custom", path: ["photos"], message: "PHOTOS_BLOCK_REQUIRED" });
       if (audience === "PROFESSIONAL" && value.photos)
         context.addIssue({ code: "custom", path: ["photos"], message: "PHOTOS_BLOCK_NOT_ALLOWED" });
       const headings = value.sections.map((section) => section.heading);

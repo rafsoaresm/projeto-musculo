@@ -4,8 +4,6 @@ import { ZodError } from "zod";
 export function termsErrorMessage(error: unknown): string {
   if (error instanceof ZodError) {
     const custom = error.issues.map((issue) => issue.message);
-    if (custom.includes("PHOTOS_BLOCK_REQUIRED"))
-      return "O texto do aluno precisa manter o bloco das fotos: é ali que ele escolhe, se quiser, autorizar as fotos.";
     if (custom.includes("PHOTOS_BLOCK_NOT_ALLOWED")) return "O texto do profissional não tem bloco de fotos.";
     if (custom.includes("SECTION_HEADING_DUPLICATE")) return "Duas seções têm o mesmo título. Dê um título diferente a cada uma.";
     return "Confira os campos: nenhum pode ficar vazio, e há um limite de tamanho para cada texto (títulos até 120 caracteres, textos até 4000).";

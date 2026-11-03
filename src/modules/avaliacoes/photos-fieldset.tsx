@@ -106,7 +106,7 @@ export function PhotosFieldset({
       <p className="small muted">
         Registro visual, não diagnóstico. As fotos ficam no armazenamento privado
         da ferramenta e só você as vê, enquanto tiver o aluno sob o seu
-        atendimento. Depois que a avaliação for registrada, as fotos não mudam.
+        atendimento. Depois que a avaliação for registrada, as fotos não mudam; cada uma ainda pode ser excluída.
         A ferramenta remove os dados do aparelho (posição, data e modelo) antes de guardar.
       </p>
       {!storageReady && (

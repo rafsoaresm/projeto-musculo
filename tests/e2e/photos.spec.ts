@@ -24,28 +24,11 @@ test("postural photos are sent as clean JPEGs to the private storage, shown only
   const draftURL = page.url();
   await noHorizontalOverflow(page);
 
-  // The authorization is the student's own. Before the student has access there is no one to give it:
-  // the screen offers no upload, there is no box for the professional to tick, and the server refuses.
+  // No authorization of the student is asked for: even before the student has access, the screen takes photos and has no box to tick.
   const fieldset = page.locator("fieldset", { hasText: "Fotos da postura" });
   await expect(fieldset.getByText("Registro visual, não diagnóstico.", { exact: false })).toBeVisible();
-  await expect(fieldset.getByText("Fotos ainda não autorizadas pelo aluno.")).toBeVisible();
-  await expect(fieldset.getByText("O aluno ainda não tem acesso.", { exact: false })).toBeVisible();
-  await expect(page.locator("#foto-ANTERIOR")).toHaveCount(0);
+  await expect(fieldset.getByText(/não autoriz|autorizou|revisão jurídica/)).toHaveCount(0);
   await expect(fieldset.getByRole("checkbox")).toHaveCount(0);
-  const draftPath = new URL(draftURL).pathname;
-  const early = await page.request.put(new URL(`${draftPath}/fotos/ANTERIOR`, draftURL).href, {
-    headers: { "x-photo-request": "1", "x-consent": "confirmed", "content-type": "image/jpeg" },
-    data: Buffer.from([0xff, 0xd8, 0xff, 0xd9]),
-  });
-  expect(early.status()).toBe(403);
-  expect((await early.json()).error).toContain("ainda não tem acesso");
-
-  // The student joins and authorizes the photos when accepting the terms; then the screen opens.
-  await page.goto(studentURL);
-  await joinStudent(page, browser, baseURL, "Aluna das fotos", { photos: true });
-  await page.goto(draftURL);
-  await expect(fieldset.getByText("O aluno autorizou as fotos da postura.", { exact: false })).toBeVisible();
-  await expect(fieldset.getByText("Fotos ainda não autorizadas pelo aluno.")).toHaveCount(0);
   await expect(page.locator("#foto-ANTERIOR")).toBeEnabled();
 
   // Anterior: the image is re-drawn in the browser, stored, and read back through the route.
@@ -116,18 +99,29 @@ test("postural photos are sent as clean JPEGs to the private storage, shown only
   await expect(page.getByRole("img", { name: "Foto posterior do aluno" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Enviar foto|Remover foto/ })).toHaveCount(0);
   expect((await post({ "x-photo-request": "1" }, Buffer.from([0xff, 0xd8, 0xff, 0xd9]))).status()).toBe(404);
-  expect((await page.request.delete(absolute(page, photoPath), { headers: { "x-photo-request": "1" } })).status()).toBe(404);
   const stillThere = await page.request.get(absolute(page, src));
   expect(stillThere.status()).toBe(200);
+
+  // A photo of a recorded assessment can still be deleted, without any request of the student: the file goes, the record says it was erased.
+  const lateralSrc = (await page.getByRole("img", { name: "Foto lateral esquerda do aluno" }).getAttribute("src"))!;
+  await page.getByRole("button", { name: "Excluir foto lateral esquerda" }).click();
+  await page.getByRole("button", { name: "Confirmar exclusão da foto lateral esquerda" }).click();
+  await expect(page.getByText(/Foto apagada em /)).toBeVisible();
+  await expect(page.getByRole("img", { name: "Foto lateral esquerda do aluno", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("img", { name: "Foto lateral esquerda do aluno: apagada", exact: true })).toBeVisible();
+  expect((await page.request.get(absolute(page, lateralSrc))).status()).toBe(404);
+  expect((await page.request.delete(absolute(page, lateralSrc), { headers: { "x-photo-request": "1" } })).status()).toBe(404);
+  await expect(page.getByRole("img", { name: "Foto anterior do aluno" })).toBeVisible();
 
   // The evolution shows them, each with its date.
   await page.goto(`${studentURL}/evolucao`);
   await expect(page.getByRole("heading", { name: "Fotos da postura ao longo do tempo" })).toBeVisible();
   await expect(page.getByRole("img", { name: `Foto anterior de ${todayBR()}` })).toBeVisible();
   expect(draftURL).toContain("/avaliacoes/");
+  void studentURL;
 });
 
-test("a student known to be under 18 is not photographed by the tool", async ({ page }) => {
+test("a student known to be under 18 is photographed like any other: nothing is refused for the age", async ({ page }) => {
   await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
   await createProfessional(page, "Estúdio do menor");
   const studentURL = await addStudent(page, "Aluno menor de idade");
@@ -142,83 +136,38 @@ test("a student known to be under 18 is not photographed by the tool", async ({ 
   await showStudentTab(page, "Avaliações");
   await page.getByRole("button", { name: "Iniciar avaliação" }).click();
   const fieldset = page.locator("fieldset", { hasText: "Fotos da postura" });
-  await expect(fieldset.getByText("Menor de idade.", { exact: false })).toBeVisible();
-  await expect(page.locator("#foto-ANTERIOR")).toHaveCount(0);
+  await expect(fieldset.getByText("Menor de idade.", { exact: false })).toHaveCount(0);
   await expect(fieldset.getByRole("checkbox")).toHaveCount(0);
-  // The server refuses it too, not only the screen.
-  const path = new URL(page.url()).pathname;
-  const response = await page.request.put(new URL(`${path}/fotos/ANTERIOR`, page.url()).href, {
-    headers: { "x-photo-request": "1" },
-    data: Buffer.from([0xff, 0xd8, 0xff, 0xd9]),
-  });
-  expect(response.status()).toBe(422);
-  expect((await response.json()).error).toContain("menores de idade");
+  await upload(page, "ANTERIOR");
+  await expect(page.getByText("Foto anterior enviada.")).toBeVisible();
+  await expect(slot(page, "anterior").getByRole("img", { name: "Foto anterior do aluno" })).toBeVisible();
 });
 
-test("a student who did not authorize the photos is not photographed, and can authorize or withdraw later, only by themselves", async ({
+test("a student with access is photographed without any choice of theirs, and their account has no photos choice", async ({
   page,
   browser,
   baseURL,
 }) => {
   await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
-  await createProfessional(page, "Estúdio da recusa");
-  const studentURL = await addStudent(page, "Aluno que recusa as fotos");
+  await createProfessional(page, "Estúdio sem escolha");
+  const studentURL = await addStudent(page, "Aluno sem escolha de fotos");
   await page.goto(studentURL);
-  const email = await joinStudent(page, browser, baseURL, "Aluno que recusa as fotos"); // accepts the terms, leaves the photos unticked
+  const email = await joinStudent(page, browser, baseURL, "Aluno sem escolha de fotos");
 
   await page.goto(studentURL);
   await showStudentTab(page, "Avaliações");
   await page.getByRole("button", { name: "Iniciar avaliação" }).click();
   const fieldset = page.locator("fieldset", { hasText: "Fotos da postura" });
-  await expect(fieldset.getByText("Fotos ainda não autorizadas pelo aluno.")).toBeVisible();
-  const draftURL = page.url(); // only once the draft page is there: the click navigates
-  await expect(fieldset.getByText("O aluno não autorizou as fotos.", { exact: false })).toBeVisible();
-  await expect(page.locator("#foto-ANTERIOR")).toHaveCount(0);
-  await expect(fieldset.getByRole("checkbox")).toHaveCount(0);
+  await expect(fieldset.getByText(/não autoriz|autorizou/)).toHaveCount(0);
   await noHorizontalOverflow(page);
-
-  // The old header of the professional's confirmation no longer stands in for it.
-  const path = new URL(draftURL).pathname;
-  const put = (data: Buffer) =>
-    page.request.put(new URL(`${path}/fotos/ANTERIOR`, draftURL).href, {
-      headers: { "x-photo-request": "1", "x-consent": "confirmed", "content-type": "image/jpeg" },
-      data,
-    });
-  const refused = await put(Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
-  expect(refused.status()).toBe(403);
-  expect((await refused.json()).error).toContain("não autorizou as fotos");
-
-  // Only the student, in their own account, can change it: here they authorize.
-  const student = await newActor(browser, baseURL);
-  await signIn(student.page, email);
-  await student.page.goto("./aluno/conta");
-  const choice = student.page.locator("form", { has: student.page.getByRole("heading", { name: "Fotos da sua postura (opcional)" }) });
-  await expect(choice.getByText("você não autorizou as fotos", { exact: true })).toBeVisible();
-  await noHorizontalOverflow(student.page);
-  await choice.getByLabel("Autorizo o meu profissional a registrar fotos da minha postura.").check();
-  await choice.getByRole("button", { name: "Salvar minha escolha" }).click();
-  await expect(student.page.getByText("Escolha registrada: você autorizou as fotos da sua postura.")).toBeVisible();
-  await expect(student.page.getByText("você autorizou as fotos", { exact: true })).toBeVisible();
-
-  // The professional's screen follows, and a photo can now be taken.
-  await page.goto(draftURL);
-  await expect(fieldset.getByText("O aluno autorizou as fotos da postura.", { exact: false })).toBeVisible();
   await upload(page, "ANTERIOR");
   await expect(page.getByText("Foto anterior enviada.")).toBeVisible();
   await expect(slot(page, "anterior").getByRole("img", { name: "Foto anterior do aluno" })).toBeVisible();
-  await page.goto(studentURL);
-  await showStudentTab(page, "Acesso e dados");
-  await expect(page.getByText(/Fotos da postura: autorizadas pelo aluno/)).toBeVisible();
 
-  // Withdrawing stops new photos at once; the one already stored is not removed by it.
-  await student.page.reload();
-  await choice.getByLabel("Autorizo o meu profissional a registrar fotos da minha postura.").uncheck();
-  await choice.getByRole("button", { name: "Salvar minha escolha" }).click();
-  await expect(student.page.getByText("Escolha registrada: você não autoriza mais fotos.", { exact: false })).toBeVisible();
-  await page.goto(draftURL);
-  await expect(fieldset.getByText("Fotos ainda não autorizadas pelo aluno.")).toBeVisible();
-  await expect(page.locator("#foto-LATERAL_LEFT")).toHaveCount(0);
-  expect((await put(Buffer.from([0xff, 0xd8, 0xff, 0xd9]))).status()).toBe(403);
-  await expect(slot(page, "anterior").getByRole("img", { name: "Foto anterior do aluno" })).toBeVisible();
+  const student = await newActor(browser, baseURL);
+  await signIn(student.page, email);
+  await student.page.goto("./aluno/conta");
+  await expect(student.page.getByRole("heading", { name: "Fotos da sua postura (opcional)" })).toHaveCount(0);
+  await expect(student.page.getByText(/Autorizo o meu profissional a registrar fotos/)).toHaveCount(0);
   await student.context.close();
 });

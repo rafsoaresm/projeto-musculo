@@ -7,7 +7,7 @@ import {
   noHorizontalOverflow,
   password,
   uniqueEmail,
-  acceptProfessionalTerms,
+  expectNoTermsBox,
 } from "./helpers";
 
 const yearsAgo = (years: number) => {
@@ -29,7 +29,8 @@ test("the student's file is saved, kept after errors, flags minors and stays ins
 
   await page.getByRole("link", { name: "Preencher a ficha", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Ficha de Aluna da ficha" })).toBeVisible();
-  await expect(page.getByText(/base legal e o texto de\s+consentimento/)).toBeVisible();
+  await expect(page.getByText(/Estas informações são pessoais e de saúde/)).toBeVisible();
+  await expect(page.getByText(/base legal e o texto de\s+consentimento/)).toHaveCount(0);
   const fileURL = page.url();
   await noHorizontalOverflow(page);
 
@@ -67,14 +68,16 @@ test("the student's file is saved, kept after errors, flags minors and stays ins
   await expect(page.getByText("Há lesões, dores ou limitações relatadas")).toBeVisible();
   await expect(page.getByText("Entorse de tornozelo")).toHaveCount(0);
 
-  // A minor is flagged, because the tool does not support attending minors yet.
+  // A minor is only marked as such on the student's page (nothing is refused, and no legal note is shown).
   await page.goto(fileURL);
   await page.getByLabel("Data de nascimento").fill(yearsAgo(15));
-  await expect(page.getByText("Menor de idade.", { exact: false }).first()).toBeVisible();
+  await expect(page.getByText("Idade: 15 anos")).toBeVisible();
+  await expect(page.getByText(/ainda não suporta|consentimentos próprios/)).toHaveCount(0);
   await page.getByRole("button", { name: "Salvar ficha" }).click();
   await expect(page.getByText("Ficha salva.")).toBeVisible();
   await page.goto(studentURL);
   await expect(page.getByText("Menor de idade", { exact: true })).toBeVisible();
+  await expect(page.getByText(/não é suportado/)).toHaveCount(0);
 
   // Another organization cannot open the file by address.
   const other = await newActor(browser, baseURL);
@@ -85,7 +88,7 @@ test("the student's file is saved, kept after errors, flags minors and stays ins
   await other.page.getByLabel("Senha", { exact: true }).fill(password);
   await other.page.locator("form button").click();
   await other.page.getByLabel("Nome do espaço").fill("Outro estúdio da ficha");
-  await acceptProfessionalTerms(other.page);
+  await expectNoTermsBox(other.page);
   await other.page.getByRole("button", { name: "Criar meu espaço" }).click();
   await expect(other.page.getByRole("heading", { name: "Visão geral", level: 1 })).toBeVisible();
   await other.page.goto(fileURL);

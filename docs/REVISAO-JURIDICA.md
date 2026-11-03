@@ -1,5 +1,7 @@
 # Pacote para revisão jurídica
 
+**Atualização de 03/11/2026 (0.73):** por decisão do usuário ("Remova toda e qualquer trava jurídica do sistema. Está tudo validado"), a ferramenta deixou de exigir aceite dos termos, autorização de fotos, maioridade, marca de autorização em depoimentos, aviso de cookies e caixa de concordância nos formulários; os formulários públicos abrem por padrão. O que este pacote descreve como trava ou bloqueio a partir daqui é histórico. Ver `VALIDACAO.md`, fatia 0.73.
+
 **Isto não é parecer nem texto jurídico.** É o que a ferramenta faz hoje com dados pessoais, escrito por quem a construiu, para quem vai revisar: o advogado do responsável pelo produto. O texto dos termos (seção 5) foi escrito a partir do funcionamento e **aprovado pelo advogado em 25/10/2026**, segundo o responsável pelo produto (a aprovação não está anexada a este arquivo). Essa é a versão inicial, `2026-10-25-base`. A partir da 0.24 o texto em vigor pode ser mudado pelo gestor em **`/gestor/termos`**, e cada mudança é uma nova versão publicada, que todos aceitam de novo; o histórico completo está nessa tela.
 
 O que se pede ao advogado está na seção 8, com a proposta que o responsável já aprovou para cada ponto. O que a ferramenta ainda **não** faz está na seção 7, sem enfeite.

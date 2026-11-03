@@ -1,8 +1,8 @@
 import { test, expect } from "@playwright/test";
 import { createProfessional, localIP, newActor } from "./helpers";
-import { addAtEnd, closeEditor, editor, inspector, openEditor, panel, selectLayer, state, showTab, asLegacySite } from "./site-helpers";
+import { addAtEnd, closeEditor, editor, inspector, openEditor, panel, state, showTab, asLegacySite } from "./site-helpers";
 
-test("warnings do not stop a publication: the page goes live with 'Publicar mesmo assim'; only what protects a person still stops it", async ({ page, browser, baseURL }) => {
+test("warnings do not stop a publication: the page goes live with 'Publicar mesmo assim', a testimony needs no authorization mark", async ({ page, browser, baseURL }) => {
   await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
   const unique = crypto.randomUUID().slice(0, 8);
   await createProfessional(page, `Estúdio ${unique}`, "Marina Avisos");
@@ -40,30 +40,19 @@ test("warnings do not stop a publication: the page goes live with 'Publicar mesm
   await anonymous.page.goto(`./s/${slug}`);
   await expect(anonymous.page.getByRole("heading", { level: 1 })).toBeVisible();
 
-  // From the editor: a testimony without the person's authorization stops it, and the warnings beside it do not offer a way around that.
+  // From the editor: a testimony needs no authorization mark; only warnings are left, and the editor offers to publish anyway.
   await openEditor(page);
   await addAtEnd(page, "Depoimento");
   await panel(page, "Propriedades");
   await inspector(page).getByLabel("Depoimento", { exact: true }).fill("Treino que cabe na rotina.");
   await inspector(page).getByLabel("Quem deu o depoimento").fill("Ana, aluna");
-  await editor(page).getByRole("button", { name: "Salvar rascunho" }).click();
-  await expect(editor(page).getByText("Rascunho salvo.")).toBeVisible();
-  await editor(page).getByRole("button", { name: "Publicar nova versão", exact: true }).click();
-  await expect(editor(page).getByRole("list", { name: "O que falta para publicar" })).toContainText("confirme que a pessoa autorizou");
-  await expect(editor(page).getByRole("list", { name: "Avisos antes de publicar" })).toContainText("WhatsApp");
-  await expect(editor(page).getByRole("button", { name: "Publicar mesmo assim" })).toHaveCount(0);
-  await anonymous.page.reload();
-  await expect(anonymous.page.getByText("Treino que cabe na rotina.")).toHaveCount(0);
-
-  // With the authorization given, only warnings are left: the editor offers to publish anyway, and the new version goes live.
-  await selectLayer(page, /Depoimento/);
-  await panel(page, "Propriedades");
-  await inspector(page).getByLabel("Tenho a autorização da pessoa para publicar este depoimento.").check();
+  await expect(inspector(page).getByText("Tenho a autorização da pessoa para publicar este depoimento.")).toHaveCount(0);
   await editor(page).getByRole("button", { name: "Salvar rascunho" }).click();
   await expect(editor(page).getByText("Rascunho salvo.")).toBeVisible();
   await editor(page).getByRole("button", { name: "Publicar nova versão", exact: true }).click();
   await expect(editor(page).getByRole("list", { name: "O que falta para publicar" })).toHaveCount(0);
   await expect(editor(page).getByRole("list", { name: "Avisos antes de publicar" })).toContainText("WhatsApp");
+  await expect(editor(page).getByRole("list", { name: "Avisos antes de publicar" })).not.toContainText("autoriz");
   await editor(page).getByRole("button", { name: "Publicar mesmo assim" }).click();
   await expect(editor(page).getByText("Publicado: o site está no ar na versão 2.")).toBeVisible();
   await closeEditor(page);

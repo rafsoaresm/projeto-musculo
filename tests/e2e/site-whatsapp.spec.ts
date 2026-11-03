@@ -23,12 +23,13 @@ async function publishedModel(page: Page, owner: string) {
   await editor.getByRole("navigation", { name: "Seções do site" }).getByRole("button", { name: "Rodapé do site", exact: true }).click();
   const footer = editor.getByRole("region", { name: "Rodapé do site" });
   await footer.getByLabel("WhatsApp", { exact: true }).fill("(11) 91234-5678");
-  // The model starts asking first, with the handoff's opening message; the platform of this run has the forms open, the site has not yet.
+  // The model starts asking first, with the handoff's opening message; the forms are open by default and a new site is born receiving.
   const buttons = footer.getByRole("group", { name: "Botões do WhatsApp" });
   await expect(buttons.getByLabel("Mensagem que já vai escrita na conversa (opcional)")).toHaveValue(MESSAGE);
   await expect(buttons.getByRole("checkbox", { name: "Pedir o nome e o celular antes de abrir o WhatsApp" })).toBeChecked();
   await expect(buttons.getByRole("checkbox", { name: /Perguntar também o objetivo/ })).toBeChecked();
-  await expect(buttons.getByRole("status")).toContainText("o recebimento de mensagens estiver ligado no site");
+  await expect(buttons.getByRole("status")).toContainText("Na página publicada, os botões abrem um formulário.");
+  await expect(buttons.getByRole("status")).not.toContainText("aviso de privacidade");
   await editor.getByRole("button", { name: "Salvar rascunho" }).first().click();
   await expect(editor.getByText("Rascunho salvo.")).toBeVisible();
   await editor.getByRole("tablist", { name: "Partes do Editor Guiado" }).getByRole("tab", { name: "Publicar" }).click();
@@ -42,7 +43,7 @@ async function publishedModel(page: Page, owner: string) {
   return `estudio-${unique}`;
 }
 
-test("WhatsApp: the buttons go straight while the site does not receive messages; once it does, they open a form whose lead is kept before WhatsApp opens", async ({
+test("WhatsApp: the buttons go straight when the site stops receiving messages; while it receives (as it is born), they open a form whose lead is kept before WhatsApp opens", async ({
   page,
   browser,
   baseURL,
@@ -56,15 +57,19 @@ test("WhatsApp: the buttons go straight while the site does not receive messages
   await visit.context.route(/^https:\/\/(wa\.me|api\.whatsapp\.com)\//, (route) => route.fulfill({ status: 200, contentType: "text/plain", body: "WhatsApp" }));
   const straight = `https://wa.me/5511912345678?text=${encodeURIComponent(MESSAGE)}`;
 
-  // ---- receiving off: straight to WhatsApp in a new tab, with the opening message; no form on the page ----
+  // ---- receiving off (the site turns it off): straight to WhatsApp in a new tab, with the opening message; no form on the page ----
+  await showTab(page, "Formulários e mensagens");
+  await expect(messages(page)).toContainText("Recebimento ligado");
+  await messages(page).getByRole("button", { name: "Desligar o recebimento de mensagens" }).click();
+  await expect(messages(page)).toContainText("Recebimento desligado");
   await visitor.goto(`./s/${slug}`);
   const cta = visitor.locator("main a.site-has-icon").first();
   await expect(cta).toHaveAttribute("href", straight);
   await expect(cta).toHaveAttribute("target", "_blank");
   await expect(visitor.locator("#site-whatsapp-form")).toHaveCount(0);
-  expect((await visitor.request.post(`./s/${slug}/m/whatsapp`, { form: { nome: "Robô", celular: "11987654321", aceite: "on" }, maxRedirects: 0 })).status()).toBe(404);
+  expect((await visitor.request.post(`./s/${slug}/m/whatsapp`, { form: { nome: "Robô", celular: "11987654321" }, maxRedirects: 0 })).status()).toBe(404);
 
-  // ---- the site turns its receiving on ----
+  // ---- the site turns its receiving on again ----
   await showTab(page, "Formulários e mensagens");
   await messages(page).getByRole("button", { name: "Ligar o recebimento de mensagens" }).click();
   await expect(messages(page)).toContainText("Recebimento ligado");
@@ -109,18 +114,17 @@ test("WhatsApp: the buttons go straight while the site does not receive messages
   await dialog.getByLabel("Celular com DDD").fill("(11) 3456-7890");
   expect(await dialog.getByLabel("Celular com DDD").evaluate((input) => (input as HTMLInputElement).validity.patternMismatch)).toBe(true);
   const raw = (fields: Record<string, string>) => visitor.request.post(`./s/${slug}/m/whatsapp`, { form: fields, maxRedirects: 0 });
-  const landline = await raw({ nome: "Ana Souza", celular: "(11) 3456-7890", aceite: "on" });
+  const landline = await raw({ nome: "Ana Souza", celular: "(11) 3456-7890" });
   expect(landline.status()).toBe(400);
   expect(await landline.text()).toContain("celular com DDD");
-  expect((await raw({ nome: "Ana Souza", celular: "(11) 98765-4321" })).status()).toBe(400);
 
   // ---- sent: kept first, then WhatsApp in the same tab with the professional's message only ----
   await dialog.getByLabel("Nome", { exact: true }).fill("Ana Souza");
   await dialog.getByLabel("Celular com DDD").fill("(11) 98765-4321");
   await dialog.getByLabel("Seu objetivo (opcional)").fill("Ganhar força");
-  const notice = dialog.getByRole("link", { name: "aviso de privacidade" });
-  await expect(notice).toHaveAttribute("href", /\/aviso-de-privacidade-de-teste$/);
-  await dialog.getByRole("checkbox", { name: /Li o aviso de privacidade/ }).check();
+  // No box to tick, and no notice link (none is configured in this run).
+  await expect(dialog.getByRole("checkbox")).toHaveCount(0);
+  await expect(dialog.getByRole("link", { name: /aviso de privacidade/i })).toHaveCount(0);
   // The browser is sent to WhatsApp's own address (WhatsApp itself may send it on elsewhere: only the address it was sent to is checked).
   const toWhatsApp = visitor.waitForRequest((request) => request.url().startsWith("https://wa.me/"));
   await dialog.getByRole("button", { name: "Continuar no WhatsApp" }).click();

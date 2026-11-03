@@ -101,9 +101,7 @@ export function ProfileForm({
         <p>
           Estas informações são pessoais e de saúde. Só você, com vínculo técnico
           com o aluno, as vê; o aluno e a plataforma não. Anote o que o aluno
-          relatou, sem interpretar como diagnóstico. A base legal e o texto de
-          consentimento para guardar esses dados ainda não estão definidos na
-          ferramenta.
+          relatou, sem interpretar como diagnóstico.
         </p>
       </Notice>
 
@@ -148,16 +146,6 @@ export function ProfileForm({
           <p className="small muted" role="status">
             Idade: {age} {age === 1 ? "ano" : "anos"}, calculada pela data de nascimento.
           </p>
-        )}
-        {age !== null && age < 18 && (
-          <Notice tone="warning">
-            <p>
-              <strong>Menor de idade.</strong> O atendimento a menores exige
-              responsável, permissões e consentimentos próprios, que esta
-              ferramenta ainda não suporta. Guardar a data aqui não torna esse
-              atendimento suportado.
-            </p>
-          </Notice>
         )}
       </fieldset>
 

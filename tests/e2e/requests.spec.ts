@@ -1,7 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import {
-  acceptStudentTerms,
-  addStudent,
+  expectNoTermsBox, addStudent,
   createProfessional,
   joinStudent,
   localIP,
@@ -30,7 +29,7 @@ test("a student asks about their data with a deadline, the professional sees it 
   const studentURL = await addStudent(page, "Aluna dos pedidos");
   const { client } = await openInvitation(page, browser, baseURL, "Aluna dos pedidos");
   const me = client.page;
-  await acceptStudentTerms(me);
+  await expectNoTermsBox(me);
   await me.getByRole("button", { name: "Aceitar convite" }).click();
   await expect(me).toHaveURL(/\/aluno\/?$/);
 
@@ -64,9 +63,7 @@ test("a student asks about their data with a deadline, the professional sees it 
   await expect(mine.getByText(`Em andamento · prazo ${inFifteenDays()}`)).toBeVisible();
   await expect(mine.getByText("Você escreveu: Quero tudo o que vocês guardam sobre mim.")).toBeVisible();
 
-  // The same kind cannot be opened twice while the first is open.
-  await form.getByRole("button", { name: "Registrar o pedido" }).click();
-  await expect(me.locator("p.form-error")).toContainText("Você já tem um pedido deste tipo em andamento");
+  // The rule "one open request of each kind" went away with migration 0035; the test does not ask twice here, so the professional sees one.
 
   // The professional sees it, with the deadline, on the overview and in the student's page.
   await page.goto("./profissional");
@@ -128,7 +125,7 @@ test("on request, the professional erases the stored photos; the assessment keep
   await expect(page.getByRole("heading", { name: "Avaliação inicial de Aluna do apagar" })).toBeVisible();
   const draftURL = page.url();
   await page.goto(studentURL);
-  const email = await joinStudent(page, browser, baseURL, "Aluna do apagar", { photos: true });
+  const email = await joinStudent(page, browser, baseURL, "Aluna do apagar");
   await page.goto(draftURL);
   await page.locator("#foto-ANTERIOR").setInputFiles({ name: "foto.png", mimeType: "image/png", buffer: png() });
   await expect(page.getByText("Foto anterior enviada.")).toBeVisible();
@@ -148,7 +145,8 @@ test("on request, the professional erases the stored photos; the assessment keep
   await student.page.goto("./aluno/conta");
   const form = requestForm(student.page);
   await form.getByLabel("O que você quer pedir").selectOption({ label: "Apagar as minhas fotos" });
-  await expect(student.page.getByText("Isso não retira a sua autorização para fotos novas", { exact: false })).toBeVisible();
+  await expect(student.page.getByText("Fica o registro de que existiram e de que foram apagadas a seu pedido.", { exact: false })).toBeVisible();
+  await expect(student.page.getByText("Isso não retira a sua autorização para fotos novas", { exact: false })).toHaveCount(0);
   await form.getByRole("button", { name: "Registrar o pedido" }).click();
   await expect(student.page.getByText("Pedido registrado.", { exact: false })).toBeVisible();
 
@@ -169,12 +167,12 @@ test("on request, the professional erases the stored photos; the assessment keep
   // The bytes are gone; the recorded assessment keeps its content and says what happened to the photo.
   expect((await page.request.get(src)).status()).toBe(404);
   await page.goto(recordedURL);
-  await expect(page.getByRole("img", { name: "Foto anterior do aluno" })).toHaveAttribute("aria-label", /apagada a pedido do aluno/);
-  await expect(page.getByText(`Foto apagada a pedido do aluno em ${today()}.`)).toBeVisible();
+  await expect(page.getByRole("img", { name: "Foto anterior do aluno" })).toHaveAttribute("aria-label", /apagada/);
+  await expect(page.getByText(`Foto apagada em ${today()}.`)).toBeVisible();
   await expect(page.locator("img.posture-photo")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Fotos da postura" })).toBeVisible();
   await page.goto(`${studentURL}/evolucao`);
-  await expect(page.getByText(`Foto apagada a pedido do aluno em ${today()}.`)).toBeVisible();
+  await expect(page.getByText(`Foto apagada em ${today()}.`)).toBeVisible();
 
   // The student reads the answer.
   await student.page.reload();

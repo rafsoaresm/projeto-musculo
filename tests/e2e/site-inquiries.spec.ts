@@ -21,10 +21,11 @@ const fill = async (visitor: Page, who: { name: string; contact: string; message
   await visitor.getByLabel("Nome", { exact: true }).fill(who.name);
   await visitor.getByLabel("E-mail ou telefone com DDD").fill(who.contact);
   if (who.message) await visitor.getByLabel("Mensagem (opcional)").fill(who.message);
-  await visitor.getByRole("checkbox", { name: /Li o aviso de privacidade/ }).check();
+  // There is no box to tick (decision of 03/11/2026).
+  await expect(visitor.locator("form.site-form").first().getByRole("checkbox")).toHaveCount(0);
 };
 
-test("contact form: a block in the editor, a sample until the site receives messages, then a plain form on the public page whose messages wait in Leads until the professional turns them into a lead or deletes them", async ({
+test("contact form: a block in the editor, a sample there, a plain form on the public page as soon as it is published (sites are born receiving), whose messages wait in Leads until the professional turns them into a lead or deletes them", async ({
   page,
   browser,
   baseURL,
@@ -44,7 +45,7 @@ test("contact form: a block in the editor, a sample until the site receives mess
   await expect(sample.getByRole("heading", { name: "Escreva para mim" })).toBeVisible();
   await expect(sample.getByText("Amostra: o formulário só funciona na página publicada")).toBeVisible();
   await expect(sample.locator("fieldset[disabled]")).toHaveCount(1);
-  await expect(inspector(page).getByText("Os campos (nome, e-mail ou telefone, mensagem e a caixa do aviso de privacidade) são os da ferramenta")).toBeVisible();
+  await expect(inspector(page).getByText("Os campos (nome, e-mail ou telefone e mensagem) são os da ferramenta")).toBeVisible();
   // A second page with its own form, to send from a page that is not the home page.
   await panel(page, "Blocos");
   await library(page).getByRole("button", { name: "Páginas", exact: true }).click();
@@ -56,36 +57,27 @@ test("contact form: a block in the editor, a sample until the site receives mess
   await field(page, "Título do formulário").fill("Mande a sua dúvida");
   await save(page);
 
-  // ---- publishing says the form is not seen yet (the site is not receiving messages), and it is not on the public page ----
+  // ---- publishing: a new site already receives messages, so nothing warns about the form ----
   await editor(page).getByRole("button", { name: /^Publicar( nova versão)?$/ }).click();
-  await expect(editor(page).getByRole("list", { name: "Avisos antes de publicar" })).toContainText("o recebimento de mensagens do site está desligado");
-  await editor(page).getByRole("button", { name: "Publicar mesmo assim" }).click();
+  const anyway = editor(page).getByRole("button", { name: "Publicar mesmo assim" });
+  if (await anyway.isVisible({ timeout: 3000 }).catch(() => false)) {
+    await expect(editor(page).getByRole("list", { name: "Avisos antes de publicar" })).not.toContainText("recebimento de mensagens");
+    await anyway.click();
+  }
   await expect(editor(page).getByText("Publicado: o site está no ar na versão 1.")).toBeVisible();
   await closeEditor(page);
   const visit = await newActor(browser, baseURL);
   const visitor = visit.page;
-  await visitor.goto(`./s/${slug}`);
-  await expect(visitor.getByRole("heading", { name: "Treino sob medida" }).or(visitor.locator(".site-main")).first()).toBeVisible();
-  await expect(visitor.locator("form")).toHaveCount(0);
-  await expect(visitor.getByText("Escreva para mim")).toHaveCount(0);
-  // Nothing is received either, by a program that posts straight to the address.
-  const closedPost = await visitor.request.post(`./s/${slug}/m/contato`, { form: { nome: "Robô", contato: "robo@example.test", aceite: "on" }, maxRedirects: 0 });
-  expect(closedPost.status()).toBe(404);
 
-  // ---- the switch of the site: the environment of this run has the public forms open; the site turns on its own ----
+  // ---- the switch of the site: the forms are open by default (no variable in this run), and the site's own switch is born on ----
   await showTab(page, "Formulários e mensagens");
   await expect(messages(page)).toContainText("Formulários abertos pela plataforma");
   await showTab(page, "Formulários e mensagens");
-  await expect(messages(page)).toContainText("Recebimento desligado");
-  await showTab(page, "Formulários e mensagens");
-  await messages(page).getByRole("button", { name: "Ligar o recebimento de mensagens" }).click();
-  await showTab(page, "Formulários e mensagens");
-  await expect(messages(page).getByText("O site passou a receber as mensagens do formulário.")).toBeVisible();
-  await showTab(page, "Formulários e mensagens");
   await expect(messages(page)).toContainText("Recebimento ligado");
+  await expect(messages(page).getByText(/parecer jurídico|aviso de privacidade público/)).toHaveCount(0);
 
   // ---- the visitor: a plain form on the home page ----
-  await visitor.reload();
+  await visitor.goto(`./s/${slug}`);
   const form = visitor.locator("form.site-form");
   await expect(form).toHaveCount(1);
   await expect(visitor.getByRole("heading", { name: "Escreva para mim" })).toBeVisible();
@@ -95,9 +87,9 @@ test("contact form: a block in the editor, a sample until the site receives mess
   expect((await bait.boundingBox())!.x).toBeLessThan(-5000);
   await expect(form.locator(".site-form-bait")).toHaveAttribute("aria-hidden", "true");
   await expect(bait).toHaveAttribute("tabindex", "-1");
-  const notice = visitor.getByRole("link", { name: "aviso de privacidade" });
-  await expect(notice).toHaveAttribute("href", /\/aviso-de-privacidade-de-teste$/);
-  await expect(notice).toHaveAttribute("rel", "noopener noreferrer");
+  // No privacy notice is configured in this run: there is no link to one, and no box.
+  await expect(visitor.getByRole("link", { name: /aviso de privacidade/i })).toHaveCount(0);
+  await expect(form.getByRole("checkbox")).toHaveCount(0);
   await expect(visitor.locator("script[src*='forms'], form script")).toHaveCount(0);
   await fill(visitor, { name: "Ana Souza", contact: "ana@example.test", message: "Quero saber dos planos.\nPode ser online?" });
   await visitor.getByRole("button", { name: "Enviar mensagem" }).click();
@@ -117,10 +109,9 @@ test("contact form: a block in the editor, a sample until the site receives mess
 
   // ---- what the form refuses, said by the server whatever the browser did ----
   const raw = (fields: Record<string, string>) => visitor.request.post(`./s/${slug}/m/contato`, { form: fields, maxRedirects: 0 });
-  expect((await raw({ nome: "A", contato: "x@example.test", aceite: "on" })).status()).toBe(400);
-  expect((await raw({ nome: "Caio Reis", contato: "caio@example.test" })).status()).toBe(400);
-  expect((await raw({ nome: "Caio Reis", contato: "não é contato", aceite: "on" })).status()).toBe(400);
-  const program = await raw({ nome: "Robô", contato: "robo@example.test", aceite: "on", empresa_extra: "http://spam.example" });
+  expect((await raw({ nome: "A", contato: "x@example.test" })).status()).toBe(400);
+  expect((await raw({ nome: "Caio Reis", contato: "não é contato" })).status()).toBe(400);
+  const program = await raw({ nome: "Robô", contato: "robo@example.test", empresa_extra: "http://spam.example" });
   expect(program.status()).toBe(303);
 
   // ---- the professional: the messages wait in Leads, not as leads ----
@@ -138,7 +129,7 @@ test("contact form: a block in the editor, a sample until the site receives mess
   await expect(bia).toContainText("(11) 98888-7777");
   await expect(bia).toContainText("da página /fale-conosco");
   await expect(bia).toContainText("Sem mensagem: só o contato.");
-  await expect(page.getByText("Não registre aqui dados de saúde")).toBeVisible();
+  await expect(page.getByText("Não registre aqui dados de saúde")).toHaveCount(0);
 
   // ---- a message becomes a lead of origin Site, once; the other is deleted after a confirmation ----
   await ana.getByRole("button", { name: "Virar lead" }).click();
@@ -165,7 +156,9 @@ test("contact form: a block in the editor, a sample until the site receives mess
   await expect(messages(page).getByText("O site parou de receber as mensagens do formulário.")).toBeVisible();
   await visitor.goto(`./s/${slug}`);
   await expect(visitor.locator("form")).toHaveCount(0);
-  expect((await raw({ nome: "Depois", contato: "depois@example.test", aceite: "on" })).status()).toBe(404);
+  expect((await raw({ nome: "Depois", contato: "depois@example.test" })).status()).toBe(404);
+  await showTab(page, "Formulários e mensagens");
+  await expect(messages(page)).toContainText("Recebimento desligado");
   await visit.context.close();
 });
 
@@ -178,13 +171,13 @@ test("contact form on a phone: the inbox and the switch are read and used on the
   await save(page);
   await publishAnyway(page, 1);
   await closeEditor(page);
-  await showTab(page, "Formulários e mensagens");
-  await messages(page).getByRole("button", { name: "Ligar o recebimento de mensagens" }).click();
+  // A new site is born receiving messages.
   await showTab(page, "Formulários e mensagens");
   await expect(messages(page)).toContainText("Recebimento ligado");
+  await expect(messages(page).getByRole("button", { name: "Desligar o recebimento de mensagens" })).toBeVisible();
   // The page has no form block, so a message comes the way a program sends it: the address takes it all the same.
   const visit = await newActor(browser, baseURL);
-  expect((await visit.page.request.post(`./s/${slug}/m/contato`, { form: { nome: "Dani Alves", contato: "dani@example.test", mensagem: "Oi", aceite: "on" }, maxRedirects: 0 })).status()).toBe(303);
+  expect((await visit.page.request.post(`./s/${slug}/m/contato`, { form: { nome: "Dani Alves", contato: "dani@example.test", mensagem: "Oi" }, maxRedirects: 0 })).status()).toBe(303);
   await visit.context.close();
   await page.goto("./profissional/leads/mensagens");
   const inbox = page.getByRole("list", { name: "Mensagens do site" });

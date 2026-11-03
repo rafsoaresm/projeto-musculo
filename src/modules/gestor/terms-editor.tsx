@@ -28,8 +28,7 @@ const snapshotOf = (content: {
     ...content,
     sections: content.sections.map(({ heading, text }) => ({ heading, text })),
   });
-const snapshotOfTerms = (content: TermsContent, withPhotos: boolean) =>
-  snapshotOf({ ...content, photos: withPhotos ? (content.photos ?? EMPTY_PHOTOS) : null });
+const snapshotOfTerms = (content: TermsContent) => snapshotOf({ ...content, photos: content.photos ?? null });
 
 /** Who saved the draft that is open, and when; given by the page, not remembered by the editor. */
 export interface DraftInfo {
@@ -70,10 +69,12 @@ export function TermsEditor({
   );
   const [nextKey, setNextKey] = useState(initial.sections.length);
   const [confirmation, setConfirmation] = useState(initial.confirmation);
-  const [photos, setPhotos] = useState(initial.photos ?? { heading: "", text: "", label: "" });
-  const hasPhotos = audience === "STUDENT";
+  const [photos, setPhotos] = useState(initial.photos ?? EMPTY_PHOTOS);
+  // Only the student's text may have the photos block, and it is optional: it no longer holds any choice.
+  const allowsPhotos = audience === "STUDENT";
+  const [hasPhotos, setHasPhotos] = useState(allowsPhotos && initial.photos !== undefined);
   const [draftRevision, setDraftRevision] = useState(draft.revision);
-  const [savedSnapshot, setSavedSnapshot] = useState(() => snapshotOfTerms(initial, hasPhotos));
+  const [savedSnapshot, setSavedSnapshot] = useState(() => snapshotOfTerms(initial));
   const [confirmingDiscard, setConfirmingDiscard] = useState(false);
   const [note, setNote] = useState("");
   const [review, setReview] = useState<{ content: TermsContent; changes: string[] } | null>(null);
@@ -154,7 +155,8 @@ export function TermsEditor({
       setNextKey((key) => key + current.sections.length);
       setConfirmation(current.confirmation);
       setPhotos(current.photos ?? EMPTY_PHOTOS);
-      setSavedSnapshot(snapshotOfTerms(current, hasPhotos));
+      setHasPhotos(allowsPhotos && current.photos !== undefined);
+      setSavedSnapshot(snapshotOfTerms(current));
       setDraftRevision(null);
       setFailed(false);
       setMessage("Rascunho descartado. O editor voltou ao texto em vigor.");
@@ -303,12 +305,17 @@ export function TermsEditor({
         </button>
       </fieldset>
       <label>
-        Frase de confirmação (a caixa que a pessoa marca)
+        Frase de confirmação (fica guardada com a versão; ninguém precisa marcá-la para usar a ferramenta)
         <input value={confirmation} maxLength={300} onChange={(event) => (setConfirmation(event.target.value), touch())} />
       </label>
+      {allowsPhotos && !hasPhotos && (
+        <button type="button" className="button secondary" onClick={() => (setHasPhotos(true), touch())}>
+          <Plus size={16} /> Adicionar bloco das fotos
+        </button>
+      )}
       {hasPhotos && (
         <fieldset>
-          <legend>Bloco das fotos (a escolha opcional do aluno)</legend>
+          <legend>Bloco das fotos (opcional)</legend>
           <label>
             Título do bloco
             <input value={photos.heading} maxLength={120} onChange={(event) => (setPhotos({ ...photos, heading: event.target.value }), touch())} />
@@ -318,9 +325,12 @@ export function TermsEditor({
             <textarea rows={5} value={photos.text} maxLength={4000} onChange={(event) => (setPhotos({ ...photos, text: event.target.value }), touch())} />
           </label>
           <label>
-            Frase da caixa opcional
+            Frase final do bloco (fica guardada com a versão; não autoriza nem bloqueia nada)
             <input value={photos.label} maxLength={300} onChange={(event) => (setPhotos({ ...photos, label: event.target.value }), touch())} />
           </label>
+          <button type="button" className="button danger-outline" onClick={() => (setHasPhotos(false), touch())}>
+            <Trash2 size={16} /> Remover bloco das fotos
+          </button>
         </fieldset>
       )}
       {message && (

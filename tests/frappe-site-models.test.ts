@@ -103,7 +103,7 @@ describe.each(SITE_MODELS_V1.map((model) => [model.key, model] as const))("the s
     expect(texts.some((text) => text === "[Seu nome]" || text === "[Nome do profissional]")).toBe(true);
     expect(texts).toContain("[Preço do plano]");
     expect(texts).toContain("[Número]");
-    expect(texts).toContain("[Depoimento de um aluno, com autorização]");
+    expect(texts).toContain("[Depoimento de um aluno]");
   });
 
   it("sends the contact buttons to the organization's contacts, and without one says what is missing and goes nowhere (never a made-up number)", () => {

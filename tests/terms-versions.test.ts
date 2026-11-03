@@ -105,8 +105,9 @@ describe("publishing", () => {
     const before = await count("SELECT COUNT(*) AS n FROM terms_versions");
     const inForce = (await currentTerms(db, "STUDENT")).content;
     expect(await manager().publish("STUDENT", inForce, "igual", at(1))).toEqual({ status: "unchanged" });
-    const noPhotos = edited((c) => delete c.photos);
-    await expect(manager().publish("STUDENT", noPhotos, "", at(1))).rejects.toThrow(ZodError);
+    // The student's photos block is optional now (it holds no choice), but the professional's text still cannot have one.
+    const professionalWithPhotos = { ...(await currentTerms(db, "PROFESSIONAL")).content, photos: inForce.photos };
+    await expect(manager().publish("PROFESSIONAL", professionalWithPhotos, "", at(1))).rejects.toThrow(ZodError);
     await expect(manager().publish("STUDENT", { ...inForce, sections: [] }, "", at(1))).rejects.toThrow(ZodError);
     await expect(manager().publish("STUDENT", { ...inForce, extra: "x" }, "", at(1))).rejects.toThrow(ZodError);
     await expect(manager().publish("STUDENT", edited((c) => (c.title = "x")), "n".repeat(501), at(1))).rejects.toThrow("TERMS_NOTE_TOO_LONG");

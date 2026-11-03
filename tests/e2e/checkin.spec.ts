@@ -1,7 +1,6 @@
 import { test, expect } from "@playwright/test";
 import {
-  acceptStudentTerms,
-  addStudent,
+  expectNoTermsBox, addStudent,
   createProfessional,
   localIP,
   newActor,
@@ -21,7 +20,7 @@ test("a student checks in, can correct it the same day, a report of discomfort s
   const studentURL = await addStudent(page, "Aluna do check-in");
   const { client } = await openInvitation(page, browser, baseURL, "Aluna do check-in");
   const me = client.page;
-  await acceptStudentTerms(me);
+  await expectNoTermsBox(me);
   await me.getByRole("button", { name: "Aceitar convite" }).click();
   await expect(me).toHaveURL(/\/aluno\/?$/);
 

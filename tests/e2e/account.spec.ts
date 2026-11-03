@@ -9,7 +9,7 @@ import {
   signIn,
   signOut,
   uniqueEmail,
-  acceptStudentTerms, showStudentTab
+  expectNoTermsBox, showStudentTab
 } from "./helpers";
 
 const next = "another-long-browser-password";
@@ -117,7 +117,7 @@ test("a student changes the password and sees what can be asked about their data
   await client.page.getByLabel("E-mail", { exact: true }).fill(clientEmail);
   await client.page.getByLabel("Senha", { exact: true }).fill(password);
   await client.page.getByRole("button", { name: "Criar meu acesso" }).click();
-  await acceptStudentTerms(client.page);
+  await expectNoTermsBox(client.page);
   await client.page.getByRole("button", { name: "Aceitar convite" }).click();
   // The invitation is accepted when the student area opens: going elsewhere before would cancel it.
   await expect(client.page).toHaveURL(/\/aluno\/?$/);
@@ -132,13 +132,15 @@ test("a student changes the password and sees what can be asked about their data
     has: client.page.getByRole("heading", { name: "Aparelhos conectados", level: 2 }),
   });
   await expect(devicesPanel.getByRole("button", { name: /^Desconectar / })).toHaveCount(0);
-  await expect(client.page.getByRole("heading", { name: "Consentimentos e solicitações" })).toBeVisible();
+  await expect(client.page.getByRole("heading", { name: "Termos", exact: true })).toBeVisible();
+  await expect(client.page.getByRole("link", { name: "Ler os termos" })).toBeVisible();
   // What was a note saying that nothing could be asked is now the place to ask (0.25).
   await expect(client.page.getByRole("heading", { name: "Pedidos sobre os seus dados" })).toBeVisible();
   await expect(client.page.getByText("Quem responde é o seu profissional, em até 15 dias.", { exact: false })).toBeVisible();
   await expect(client.page.getByText(/Ainda não existe uma tela para pedir a exportação ou a exclusão/)).toHaveCount(0);
-  await expect(client.page.getByText(/Você aceitou os termos em \d{2}\/\d{2}\/\d{4}\./)).toBeVisible();
-  await expect(client.page.getByText("você não autorizou as fotos", { exact: true })).toBeVisible();
+  // Nothing was accepted on joining (no box to tick), and there is no photos choice to make.
+  await expect(client.page.getByText(/Você aceitou os termos em/)).toHaveCount(0);
+  await expect(client.page.getByText(/autorizou as fotos/)).toHaveCount(0);
   await noHorizontalOverflow(client.page);
   await changePassword(client.page, password, next);
   await expect(client.page.getByText("Senha alterada.")).toBeVisible();

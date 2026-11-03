@@ -1,8 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { test, expect } from "@playwright/test";
 import {
-  acceptStudentTerms,
-  addStudent,
+  expectNoTermsBox, addStudent,
   createProfessional,
   localIP,
   newActor,
@@ -16,7 +15,7 @@ test("a student downloads a copy of what the tool shows them, and nobody else ca
   await addStudent(page, "Aluna da cópia");
   const { client, email } = await openInvitation(page, browser, baseURL, "Aluna da cópia");
   const me = client.page;
-  await acceptStudentTerms(me);
+  await expectNoTermsBox(me);
   await me.getByRole("button", { name: "Aceitar convite" }).click();
   await expect(me).toHaveURL(/\/aluno\/?$/);
 
@@ -45,7 +44,8 @@ test("a student downloads a copy of what the tool shows them, and nobody else ca
   const copy = JSON.parse(await readFile((await download.path())!, "utf8"));
   expect(copy.formato).toBe("meus-dados/1");
   expect(copy.conta).toEqual({ nome: "Aluna da cópia", email });
-  expect(copy.aceites).toHaveLength(1);
+  // Joining no longer records an acceptance (nothing to tick), so the copy lists none.
+  expect(copy.aceites).toHaveLength(0);
   expect(copy.vinculos).toHaveLength(1);
   expect(copy.vinculos[0]).toMatchObject({ organizacao: "Estúdio da cópia", aluno: "Aluna da cópia" });
   expect(copy.vinculos[0].checkIns.registros).toEqual([
