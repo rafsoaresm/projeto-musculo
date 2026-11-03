@@ -503,7 +503,7 @@ function testesSummary(tests: TestsPayload | null): ModuleSummary {
   );
   const classified = [...REPETITION_TESTS.map((key) => tests[key].classificationManual), cooperTest.classificationManual].some((value) => value.trim() !== "");
   if (classified) lines.push("Classificação: escrita pelo profissional (nenhuma tabela homologada)");
-  return { key: "testes", title: "Testes físicos", state: "filled", lines };
+  return { key: "testes", title: "Testes físicos", state: "observed", lines };
 }
 
 /**

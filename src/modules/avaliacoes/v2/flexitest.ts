@@ -15,6 +15,8 @@ import { MAX_TEXT } from "./screening";
 export const MOVEMENT_MODULE = "movement" as const;
 /** The variant of the instrument (handoff 6): a test of another number of movements or another scale is never summed with this one. */
 export const FLEXITEST_VARIANT = "pdf_15_movements_1_to_4" as const;
+/** How each stored variant is named on screen. */
+export const FLEXITEST_VARIANT_LABEL: Record<typeof FLEXITEST_VARIANT, string> = { [FLEXITEST_VARIANT]: "versão do PDF, 15 movimentos de 1 a 4" };
 export const FLEXITEST_LEVELS = [1, 2, 3, 4] as const satisfies readonly FlexitestLevel[];
 export const FLEXITEST_CODES = FLEXITEST_MOVEMENTS.map((movement) => movement.code) as [FlexitestMovement, ...FlexitestMovement[]];
 export const FLEXITEST_LABEL = Object.fromEntries(FLEXITEST_MOVEMENTS.map((movement) => [movement.code, movement.label])) as Record<FlexitestMovement, string>;

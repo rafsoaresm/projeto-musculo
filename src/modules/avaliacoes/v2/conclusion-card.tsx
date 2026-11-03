@@ -3,10 +3,10 @@ import { TextAreaField } from "./fields";
 import { CONCLUSION_FIELDS, CONCLUSION_LABEL, type ConclusionForm } from "./conclusion";
 
 const NOTE: Record<(typeof CONCLUSION_FIELDS)[number], string | undefined> = {
-  considerations: "O que a avaliação mostrou, nas palavras do profissional. Sem caráter de diagnóstico médico.",
+  considerations: "O que a avaliação mostrou, nas palavras do profissional.",
   recommendations: undefined,
   limitations: "O que não pôde ser avaliado ou pode ter afetado as medidas.",
-  referrals: "Por exemplo, procurar um médico ou outro profissional.",
+  referrals: undefined,
 };
 
 /**

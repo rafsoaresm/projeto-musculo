@@ -669,7 +669,10 @@ test("the Flexiteste, the physical tests and the final considerations save thems
   await abdominal.getByLabel("Exercício ou protocolo").fill("Abdominal em 1 minuto");
   await abdominal.getByLabel("Repetições completas (rep)").fill("35");
   await abdominal.getByLabel("Duração (s)").fill("60");
+  // Handoff 3.5: conditions for the upper-limb test and Cooper, not for the abdominal one.
+  await expect(abdominal.getByLabel("Condições")).toHaveCount(0);
   const upper = page.getByRole("region", { name: "Resistência de membros superiores" });
+  await expect(upper.getByLabel("Condições")).toHaveCount(1);
   // A fraction of a repetition is named, never rounded; 0 is a result.
   await upper.getByLabel("Repetições completas (rep)").fill("22,5");
   const problem = page.getByRole("status").filter({ hasText: "Confira o campo Repetições completas (resistência de membros superiores)" });
@@ -697,13 +700,17 @@ test("the Flexiteste, the physical tests and the final considerations save thems
   // The final considerations, in Revisão.
   await steps.getByRole("button", { name: "5 Revisão" }).click();
   const considerations = page.getByRole("region", { name: "Considerações finais" });
-  await considerations.getByLabel("Considerações finais").fill("Boa mobilidade geral.\nQuadril esquerdo aduzido.");
+  await considerations.getByLabel("Considerações do profissional").fill("Boa mobilidade geral.\nQuadril esquerdo aduzido.");
   await considerations.getByLabel("Orientações e encaminhamentos").fill("Avaliação com fisioterapeuta.");
   await expect(savedLine(page)).toBeVisible({ timeout: BY_ITSELF });
 
   // A reload brings everything back.
   await page.reload();
-  await expect(considerations.getByLabel("Considerações finais")).toHaveValue("Boa mobilidade geral.\nQuadril esquerdo aduzido.");
+  await expect(considerations.getByLabel("Considerações do profissional")).toHaveValue("Boa mobilidade geral.\nQuadril esquerdo aduzido.");
+  // On any width the current step is in view inside its own row (the row scrolls, the page does not).
+  const currentBox = await steps.locator('[aria-current="step"]').boundingBox();
+  const rowBox = await steps.locator("ol").boundingBox();
+  expect(currentBox && rowBox && currentBox.x >= rowBox.x - 1 && currentBox.x + currentBox.width <= rowBox.x + rowBox.width + 1).toBe(true);
   const checklist = page.getByRole("region", { name: "Checklist por etapa" });
   await expect(checklist.getByText("Flexiteste: 15 de 15 preenchidos; total 32 pontos")).toBeVisible();
   await expect(checklist.getByText("Classificação do Flexiteste escrita pelo profissional: Médio (-)")).toBeVisible();
@@ -736,6 +743,6 @@ test("the Flexiteste, the physical tests and the final considerations save thems
   const recordedConclusion = page.getByRole("region", { name: "Considerações finais" });
   await expect(recordedConclusion).toContainText("Quadril esquerdo aduzido.");
   await expect(recordedConclusion).toContainText("Avaliação com fisioterapeuta.");
-  await expect(page.getByRole("textbox", { name: "Considerações finais" })).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: "Considerações do profissional" })).toHaveCount(0);
   await noHorizontalOverflow(page);
 });

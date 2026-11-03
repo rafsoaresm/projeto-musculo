@@ -179,7 +179,7 @@ describe("the physical tests (module “tests”)", () => {
     const review = reviewDraft({ ...base, tests });
     expect(review.results).toEqual([]);
     expect(review.modules.find((module) => module.key === "testes")).toMatchObject({
-      state: "filled",
+      state: "observed",
       lines: [
         "Resistência abdominal: 0 repetições completas",
         "Resistência de membros superiores: 22 repetições completas · Flexão de braço",

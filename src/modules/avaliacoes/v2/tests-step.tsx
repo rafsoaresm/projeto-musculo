@@ -35,7 +35,8 @@ function RepetitionCard({ test, form, onChange }: { test: RepetitionTestKey; for
           note="0 é um resultado; vazio é não realizado."
         />
         <UnitField label="Duração" unit="s" integer value={form.durationSeconds} placeholder="Se houver" onChange={(durationSeconds) => set({ durationSeconds })} />
-        <TextField label="Condições" value={form.conditions} onChange={(conditions) => set({ conditions })} />
+        {/* Handoff 3.5 lists conditions for the upper-limb test ("duração/condições"), not for the abdominal one. */}
+        {test === "upperLimb" && <TextField label="Condições" value={form.conditions} onChange={(conditions) => set({ conditions })} />}
         <TextField wide label="Classificação (manual)" value={form.classificationManual} onChange={(classificationManual) => set({ classificationManual })} note={TESTS_CLASSIFICATION_NOTE} />
         <TextAreaField label="Observações" context={`de ${TEST_TITLE[test].toLowerCase()}`} value={form.notes} onChange={(notes) => set({ notes })} />
       </div>
@@ -71,12 +72,12 @@ export function TestsStep({ form, onChange }: { form: TestsForm; onChange: (form
 
       <section className="panel av2-card" aria-labelledby="av2-teste-cooper">
         <h3 id="av2-teste-cooper">{TEST_TITLE.cooper}</h3>
-        <p className="muted small">Distância percorrida em {COOPER_MINUTES} minutos. Consumo máximo de oxigênio estimado, não exame clínico.</p>
+        <p className="muted small">Distância percorrida em {COOPER_MINUTES} minutos.</p>
         <div className="av2-grid">
           <UnitField label="Distância percorrida" unit="m" value={form.cooper.distanceM} placeholder="Sem registro" onChange={(distanceM) => setCooper({ distanceM })} />
           <ReadOnlyField label="Velocidade média" value={speed} note={methodLabel(EXACT_METHODS.cooperSpeed)} />
           <ReadOnlyField label="VO₂máx estimado" value={vo2} note="Prévia; registrada ao finalizar." />
-          <DateField label="Data do teste" value={form.cooper.testedOn} onChange={(testedOn) => setCooper({ testedOn })} note="Se for outro dia que o da avaliação." />
+          <DateField label="Data do teste" value={form.cooper.testedOn} onChange={(testedOn) => setCooper({ testedOn })} />
           <TextField label="Local" value={form.cooper.location} onChange={(location) => setCooper({ location })} />
           <TextField label="Condições" value={form.cooper.conditions} onChange={(conditions) => setCooper({ conditions })} />
           <TextField label="Contraindicações" value={form.cooper.contraindications} onChange={(contraindications) => setCooper({ contraindications })} />

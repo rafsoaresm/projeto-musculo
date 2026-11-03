@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Notice, formatDateTime } from "@/components/ui";
-import type { AssessmentDetail } from "@/db/assessments";
+import type { AssessmentDetail, ResultRow } from "@/db/assessments";
 import { formatCalendarDate } from "@/modules/training/format";
 import {
   ACTIVITY_CURRENT,
@@ -32,7 +32,7 @@ import { ANAMNESIS_CODES, PARQ_CODES, parqAnswer, type ProfilePayload, type Scre
 import { ResultsList } from "./results-list";
 import { HEATH_CARTER_NOTE, findingsText, postureEmpty, regionsOf, somatotypeText, type PosturePayload } from "./posture";
 import { AmendForm } from "./amend-form";
-import { FLEXITEST_CLASSIFICATION_NOTE, FLEXITEST_CODES, FLEXITEST_LABEL, filledText, flexitestTally, movementEmpty, totalText, type MovementPayload } from "./flexitest";
+import { FLEXITEST_CLASSIFICATION_NOTE, FLEXITEST_CODES, FLEXITEST_VARIANT_LABEL, FLEXITEST_LABEL, filledText, flexitestTally, movementEmpty, totalText, type MovementPayload } from "./flexitest";
 import {
   COOPER_MINUTES,
   EXERCISE_LABEL,
@@ -298,7 +298,7 @@ export function RecordedAssessmentView({
           <>
             {posture && !postureEmpty(posture) ? <RecordedPosture posture={posture} /> : <p className="muted">Postura e somatotipo: não realizados.</p>}
             <h4 className="av2-subtitle">Flexiteste</h4>
-            {movement && !movementEmpty(movement) ? <RecordedFlexitest movement={movement} /> : <p className="muted">Não realizado.</p>}
+            {movement && !movementEmpty(movement) ? <RecordedFlexitest movement={movement} results={detail.results} /> : <p className="muted">Não realizado.</p>}
           </>
         ) : (
           <p className="muted">Não realizado.</p>
@@ -456,15 +456,17 @@ function RecordedPosture({ posture }: { posture: PosturePayload }) {
 }
 
 /** The Flexiteste as recorded: the level of each movement assessed, how many, the total (only with all 15: in "Resultados" too), and the professional's text. */
-function RecordedFlexitest({ movement }: { movement: MovementPayload }) {
-  const tally = flexitestTally(movement);
+function RecordedFlexitest({ movement, results }: { movement: MovementPayload; results: readonly ResultRow[] }) {
+  const filled = flexitestTally(movement).filled;
+  // The total is the one recorded at finalize (with its formula version), never recomputed with today's formula.
+  const total = results.find((result) => result.code === "flexitest_total")?.value ?? null;
   const assessed = FLEXITEST_CODES.filter((code) => movement.flexitest.levels[code] !== undefined);
   const missing = FLEXITEST_CODES.filter((code) => movement.flexitest.levels[code] === undefined);
   const { classificationManual, notes } = movement.flexitest;
   return (
     <>
       <p className="small muted">
-        {filledText(tally.filled)} · total: {totalText(tally.total).toLowerCase()} · versão do PDF, 15 movimentos de 1 a 4.
+        {filledText(filled)} · total: {totalText(total).toLowerCase()} · {FLEXITEST_VARIANT_LABEL[movement.flexitest.variant]}.
       </p>
       {assessed.length > 0 && (
         <dl className="av2-facts" aria-label="Níveis do Flexiteste">
@@ -518,10 +520,12 @@ function RecordedTests({ tests }: { tests: TestsPayload }) {
                   <dt>Duração</dt>
                   <dd>{test.durationSeconds === null ? "—" : `${test.durationSeconds} s`}</dd>
                 </div>
-                <div>
-                  <dt>Condições</dt>
-                  <dd>{orDash(test.conditions)}</dd>
-                </div>
+                {(key === "upperLimb" || test.conditions.trim() !== "") && (
+                  <div>
+                    <dt>Condições</dt>
+                    <dd>{orDash(test.conditions)}</dd>
+                  </div>
+                )}
                 {test.classificationManual.trim() !== "" && (
                   <div>
                     <dt>Classificação (manual)</dt>
@@ -550,7 +554,7 @@ function RecordedTests({ tests }: { tests: TestsPayload }) {
           </div>
           <div>
             <dt>Data do teste</dt>
-            <dd>{cooper.testedOn ? formatCalendarDate(cooper.testedOn) : "A da avaliação (não informada à parte)"}</dd>
+            <dd>{cooper.testedOn ? formatCalendarDate(cooper.testedOn) : "Sem registro"}</dd>
           </div>
           <div>
             <dt>Local</dt>

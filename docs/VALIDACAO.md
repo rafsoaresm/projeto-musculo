@@ -2,6 +2,18 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.80: Flexiteste, testes físicos e conclusão da Avaliação Física (handoff 3.4, 3.5, 5 e 8; Figma AV-05 e AV-06)
+
+**Sem migration** (módulos `movement`, `tests` e `conclusion`, já previstos na 0033). As etapas passam a ser cinco: Triagem, Medidas, Movimento, **Testes** e Revisão (fluxo do handoff 2).
+
+- **Flexiteste (etapa Movimento):** os 15 movimentos do handoff 3.4, cada um com nível inteiro de **1 a 4** (como o handoff diz para esta versão; não 0 a 4) ou "Não avaliado", nunca 0. Variante guardada (`pdf_15_movements_1_to_4`) para não somar com outra escala. O total (`flexitest_total`, pontos) só é gravado com os 15 preenchidos (handoff 5); o exemplo do handoff 8 (32) está testado.
+- **Testes físicos (etapa 4):** resistência abdominal e de membros superiores (exercício, repetições completas, duração, condições, observações; 0 repetições é resultado, vazio é não realizado; a tela diz que o documento de origem chama de "potência" e que o teste não mede potência, handoff 11); Cooper 12 min (distância, data, local, condições, contraindicações). Ao finalizar: velocidade média (distância ÷ 200, conta direta) e VO₂máx estimado ((distância − 504,9) ÷ 44,73, estimativa), com a versão da fórmula; o exemplo do handoff dá 11,0 km/h e 37,90 (o PDF diz 37,69; o cálculo não é forçado a reproduzi-lo). Abaixo de 504,9 m o VO₂ não é gravado e a Revisão diz por quê.
+- **Considerações finais (Revisão):** considerações do profissional, recomendações, limitações e orientações/encaminhamentos, todos escritos pelo profissional.
+- **"Classificação (manual)":** cada teste e o Flexiteste têm um campo de texto livre que o profissional escreve (handoff 3.4, 3.5 e Figma AV-05); a ferramenta não calcula nenhuma classificação.
+- **Também:** a etapa atual fica visível na barra de etapas no celular; data vazia do Cooper aparece como "Sem registro".
+- **Verificado localmente:** tipos, lint e `npm run check` (116 arquivos, 1846 testes); e2e nos dois mounts (raiz e `/treinador`): 24 passaram em cada; capturas a 1440, 1280, 1024, 768 e 390.
+- **Não feito:** imagens dos movimentos do Flexiteste, nota por movimento, testes no histórico (a evolução é a 0.82); o texto de ressalva do relatório ("não equivale a exame médico") — o handoff 3.5 pede texto revisado que não fornece. **Não confirmado:** se o PDF usa "potência" também para o teste de membros superiores (a tela não afirma isso).
+
 ## Fatia 0.79: Postura e somatotipo da Avaliação Física (handoff 3.3 e 6; Figma AV-05)
 
 **Sem migration** (módulo `posture`, já previsto na 0033). A etapa 3 "Movimento" deixa de ser marcador; nada nela é calculado.

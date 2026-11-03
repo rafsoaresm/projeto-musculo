@@ -15,7 +15,7 @@ export const MAX_CONCLUSION_TEXT = 4000;
 export const CONCLUSION_FIELDS = ["considerations", "recommendations", "limitations", "referrals"] as const;
 export type ConclusionField = (typeof CONCLUSION_FIELDS)[number];
 export const CONCLUSION_LABEL: Record<ConclusionField, string> = {
-  considerations: "Considerações finais",
+  considerations: "Considerações do profissional",
   recommendations: "Recomendações",
   limitations: "Limitações observadas",
   referrals: "Orientações e encaminhamentos",

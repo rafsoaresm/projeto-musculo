@@ -85,7 +85,7 @@ export const TEST_TITLE: Record<RepetitionTestKey | "cooper", string> = {
 };
 export const TEST_SOURCE: Record<RepetitionTestKey, string> = {
   abdominal: "No documento de origem: “potência abdominal” (Pollock e Wilmore, 1993). Repetições completas; não mede potência.",
-  upperLimb: "No documento de origem: “potência de membros superiores” (Pollock e Wilmore, 1993). Repetições completas; não mede potência.",
+  upperLimb: "No documento de origem, com a mesma atribuição do teste abdominal (Pollock e Wilmore, 1993). Repetições completas; não mede potência.",
 };
 export const EXERCISE_LABEL: Record<RepetitionTestKey, string> = { abdominal: "Exercício ou protocolo", upperLimb: "Exercício ou variante" };
 

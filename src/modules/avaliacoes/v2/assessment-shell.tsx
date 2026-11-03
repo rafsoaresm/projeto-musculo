@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useUnsavedGuard } from "@/components/use-unsaved-guard";
 import {
@@ -260,6 +260,18 @@ export function AssessmentShell({
     setConclusionForm(next);
   };
 
+  /** On a narrow screen the steps scroll sideways: keep the current one in view (on load and on every change), moving only that row, never the page. */
+  const stepsRef = useRef<HTMLOListElement>(null);
+  useEffect(() => {
+    const row = stepsRef.current;
+    const current = row?.querySelector<HTMLElement>('[aria-current="step"]');
+    if (!row || !current) return;
+    const left = current.offsetLeft - row.offsetLeft;
+    const right = left + current.offsetWidth;
+    if (left < row.scrollLeft) row.scrollLeft = left;
+    else if (right > row.scrollLeft + row.clientWidth) row.scrollLeft = right - row.clientWidth;
+  }, [step]);
+
   /** Leaving a step saves what changed in it (never an invalid value: the problem is shown and the step still changes). */
   const goTo = (next: StepKey) => {
     if (next === step) return;
@@ -272,7 +284,7 @@ export function AssessmentShell({
   return (
     <div className="av2">
       <nav className="av2-steps" aria-label="Etapas da avaliação física">
-        <ol>
+        <ol ref={stepsRef}>
           {STEPS.map((item, position) => (
             <li key={item.key}>
               <button
