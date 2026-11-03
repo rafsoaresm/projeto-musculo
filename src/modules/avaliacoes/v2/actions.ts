@@ -12,6 +12,7 @@ import { POSTURE_MODULE, issueNames as postureIssueNames, postureProblemsMessage
 import { MOVEMENT_MODULE, movementIssueNames, movementProblemsMessage, movementSchema } from "./flexitest";
 import { TESTS_MODULE, testsIssueNames, testsProblemsMessage, testsSchema } from "./physical-tests";
 import { CONCLUSION_MODULE, conclusionIssueNames, conclusionProblemsMessage, conclusionSchema } from "./conclusion";
+import { PART_LABEL } from "./template";
 
 export type SaveSectionResult = { saved: true; revision: number } | { conflict: string } | { error: string };
 
@@ -21,10 +22,12 @@ const CONFLICT_MESSAGE = "Esta avaliação foi alterada em outra aba ou por outr
  * Opens a draft of the Avaliação Física (the only assessment that can be started: user's decision of 03/11/2026) and goes to it. When the
  * student already has an open draft, goes to that one (one draft per student); an open draft of the earlier format shows how to discard it.
  */
-export async function startAssessment(studentId: string): Promise<{ error?: string }> {
+export async function startAssessment(studentId: string, templateId: string | null = null): Promise<{ error?: string }> {
   const { db, context } = await requireWorkspace();
-  const started = await assessmentsFor(db, context).startDraft(studentId);
+  // The model is one of the organization of the session (the repository checks it); "" or null is "Todos os módulos".
+  const started = await assessmentsFor(db, context).startDraft(studentId, new Date(), { templateId: typeof templateId === "string" && templateId !== "" ? templateId : null });
   if (started.status === "not_found") return { error: "Aluno não encontrado no seu atendimento." };
+  if (started.status === "template_not_found") return { error: "Este modelo não está mais disponível. Escolha outro modelo." };
   revalidatePath("/profissional", "layout");
   redirect(`/profissional/alunos/${studentId}/avaliacoes/${started.id}`);
 }
@@ -61,6 +64,8 @@ async function storeSection(assessmentId: string, module: AssessmentModule, payl
   if (outcome.status === "saved") return { saved: true, revision: outcome.revision };
   if (outcome.status === "conflict") return { conflict: CONFLICT_MESSAGE };
   if (outcome.status === "invalid") return { error: invalid };
+  if (outcome.status === "excluded")
+    return { error: `O modelo desta avaliação não inclui ${outcome.parts.map((part) => PART_LABEL[part]).join(", ")}: esses dados não são salvos.` };
   return { error: "Este rascunho não está mais aberto para edição." };
 }
 

@@ -43,6 +43,7 @@ import { ConclusionCard } from "./conclusion-card";
 import { ReviewStep } from "./review-step";
 import { reviewDraft } from "./review";
 import type { StepKey } from "./steps";
+import { NOT_INCLUDED, PART_LABEL, isPartEnabled, partsOfStep, visibleSteps, type EnabledParts, type TemplatePart } from "./template";
 
 /**
  * The steps of the guided assessment, as in the Figma frames (AV-02 to AV-06) and the flow of the handoff (section 2: "Testes físicos" is a step of
@@ -86,6 +87,7 @@ export function AssessmentShell({
   amendment = null,
   photos: initialPhotos = [],
   photoStorage = false,
+  enabled = null,
 }: {
   studentId: string;
   assessmentId: string;
@@ -110,8 +112,13 @@ export function AssessmentShell({
   photos?: PhotoStamp[];
   /** Whether the private photo storage is on here; when it is off, the rest of the assessment works and no photo is sent. */
   photoStorage?: boolean;
+  /** The optional parts the draft's model has on, in the order of its steps (slice 0.85); null: every part, in the handoff's order. */
+  enabled?: EnabledParts;
 }) {
-  const [step, setStep] = useState<StepKey>(initialStep);
+  // The steps of this draft: those the model shows, in its order (Triagem first and Revisão last, always).
+  const steps = visibleSteps(enabled).map((key) => STEPS.find((item) => item.key === key)!);
+  const on = (part: TemplatePart) => isPartEnabled(enabled, part);
+  const [step, setStep] = useState<StepKey>(steps.some((item) => item.key === initialStep) ? initialStep : "triagem");
   const [form, setForm] = useState<CompositionForm>(() => formFromPayload(composition));
   const [triagem, setTriagem] = useState<TriagemForm>(() => triagemFormFrom(profile, screening));
   const [postureForm, setPostureForm] = useState<PostureForm>(() => postureFormFrom(posture));
@@ -121,8 +128,10 @@ export function AssessmentShell({
   const [discardError, setDiscardError] = useState<string | null>(null);
   const [finalizeError, setFinalizeError] = useState<{ text: string; pending?: string[] } | null>(null);
   const [finalizing, startFinalize] = useTransition();
-  const index = STEPS.findIndex((item) => item.key === step);
-  const current = STEPS[index];
+  const index = steps.findIndex((item) => item.key === step);
+  const current = steps[index];
+  // What the model leaves out of the step on screen, said once under its title (never a card that looks empty).
+  const excluded = partsOfStep(step).filter((part) => !on(part));
 
   // The modules of the draft the screen edits; each step that has fields adds its own here.
   const compositionModule = useMemo<DraftModule>(
@@ -227,6 +236,7 @@ export function AssessmentShell({
     assessedOn,
     birthDate,
     original: amendment ? { screening: amendment.originalScreening } : null,
+    enabled,
   });
 
   /** Saves what is still unsaved, then finalizes the draft at the revision the screen holds; on success the page goes to the record. */
@@ -301,7 +311,7 @@ export function AssessmentShell({
     <div className="av2">
       <nav className="av2-steps" aria-label="Etapas da avaliação física">
         <ol ref={stepsRef}>
-          {STEPS.map((item, position) => (
+          {steps.map((item, position) => (
             <li key={item.key}>
               <button
                 type="button"
@@ -319,17 +329,23 @@ export function AssessmentShell({
       <div className="av2-heading">
         <h2>{current.title}</h2>
         {current.description && <p className="muted small">{current.description}</p>}
+        {excluded.length > 0 && (
+          <p className="small av2-excluded">
+            {NOT_INCLUDED}: {excluded.map((part) => PART_LABEL[part]).join(", ")}.
+          </p>
+        )}
       </div>
 
       {step === "triagem" ? (
         <TriagemStep form={triagem} onChange={editTriagem} />
       ) : step === "medidas" ? (
-        <CompositionStep form={form} onChange={edit} assessedOn={assessedOn} birthDate={birthDate} suggestedEquation={suggestedEquation} />
+        <CompositionStep form={form} onChange={edit} assessedOn={assessedOn} birthDate={birthDate} suggestedEquation={suggestedEquation} on={on} />
       ) : step === "movimento" ? (
         <PostureStep
           form={postureForm}
           onChange={editPosture}
-          after={<FlexitestCard form={movementForm} onChange={editMovement} />}
+          on={on}
+          after={on("flexitest") ? <FlexitestCard form={movementForm} onChange={editMovement} /> : null}
           photos={{
             field: (view) => (
               <PosturePhotosField
@@ -346,7 +362,7 @@ export function AssessmentShell({
           }}
         />
       ) : step === "testes" ? (
-        <TestsStep form={testsForm} onChange={editTests} />
+        <TestsStep form={testsForm} onChange={editTests} on={on} />
       ) : (
         <ReviewStep
           review={review}
@@ -356,7 +372,7 @@ export function AssessmentShell({
           error={finalizeError}
           onFinalize={finalize}
           onOpenTriagem={() => goTo("triagem")}
-          conclusion={<ConclusionCard form={conclusionForm} onChange={editConclusion} />}
+          conclusion={on("conclusion") ? <ConclusionCard form={conclusionForm} onChange={editConclusion} /> : null}
         />
       )}
 
@@ -388,7 +404,7 @@ export function AssessmentShell({
               setDiscardError(text);
             }}
           />
-          <button type="button" className="button secondary" disabled={index === 0} onClick={() => goTo(STEPS[index - 1].key)}>
+          <button type="button" className="button secondary" disabled={index === 0} onClick={() => goTo(steps[index - 1].key)}>
             <ArrowLeft size={17} /> Voltar
           </button>
           {/* aria-disabled, not disabled: a save that starts by itself never takes the focus away from the button. A click during a save waits
@@ -406,8 +422,8 @@ export function AssessmentShell({
             Salvar rascunho
           </button>
           {/* On the last step (Revisão) the next action is the finalize card, not a "Próximo" that leads nowhere. */}
-          {index < STEPS.length - 1 && (
-            <button type="button" className="button primary" onClick={() => goTo(STEPS[index + 1].key)}>
+          {index < steps.length - 1 && (
+            <button type="button" className="button primary" onClick={() => goTo(steps[index + 1].key)}>
               Próximo <ArrowRight size={17} />
             </button>
           )}

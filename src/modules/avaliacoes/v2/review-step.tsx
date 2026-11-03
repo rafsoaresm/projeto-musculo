@@ -11,6 +11,7 @@ const STATE_LABEL: Record<ModuleSummary["state"], string> = {
   filled: "Com medidas",
   observed: "Com registro",
   not_done: "Não realizado",
+  not_included: "Não incluído neste modelo",
 };
 
 /**
@@ -47,7 +48,10 @@ export function ReviewStep({
     <div className="av2-cards">
       <section className="panel av2-card" aria-labelledby="av2-pendencias">
         <h3 id="av2-pendencias">Pendências para finalizar</h3>
-        <p className="muted small">A triagem precisa estar completa. Medidas, movimento e testes físicos podem ficar parciais: o que não foi feito fica como “Não realizado”.</p>
+        <p className="muted small">
+          A triagem precisa estar completa. Medidas, movimento e testes físicos podem ficar parciais: o que não foi feito fica como “Não realizado”; o
+          que o modelo deixa de fora, como “Não incluído neste modelo”.
+        </p>
         {blocked ? (
           <>
             <ul className="av2-pending">
@@ -87,7 +91,7 @@ export function ReviewStep({
             <li key={module.key} className="av2-module">
               <span className="av2-module-head">
                 <strong>{module.title}</strong>
-                <span className={`pill ${module.state === "pending" ? "warning" : module.state === "ready" ? "success" : module.state === "not_done" ? "" : "brand"}`}>
+                <span className={`pill ${module.state === "pending" ? "warning" : module.state === "ready" ? "success" : module.state === "not_done" || module.state === "not_included" ? "" : "brand"}`}>
                   {STATE_LABEL[module.state]}
                 </span>
               </span>

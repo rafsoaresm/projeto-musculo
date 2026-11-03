@@ -59,6 +59,8 @@ beforeAll(async () => {
     db.prepare("UPDATE assessments SET state = 'RECORDED', recorded_at = ?1, recorded_by_user_id = 'tech-a' WHERE id = 'old-1'").bind(day(1).toISOString()),
   ]);
   await migrate(db, ["0033_assessment_v2.sql"]);
+  // And the ones after it (the repository of now also knows the columns of 0036).
+  await migrate(db, ALL_MIGRATIONS.slice(ALL_MIGRATIONS.indexOf("0033_assessment_v2.sql") + 1));
 });
 afterAll(async () => {
   await mf?.dispose();
@@ -93,7 +95,7 @@ describe("a draft of the Avaliação Física (the only one that can be started)"
     expect(row).toMatchObject({ f: 2, r: 1 });
     expect(JSON.parse(row!.s)).toEqual({ birthDate: "1999-03-04", heightCm: 171, weightKg: 69.1, goal: "Hipertrofia" });
     expect(row!.s).not.toContain("Masculino");
-    expect(await a().sections(id)).toEqual({ revision: 1, formatVersion: 2, sections: [] });
+    expect(await a().sections(id)).toEqual({ revision: 1, formatVersion: 2, sections: [], template: null, enabled: null });
   });
   it("reads the snapshot back for the screen (never the gender), only inside the organization, and none for the earlier format", async () => {
     expect(await a().studentSnapshot(id)).toEqual({ birthDate: "1999-03-04", heightCm: 171, weightKg: 69.1, goal: "Hipertrofia" });

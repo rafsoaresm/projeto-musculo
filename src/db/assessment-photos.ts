@@ -76,11 +76,17 @@ export function assessmentPhotosFor(
       return result.results;
     },
 
-    /** Stores or replaces the photo of one view of an open draft. */
+    /**
+     * Stores or replaces the photo of one view of an open draft. A draft whose model leaves the postural assessment out (slice 0.85) takes no
+     * photo: the photos belong to that part.
+     */
     async put(assessmentId: string, view: string, body: Uint8Array, now = new Date()): Promise<PutOutcome> {
       if (!isPhotoView(view)) return { status: "invalid", reason: "VIEW" };
       const target = await db
-        .prepare(`SELECT 1 AS ok FROM assessments a WHERE a.organization_id = ?1 AND a.id = ?3 AND a.state = 'DRAFT' AND ${reach("a")}`)
+        .prepare(
+          `SELECT 1 AS ok FROM assessments a WHERE a.organization_id = ?1 AND a.id = ?3 AND a.state = 'DRAFT' AND ${reach("a")}
+             AND (a.enabled_modules IS NULL OR EXISTS (SELECT 1 FROM json_each(a.enabled_modules) WHERE value = 'posture'))`,
+        )
         .bind(organizationId, userId, assessmentId)
         .first();
       if (!target) return { status: "not_found" };

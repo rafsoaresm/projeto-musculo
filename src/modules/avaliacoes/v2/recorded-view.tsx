@@ -50,6 +50,7 @@ import {
   type TestsPayload,
 } from "./physical-tests";
 import { CONCLUSION_FIELDS, CONCLUSION_LABEL, conclusionEmpty, type ConclusionPayload } from "./conclusion";
+import { NOT_INCLUDED, isPartEnabled, isStepEnabled, templateLine, type EnabledParts, type TemplatePart } from "./template";
 
 const decimal = (value: number, digits = 2) => new Intl.NumberFormat("pt-BR", { maximumFractionDigits: digits }).format(value);
 const measured = (value: number | null, unit: string, digits = 2) => (value === null ? "Sem aferição" : `${decimal(value, digits)} ${unit}`);
@@ -75,6 +76,8 @@ export function RecordedAssessmentView({
   decidedBy,
   amendedAt = null,
   canAmend,
+  template = null,
+  enabled = null,
 }: {
   detail: AssessmentDetail;
   profile: ProfilePayload | null;
@@ -94,7 +97,12 @@ export function RecordedAssessmentView({
   amendedAt?: string | null;
   /** No open draft for the student and no recorded amendment of this one. */
   canAmend: boolean;
+  /** The model it was made with (slice 0.85), or null: every part on. */
+  template?: { name: string; version: number } | null;
+  /** The optional parts that model had on; a part that is off reads "Não incluído neste modelo", never "Não realizado". */
+  enabled?: EnabledParts;
 }) {
+  const on = (part: TemplatePart) => isPartEnabled(enabled, part);
   const base = `/profissional/alunos/${detail.studentId}/avaliacoes`;
   const review = screening?.parq.professionalReview;
   const anamnesis = screening ? ANAMNESIS_CODES.filter((code) => screening.anamnesis[code]) : [];
@@ -109,6 +117,7 @@ export function RecordedAssessmentView({
             {detail.recordedByName ? ` por ${detail.recordedByName}` : ""}. Não muda mais.
           </span>
         </p>
+        <p className="small muted">{templateLine(template)}</p>
         <div className="av2-report-action">
           <Link className="button secondary small" href={`${base}/${detail.id}/pdf`} download prefetch={false}>
             <Download size={16} /> Baixar relatório em PDF
@@ -221,45 +230,57 @@ export function RecordedAssessmentView({
 
       <section className="panel av2-card" aria-labelledby="av2-r-medidas">
         <h3 id="av2-r-medidas">Medidas</h3>
-        {composition ? (
+        {!isStepEnabled(enabled, "medidas") ? (
+          <p className="muted">{NOT_INCLUDED}.</p>
+        ) : composition ? (
           <>
+            {!on("basics") && <p className="muted av2-recorded-line">Medidas básicas e sinais vitais: não incluídas neste modelo.</p>}
+            {!on("skinfolds") && <p className="muted av2-recorded-line">Dobras cutâneas: não incluídas neste modelo.</p>}
             <dl className="av2-facts">
-              <div>
-                <dt>Peso</dt>
-                <dd>{measured(composition.weightKg, "kg")}</dd>
-              </div>
-              <div>
-                <dt>Altura</dt>
-                <dd>{composition.heightCm === null ? "Sem aferição" : `${decimal(composition.heightCm / 100, 3)} m`}</dd>
-              </div>
-              <div>
-                <dt>PAS / PAD</dt>
-                <dd>
-                  {measured(composition.systolicMmHg, "mmHg", 0)} / {measured(composition.diastolicMmHg, "mmHg", 0)}
-                </dd>
-              </div>
-              <div>
-                <dt>FC repouso</dt>
-                <dd>{measured(composition.restingHeartRateBpm, "bpm", 0)}</dd>
-              </div>
-              <div>
-                <dt>Protocolo de dobras</dt>
-                <dd>{composition.protocol ? PROTOCOL_CHIP[composition.protocol] : "Não escolhido"}</dd>
-              </div>
-              <div>
-                <dt>Referência da equação</dt>
-                <dd>{EQUATION_LABEL[composition.equation]}</dd>
-              </div>
-              <div>
-                <dt>Leituras por dobra</dt>
-                <dd>{AGGREGATION_LABEL[composition.aggregation]}</dd>
-              </div>
-              <div>
-                <dt>Conversão</dt>
-                <dd>{CONVERSION_LABEL[composition.conversion]}</dd>
-              </div>
+              {on("basics") && (
+                <>
+                  <div>
+                    <dt>Peso</dt>
+                    <dd>{measured(composition.weightKg, "kg")}</dd>
+                  </div>
+                  <div>
+                    <dt>Altura</dt>
+                    <dd>{composition.heightCm === null ? "Sem aferição" : `${decimal(composition.heightCm / 100, 3)} m`}</dd>
+                  </div>
+                  <div>
+                    <dt>PAS / PAD</dt>
+                    <dd>
+                      {measured(composition.systolicMmHg, "mmHg", 0)} / {measured(composition.diastolicMmHg, "mmHg", 0)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>FC repouso</dt>
+                    <dd>{measured(composition.restingHeartRateBpm, "bpm", 0)}</dd>
+                  </div>
+                </>
+              )}
+              {on("skinfolds") && (
+                <>
+                  <div>
+                    <dt>Protocolo de dobras</dt>
+                    <dd>{composition.protocol ? PROTOCOL_CHIP[composition.protocol] : "Não escolhido"}</dd>
+                  </div>
+                  <div>
+                    <dt>Referência da equação</dt>
+                    <dd>{EQUATION_LABEL[composition.equation]}</dd>
+                  </div>
+                  <div>
+                    <dt>Leituras por dobra</dt>
+                    <dd>{AGGREGATION_LABEL[composition.aggregation]}</dd>
+                  </div>
+                  <div>
+                    <dt>Conversão</dt>
+                    <dd>{CONVERSION_LABEL[composition.conversion]}</dd>
+                  </div>
+                </>
+              )}
             </dl>
-            {SKINFOLD_SITE_CODES.some((site) => (composition.skinfolds[site] ?? []).length > 0) ? (
+            {!on("skinfolds") ? null : SKINFOLD_SITE_CODES.some((site) => (composition.skinfolds[site] ?? []).length > 0) ? (
               <div className="table-wrap">
                 <table className="data-table stack">
                   <caption className="sr-only">Dobras cutâneas registradas</caption>
@@ -292,7 +313,7 @@ export function RecordedAssessmentView({
             ) : (
               <p className="muted">Nenhuma dobra medida.</p>
             )}
-            <RecordedPerimeters composition={composition} />
+            <RecordedPerimeters composition={composition} perimeters={on("perimeters")} breadths={on("breadths")} />
           </>
         ) : (
           <p className="muted">Não realizado.</p>
@@ -307,12 +328,27 @@ export function RecordedAssessmentView({
 
       <section className="panel av2-card" aria-labelledby="av2-r-movimento">
         <h3 id="av2-r-movimento">Postura e movimento</h3>
-        {(posture && !postureEmpty(posture)) || (movement && !movementEmpty(movement)) || detail.photos.length > 0 ? (
+        {!isStepEnabled(enabled, "movimento") ? (
+          <p className="muted">{NOT_INCLUDED}.</p>
+        ) : (posture && !postureEmpty(posture)) || (movement && !movementEmpty(movement)) || detail.photos.length > 0 ? (
           <>
-            {posture && !postureEmpty(posture) ? <RecordedPosture posture={posture} /> : <p className="muted">Postura e somatotipo: não realizados.</p>}
+            {posture && !postureEmpty(posture) ? (
+              <RecordedPosture posture={posture} views={on("posture")} somatotype={on("somatotype")} />
+            ) : (
+              <p className="muted">{postureNotDone(on("posture"), on("somatotype"))}</p>
+            )}
+            {posture && !postureEmpty(posture) && (!on("posture") || !on("somatotype")) && (
+              <p className="muted av2-recorded-line">{postureNotDone(on("posture"), on("somatotype"), true)}</p>
+            )}
             {detail.photos.length > 0 && <RecordedPhotos detail={detail} />}
             <h4 className="av2-subtitle">Flexiteste</h4>
-            {movement && !movementEmpty(movement) ? <RecordedFlexitest movement={movement} results={detail.results} /> : <p className="muted">Não realizado.</p>}
+            {!on("flexitest") ? (
+              <p className="muted">{NOT_INCLUDED}.</p>
+            ) : movement && !movementEmpty(movement) ? (
+              <RecordedFlexitest movement={movement} results={detail.results} />
+            ) : (
+              <p className="muted">Não realizado.</p>
+            )}
           </>
         ) : (
           <p className="muted">Não realizado.</p>
@@ -321,12 +357,20 @@ export function RecordedAssessmentView({
 
       <section className="panel av2-card" aria-labelledby="av2-r-testes">
         <h3 id="av2-r-testes">Testes físicos</h3>
-        {tests && !testsEmpty(tests) ? <RecordedTests tests={tests} /> : <p className="muted">Não realizado.</p>}
+        {!isStepEnabled(enabled, "testes") ? (
+          <p className="muted">{NOT_INCLUDED}.</p>
+        ) : tests && !testsEmpty(tests) ? (
+          <RecordedTests tests={tests} on={on} />
+        ) : (
+          <p className="muted">Não realizado.</p>
+        )}
       </section>
 
       <section className="panel av2-card" aria-labelledby="av2-r-consideracoes">
         <h3 id="av2-r-consideracoes">Considerações finais</h3>
-        {conclusion && !conclusionEmpty(conclusion) ? (
+        {!on("conclusion") ? (
+          <p className="muted">{NOT_INCLUDED}.</p>
+        ) : conclusion && !conclusionEmpty(conclusion) ? (
           <dl className="av2-facts av2-facts-wide" aria-label="Considerações finais registradas">
             {CONCLUSION_FIELDS.filter((field) => conclusion[field].trim() !== "").map((field) => (
               <div key={field}>
@@ -362,14 +406,16 @@ export function RecordedAssessmentView({
  * The perimeters and bone breadths as recorded: only what was measured (a side not measured says so), in cm. The waist-hip ratio and the
  * bilateral differences are in "Resultados", with their method and formula version.
  */
-function RecordedPerimeters({ composition }: { composition: CompositionPayload }) {
+function RecordedPerimeters({ composition, perimeters = true, breadths: breadthsOn = true }: { composition: CompositionPayload; perimeters?: boolean; breadths?: boolean }) {
   const single = PERIMETER_SINGLE_CODES.filter((code) => composition.perimetersCm[code] !== undefined);
   const sided = PERIMETER_SIDED_CODES.filter((code) => composition.sidedPerimetersCm[code] !== undefined);
   const breadths = BONE_BREADTH_CODES.filter((code) => composition.boneBreadthsCm[code] !== undefined);
   return (
     <>
       <h4 className="av2-subtitle">Perímetros</h4>
-      {single.length + sided.length === 0 ? (
+      {!perimeters ? (
+        <p className="muted">{NOT_INCLUDED}.</p>
+      ) : single.length + sided.length === 0 ? (
         <p className="muted">Nenhum perímetro medido.</p>
       ) : (
         <dl className="av2-facts" aria-label="Perímetros registrados">
@@ -393,7 +439,9 @@ function RecordedPerimeters({ composition }: { composition: CompositionPayload }
         </dl>
       )}
       <h4 className="av2-subtitle">Diâmetros ósseos</h4>
-      {breadths.length === 0 ? (
+      {!breadthsOn ? (
+        <p className="muted">{NOT_INCLUDED}.</p>
+      ) : breadths.length === 0 ? (
         <p className="muted">Nenhum diâmetro medido.</p>
       ) : (
         <dl className="av2-facts" aria-label="Diâmetros ósseos registrados">
@@ -449,13 +497,13 @@ function RecordedPhotos({ detail }: { detail: AssessmentDetail }) {
  * The posture and the somatotype as recorded: for each view, the regions observed with their findings, how many were not observed (never shown as
  * "alinhado"), and the view's note; the somatotype as the professional recorded it, and the Heath-Carter measures kept without a computation.
  */
-function RecordedPosture({ posture }: { posture: PosturePayload }) {
+function RecordedPosture({ posture, views = true, somatotype: somatotypeOn = true }: { posture: PosturePayload; views?: boolean; somatotype?: boolean }) {
   const somatotype = somatotypeText(posture.somatotype.labels);
   const measures = HEATH_CARTER_CODES.filter((code) => posture.somatotype.heathCarter[code] !== null);
   return (
     <>
-      <p className="muted small">Observações posturais, não diagnóstico clínico.</p>
-      {POSTURE_VIEW_CODES.map((view) => {
+      {views && <p className="muted small">Observações posturais, não diagnóstico clínico.</p>}
+      {(views ? POSTURE_VIEW_CODES : []).map((view) => {
         const regions = regionsOf(view);
         const observed = regions.filter((region) => findingsText(region, posture.findings[postureRegionKey(region)]) !== null);
         const note = posture.notes[view].trim();
@@ -483,26 +531,38 @@ function RecordedPosture({ posture }: { posture: PosturePayload }) {
           </div>
         );
       })}
-      <h4 className="av2-subtitle">Somatotipo</h4>
-      <dl className="av2-facts" aria-label="Somatotipo registrado">
-        <div>
-          <dt>Registro do profissional</dt>
-          <dd>{somatotype ?? "Não registrado"}</dd>
-        </div>
-        <div>
-          <dt>Observações</dt>
-          <dd>{orDash(posture.somatotype.notes)}</dd>
-        </div>
-        {measures.map((code) => (
-          <div key={code}>
-            <dt>{HEATH_CARTER_MEASURES[code].label}</dt>
-            <dd>{measured(posture.somatotype.heathCarter[code], HEATH_CARTER_MEASURES[code].unit)}</dd>
-          </div>
-        ))}
-      </dl>
-      {measures.length > 0 && <p className="small muted av2-recorded-line">{HEATH_CARTER_NOTE}</p>}
+      {somatotypeOn && (
+        <>
+          <h4 className="av2-subtitle">Somatotipo</h4>
+          <dl className="av2-facts" aria-label="Somatotipo registrado">
+            <div>
+              <dt>Registro do profissional</dt>
+              <dd>{somatotype ?? "Não registrado"}</dd>
+            </div>
+            <div>
+              <dt>Observações</dt>
+              <dd>{orDash(posture.somatotype.notes)}</dd>
+            </div>
+            {measures.map((code) => (
+              <div key={code}>
+                <dt>{HEATH_CARTER_MEASURES[code].label}</dt>
+                <dd>{measured(posture.somatotype.heathCarter[code], HEATH_CARTER_MEASURES[code].unit)}</dd>
+              </div>
+            ))}
+          </dl>
+          {measures.length > 0 && <p className="small muted av2-recorded-line">{HEATH_CARTER_NOTE}</p>}
+        </>
+      )}
     </>
   );
+}
+
+/** What the posture part says when it holds nothing, or which of its two parts the model left out. */
+function postureNotDone(views: boolean, somatotype: boolean, onlyExcluded = false): string {
+  if (onlyExcluded) return !views ? "Avaliação postural: não incluída neste modelo." : "Somatotipo: não incluído neste modelo.";
+  if (views && somatotype) return "Postura e somatotipo: não realizados.";
+  if (!views && !somatotype) return "Avaliação postural e somatotipo: não incluídos neste modelo.";
+  return views ? "Postura: não realizada. Somatotipo: não incluído neste modelo." : "Avaliação postural: não incluída neste modelo. Somatotipo: não registrado.";
 }
 
 /** The Flexiteste as recorded: the level of each movement assessed, how many, the total (only with all 15: in "Resultados" too), and the professional's text. */
@@ -544,7 +604,7 @@ function RecordedFlexitest({ movement, results }: { movement: MovementPayload; r
 const count = (value: number | null, one: string, many: string) => (value === null ? "Sem registro" : `${value} ${value === 1 ? one : many}`);
 
 /** The physical tests as recorded: what each one has, as typed; a test not done says so. The Cooper speed and VO₂max are in "Resultados". */
-function RecordedTests({ tests }: { tests: TestsPayload }) {
+function RecordedTests({ tests, on = () => true }: { tests: TestsPayload; on?: (part: TemplatePart) => boolean }) {
   const cooper = tests.cooper;
   const classified = [...REPETITION_TESTS.map((key) => tests[key].classificationManual), cooper.classificationManual].some((value) => value.trim() !== "");
   return (
@@ -554,7 +614,9 @@ function RecordedTests({ tests }: { tests: TestsPayload }) {
         return (
           <div key={key}>
             <h4 className="av2-subtitle">{TEST_TITLE[key]}</h4>
-            {repetitionTestEmpty(test) ? (
+            {!on(key === "upperLimb" ? "upper_limb" : key) ? (
+              <p className="muted">{NOT_INCLUDED}.</p>
+            ) : repetitionTestEmpty(test) ? (
               <p className="muted">Não realizado.</p>
             ) : (
               <dl className="av2-facts" aria-label={`${TEST_TITLE[key]} registrada`}>
@@ -594,7 +656,9 @@ function RecordedTests({ tests }: { tests: TestsPayload }) {
         );
       })}
       <h4 className="av2-subtitle">{TEST_TITLE.cooper}</h4>
-      {cooperEmpty(cooper) ? (
+      {!on("cooper") ? (
+        <p className="muted">{NOT_INCLUDED}.</p>
+      ) : cooperEmpty(cooper) ? (
         <p className="muted">Não realizado.</p>
       ) : (
         <dl className="av2-facts" aria-label="Teste de Cooper registrado">

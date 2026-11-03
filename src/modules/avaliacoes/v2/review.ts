@@ -39,7 +39,7 @@ import {
 import { AGGREGATION_LABEL, EQUATION_LABEL, PROTOCOL_CHIP, SITE_LABEL, bilateralObservation, bilateralSigned, requiredSites, type CompositionPayload } from "./composition";
 import { heathCarterTyped, observedIn, postureEmpty, regionsOf, somatotypeText, type PosturePayload } from "./posture";
 import { FLEXITEST_CODES, FLEXITEST_VARIANT, filledText, flexitestTally, movementEmpty, type MovementPayload } from "./flexitest";
-import { COOPER_MINUTES, REPETITION_TESTS, TEST_TITLE, cooperEmpty, repetitionTestEmpty, testsEmpty, type TestsPayload } from "./physical-tests";
+import { COOPER_MINUTES, REPETITION_TESTS, TEST_TITLE, cooperEmpty, repetitionTestEmpty, testsEmpty, type RepetitionTestKey, type TestsPayload } from "./physical-tests";
 import {
   ANAMNESIS_CODES,
   EMPTY_SCREENING,
@@ -51,6 +51,7 @@ import {
   type ProfilePayload,
   type ScreeningPayload,
 } from "./screening";
+import { NOT_INCLUDED, isPartEnabled, isStepEnabled, maskComposition, maskMovement, maskPosture, maskTests, type EnabledParts } from "./template";
 
 /** One row of assessment_results, as it will be written (code, value, unit, method, formula version, inputs and flags). */
 export interface ResultDraft {
@@ -181,7 +182,8 @@ export function resultNote(code: string, value: number | null): string | null {
 export interface ModuleSummary {
   key: "triagem" | "medidas" | "movimento" | "testes";
   title: string;
-  state: "ready" | "pending" | "partial" | "filled" | "observed" | "not_done";
+  /** "not_included": the draft's model leaves the whole step out (slice 0.85), which is not "not_done". */
+  state: "ready" | "pending" | "partial" | "filled" | "observed" | "not_done" | "not_included";
   lines: string[];
 }
 
@@ -212,6 +214,8 @@ export interface ReviewInput {
   birthDate: string | null;
   /** For an amendment (retificação): the screening of the assessment it amends, as recorded. */
   original?: { screening: ScreeningPayload | null } | null;
+  /** The optional parts the draft's model has on (slice 0.85); absent or null: every part. A part that is off is never read. */
+  enabled?: EnabledParts;
 }
 
 const decimal = (value: number, digits = 2) => new Intl.NumberFormat("pt-BR", { maximumFractionDigits: digits }).format(value);
@@ -412,8 +416,10 @@ function triagemSummary(profile: ProfilePayload | null, screening: ScreeningPayl
   return { key: "triagem", title: "Triagem", state: pending.length === 0 ? "ready" : "pending", lines };
 }
 
-function medidasSummary(composition: CompositionPayload | null): ModuleSummary {
+function medidasSummary(composition: CompositionPayload | null, enabled: EnabledParts = null): ModuleSummary {
+  if (!isStepEnabled(enabled, "medidas")) return { key: "medidas", title: "Medidas", state: "not_included", lines: [NOT_INCLUDED] };
   if (!composition) return { key: "medidas", title: "Medidas", state: "not_done", lines: ["Não realizado"] };
+  const on = (part: "basics" | "skinfolds" | "perimeters" | "breadths") => isPartEnabled(enabled, part);
   const lines: string[] = [];
   const basics = [
     composition.weightKg !== null ? `peso ${decimal(composition.weightKg)} kg` : null,
@@ -423,9 +429,11 @@ function medidasSummary(composition: CompositionPayload | null): ModuleSummary {
       : null,
     composition.restingHeartRateBpm !== null ? `FC repouso ${decimal(composition.restingHeartRateBpm)} bpm` : null,
   ].filter((item): item is string => item !== null);
-  lines.push(basics.length === 0 ? "Medidas básicas: sem aferição" : `Medidas básicas: ${basics.join(" · ")}`);
+  if (!on("basics")) lines.push("Medidas básicas: não incluídas neste modelo");
+  else lines.push(basics.length === 0 ? "Medidas básicas: sem aferição" : `Medidas básicas: ${basics.join(" · ")}`);
   const measured = SKINFOLD_SITE_CODES.filter((site) => (composition.skinfolds[site] ?? []).length > 0);
-  if (composition.protocol) {
+  if (!on("skinfolds")) lines.push("Dobras cutâneas: não incluídas neste modelo");
+  else if (composition.protocol) {
     const required = requiredSites(composition.protocol, composition.equation);
     lines.push(
       `Protocolo: ${PROTOCOL_CHIP[composition.protocol]} · equação ${EQUATION_LABEL[composition.equation].toLowerCase()} · ${AGGREGATION_LABEL[composition.aggregation].toLowerCase()}`,
@@ -433,7 +441,7 @@ function medidasSummary(composition: CompositionPayload | null): ModuleSummary {
     lines.push(`Dobras do protocolo: ${required.filter((site) => measured.includes(site)).length} de ${required.length} medidas`);
   } else lines.push("Protocolo de dobras: não escolhido");
   const extra = composition.protocol ? measured.filter((site) => !requiredSites(composition.protocol, composition.equation).includes(site)) : measured;
-  if (extra.length > 0) lines.push(`Outras dobras guardadas: ${list(extra.map((site) => SITE_LABEL[site]))}`);
+  if (on("skinfolds") && extra.length > 0) lines.push(`Outras dobras guardadas: ${list(extra.map((site) => SITE_LABEL[site]))}`);
   // A sided perimeter counts as measured only with both sides; one with a single side is named apart, so "9 de 9" never hides a missing side.
   const sidedTyped = PERIMETER_SIDED_CODES.filter((code) => composition.sidedPerimetersCm[code] !== undefined);
   const oneSided = sidedTyped.filter((code) => {
@@ -445,9 +453,12 @@ function medidasSummary(composition: CompositionPayload | null): ModuleSummary {
   const breadths = BONE_BREADTH_CODES.filter((code) => composition.boneBreadthsCm[code] !== undefined).length;
   const perimeterTotal = PERIMETER_SINGLE_CODES.length + PERIMETER_SIDED_CODES.length;
   const oneSidedText = oneSided.length > 0 ? ` · ${list(oneSided.map((code) => PERIMETERS_SIDED[code]))} só com um lado` : "";
-  lines.push(perimeters === 0 ? "Perímetros: sem aferição" : `Perímetros: ${complete} de ${perimeterTotal} com medida${oneSidedText}`);
-  lines.push(breadths === 0 ? "Diâmetros ósseos: sem aferição" : `Diâmetros ósseos: ${breadths} de ${BONE_BREADTH_CODES.length} com medida`);
+  if (!on("perimeters")) lines.push("Perímetros: não incluídos neste modelo");
+  else lines.push(perimeters === 0 ? "Perímetros: sem aferição" : `Perímetros: ${complete} de ${perimeterTotal} com medida${oneSidedText}`);
+  if (!on("breadths")) lines.push("Diâmetros ósseos: não incluídos neste modelo");
+  else lines.push(breadths === 0 ? "Diâmetros ósseos: sem aferição" : `Diâmetros ósseos: ${breadths} de ${BONE_BREADTH_CODES.length} com medida`);
   const empty = basics.length === 0 && measured.length === 0 && composition.protocol === null && perimeters === 0 && breadths === 0;
+  if (empty && enabled !== null) return { key: "medidas", title: "Medidas", state: "not_done", lines: ["Não realizado", ...lines.filter((line) => / não incluíd[oa]s? neste modelo$/.test(line))] };
   return { key: "medidas", title: "Medidas", state: empty ? "not_done" : "filled", lines: empty ? ["Não realizado"] : lines };
 }
 
@@ -456,14 +467,24 @@ function medidasSummary(composition: CompositionPayload | null): ModuleSummary {
  * it, the Heath-Carter measures kept (never a computed somatotype), and how many Flexiteste movements have a level, with the total only when all 15
  * do. Nothing observed is "Não realizado", never "alinhado" nor 0.
  */
-function movimentoSummary(posture: PosturePayload | null, movement: MovementPayload | null): ModuleSummary {
+function movimentoSummary(posture: PosturePayload | null, movement: MovementPayload | null, enabled: EnabledParts = null): ModuleSummary {
+  if (!isStepEnabled(enabled, "movimento")) return { key: "movimento", title: "Movimento", state: "not_included", lines: [NOT_INCLUDED] };
   const noPosture = !posture || postureEmpty(posture);
   const noFlexitest = !movement || movementEmpty(movement);
-  if (noPosture && noFlexitest) return { key: "movimento", title: "Movimento", state: "not_done", lines: ["Não realizado"] };
+  const excluded = [
+    ...(isPartEnabled(enabled, "posture") ? [] : ["Avaliação postural: não incluída neste modelo"]),
+    ...(isPartEnabled(enabled, "somatotype") ? [] : ["Somatotipo: não incluído neste modelo"]),
+    ...(isPartEnabled(enabled, "flexitest") ? [] : ["Flexiteste: não incluído neste modelo"]),
+  ];
+  if (noPosture && noFlexitest) return { key: "movimento", title: "Movimento", state: "not_done", lines: ["Não realizado", ...excluded] };
   const lines: string[] = [];
-  if (posture && !noPosture) lines.push(...postureLines(posture));
-  else lines.push("Postura e somatotipo: não realizados");
-  if (movement && !noFlexitest) {
+  if (posture && !noPosture) lines.push(...postureLines(posture, enabled));
+  else if (isPartEnabled(enabled, "posture") && isPartEnabled(enabled, "somatotype")) lines.push("Postura e somatotipo: não realizados");
+  else if (isPartEnabled(enabled, "posture")) lines.push("Postura: não realizada");
+  else if (isPartEnabled(enabled, "somatotype")) lines.push("Somatotipo: não registrado");
+  lines.push(...excluded.filter((line) => !line.startsWith("Flexiteste")));
+  if (!isPartEnabled(enabled, "flexitest")) lines.push("Flexiteste: não incluído neste modelo");
+  else if (movement && !noFlexitest) {
     const tally = flexitestTally(movement);
     lines.push(`Flexiteste: ${filledText(tally.filled)}${tally.total !== null ? `; total ${tally.total} pontos` : ""}`);
     if (movement.flexitest.classificationManual.trim() !== "") lines.push(`Classificação do Flexiteste escrita pelo profissional: ${movement.flexitest.classificationManual.trim()}`);
@@ -471,7 +492,14 @@ function movimentoSummary(posture: PosturePayload | null, movement: MovementPayl
   return { key: "movimento", title: "Movimento", state: "observed", lines };
 }
 
-function postureLines(posture: PosturePayload): string[] {
+function postureLines(posture: PosturePayload, enabled: EnabledParts = null): string[] {
+  const lines: string[] = [];
+  if (isPartEnabled(enabled, "posture")) lines.push(...postureViewLines(posture));
+  if (isPartEnabled(enabled, "somatotype")) lines.push(...somatotypeLines(posture));
+  return lines;
+}
+
+function postureViewLines(posture: PosturePayload): string[] {
   const lines: string[] = [];
   const observed = POSTURE_VIEW_CODES.reduce((total, view) => total + observedIn(posture, view), 0);
   lines.push(
@@ -481,6 +509,11 @@ function postureLines(posture: PosturePayload): string[] {
   );
   const notes = POSTURE_VIEW_CODES.filter((view) => posture.notes[view].trim() !== "");
   if (notes.length > 0) lines.push(`Observações escritas: ${list(notes.map((view) => POSTURE_VIEW_SHORT[view].toLowerCase()))}`);
+  return lines;
+}
+
+function somatotypeLines(posture: PosturePayload): string[] {
+  const lines: string[] = [];
   const somatotype = somatotypeText(posture.somatotype.labels);
   lines.push(somatotype ? `Somatotipo (registro do profissional): ${somatotype}` : "Somatotipo: não registrado");
   const measures = heathCarterTyped(posture);
@@ -489,12 +522,16 @@ function postureLines(posture: PosturePayload): string[] {
 }
 
 /** The "Testes físicos" step in words (slice 0.80): what each test has, as typed; a test not done says so, never 0. No classification by the system. */
-function testesSummary(tests: TestsPayload | null): ModuleSummary {
-  if (!tests || testsEmpty(tests)) return { key: "testes", title: "Testes físicos", state: "not_done", lines: ["Não realizado"] };
+function testesSummary(tests: TestsPayload | null, enabled: EnabledParts = null): ModuleSummary {
+  if (!isStepEnabled(enabled, "testes")) return { key: "testes", title: "Testes físicos", state: "not_included", lines: [NOT_INCLUDED] };
+  const testOn = (key: RepetitionTestKey | "cooper") => isPartEnabled(enabled, key === "upperLimb" ? "upper_limb" : key);
+  const excluded = (["abdominal", "upperLimb", "cooper"] as const).filter((key) => !testOn(key)).map((key) => `${key === "cooper" ? "Cooper" : TEST_TITLE[key]}: não incluído neste modelo`);
+  if (!tests || testsEmpty(tests)) return { key: "testes", title: "Testes físicos", state: "not_done", lines: ["Não realizado", ...excluded] };
   const lines: string[] = [];
   for (const key of REPETITION_TESTS) {
     const test = tests[key];
-    if (repetitionTestEmpty(test)) lines.push(`${TEST_TITLE[key]}: não realizado`);
+    if (!testOn(key)) lines.push(`${TEST_TITLE[key]}: não incluído neste modelo`);
+    else if (repetitionTestEmpty(test)) lines.push(`${TEST_TITLE[key]}: não realizado`);
     else
       lines.push(
         `${TEST_TITLE[key]}: ${test.repetitions === null ? "repetições sem registro" : `${test.repetitions} ${test.repetitions === 1 ? "repetição completa" : "repetições completas"}`}${test.exercise.trim() ? ` · ${test.exercise.trim()}` : ""}`,
@@ -502,7 +539,9 @@ function testesSummary(tests: TestsPayload | null): ModuleSummary {
   }
   const cooperTest = tests.cooper;
   lines.push(
-    cooperEmpty(cooperTest)
+    !testOn("cooper")
+      ? "Cooper: não incluído neste modelo"
+      : cooperEmpty(cooperTest)
       ? "Cooper: não realizado"
       : `Cooper: ${cooperTest.distanceM === null ? "distância sem registro" : `${decimal(cooperTest.distanceM, 1)} m em ${COOPER_MINUTES} min`}`,
   );
@@ -519,6 +558,15 @@ export function reviewDraft(input: ReviewInput): DraftReview {
   const pending = input.screening ? screeningPending(input.screening) : screeningPending(EMPTY_SCREENING);
   if (input.screening && input.original) pending.push(...amendmentPending(input.screening, input.original.screening));
   const ageYears = ageOn(input.birthDate, input.assessedOn);
+  // A part the model leaves out is never read (it holds nothing: saving refuses it; this keeps the rule in one place).
+  const enabled = input.enabled ?? null;
+  input = {
+    ...input,
+    composition: input.composition ? maskComposition(input.composition, enabled) : null,
+    posture: input.posture ? maskPosture(input.posture, enabled) : null,
+    movement: input.movement ? maskMovement(input.movement, enabled) : null,
+    tests: input.tests ? maskTests(input.tests, enabled) : null,
+  };
   const skinfold = input.composition ? compositionResults(input.composition, ageYears) : { results: [], notComputed: [] };
   const perimeter = input.composition ? perimeterResults(input.composition) : { results: [], notComputed: [] };
   const flexibility = input.movement ? flexitestResults(input.movement) : { results: [], notComputed: [] };
@@ -532,9 +580,9 @@ export function reviewDraft(input: ReviewInput): DraftReview {
     riskFlag: input.screening ? parqHasYes(input.screening) : false,
     modules: [
       triagemSummary(input.profile, input.screening, pending),
-      medidasSummary(input.composition),
-      movimentoSummary(input.posture ?? null, input.movement ?? null),
-      testesSummary(input.tests ?? null),
+      medidasSummary(input.composition, enabled),
+      movimentoSummary(input.posture ?? null, input.movement ?? null, enabled),
+      testesSummary(input.tests ?? null, enabled),
     ],
   };
 }
