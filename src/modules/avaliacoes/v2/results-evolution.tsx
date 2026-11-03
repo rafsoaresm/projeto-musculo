@@ -4,18 +4,26 @@ import { formatCalendarDate } from "@/modules/training/format";
 import { MetricChart } from "../metric-chart";
 import { CONVERSION_LABEL } from "./composition";
 import { BREAK_LABEL, resultEvolution, type ComparableSeries, type EvolutionPoint, type EvolutionSource, type ResultEvolution } from "./evolution";
-import { FLAG_LABEL, RESULT_LABEL, formatResult, isEstimate, methodLabel, resultDigits } from "./review";
+import { FLAG_LABEL, RESULT_LABEL, formatResult, isResultEstimate, methodLabel, resultDigits } from "./review";
 
 const valueText = (code: string, point: Pick<EvolutionPoint, "value" | "unit">) =>
   point.value === null ? "Sem valor" : formatResult(code, point.value, point.unit);
 const conversionText = (conversion: string | null) =>
   conversion === null ? null : (CONVERSION_LABEL[conversion as keyof typeof CONVERSION_LABEL] ?? conversion);
 
-/** How a series was obtained, in words: method, formula version, conversion, estimate. Never a classification. */
-function methodLine(series: Pick<ComparableSeries, "method" | "formulaVersion" | "conversion">) {
+/** How a series was obtained, in words: formula version, conversion, estimate. Never a classification. */
+function methodLine(code: string, series: Pick<ComparableSeries, "method" | "formulaVersion" | "conversion">) {
   const parts = [series.formulaVersion ? `fórmula ${series.formulaVersion}` : null, conversionText(series.conversion) ? `conversão ${conversionText(series.conversion)}` : null];
-  if (isEstimate(series.method)) parts.push("estimativa");
+  if (isResultEstimate(code, series.method)) parts.push("estimativa");
   return parts.filter(Boolean).join(" · ");
+}
+
+/** The handoff's warning (4.3), verbatim for the body fat; for the other results the same sentence with the result's name. */
+const HANDOFF_WARNING = "Metodologias diferentes; comparação de % de gordura pode não ser equivalente";
+function warning(group: ResultEvolution, title: string) {
+  if (!group.methodsDiffer) return `Mesmo método, com versão da fórmula, conversão ou unidade diferente; comparação de “${title}” pode não ser equivalente. Cada uma tem a sua série.`;
+  if (group.code === "body_fat_percent") return `${HANDOFF_WARNING}. Cada método tem a sua série.`;
+  return `Metodologias diferentes; comparação de “${title}” pode não ser equivalente. Cada método tem a sua série.`;
 }
 
 function summary(code: string, points: EvolutionPoint[]) {
@@ -34,7 +42,7 @@ function Series({ group, series, title }: { group: ResultEvolution; series: Comp
     <div className="av2-evolution-series" role="group" aria-label={label}>
       <p className="av2-evolution-method">
         <strong>{methodLabel(series.method)}</strong>
-        {methodLine(series) && <span className="small muted"> · {methodLine(series)}</span>}
+        {methodLine(group.code, series) && <span className="small muted"> · {methodLine(group.code, series)}</span>}
         {group.mixed && series.latest && (
           <>
             {" "}
@@ -80,9 +88,7 @@ export function ResultsEvolution({ history }: { history: EvolutionSource[] }) {
             {group.mixed && (
               <p className="av2-attention av2-evolution-warning">
                 <TriangleAlert size={18} aria-hidden="true" />
-                <span>
-                  Metodologias diferentes: a comparação de {title.toLowerCase()} entre elas pode não ser equivalente. Cada método tem a sua série.
-                </span>
+                <span>{warning(group, title)}</span>
               </p>
             )}
             {group.series.map((series) => (
@@ -110,13 +116,18 @@ export function ResultsEvolution({ history }: { history: EvolutionSource[] }) {
                           </th>
                           <td data-label="Valor">{valueText(group.code, point)}</td>
                           <td data-label="Método">
-                            {methodLabel(point.method)}
-                            {point.formulaVersion ? ` · fórmula ${point.formulaVersion}` : ""}
-                            {point.flags.map((flag) => (
-                              <span key={flag} className="av2-flag av2-evolution-flag">
-                                {FLAG_LABEL[flag] ?? flag}
+                            <span className="av2-evolution-method-cell">
+                              <span>
+                                {methodLabel(point.method)}
+                                {point.formulaVersion ? ` · fórmula ${point.formulaVersion}` : ""}
+                                {conversionText(point.conversion) ? ` · conversão ${conversionText(point.conversion)}` : ""}
                               </span>
-                            ))}
+                              {point.flags.map((flag) => (
+                                <span key={flag} className="av2-flag av2-evolution-flag">
+                                  {FLAG_LABEL[flag] ?? flag}
+                                </span>
+                              ))}
+                            </span>
                           </td>
                           <td data-label="Comparação">
                             {index === 0 ? (

@@ -59,8 +59,10 @@ export interface ResultEvolution {
   series: ComparableSeries[];
   /** Every new-format value in time order, with the breaks marked. */
   timeline: TimelinePoint[];
-  /** More than one series: the methodologies differ and the values are not equivalent. */
+  /** More than one series: the values are obtained in more than one way and are not equivalent. */
   mixed: boolean;
+  /** More than one method (protocol or equation variant) among the series; false when only the formula version, conversion or unit differ. */
+  methodsDiffer: boolean;
   /** Values of the earlier format or of an unknown method, oldest first, never in a series with the others. */
   legacy: EvolutionPoint[];
 }
@@ -76,7 +78,13 @@ function breakBetween(before: EvolutionPoint, after: EvolutionPoint): BreakReaso
   return null;
 }
 
-const conversionOf = (inputs: Record<string, unknown> | null) => (inputs && typeof inputs.conversion === "string" ? inputs.conversion : null);
+/**
+ * The results that the conversion (Siri) turns density into: the % fat and the masses computed from it (handoff 4.2). The sum of skinfolds (mm)
+ * and the density (g/cm³) share the inputs of the composition, conversion included, but are not converted, so the conversion is not theirs.
+ */
+const CONVERTED_CODES: ReadonlySet<string> = new Set(["body_fat_percent", "fat_mass_kg", "lean_mass_kg"]);
+const conversionOf = (code: string, inputs: Record<string, unknown> | null) =>
+  CONVERTED_CODES.has(code) && inputs && typeof inputs.conversion === "string" ? inputs.conversion : null;
 const isLegacy = (source: EvolutionSource, result: ResultRow) => source.formatVersion !== 2 || result.method === LEGACY_METHOD;
 const ORDER: readonly string[] = RESULT_CODES;
 
@@ -93,7 +101,7 @@ export function resultEvolution(history: EvolutionSource[]): ResultEvolution[] {
         unit: result.unit,
         method: result.method,
         formulaVersion: result.formulaVersion,
-        conversion: conversionOf(result.inputs),
+        conversion: conversionOf(result.code, result.inputs),
         flags: result.flags,
       };
       const entry = byCode.get(result.code) ?? { fresh: [], legacy: [] };
@@ -120,7 +128,7 @@ export function resultEvolution(history: EvolutionSource[]): ResultEvolution[] {
       const series = [...groups.values()];
       const newest = timeline.at(-1);
       for (const item of series) item.latest = newest !== undefined && item.key === newest.seriesKey;
-      return { code, series, timeline, mixed: series.length > 1, legacy };
+      return { code, series, timeline, mixed: series.length > 1, methodsDiffer: new Set(series.map((item) => item.method)).size > 1, legacy };
     });
 }
 

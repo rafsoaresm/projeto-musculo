@@ -103,6 +103,8 @@ export const COOPER_VO2_METHOD = "cooper_12min_vo2_504_9_44_73";
 const EXACT_METHOD_SET: ReadonlySet<string> = new Set(Object.values(EXACT_METHODS));
 /** A result whose method is arithmetic on measures (BMI, waist-hip ratio, bilateral difference) or unknown: not an estimate of a study's equation. */
 export const isEstimate = (method: string) => method !== "legacy_formula_unknown" && !EXACT_METHOD_SET.has(method);
+/** Whether a recorded result is an estimate: the sum of skinfolds carries the protocol as its method but is the sum of the measured folds, not an estimate. */
+export const isResultEstimate = (code: string, method: string) => code !== "sum_skinfolds" && isEstimate(method);
 
 export const RESULT_LABEL: Record<string, string> = {
   sum_skinfolds: "Soma das dobras",

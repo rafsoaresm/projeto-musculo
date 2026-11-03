@@ -7,9 +7,22 @@ import { MetricChart } from "./metric-chart";
 import { PhotoImage } from "./photo-image";
 import { PHOTO_VIEWS } from "./photos";
 import { ScreeningPill } from "./screening-pill";
+import { LEGACY_METHOD } from "./v2/evolution";
 import { ResultsEvolution } from "./v2/results-evolution";
 
 const AREA_LABEL = { SCREENING: "Triagem", POSTURE: "Postura", MOVEMENT: "Movimento" } as const;
+
+/**
+ * An earlier-format assessment without the body fat that migration 0033 copied into its results (the first BODY_FAT with that value), so the
+ * value is not listed twice when the evolution also shows the results. Anything else typed stays.
+ */
+function withoutCopiedBodyFat(assessment: AssessmentSnapshot): AssessmentSnapshot {
+  if (assessment.formatVersion === 2) return assessment;
+  const copied = assessment.results.find((result) => result.code === "body_fat_percent" && result.method === LEGACY_METHOD);
+  if (!copied) return assessment;
+  const index = assessment.metrics.findIndex((metric) => metric.metricType === "BODY_FAT" && metric.valueNumber === copied.value);
+  return index === -1 ? assessment : { ...assessment, metrics: assessment.metrics.filter((_, position) => position !== index) };
+}
 
 /**
  * The history of one student's recorded assessments. It shows what was recorded and what differs
@@ -32,15 +45,18 @@ export function EvolutionView({
         </Link>
       </section>
     );
-  const series = buildSeries(history);
   // The item-by-item comparison reads the screening, posture and movement of the earlier format; the Avaliação Física keeps them in its
   // modules, so a pair with one of it is not compared here (saying "no differences" would be false).
   const earlier = history.filter((assessment) => assessment.formatVersion === null);
   const pairs = earlier.slice(1).map((after, index) => ({ before: earlier[index], after })).reverse();
-  // Slice 0.82: the results of the Avaliação Física (and the body fat of the earlier format, method unknown) in comparable series. The measures
-  // typed in the earlier format keep their own section, apart, as before; with no Avaliação Física and no result, only that section shows.
-  const withResults = history.some((assessment) => assessment.formatVersion === 2 || assessment.results.length > 0);
-  const withMetrics = !withResults || history.some((assessment) => assessment.metrics.length > 0);
+  // Slice 0.82: the results of the Avaliação Física in comparable series. Only an Avaliação Física brings them in: with the earlier format
+  // alone the page stays as it was, even though migration 0033 copied each earlier body fat into the results as "método desconhecido".
+  // With both, that copy is listed apart in the results ("Formato anterior · método desconhecido") and the same typed value is taken out of
+  // the earlier measures, so it shows once.
+  const withResults = history.some((assessment) => assessment.formatVersion === 2);
+  const measured = withResults ? history.map(withoutCopiedBodyFat) : history;
+  const series = buildSeries(measured);
+  const withMetrics = !withResults || measured.some((assessment) => assessment.metrics.length > 0);
   const counted = `${history.length} ${history.length === 1 ? "avaliação registrada" : "avaliações registradas"}, de ${formatCalendarDate(history[0].assessedOn)} a ${formatCalendarDate(history[history.length - 1].assessedOn)}.`;
   return (
     <>
@@ -184,7 +200,7 @@ export function EvolutionView({
                     {assessment.formatVersion === null ? " (formato anterior)" : ""}
                   </td>
                   <td data-label="Triagem">
-                    <ScreeningPill risk={assessment.riskStatus} reviewed={assessment.reviewed} />
+                    <ScreeningPill risk={assessment.riskStatus} reviewed={assessment.reviewed} parq={assessment.formatVersion === 2} />
                   </td>
                 </tr>
               ))}

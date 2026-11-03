@@ -1,4 +1,4 @@
-import { FLAG_LABEL, RESULT_LABEL, formatResult, isEstimate, methodLabel, resultNote } from "./review";
+import { FLAG_LABEL, RESULT_LABEL, formatResult, isResultEstimate, methodLabel, resultNote } from "./review";
 
 export interface ResultItem {
   code: string;
@@ -25,7 +25,7 @@ export function ResultsList({ results, labelledBy }: { results: ResultItem[]; la
             {resultNote(result.code, result.value) ? `${resultNote(result.code, result.value)} · ` : ""}
             {methodLabel(result.method)}
             {result.formulaVersion ? ` · fórmula ${result.formulaVersion}` : ""}
-            {isEstimate(result.method) ? " · estimativa" : ""}
+            {isResultEstimate(result.code, result.method) ? " · estimativa" : ""}
           </span>
           {result.flags.length > 0 && (
             <span className="av2-result-flags">

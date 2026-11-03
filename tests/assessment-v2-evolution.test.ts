@@ -58,15 +58,36 @@ describe("comparable series of results", () => {
     expect(bmi.series).toHaveLength(1);
     expect(bmi.timeline.map((point) => point.break)).toEqual([null, null, null]);
   });
-  it("a different formula version, conversion or unit is not comparable either", () => {
+  it("a different formula version, conversion or unit is not comparable either, and is not called a different methodology", () => {
     const changed = resultEvolution([
-      at("v1", "2026-01-01", [row("sum_skinfolds", 122, JP7)]),
-      at("v2", "2026-02-01", [row("sum_skinfolds", 120, JP7, { formulaVersion: "av2-2027-01" })]),
-      at("v3", "2026-03-01", [row("sum_skinfolds", 118, JP7, { formulaVersion: "av2-2027-01", inputs: { conversion: "brozek_1963" } })]),
-      at("v4", "2026-04-01", [row("sum_skinfolds", 117, JP7, { formulaVersion: "av2-2027-01", inputs: { conversion: "brozek_1963" }, unit: "cm" })]),
+      at("v1", "2026-01-01", [row("body_fat_percent", 17.2, JP7)]),
+      at("v2", "2026-02-01", [row("body_fat_percent", 17.0, JP7, { formulaVersion: "av2-2027-01" })]),
+      at("v3", "2026-03-01", [row("body_fat_percent", 16.8, JP7, { formulaVersion: "av2-2027-01", inputs: { conversion: "brozek_1963" } })]),
+      at("v4", "2026-04-01", [row("body_fat_percent", 0.167, JP7, { formulaVersion: "av2-2027-01", inputs: { conversion: "brozek_1963" }, unit: "fração" })]),
     ])[0];
     expect(changed.series).toHaveLength(4);
     expect(changed.timeline.map((point) => point.break)).toEqual([null, "formula", "conversion", "unit"]);
+    expect([changed.mixed, changed.methodsDiffer]).toEqual([true, false]);
+    expect(fat.methodsDiffer).toBe(true);
+  });
+  it("the conversion (Siri) belongs only to the % fat and the masses from it, never to the sum of skinfolds or the density (handoff 4.2)", () => {
+    const shared = { conversion: "siri_1961" };
+    const [sum, density, percent, fatMass, lean] = resultEvolution([
+      at("c1", "2026-01-01", [
+        row("sum_skinfolds", 122, JP7, { inputs: shared }),
+        row("body_density", 1.0634, JP7, { unit: "g/cm³", inputs: shared }),
+        row("body_fat_percent", 17.27, JP7, { inputs: shared }),
+        row("fat_mass_kg", 11.9, JP7, { unit: "kg", inputs: shared }),
+        row("lean_mass_kg", 57.2, JP7, { unit: "kg", inputs: shared }),
+      ]),
+      // A conversion written in the inputs of the sum does not split its series.
+      at("c2", "2026-02-01", [row("sum_skinfolds", 120, JP7, { inputs: { conversion: "brozek_1963" } })]),
+    ]);
+    expect([sum.code, density.code, percent.code, fatMass.code, lean.code]).toEqual(["sum_skinfolds", "body_density", "body_fat_percent", "fat_mass_kg", "lean_mass_kg"]);
+    expect([sum.series[0].conversion, density.series[0].conversion]).toEqual([null, null]);
+    expect([percent.series[0].conversion, fatMass.series[0].conversion, lean.series[0].conversion]).toEqual(["siri_1961", "siri_1961", "siri_1961"]);
+    expect(sum.series).toHaveLength(1);
+    expect(sum.timeline.map((point) => point.break)).toEqual([null, null]);
   });
   it("an empty value stays empty: never 0, never drawn", () => {
     const empty = resultEvolution([

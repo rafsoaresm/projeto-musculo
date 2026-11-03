@@ -40,7 +40,7 @@ async function shots(page: Page, name: string, projectName: string) {
     await page.setViewportSize({ width, height: 900 });
     await page.waitForTimeout(150);
     await noHorizontalOverflow(page);
-    await page.screenshot({ path: `${dir}/082-${name}-${width}.png`, fullPage: true });
+    await page.screenshot({ path: `${dir}/${process.env.SHOTS_PREFIX ?? "082"}-${name}-${width}.png`, fullPage: true });
   }
   if (size) await page.setViewportSize(size);
 }
@@ -80,7 +80,8 @@ test("the evolution compares a result only within the same method: a change of p
   await page.goto(`${studentURL}/evolucao`);
   await expect(page.getByText("2 avaliações registradas", { exact: false })).toBeVisible();
   // Body fat: two methods, two series, the warning; never one chart joining them.
-  await expect(fat.getByText("Metodologias diferentes: a comparação de gordura estimada entre elas pode não ser equivalente.", { exact: false })).toBeVisible();
+  // The handoff's warning, verbatim (4.3).
+  await expect(fat.getByText("Metodologias diferentes; comparação de % de gordura pode não ser equivalente", { exact: false })).toBeVisible();
   const jp7 = fat.getByRole("group", { name: "Gordura estimada, Jackson & Pollock · 7, equação masculina" });
   const faulkner = fat.getByRole("group", { name: "Gordura estimada, Faulkner", exact: true });
   await expect(jp7).toContainText("Um valor: 17,3% em");
@@ -95,9 +96,16 @@ test("the evolution compares a result only within the same method: a change of p
   await expect(rows.nth(1)).toContainText("Primeiro valor");
   await expect(rows.nth(2)).toContainText("15,9%");
   await expect(rows.nth(2)).toContainText("Método diferente do valor anterior");
+  await expect(rows.nth(1)).toContainText("conversão Siri (1961)");
+  await expect(rows.nth(2)).not.toContainText("conversão");
   // The sum of skinfolds follows the protocol too: 122 mm and 66 mm are never one line.
   const sum = results.getByRole("group", { name: "Soma das dobras", exact: true });
-  await expect(sum.getByText(/Metodologias diferentes/)).toBeVisible();
+  await expect(sum.getByText("Metodologias diferentes; comparação de “Soma das dobras” pode não ser equivalente", { exact: false })).toBeVisible();
+  // The sum is measured, not estimated, and the conversion (Siri) is only the % fat's (handoff 4.2).
+  const jp7Sum = sum.getByRole("group", { name: "Soma das dobras, Jackson & Pollock · 7, equação masculina" });
+  await expect(jp7Sum).toContainText("fórmula av2-2026-11");
+  await expect(jp7Sum).not.toContainText("estimativa");
+  await expect(jp7Sum).not.toContainText("conversão");
   // BMI: the same arithmetic both times, one series with its chart; no classification anywhere.
   const bmi = results.getByRole("group", { name: "IMC", exact: true });
   await expect(bmi.getByText(/Metodologias diferentes/)).toHaveCount(0);
