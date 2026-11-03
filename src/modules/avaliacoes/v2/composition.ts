@@ -6,6 +6,17 @@
  */
 import { z } from "zod";
 import {
+  BONE_BREADTHS,
+  BONE_BREADTH_CODES,
+  PERIMETERS_SIDED,
+  PERIMETERS_SINGLE,
+  PERIMETER_SIDED_CODES,
+  PERIMETER_SINGLE_CODES,
+  type BoneBreadth,
+  type PerimeterSided,
+  type PerimeterSingle,
+} from "../catalog";
+import {
   PROTOCOL_IDS,
   PROTOCOL_VARIANTS,
   SKINFOLD_SITES,
@@ -22,6 +33,7 @@ import {
   type ProtocolVariant,
   type SiteValues,
   type SkinfoldSite,
+  waistHipRatio,
 } from "../formulas";
 
 export const COMPOSITION_MODULE = "composition" as const;
@@ -35,6 +47,12 @@ export const MAX_READINGS = 3;
 
 const measure = z.number().finite().positive().max(MAX_MEASURE).nullable().default(null);
 const readings = z.array(z.number().finite().positive().max(MAX_MEASURE)).min(1).max(MAX_READINGS);
+const centimetres = z.number().finite().positive().max(MAX_MEASURE);
+/** A perimeter on each side (handoff 3.2: each side in a field of its own); a side not measured is null, and a stored pair has at least one. */
+const sides = z
+  .object({ right: centimetres.nullable().default(null), left: centimetres.nullable().default(null) })
+  .strict()
+  .refine((pair) => pair.right !== null || pair.left !== null);
 
 export const EQUATIONS = ["male", "female", "not_selected"] as const;
 export const AGGREGATIONS = ["mean", "median", "single"] as const;
@@ -52,6 +70,12 @@ export const compositionSchema = z
     aggregation: z.enum(AGGREGATIONS).default("mean"),
     conversion: z.literal("siri_1961").default("siri_1961"),
     skinfolds: z.partialRecord(z.enum(SKINFOLD_SITE_CODES), readings).default({}),
+    /** Perimeters without a side (cm), handoff 3.2 and 6 (anthropometry.circumferencesCm). A perimeter not measured is absent. */
+    perimetersCm: z.partialRecord(z.enum(PERIMETER_SINGLE_CODES), centimetres).default({}),
+    /** Perimeters on each side (cm): right and left kept apart, never averaged. */
+    sidedPerimetersCm: z.partialRecord(z.enum(PERIMETER_SIDED_CODES), sides).default({}),
+    /** Bone breadths (cm), handoff 3.2 and 6 (anthropometry.boneBreadthsCm). */
+    boneBreadthsCm: z.partialRecord(z.enum(BONE_BREADTH_CODES), centimetres).default({}),
   })
   .strict();
 export type CompositionPayload = z.infer<typeof compositionSchema>;
@@ -77,6 +101,13 @@ export const EQUATION_LABEL: Record<EquationSelection, string> = { male: "Mascul
 export const AGGREGATION_LABEL: Record<AggregationRule, string> = { mean: "Média", median: "Mediana", single: "Leitura única" };
 export const CONVERSION_LABEL = { siri_1961: "Siri (1961)" } as const;
 export const SITE_LABEL = Object.fromEntries(SKINFOLD_SITES.map((site) => [site.code, site.label])) as Record<SkinfoldSite, string>;
+export const SIDE_LABEL = { right: "direito", left: "esquerdo" } as const;
+/** "Braço direito", "Coxa esquerda": the name of one side's field. */
+export function sideFieldLabel(code: PerimeterSided, side: "right" | "left"): string {
+  const feminine = code === "thigh" || code === "calf";
+  const word = side === "right" ? (feminine ? "direita" : "direito") : feminine ? "esquerda" : "esquerdo";
+  return `${PERIMETERS_SIDED[code]} ${word}`;
+}
 
 /* ---------- The screen's text ---------- */
 
@@ -92,6 +123,9 @@ export interface CompositionForm {
   aggregation: AggregationRule;
   /** Up to three readings per site, as typed; a site with no entry was not measured. */
   skinfolds: Partial<Record<SkinfoldSite, string[]>>;
+  perimeters: Partial<Record<PerimeterSingle, string>>;
+  sidedPerimeters: Partial<Record<PerimeterSided, { right: string; left: string }>>;
+  breadths: Partial<Record<BoneBreadth, string>>;
 }
 
 const decimalText = (value: number | null) => (value === null ? "" : String(value).replace(".", ","));
@@ -108,6 +142,11 @@ export function formFromPayload(payload: CompositionPayload): CompositionForm {
     equation: payload.equation,
     aggregation: payload.aggregation,
     skinfolds: Object.fromEntries(Object.entries(payload.skinfolds).map(([site, values]) => [site, values.map((value) => decimalText(value))])),
+    perimeters: Object.fromEntries(Object.entries(payload.perimetersCm).map(([code, value]) => [code, decimalText(value)])),
+    sidedPerimeters: Object.fromEntries(
+      Object.entries(payload.sidedPerimetersCm).map(([code, pair]) => [code, { right: decimalText(pair.right), left: decimalText(pair.left) }]),
+    ),
+    breadths: Object.fromEntries(Object.entries(payload.boneBreadthsCm).map(([code, value]) => [code, decimalText(value)])),
   };
 }
 
@@ -163,6 +202,33 @@ export function payloadFromForm(form: CompositionForm): FormReading {
     }
     skinfolds[site] = values;
   }
+  /** One centimetre field: null when empty; a text that is not a positive number is a problem named by its field. */
+  const cm = (name: string, text: string | undefined): number | null => {
+    const value = numberFromText(text ?? "");
+    if (value === null) return null;
+    if (!Number.isFinite(value) || value <= 0 || value > MAX_MEASURE) {
+      problems.push(name);
+      return null;
+    }
+    return value;
+  };
+  const perimetersCm: Partial<Record<PerimeterSingle, number>> = {};
+  for (const code of PERIMETER_SINGLE_CODES) {
+    const value = cm(PERIMETERS_SINGLE[code], form.perimeters[code]);
+    if (value !== null) perimetersCm[code] = value;
+  }
+  const sidedPerimetersCm: Partial<Record<PerimeterSided, { right: number | null; left: number | null }>> = {};
+  for (const code of PERIMETER_SIDED_CODES) {
+    const pair = form.sidedPerimeters[code];
+    const right = cm(sideFieldLabel(code, "right"), pair?.right);
+    const left = cm(sideFieldLabel(code, "left"), pair?.left);
+    if (right !== null || left !== null) sidedPerimetersCm[code] = { right, left };
+  }
+  const boneBreadthsCm: Partial<Record<BoneBreadth, number>> = {};
+  for (const code of BONE_BREADTH_CODES) {
+    const value = cm(BONE_BREADTHS[code], form.breadths[code]);
+    if (value !== null) boneBreadthsCm[code] = value;
+  }
   const candidate = {
     weightKg: read("weightKg", numberFromText(form.weight)),
     heightCm: read("heightCm", heightFromText(form.height)),
@@ -174,9 +240,30 @@ export function payloadFromForm(form: CompositionForm): FormReading {
     aggregation: form.aggregation,
     conversion: "siri_1961" as const,
     skinfolds,
+    perimetersCm,
+    sidedPerimetersCm,
+    boneBreadthsCm,
   };
   if (problems.length > 0) return { payload: null, problems };
   return { payload: compositionSchema.parse(candidate), problems: [] };
+}
+
+/**
+ * The names of the fields a refused payload has wrong (a check on the server, where the payload did not come from this screen): the same names
+ * the screen uses.
+ */
+export function issueNames(issues: readonly { path: readonly PropertyKey[] }[]): string[] {
+  const names = new Set<string>();
+  for (const issue of issues) {
+    const [first, second, third] = issue.path.map(String);
+    if (first === "skinfolds" && second && second in SITE_LABEL) names.add(SITE_LABEL[second as SkinfoldSite]);
+    else if (first === "perimetersCm" && second && second in PERIMETERS_SINGLE) names.add(PERIMETERS_SINGLE[second as PerimeterSingle]);
+    else if (first === "sidedPerimetersCm" && second && second in PERIMETERS_SIDED)
+      names.add(third === "right" || third === "left" ? sideFieldLabel(second as PerimeterSided, third) : PERIMETERS_SIDED[second as PerimeterSided]);
+    else if (first === "boneBreadthsCm" && second && second in BONE_BREADTHS) names.add(BONE_BREADTHS[second as BoneBreadth]);
+    else if (first && first in FIELD_LABEL) names.add(FIELD_LABEL[first as keyof typeof FIELD_LABEL]);
+  }
+  return [...names];
 }
 
 /** The message of a refused save, naming the fields. */
@@ -317,4 +404,61 @@ export function compositionPreview(form: CompositionForm, ageYears: number | nul
     fatFree: result.fatFreeMassKg === null ? null : `${one.format(result.fatFreeMassKg)} kg`,
     flag,
   };
+}
+
+/* ---------- Perimeters: the waist-hip ratio and the bilateral difference ---------- */
+
+const ratio = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+const centimetresText = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 });
+
+/** A typed centimetre value, or null when empty or not a positive number (the screen names the problem elsewhere). */
+function typedCentimetres(text: string | undefined): number | null {
+  const value = numberFromText(text ?? "");
+  return value !== null && Number.isFinite(value) && value > 0 && value <= MAX_MEASURE ? value : null;
+}
+
+/** The waist-hip ratio of the screen (handoff 5: waist ÷ hip, both valid), or what is missing. Never a classification. */
+export function waistHipPreview(form: CompositionForm): { value: string | null; status: string } {
+  const waist = typedCentimetres(form.perimeters.waist);
+  const hip = typedCentimetres(form.perimeters.hip);
+  const value = waistHipRatio(waist, hip);
+  if (value !== null) return { value: ratio.format(value), status: "Cintura ÷ quadril" };
+  if (waist === null && hip === null) return { value: null, status: "Precisa da cintura e do quadril" };
+  return { value: null, status: waist === null ? "Falta a cintura" : "Falta o quadril" };
+}
+
+/**
+ * The bilateral difference in words (handoff 3.2 and 5): the convention right − left, the absolute value and which side is larger. No
+ * "significant" or "not significant": there is no validated reference for it (handoff 11).
+ */
+export function bilateralText(differenceCm: number): string {
+  return `D − E = ${bilateralSigned(differenceCm)}: ${bilateralObservation(differenceCm)}`;
+}
+
+/** Below half a hundredth the sides are equal: 56 − 56,6 is −0,600000…1 in floating point, and the screens show two decimals at most. */
+const isEqual = (differenceCm: number) => Math.abs(differenceCm) < 0.005;
+
+/** Between a number and its unit, so "cm" never wraps alone to the next line. */
+const NBSP = "\u00a0";
+
+/** The difference with its sign (convention right − left): "+1,25 cm", "−0,6 cm", "0 cm". */
+export function bilateralSigned(differenceCm: number): string {
+  if (isEqual(differenceCm)) return `0${NBSP}cm`;
+  return `${differenceCm > 0 ? "+" : "−"}${centimetresText.format(Math.abs(differenceCm))}${NBSP}cm`;
+}
+
+/** Which side is larger and by how much (the absolute value), or equal sides. */
+export function bilateralObservation(differenceCm: number): string {
+  if (isEqual(differenceCm)) return "lados iguais";
+  return `${differenceCm > 0 ? "direito" : "esquerdo"} maior em ${centimetresText.format(Math.abs(differenceCm))}${NBSP}cm`;
+}
+
+/** The note under a sided perimeter: the difference when both sides are measured, the missing side when only one is, or nothing. */
+export function bilateralNote(pair: { right: string; left: string } | undefined): string | null {
+  const right = typedCentimetres(pair?.right);
+  const left = typedCentimetres(pair?.left);
+  if (right === null && left === null) return null;
+  if (right === null) return "Falta o lado direito";
+  if (left === null) return "Falta o lado esquerdo";
+  return bilateralText(right - left);
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { compositionSchema } from "@/modules/avaliacoes/v2/composition";
 import { EMPTY_PROFILE, draftScreening, screeningSchema, type ScreeningPayload } from "@/modules/avaliacoes/v2/screening";
-import { FLAG_LABEL, formatResult, methodLabel, newYesAnswers, recordedScreening, reviewDraft } from "@/modules/avaliacoes/v2/review";
+import { FLAG_LABEL, formatResult, isEstimate, methodLabel, newYesAnswers, resultNote, recordedScreening, reviewDraft } from "@/modules/avaliacoes/v2/review";
 
 // The pure rule of the "Revisão" step and of the finalize (slice 0.77): what blocks, what is recorded, and why the rest is not.
 const PARQ_CODES = ["heart_condition", "chest_pain_activity", "chest_pain_month", "dizziness", "bone_joint", "blood_pressure_medication", "other_reason"];
@@ -98,5 +98,58 @@ describe("how a result reads", () => {
     expect(methodLabel("faulkner_4_1968")).toBe("Faulkner");
     expect(formatResult("body_fat_percent", 17.2744, "%")).toBe("17,3%");
     expect(formatResult("bmi", 23.6312, "kg/m²")).toBe("23,63 kg/m²");
+  });
+});
+
+// Slice 0.78: what the perimeters give at finalize (handoff 5 and 8).
+describe("the results of the perimeters", () => {
+  const withPerimeters = (patch: object) => reviewDraft({ ...base, screening: screening(), composition: compositionSchema.parse({ ...JP7, ...patch }) });
+  it("records the waist-hip ratio of the handoff (~0,644) and each bilateral difference (right − left) with method and formula version", () => {
+    const review = withPerimeters({
+      perimetersCm: { waist: 69.5, hip: 108 },
+      sidedPerimetersCm: { thigh: { right: 56, left: 56.6 }, arm: { right: 27, left: 27 } },
+      boneBreadthsCm: { humerus: 6.4 },
+    });
+    const ratio = review.results.find((row) => row.code === "waist_hip_ratio")!;
+    expect(ratio.value).toBeCloseTo(0.644, 3);
+    expect(ratio).toMatchObject({ unit: null, method: "waist_over_hip", formulaVersion: "av2-2026-11", inputs: { waistCm: 69.5, hipCm: 108 }, flags: [] });
+    const thigh = review.results.find((row) => row.code === "bilateral_difference_thigh")!;
+    expect(thigh.value).toBeCloseTo(-0.6, 9);
+    expect(thigh).toMatchObject({ unit: "cm", method: "right_minus_left", inputs: { rightCm: 56, leftCm: 56.6, convention: "right_minus_left" } });
+    // Equal sides are a computed 0, not a missing value.
+    expect(review.results.find((row) => row.code === "bilateral_difference_arm")?.value).toBe(0);
+    // Bone breadths are kept as measured; they give no result in this version.
+    expect(review.results.map((row) => row.code)).not.toContain("humerus");
+    expect(review.notComputed).toEqual([]);
+    const lines = review.modules.find((module) => module.key === "medidas")!.lines;
+    expect(lines).toContain("Perímetros: 4 de 9 com medida");
+    expect(lines).toContain("Diâmetros ósseos: 1 de 3 com medida");
+  });
+  it("records nothing for a ratio or a difference with a measure missing, and says which", () => {
+    const review = withPerimeters({ perimetersCm: { waist: 69.5 }, sidedPerimetersCm: { calf: { right: 40, left: null } } });
+    expect(review.results.map((row) => row.code)).not.toContain("waist_hip_ratio");
+    expect(review.results.map((row) => row.code)).not.toContain("bilateral_difference_calf");
+    expect(review.notComputed).toEqual(["RCQ: falta o quadril", "Diferença bilateral da panturrilha: falta o lado esquerdo"]);
+    // A pair with one side is not counted as measured; it is named apart.
+    expect(review.modules.find((module) => module.key === "medidas")!.lines).toContain("Perímetros: 1 de 9 com medida · Panturrilha só com um lado");
+    expect(withPerimeters({}).modules.find((module) => module.key === "medidas")!.lines).toContain("Perímetros: sem aferição");
+  });
+  it("counts a step with only perimeters or breadths as filled, not “Não realizado”", () => {
+    const only = reviewDraft({ ...base, screening: screening(), composition: compositionSchema.parse({ boneBreadthsCm: { wrist: 5.7 } }) });
+    expect(only.modules.find((module) => module.key === "medidas")?.state).toBe("filled");
+  });
+  it("reads as a plain computation, not an estimate, and with no classification", () => {
+    expect(formatResult("waist_hip_ratio", 69.5 / 108, null)).toBe("0,644");
+    expect(formatResult("bilateral_difference_thigh", 56 - 56.6, "cm")).toBe("−0,6\u00a0cm");
+    expect(formatResult("bilateral_difference_arm", 0, "cm")).toBe("0\u00a0cm");
+    expect(resultNote("bilateral_difference_thigh", 56 - 56.6)).toBe("esquerdo maior em 0,6\u00a0cm");
+    expect(resultNote("bilateral_difference_arm", 0)).toBe("lados iguais");
+    expect(resultNote("waist_hip_ratio", 0.644)).toBeNull();
+    expect(methodLabel("waist_over_hip")).toBe("cintura ÷ quadril");
+    expect(methodLabel("right_minus_left")).toBe("direito − esquerdo");
+    expect(isEstimate("waist_over_hip")).toBe(false);
+    expect(isEstimate("right_minus_left")).toBe(false);
+    expect(isEstimate("weight_over_height_squared")).toBe(false);
+    expect(isEstimate("jackson_pollock_7_1978_male")).toBe(true);
   });
 });

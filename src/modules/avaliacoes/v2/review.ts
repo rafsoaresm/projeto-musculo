@@ -7,19 +7,31 @@
  * value is never a 0 for "not measured"; there is no classification (none is homologated). The PAR-Q never decides: a "Sim" asks for the
  * professional's decision, recorded with who and when at finalize.
  */
-import { ANAMNESIS, GOALS, PARQ_DECISIONS } from "../catalog";
+import {
+  ANAMNESIS,
+  BONE_BREADTH_CODES,
+  GOALS,
+  PARQ_DECISIONS,
+  PERIMETERS_SIDED_OF,
+  PERIMETER_SIDED_CODES,
+  PERIMETER_SINGLE_CODES,
+  PERIMETERS_SIDED,
+  type PerimeterSided,
+} from "../catalog";
 import {
   FORMULA_VERSION,
   PROTOCOL_VARIANTS,
   SKINFOLD_SITE_CODES,
   ageOn,
+  bilateralDifference,
   bmi,
   bodyComposition,
   selectedValue,
+  waistHipRatio,
   type SiteValues,
   type SkinfoldSite,
 } from "../formulas";
-import { AGGREGATION_LABEL, EQUATION_LABEL, PROTOCOL_CHIP, SITE_LABEL, requiredSites, type CompositionPayload } from "./composition";
+import { AGGREGATION_LABEL, EQUATION_LABEL, PROTOCOL_CHIP, SITE_LABEL, bilateralObservation, bilateralSigned, requiredSites, type CompositionPayload } from "./composition";
 import {
   ANAMNESIS_CODES,
   EMPTY_SCREENING,
@@ -36,14 +48,31 @@ import {
 export interface ResultDraft {
   code: ResultCode;
   value: number;
-  unit: string;
+  /** Null for a ratio (no unit). */
+  unit: string | null;
   method: string;
   formulaVersion: string;
   inputs: Record<string, unknown>;
   flags: string[];
 }
-export const RESULT_CODES = ["sum_skinfolds", "body_density", "body_fat_percent", "fat_mass_kg", "lean_mass_kg", "bmi"] as const;
-export type ResultCode = (typeof RESULT_CODES)[number];
+/** The code of the bilateral difference of a sided perimeter (handoff 5: right − left). */
+export const bilateralCode = (code: PerimeterSided) => `bilateral_difference_${code}` as const;
+export const RESULT_CODES = [
+  "sum_skinfolds",
+  "body_density",
+  "body_fat_percent",
+  "fat_mass_kg",
+  "lean_mass_kg",
+  "bmi",
+  "waist_hip_ratio",
+  ...PERIMETER_SIDED_CODES.map(bilateralCode),
+] as const;
+export type ResultCode = "sum_skinfolds" | "body_density" | "body_fat_percent" | "fat_mass_kg" | "lean_mass_kg" | "bmi" | "waist_hip_ratio" | ReturnType<typeof bilateralCode>;
+/** How each computed-by-arithmetic result is obtained (no equation from a study, so never "estimativa"). */
+export const EXACT_METHODS = { bmi: "weight_over_height_squared", waistHip: "waist_over_hip", bilateral: "right_minus_left" } as const;
+const EXACT_METHOD_SET: ReadonlySet<string> = new Set(Object.values(EXACT_METHODS));
+/** A result whose method is arithmetic on measures (BMI, waist-hip ratio, bilateral difference) or unknown: not an estimate of a study's equation. */
+export const isEstimate = (method: string) => method !== "legacy_formula_unknown" && !EXACT_METHOD_SET.has(method);
 
 export const RESULT_LABEL: Record<string, string> = {
   sum_skinfolds: "Soma das dobras",
@@ -53,12 +82,15 @@ export const RESULT_LABEL: Record<string, string> = {
   lean_mass_kg: "Massa livre de gordura",
   bmi: "IMC",
   waist_hip_ratio: "RCQ",
+  ...Object.fromEntries(PERIMETER_SIDED_CODES.map((code) => [bilateralCode(code), `Diferença bilateral ${PERIMETERS_SIDED_OF[code]}`])),
 };
 
 /** The method of a result in words: the protocol and the reference of its equation, or how it was obtained. */
 export function methodLabel(method: string): string {
   if (method === "legacy_formula_unknown") return "método desconhecido";
-  if (method === "weight_over_height_squared") return "peso ÷ altura²";
+  if (method === EXACT_METHODS.bmi) return "peso ÷ altura²";
+  if (method === EXACT_METHODS.waistHip) return "cintura ÷ quadril";
+  if (method === EXACT_METHODS.bilateral) return "direito − esquerdo";
   for (const protocol of Object.keys(PROTOCOL_VARIANTS) as (keyof typeof PROTOCOL_VARIANTS)[]) {
     const variants = PROTOCOL_VARIANTS[protocol];
     if (variants.male.id === method && variants.female.id === method) return PROTOCOL_CHIP[protocol];
@@ -76,13 +108,21 @@ export const FLAG_LABEL: Record<string, string> = {
 };
 
 const DIGITS: Record<string, number> = { sum_skinfolds: 1, body_density: 4, body_fat_percent: 1, fat_mass_kg: 1, lean_mass_kg: 1, bmi: 2, waist_hip_ratio: 3 };
+const MIN_DIGITS: Record<string, number> = { bmi: 2, waist_hip_ratio: 3 };
 
 /** A value as the screens show it (rounded only here; the record keeps the full precision), with its unit. */
 export function formatResult(code: string, value: number, unit: string | null): string {
+  if (code.startsWith("bilateral_difference_")) return bilateralSigned(value);
   const digits = DIGITS[code] ?? 2;
-  const text = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: code === "bmi" ? 2 : 0, maximumFractionDigits: digits }).format(value);
+  const text = new Intl.NumberFormat("pt-BR", { minimumFractionDigits: MIN_DIGITS[code] ?? 0, maximumFractionDigits: digits }).format(value);
   if (!unit) return text;
   return unit === "%" ? `${text}%` : `${text} ${unit}`;
+}
+
+/** A line that reads the value (the larger side of a bilateral difference, its absolute value), or null. Never a classification. */
+export function resultNote(code: string, value: number | null): string | null {
+  if (value === null || !code.startsWith("bilateral_difference_")) return null;
+  return bilateralObservation(value);
 }
 
 /** One module of the review: what it holds, in words, and whether it is done, partial, or was not done (never a 0). */
@@ -159,7 +199,7 @@ function compositionResults(composition: CompositionPayload, ageYears: number | 
       code: "bmi",
       value: index,
       unit: "kg/m²",
-      method: "weight_over_height_squared",
+      method: EXACT_METHODS.bmi,
       formulaVersion: FORMULA_VERSION,
       inputs: { weightKg: composition.weightKg, heightCm: composition.heightCm },
       flags: [],
@@ -215,6 +255,39 @@ function compositionResults(composition: CompositionPayload, ageYears: number | 
   return { results, notComputed };
 }
 
+/**
+ * What the perimeters give (handoff 3.2 and 5): the waist-hip ratio when both are measured, and the bilateral difference (right − left) of each
+ * sided perimeter with both sides. Plain arithmetic on the measures, versioned like every result; no classification and no "significant" (none
+ * is homologated: handoff 11). The bone breadths give no result in this version: they are kept as measured.
+ */
+function perimeterResults(composition: CompositionPayload): { results: ResultDraft[]; notComputed: string[] } {
+  const results: ResultDraft[] = [];
+  const notComputed: string[] = [];
+  const waist = composition.perimetersCm.waist ?? null;
+  const hip = composition.perimetersCm.hip ?? null;
+  const index = waistHipRatio(waist, hip);
+  if (index !== null)
+    results.push({ code: "waist_hip_ratio", value: index, unit: null, method: EXACT_METHODS.waistHip, formulaVersion: FORMULA_VERSION, inputs: { waistCm: waist, hipCm: hip }, flags: [] });
+  else if (waist !== null || hip !== null) notComputed.push(`RCQ: falta ${waist === null ? "a cintura" : "o quadril"}`);
+  for (const code of PERIMETER_SIDED_CODES) {
+    const pair = composition.sidedPerimetersCm[code];
+    if (!pair) continue;
+    const difference = bilateralDifference(pair.right, pair.left);
+    if (difference !== null)
+      results.push({
+        code: bilateralCode(code),
+        value: difference,
+        unit: "cm",
+        method: EXACT_METHODS.bilateral,
+        formulaVersion: FORMULA_VERSION,
+        inputs: { rightCm: pair.right, leftCm: pair.left, convention: "right_minus_left" },
+        flags: [],
+      });
+    else notComputed.push(`Diferença bilateral ${PERIMETERS_SIDED_OF[code]}: falta o lado ${pair.right === null ? "direito" : "esquerdo"}`);
+  }
+  return { results, notComputed };
+}
+
 function triagemSummary(profile: ProfilePayload | null, screening: ScreeningPayload | null, pending: string[]): ModuleSummary {
   const lines: string[] = [];
   const goals = profile?.goals ?? [];
@@ -259,7 +332,20 @@ function medidasSummary(composition: CompositionPayload | null): ModuleSummary {
   } else lines.push("Protocolo de dobras: não escolhido");
   const extra = composition.protocol ? measured.filter((site) => !requiredSites(composition.protocol, composition.equation).includes(site)) : measured;
   if (extra.length > 0) lines.push(`Outras dobras guardadas: ${list(extra.map((site) => SITE_LABEL[site]))}`);
-  const empty = basics.length === 0 && measured.length === 0 && composition.protocol === null;
+  // A sided perimeter counts as measured only with both sides; one with a single side is named apart, so "9 de 9" never hides a missing side.
+  const sidedTyped = PERIMETER_SIDED_CODES.filter((code) => composition.sidedPerimetersCm[code] !== undefined);
+  const oneSided = sidedTyped.filter((code) => {
+    const pair = composition.sidedPerimetersCm[code]!;
+    return pair.right === null || pair.left === null;
+  });
+  const complete = PERIMETER_SINGLE_CODES.filter((code) => composition.perimetersCm[code] !== undefined).length + sidedTyped.length - oneSided.length;
+  const perimeters = complete + oneSided.length;
+  const breadths = BONE_BREADTH_CODES.filter((code) => composition.boneBreadthsCm[code] !== undefined).length;
+  const perimeterTotal = PERIMETER_SINGLE_CODES.length + PERIMETER_SIDED_CODES.length;
+  const oneSidedText = oneSided.length > 0 ? ` · ${list(oneSided.map((code) => PERIMETERS_SIDED[code]))} só com um lado` : "";
+  lines.push(perimeters === 0 ? "Perímetros: sem aferição" : `Perímetros: ${complete} de ${perimeterTotal} com medida${oneSidedText}`);
+  lines.push(breadths === 0 ? "Diâmetros ósseos: sem aferição" : `Diâmetros ósseos: ${breadths} de ${BONE_BREADTH_CODES.length} com medida`);
+  const empty = basics.length === 0 && measured.length === 0 && composition.protocol === null && perimeters === 0 && breadths === 0;
   return { key: "medidas", title: "Medidas", state: empty ? "not_done" : "filled", lines: empty ? ["Não realizado"] : lines };
 }
 
@@ -271,7 +357,9 @@ export function reviewDraft(input: ReviewInput): DraftReview {
   const pending = input.screening ? screeningPending(input.screening) : screeningPending(EMPTY_SCREENING);
   if (input.screening && input.original) pending.push(...amendmentPending(input.screening, input.original.screening));
   const ageYears = ageOn(input.birthDate, input.assessedOn);
-  const computed = input.composition ? compositionResults(input.composition, ageYears) : { results: [], notComputed: [] };
+  const skinfold = input.composition ? compositionResults(input.composition, ageYears) : { results: [], notComputed: [] };
+  const perimeter = input.composition ? perimeterResults(input.composition) : { results: [], notComputed: [] };
+  const computed = { results: [...skinfold.results, ...perimeter.results], notComputed: [...skinfold.notComputed, ...perimeter.notComputed] };
   return {
     pending,
     results: computed.results,

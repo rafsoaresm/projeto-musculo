@@ -90,6 +90,13 @@ test("the Revisão step finalizes the Avaliação Física, the record shows the 
   await page.getByRole("radio", { name: "Jackson & Pollock · 7" }).check();
   await page.getByLabel("Referência da equação", { exact: true }).selectOption("male");
   for (const [name, value] of Object.entries(JP7)) await page.getByLabel(`${name} (mm)`, { exact: true }).fill(value);
+  // Slice 0.78: the handoff's waist and hip, one thigh pair and one calf with a side missing.
+  await page.getByLabel("Cintura (cm)").fill("69,5");
+  await page.getByLabel("Quadril (cm)").fill("108");
+  await page.getByLabel("Coxa direita (cm)").fill("56");
+  await page.getByLabel("Coxa esquerda (cm)").fill("56,6");
+  await page.getByLabel("Panturrilha direita (cm)").fill("40");
+  await page.getByLabel("Biestiloide (cm)").fill("5,7");
 
   await step(page, "4 Revisão").click();
   await expect(pending.getByText("Nada pendente: a avaliação pode ser finalizada.")).toBeVisible();
@@ -98,6 +105,16 @@ test("the Revisão step finalizes the Avaliação Física, the record shows the 
   await expect(toRecord.getByRole("listitem").filter({ hasText: "Gordura estimada" })).toContainText("Jackson & Pollock · 7, equação masculina");
   await expect(toRecord.getByRole("listitem").filter({ hasText: "Soma das dobras" })).toContainText("122 mm");
   await expect(toRecord.getByRole("listitem").filter({ hasText: "IMC" })).toContainText("23,63");
+  const ratioRow = toRecord.getByRole("listitem").filter({ hasText: "RCQ" });
+  await expect(ratioRow).toContainText("0,644");
+  await expect(ratioRow).toContainText("cintura ÷ quadril · fórmula av2-2026-11");
+  await expect(ratioRow).not.toContainText("estimativa");
+  const thighRow = toRecord.getByRole("listitem").filter({ hasText: "Diferença bilateral da coxa" });
+  await expect(thighRow.locator(".av2-result-value")).toHaveText("−0,6 cm");
+  await expect(thighRow.locator(".av2-result-method")).toHaveText("esquerdo maior em 0,6 cm · direito − esquerdo · fórmula av2-2026-11");
+  await expect(page.getByText("Diferença bilateral da panturrilha: falta o lado esquerdo")).toBeVisible();
+  await expect(checklist.getByText("Perímetros: 3 de 9 com medida · Panturrilha só com um lado")).toBeVisible();
+  await expect(checklist.getByText("Diâmetros ósseos: 1 de 3 com medida")).toBeVisible();
   await noHorizontalOverflow(page);
   await shots(page, "revisao", testInfo.project.name);
 
@@ -111,6 +128,11 @@ test("the Revisão step finalizes the Avaliação Física, the record shows the 
   await expect(results.getByRole("listitem").filter({ hasText: "Gordura estimada" })).toContainText("17,3%");
   await expect(results.getByRole("listitem").filter({ hasText: "Gordura estimada" })).toContainText("fórmula av2-2026-11");
   await expect(results.getByRole("listitem").filter({ hasText: "Massa gorda" })).toContainText("11,9 kg");
+  await expect(results.getByRole("listitem").filter({ hasText: "RCQ" })).toContainText("0,644");
+  await expect(results.getByRole("listitem").filter({ hasText: "Diferença bilateral da coxa" })).toContainText("−0,6 cm");
+  const recordedPerimeters = page.getByRole("definition").filter({ hasText: /^D 40 cm \/ E Sem aferição$/ });
+  await expect(recordedPerimeters).toBeVisible();
+  await expect(page.getByText("Biestiloide", { exact: true })).toBeVisible();
   const recordedDecision = page.getByRole("group", { name: "Decisão profissional" });
   await expect(recordedDecision).toContainText("Precisa de liberação médica");
   await expect(recordedDecision).toContainText(/Registrada por .+ em \d{2}\/\d{2}\/\d{4}/);

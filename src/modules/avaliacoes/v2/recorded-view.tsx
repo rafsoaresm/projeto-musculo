@@ -2,7 +2,24 @@ import Link from "next/link";
 import { Notice, formatDateTime } from "@/components/ui";
 import type { AssessmentDetail } from "@/db/assessments";
 import { formatCalendarDate } from "@/modules/training/format";
-import { ACTIVITY_CURRENT, ACTIVITY_PAST, ANAMNESIS, ANAMNESIS_ANSWERS, GOALS, GOALS_NOTES_LABEL, PARQ, PARQ_ANSWERS, PARQ_DECISIONS, PARQ_INSTRUMENT_LABEL } from "../catalog";
+import {
+  ACTIVITY_CURRENT,
+  ACTIVITY_PAST,
+  ANAMNESIS,
+  ANAMNESIS_ANSWERS,
+  BONE_BREADTHS,
+  BONE_BREADTH_CODES,
+  GOALS,
+  GOALS_NOTES_LABEL,
+  PARQ,
+  PARQ_ANSWERS,
+  PARQ_DECISIONS,
+  PARQ_INSTRUMENT_LABEL,
+  PERIMETERS_SIDED,
+  PERIMETERS_SINGLE,
+  PERIMETER_SIDED_CODES,
+  PERIMETER_SINGLE_CODES,
+} from "../catalog";
 import { SKINFOLD_SITE_CODES, selectedValue } from "../formulas";
 import { ScreeningPill } from "../screening-pill";
 import { AGGREGATION_LABEL, CONVERSION_LABEL, EQUATION_LABEL, PROTOCOL_CHIP, SITE_LABEL, requiredSites, type CompositionPayload } from "./composition";
@@ -231,6 +248,7 @@ export function RecordedAssessmentView({
             ) : (
               <p className="muted">Nenhuma dobra medida.</p>
             )}
+            <RecordedPerimeters composition={composition} />
           </>
         ) : (
           <p className="muted">Não realizado.</p>
@@ -239,7 +257,7 @@ export function RecordedAssessmentView({
 
       <section className="panel av2-card" aria-labelledby="av2-r-resultados">
         <h3 id="av2-r-resultados">Resultados</h3>
-        <p className="muted small">Calculados ao finalizar, com o método e a versão da fórmula; estimativas, sem classificação.</p>
+        <p className="muted small">Calculados ao finalizar, com o método e a versão da fórmula, sem classificação. Só os marcados como estimativa vêm da equação de um estudo.</p>
         {detail.results.length > 0 ? <ResultsList results={detail.results} labelledBy="av2-r-resultados" /> : <p>Nenhum resultado foi calculado.</p>}
       </section>
 
@@ -263,5 +281,56 @@ export function RecordedAssessmentView({
         </p>
       )}
     </div>
+  );
+}
+
+/**
+ * The perimeters and bone breadths as recorded: only what was measured (a side not measured says so), in cm. The waist-hip ratio and the
+ * bilateral differences are in "Resultados", with their method and formula version.
+ */
+function RecordedPerimeters({ composition }: { composition: CompositionPayload }) {
+  const single = PERIMETER_SINGLE_CODES.filter((code) => composition.perimetersCm[code] !== undefined);
+  const sided = PERIMETER_SIDED_CODES.filter((code) => composition.sidedPerimetersCm[code] !== undefined);
+  const breadths = BONE_BREADTH_CODES.filter((code) => composition.boneBreadthsCm[code] !== undefined);
+  return (
+    <>
+      <h4 className="av2-subtitle">Perímetros</h4>
+      {single.length + sided.length === 0 ? (
+        <p className="muted">Nenhum perímetro medido.</p>
+      ) : (
+        <dl className="av2-facts" aria-label="Perímetros registrados">
+          {single.map((code) => (
+            <div key={code}>
+              <dt>{PERIMETERS_SINGLE[code]}</dt>
+              <dd>{measured(composition.perimetersCm[code] ?? null, "cm")}</dd>
+            </div>
+          ))}
+          {sided.map((code) => {
+            const pair = composition.sidedPerimetersCm[code];
+            return (
+              <div key={code}>
+                <dt>{PERIMETERS_SIDED[code]} (D / E)</dt>
+                <dd>
+                  D {measured(pair?.right ?? null, "cm")} / E {measured(pair?.left ?? null, "cm")}
+                </dd>
+              </div>
+            );
+          })}
+        </dl>
+      )}
+      <h4 className="av2-subtitle">Diâmetros ósseos</h4>
+      {breadths.length === 0 ? (
+        <p className="muted">Nenhum diâmetro medido.</p>
+      ) : (
+        <dl className="av2-facts" aria-label="Diâmetros ósseos registrados">
+          {breadths.map((code) => (
+            <div key={code}>
+              <dt>{BONE_BREADTHS[code]}</dt>
+              <dd>{measured(composition.boneBreadthsCm[code] ?? null, "cm")}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </>
   );
 }

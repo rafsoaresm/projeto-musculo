@@ -1,4 +1,4 @@
-import { FLAG_LABEL, RESULT_LABEL, formatResult, methodLabel } from "./review";
+import { FLAG_LABEL, RESULT_LABEL, formatResult, isEstimate, methodLabel, resultNote } from "./review";
 
 export interface ResultItem {
   code: string;
@@ -22,9 +22,10 @@ export function ResultsList({ results, labelledBy }: { results: ResultItem[]; la
           <span className="av2-result-name">{RESULT_LABEL[result.code] ?? result.code}</span>
           <strong className="av2-result-value">{result.value === null ? "Sem valor" : formatResult(result.code, result.value, result.unit)}</strong>
           <span className="av2-result-method small muted">
+            {resultNote(result.code, result.value) ? `${resultNote(result.code, result.value)} · ` : ""}
             {methodLabel(result.method)}
             {result.formulaVersion ? ` · fórmula ${result.formulaVersion}` : ""}
-            {result.method !== "legacy_formula_unknown" && result.method !== "weight_over_height_squared" ? " · estimativa" : ""}
+            {isEstimate(result.method) ? " · estimativa" : ""}
           </span>
           {result.flags.length > 0 && (
             <span className="av2-result-flags">

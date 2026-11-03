@@ -30,7 +30,7 @@ import type { StepKey } from "./steps";
  */
 const STEPS = [
   { key: "triagem", label: "Triagem", title: "Triagem e segurança", description: "Objetivos, histórico de saúde e revisão profissional", modules: [PROFILE_MODULE, SCREENING_MODULE] },
-  { key: "medidas", label: "Medidas", title: "Composição corporal", description: "Medidas básicas, protocolo de dobras e prévia calculada", modules: [COMPOSITION_MODULE] },
+  { key: "medidas", label: "Medidas", title: "Composição corporal", description: "Medidas básicas, dobras com prévia calculada, perímetros e diâmetros ósseos", modules: [COMPOSITION_MODULE] },
   { key: "movimento", label: "Movimento", title: "Postura e movimento", description: null, modules: [] },
   { key: "revisao", label: "Revisão", title: "Revisão e conclusão", description: "Pendências, resultados calculados e finalização", modules: [] },
 ] as const satisfies readonly { key: StepKey; label: string; title: string; description: string | null; modules: readonly string[] }[];
