@@ -12,6 +12,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Descarte:** o salvamento automático para quando o descarte é confirmado e volta se o descarte falhar; o erro do descarte fica num alerta próprio e some na próxima edição.
 - **Verificado localmente:** tipos, lint e `npm run check` (111 arquivos, 1761 testes, com 9 da regra); e2e nos dois mounts (raiz e `/treinador`), 24 passaram em cada: digitar, esperar e recarregar traz os valores sem clicar; trocar de etapa salva antes da pausa; o botão salva antes da pausa; a segunda aba recebe o conflito e não envia mais nada; o valor inválido não é guardado; dois cliques durante um salvamento lento enviam um de cada vez e fica o último valor.
 - **Não verificado:** leitor de tela real (NVDA, VoiceOver); só os papéis `status`/`alert` foram conferidos. O gancho não tem teste unitário (a fila é coberta pelos testes de navegador). A verificação "trocar de etapa salva antes da pausa" depende de tempo (1,5 s).
+- **CI e deploy:** o CI do PR #77 passou (`validate` e `validate (/treinador)`, no commit `22f8074`); merge `14b4de2`; deploy `cc81616c` com sucesso em 03/11/2026 (sem migration).
 
 ## Fatia 0.74: Avaliação Física única e alinhamento da etapa Medidas (pedido do usuário de 03/11/2026)
 
