@@ -2,6 +2,18 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.90: Nome de quem entregou no momento da entrega (PENDENCIAS B15)
+
+**Migration `0039_delivery_names.sql`** (aditiva): `plan_revisions.delivered_by_name` e `delivered_organization_name`; `assessments.recorded_by_name` e `recorded_organization_name`; tabela `name_history` (nome antigo, novo, quem mudou e quando; nunca alterada nem apagada).
+
+- **Nomes gravados pelo banco:** gatilhos preenchem os nomes quando uma revisão passa a ENTREGUE ou uma avaliação a REGISTRADA, por qualquer caminho; depois não mudam mais, não existem em rascunho e não podem vir de fora (uma instrução que traga os próprios nomes é recusada). Sem cadastro de profissional, o nome fica vazio: as telas o omitem e os PDFs dizem "Não informado".
+- **Linhas existentes:** preenchidas com os nomes atuais no momento da migration. O nome que tinham antes não é conhecido (nunca foi guardado).
+- **Onde aparecem:** página do plano do profissional, treino e início do aluno ("Entregue em … por Nome (Espaço)"), os dois PDFs do plano, a avaliação registrada (formato novo e anterior), a página da avaliação do aluno, o relatório da avaliação e "Baixar meus dados" (`entreguePor`, `espacoNaEntrega`).
+- **Configurações:** "Nomes anteriores do espaço" (todos os membros) e "Seus nomes anteriores" (só o próprio profissional), até 100 cada, avisando quando cortou; vazio diz que mudanças anteriores ao histórico não aparecem.
+- **Continuam lidos na hora (escolha):** quem aprovou uma revisão, quem decidiu o PAR-Q, o cabeçalho do aluno e "Quem acessou os meus dados".
+- **Verificado localmente:** tipos, lint e `npm run check` (128 arquivos, 1958 testes; 11 D1 com o banco montado até a 0038 e a 0039 aplicada por cima); e2e nos dois mounts (raiz e `/treinador`): 17 passaram e 1 pulado em cada (`delivery`, `settings`, `assessment-finalize`, `assessment-report`, `assessments`, `plans`, `export`); capturas a 1440, 1280, 1024, 768 e 390.
+- **Não verificado:** a migration e o preenchimento no D1 de produção (será conferido no log); o texto dos PDFs com uma entrega real.
+
 ## Fatia 0.89: Recuperar o acesso do último gestor (PENDENCIAS B16; parte de B2)
 
 **Sem migration.** Nova página pública `/gestor/recuperar`, ligada a partir da tela do código de recuperação ("Sou o último gestor e perdi os códigos").
