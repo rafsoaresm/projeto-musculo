@@ -16,6 +16,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Efeitos que ficam:** com o "um aberto por tipo" fora, o aluno pode abrir dois pedidos iguais (a mensagem "Você já tem um pedido deste tipo em andamento" ficou inalcançável); aceites, pedidos e termos publicados deixam de ser protegidos contra alteração no banco (nenhuma tela os altera).
 - **Verificado localmente:** `npm run check` (tipos, lint e 110 arquivos, 1752 testes, incluindo a migration 0035 sobre 0001–0034 no Miniflare); e2e nos dois mounts, raiz e `/treinador` (148 passaram, 39 pulados, 0 falhas em cada).
 - **Não verificado:** a migration no D1 de produção; a entrega real ao GA4, à Meta e ao Google Ads; nenhum teste de navegador clica em "Remover bloco das fotos" no editor de termos (só a validação tem teste unitário).
+- **CI e deploy:** o CI do PR #75 passou (`validate` e `validate (/treinador)`, no commit `8179944`); merge `bdd7ddd`; deploy `514c3a2a` com sucesso em 03/11/2026, com `0035_no_legal_locks.sql ✅` no log.
 
 ## Fatia 0.72: Avaliação nova aberta a todos e rascunho descartável (pedido do usuário de 03/11/2026)
 
