@@ -481,7 +481,7 @@ function RecordedPhotos({ detail }: { detail: AssessmentDetail }) {
       <h4 className="av2-subtitle" id="av2-r-fotos">
         Fotos da postura
       </h4>
-      <p className="muted small av2-card-note">Registro visual, não diagnóstico. Quem atende o aluno e o próprio aluno, na área dele, veem as fotos; elas entram no relatório em PDF. Uma foto excluída sai da área do aluno e do PDF.</p>
+      <p className="muted small av2-card-note">Registro visual, não diagnóstico. Quem atende o aluno e o próprio aluno, na área dele, veem as fotos; elas entram no relatório em PDF. Uma foto apagada sai da área do aluno e do PDF.</p>
       <div className="av2-grid av2-photo-grid" role="group" aria-labelledby="av2-r-fotos">
         {recordedPhotoGroups(detail.photos).flatMap((group) =>
           group.photos.map((photo) => (

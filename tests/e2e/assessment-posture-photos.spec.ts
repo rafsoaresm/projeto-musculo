@@ -133,9 +133,10 @@ test("the posture takes optional photos per view on a draft, they freeze with th
   expect(asStudent.headers()["content-type"] ?? "").not.toContain("image/jpeg");
   await student.page.goto("./aluno/avaliacoes");
   await expect(student.page.getByRole("img", { name: /^Foto / })).toHaveCount(0);
-  await student.page.getByRole("link", { name: `Ver fotos e resultados da avaliação inicial de ${day}` }).click();
+  await shots(student.page, "aluno-lista", testInfo.project.name, "0.86");
+  await student.page.getByRole("link", { name: `Ver a avaliação inicial de ${day}` }).click();
   await expect(student.page.getByRole("heading", { name: `Avaliação física de ${day}`, level: 1 })).toBeVisible();
-  const mine = student.page.getByRole("group", { name: "Fotos da postura" });
+  const mine = student.page.getByRole("region", { name: "Fotos da postura" });
   await expect(mine.locator("figcaption")).toHaveText(["Lateral esquerda", "Anterior"]);
   await drawn(student.page, `Foto lateral esquerda de ${day}`);
   await expect(mine.getByText(/^Foto apagada em \d{2}\/\d{2}\/\d{4}\.$/)).toBeVisible();

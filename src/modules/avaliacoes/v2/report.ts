@@ -560,10 +560,9 @@ export async function reportFingerprint(input: ReportInput): Promise<string> {
     input.conclusion,
     // The model (slice 0.85) only when there is one, so the fingerprint of every report made before stays the same.
     ...(input.template ? [input.template, input.enabled ?? null] : []),
-    // The photos (slice 0.86) only when there are any, and only which view and when stored: an erasure later is not a change of the record.
-    ...(input.photos && input.photos.length > 0
-      ? [[...input.photos].map((photo) => [photo.view, photo.createdAt]).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))]
-      : []),
+    // The photos (slice 0.86) are left out: they freeze with the record (migration 0011's triggers), so the assessment id already names them,
+    // and a record that had photos before 0.86 keeps the version its earlier PDFs printed. An erasure later prints "Foto apagada em …" under
+    // the same version: the version names the record, not every printed page.
   ]);
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");

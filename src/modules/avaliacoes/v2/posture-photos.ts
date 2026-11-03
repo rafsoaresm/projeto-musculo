@@ -10,6 +10,8 @@
  */
 import type { PostureView } from "../catalog";
 import { photoViewLabel, type PhotoView } from "../photos";
+import { postureEmpty, type PosturePayload } from "./posture";
+import { NOT_INCLUDED, isPartEnabled, isStepEnabled, type EnabledParts } from "./template";
 
 /** The stored views of each view of the posture, in the order they are shown. */
 export const POSTURE_PHOTO_VIEWS: Record<PostureView, readonly PhotoView[]> = {
@@ -48,4 +50,14 @@ export function recordedPhotoGroups<T extends { view: PhotoView }>(rows: readonl
   return (Object.keys(POSTURE_PHOTO_VIEWS) as PostureView[])
     .map((view) => ({ view, photos: POSTURE_PHOTO_VIEWS[view].flatMap((item) => rows.filter((row) => row.view === item)) }))
     .filter((group) => group.photos.length > 0);
+}
+
+/**
+ * Slice 0.86: what the student's page says when a recorded assessment has no posture photo. Posture left out of the assessment's model
+ * (0.85) is "Não incluído neste modelo", posture not done is "Não realizado", and posture done without photos (they are optional) says so.
+ */
+export function noPhotosLine(enabled: EnabledParts, posture: PosturePayload | null): string {
+  if (!isStepEnabled(enabled, "movimento") || !isPartEnabled(enabled, "posture")) return `${NOT_INCLUDED}.`;
+  if (posture === null || postureEmpty(posture)) return "Não realizado.";
+  return "Nenhuma foto da postura nesta avaliação.";
 }

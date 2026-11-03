@@ -268,7 +268,13 @@ export function studentAssessmentsFor(db: D1Database, userId: string, studentId:
         .bind(userId, studentId, assessmentId, view)
         .first<{ key: string }>();
       if (!row) return null;
-      const object = await bucket.get(row.key);
+      let object: R2ObjectBody | null;
+      try {
+        object = await bucket.get(row.key);
+      } catch {
+        // The storage failed to answer: the route says it is unavailable (503), as when the storage is off, not a bare 500.
+        throw new Error("PHOTO_STORAGE_UNAVAILABLE");
+      }
       return object ? { body: object.body, size: object.size } : null;
     },
     /**

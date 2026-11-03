@@ -107,6 +107,9 @@ describe("the student's own posture photos (0.86)", () => {
     const image = await readAll(await mine.photo(bucket, recorded, "LATERAL_LEFT"));
     expect(Buffer.from(image!).subarray(0, 2).toString("hex")).toBe("ffd8");
     expect(await readAll(await mine.photo(bucket, recorded, "ANTERIOR"))).not.toBeNull();
+    // A storage that fails to answer is "unavailable" (the route answers 503), not a bare error.
+    const failing = { get: async () => { throw new Error("network"); } } as unknown as R2Bucket;
+    await expect(mine.photo(failing, recorded, "LATERAL_LEFT")).rejects.toThrow("PHOTO_STORAGE_UNAVAILABLE");
   });
 
   it("refuses an erased photo, an unknown view, a draft, another student, another organization, a revoked link and a blocked login", async () => {
@@ -166,9 +169,10 @@ describe("the student's own posture photos (0.86)", () => {
     // Erasing another photo later does not change the version of the record.
     const before = await reportFingerprint(mine!);
     expect(await reportFingerprint({ ...mine!, photos: mine!.photos!.map((photo) => ({ ...photo, erasedAt: "2026-11-07T12:00:00.000Z" })) })).toBe(before);
-    // A record without photos keeps the version it had before 0.86.
+    // Any record, with photos or without, keeps the version it had before 0.86 (photos were stored from 0.83 on, before the PDF showed them).
     const bare = { ...mine!, photos: undefined, photoImages: undefined };
     expect(await reportFingerprint({ ...bare, photos: [] })).toBe(await reportFingerprint(bare));
+    expect(before).toBe(await reportFingerprint(bare));
     expect(assessmentReport({ ...bare, photos: [] }).sections.some((item) => item.title === "Fotos da postura")).toBe(false);
   });
 });

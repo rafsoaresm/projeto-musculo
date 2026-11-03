@@ -39,7 +39,7 @@ export function PhotoImage({
   );
   if (erasedAt)
     return (
-      <p className="posture-photo placeholder erased" role="img" aria-label={`${alt}: apagada`}>
+      <p className="posture-photo placeholder erased" role="img" aria-label={`${alt}: foto apagada em ${formatDate(erasedAt)}`}>
         Foto apagada em {formatDate(erasedAt)}.
       </p>
     );

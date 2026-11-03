@@ -17,14 +17,14 @@ export async function GET(_request: Request, { params }: { params: Promise<{ stu
   const { studentId, assessmentId, view } = await params;
   const link = links.find((item) => item.studentId === studentId);
   if (!link) return text("Página não encontrada.", 404);
-  let bucket;
+  let photo;
   try {
-    bucket = await getPhotoBucket();
+    photo = await studentAssessmentsFor(db, user.id, link.studentId).photo(await getPhotoBucket(), assessmentId, view);
   } catch (error) {
+    // The storage is off here or failed to answer: 503, never the image of anyone else and never a bare 500.
     if (error instanceof Error && error.message === "PHOTO_STORAGE_UNAVAILABLE") return text("Armazenamento de fotos indisponível.", 503);
     throw error;
   }
-  const photo = await studentAssessmentsFor(db, user.id, link.studentId).photo(bucket, assessmentId, view);
   if (!photo) return text("Página não encontrada.", 404);
   return new Response(photo.body as unknown as BodyInit, {
     headers: { ...NO_STORE, "Content-Type": "image/jpeg", "Content-Length": String(photo.size), "Content-Disposition": "inline" },

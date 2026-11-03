@@ -84,9 +84,9 @@ export default async function StudentAssessmentsPage() {
                           <Link
                             className="button secondary small av2-report-button"
                             href={`/aluno/avaliacoes/${link.studentId}/${item.id}`}
-                            aria-label={`Ver fotos e resultados ${pdfOf(item)} de ${dates[index]}`}
+                            aria-label={`Ver ${pdfOf(item).replace(/^da /, "a ")} de ${dates[index]}`}
                           >
-                            <Eye size={16} /> Ver fotos e resultados
+                            <Eye size={16} /> Ver avaliação
                           </Link>
                         </td>
                         <td data-label="Relatório">

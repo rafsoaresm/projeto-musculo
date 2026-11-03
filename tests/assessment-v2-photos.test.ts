@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { PHOTO_VIEW_KEYS } from "@/modules/avaliacoes/photos";
 import { POSTURE_VIEW_CODES } from "@/modules/avaliacoes/catalog";
-import { POSTURE_PHOTO_VIEWS, photoName, photoOf, recordedPhotoGroups, storedPhotos, withPhoto, withoutPhoto } from "@/modules/avaliacoes/v2/posture-photos";
+import { POSTURE_PHOTO_VIEWS, noPhotosLine, photoName, photoOf, recordedPhotoGroups, storedPhotos, withPhoto, withoutPhoto } from "@/modules/avaliacoes/v2/posture-photos";
+import { EMPTY_POSTURE } from "@/modules/avaliacoes/v2/posture";
 
 describe("the photos of the posture of the Avaliação Física (0.83)", () => {
   it("map the three views of the posture onto the four stored views, each exactly once (the lateral view takes both sides)", () => {
@@ -32,5 +33,17 @@ describe("the photos of the posture of the Avaliação Física (0.83)", () => {
       { view: "anterior", photos: [{ view: "ANTERIOR" }] },
     ]);
     expect(recordedPhotoGroups([])).toEqual([]);
+  });
+});
+
+describe("the student's page with no posture photo (0.86)", () => {
+  const done = { ...EMPTY_POSTURE, notes: { ...EMPTY_POSTURE.notes, lateral: "Ombros alinhados." } };
+  it("tells left out of the model from not done from done without photos, and never says 0", () => {
+    expect(noPhotosLine(["flexitest"], done)).toBe("Não incluído neste modelo.");
+    expect(noPhotosLine(["abdominal"], done)).toBe("Não incluído neste modelo.");
+    expect(noPhotosLine(null, null)).toBe("Não realizado.");
+    expect(noPhotosLine(null, EMPTY_POSTURE)).toBe("Não realizado.");
+    expect(noPhotosLine(["posture"], done)).toBe("Nenhuma foto da postura nesta avaliação.");
+    expect(noPhotosLine(null, done)).toBe("Nenhuma foto da postura nesta avaliação.");
   });
 });

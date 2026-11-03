@@ -10,6 +10,7 @@ import { ASSESSMENT_NAME, assessmentTitle } from "@/modules/avaliacoes/names";
 import { PhotoImage } from "@/modules/avaliacoes/photo-image";
 import { photoViewLabel } from "@/modules/avaliacoes/photos";
 import {
+  noPhotosLine,
   photoName,
   recordedPhotoGroups,
 } from "@/modules/avaliacoes/v2/posture-photos";
@@ -46,6 +47,8 @@ export default async function StudentAssessmentPage({ params }: Params) {
   const { assessment } = source;
   const date = formatCalendarDate(assessment.assessedOn);
   const photos = source.photos ?? [];
+  // With no photo, the line says why: left out of the model, not done, or done without photos.
+  const noPhotos = noPhotosLine(source.enabled ?? null, source.posture);
   return (
     <>
       <PageHeading
@@ -83,15 +86,11 @@ export default async function StudentAssessmentPage({ params }: Params) {
         <section className="panel av2-card" aria-labelledby="aluno-fotos">
           <h2 id="aluno-fotos">Fotos da postura</h2>
           {photos.length === 0 ? (
-            <p className="muted">Nenhuma foto da postura nesta avaliação.</p>
+            <p className="muted">{noPhotos}</p>
           ) : (
             <>
               <p className="muted small">{REPORT_PHOTOS_NOTE}</p>
-              <div
-                className="av2-grid av2-photo-grid"
-                role="group"
-                aria-labelledby="aluno-fotos"
-              >
+              <div className="av2-grid av2-photo-grid">
                 {recordedPhotoGroups(photos).flatMap((group) =>
                   group.photos.map((photo) => (
                     <figure
