@@ -175,10 +175,11 @@ afterAll(async () => {
 describe("migration files (design §3.1)", () => {
   const text = (file: string) => readFileSync(new URL(`../migrations/${file}`, import.meta.url), "utf8");
 
-  it("are the newest migrations, contiguous after 0040, and the health route names the last one", () => {
-    expect(ALL_MIGRATIONS.slice(-4)).toEqual(["0040_result_classifications.sql", ...NEW_MIGRATIONS]);
+  it("are contiguous after 0040, and the health route names the newest migration", () => {
+    const at = ALL_MIGRATIONS.indexOf("0040_result_classifications.sql");
+    expect(ALL_MIGRATIONS.slice(at, at + 4)).toEqual(["0040_result_classifications.sql", ...NEW_MIGRATIONS]);
     const route = readFileSync(new URL("../src/app/api/health/route.ts", import.meta.url), "utf8");
-    expect(route).toContain(`.bind("${NEW_MIGRATIONS.at(-1)!.replace(/\.sql$/, "")}")`);
+    expect(route).toContain(`.bind("${ALL_MIGRATIONS.at(-1)!.replace(/\.sql$/, "")}")`);
   });
 
   it.each([

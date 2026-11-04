@@ -4,6 +4,14 @@ import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
 import { requireWorkspace } from "@/modules/auth/server";
 import { exercisesFor, type SaveOutcome } from "@/db/exercises";
+import {
+  exerciseMetadataFor,
+  type EnrichOutcome,
+  type MetadataWriteOutcome,
+  type RelationOutcome,
+} from "@/db/exercise-metadata";
+import { isMetadataField, valueFromForm } from "./metadata/fields";
+import { MAX_ALTERNATIVES } from "./metadata/vocabulary";
 
 const DUPLICATE =
   "Já existe um exercício ativo com este nome na sua biblioteca. Use outro nome ou arquive o outro.";
@@ -104,4 +112,129 @@ export async function restoreExercise(id: string): Promise<string> {
   if (problem) return problem;
   refresh();
   return "Exercício restaurado.";
+}
+
+// ---------- Metadata for the automatic prescription (motor S4) ----------
+
+const METADATA_MESSAGES = {
+  saved: "Salvo como revisado por você.",
+  pending: "Campo marcado como pendente de curadoria. Ele não será usado na seleção automática até alguém revisá-lo.",
+  conflict: "Este campo foi alterado por outra pessoa. Recarregue a página e confira antes de salvar.",
+  invalid: "Escolha um valor válido para este campo. Se não souber, marque como pendente.",
+  not_found: NOT_FOUND,
+  failed: "Não foi possível concluir. Tente novamente.",
+} as const;
+
+function metadataMessage(outcome: MetadataWriteOutcome, done: string): string {
+  return outcome.status === "saved" ? done : METADATA_MESSAGES[outcome.status];
+}
+/** The version of the organization's row the form was built on ("" when it had none): the compare-and-set token. */
+function versionFrom(form: FormData): number | null {
+  const raw = form.get("version");
+  const value = typeof raw === "string" && /^\d{1,9}$/.test(raw) ? Number(raw) : null;
+  return value !== null && value >= 1 ? value : null;
+}
+
+/** "Salvar como revisado por mim": the value in the form, in the organization's scope. */
+export async function saveExerciseAttribute(
+  exerciseId: string,
+  field: string,
+  _previous: string,
+  form: FormData,
+): Promise<string> {
+  if (!isMetadataField(field)) return METADATA_MESSAGES.invalid;
+  const { db, context } = await requireWorkspace();
+  try {
+    const outcome = await exerciseMetadataFor(db, context).setField(
+      exerciseId,
+      field,
+      valueFromForm(field, form),
+      versionFrom(form),
+    );
+    if (outcome.status === "saved") refresh();
+    return metadataMessage(outcome, METADATA_MESSAGES.saved);
+  } catch {
+    return METADATA_MESSAGES.failed;
+  }
+}
+
+export async function markExerciseAttributePending(
+  exerciseId: string,
+  field: string,
+  _previous: string,
+  form: FormData,
+): Promise<string> {
+  if (!isMetadataField(field)) return METADATA_MESSAGES.invalid;
+  const { db, context } = await requireWorkspace();
+  try {
+    const outcome = await exerciseMetadataFor(db, context).markPending(exerciseId, field, versionFrom(form));
+    if (outcome.status === "saved") refresh();
+    return metadataMessage(outcome, METADATA_MESSAGES.pending);
+  } catch {
+    return METADATA_MESSAGES.failed;
+  }
+}
+
+export async function addExerciseAlternative(exerciseId: string, _previous: string, form: FormData): Promise<string> {
+  const target = form.get("alternativeId");
+  if (typeof target !== "string" || !target) return "Escolha o exercício alternativo.";
+  const { db, context } = await requireWorkspace();
+  let outcome: RelationOutcome;
+  try {
+    outcome = await exerciseMetadataFor(db, context).addAlternative(exerciseId, target);
+  } catch {
+    return METADATA_MESSAGES.failed;
+  }
+  switch (outcome.status) {
+    case "saved":
+      refresh();
+      return "Alternativa adicionada e marcada como revisada por você.";
+    case "duplicate":
+      return "Este exercício já é uma alternativa.";
+    case "too_many":
+      return `Limite técnico de ${MAX_ALTERNATIVES} alternativas por exercício.`;
+    case "invalid":
+      return "Um exercício não pode ser alternativa dele mesmo.";
+    default:
+      return NOT_FOUND;
+  }
+}
+
+export async function removeExerciseAlternative(relationId: string): Promise<string> {
+  const { db, context } = await requireWorkspace();
+  try {
+    if (!(await exerciseMetadataFor(db, context).removeAlternative(relationId)))
+      return "Alternativa não encontrada (ela pode ter sido removida por outra pessoa).";
+  } catch {
+    return METADATA_MESSAGES.failed;
+  }
+  refresh();
+  return "Alternativa removida.";
+}
+
+/** "Inferir metadados das minhas fichas": the documented name rules on the organization's own exercises. */
+export async function enrichLibrary(): Promise<string> {
+  const { db, context } = await requireWorkspace();
+  let outcome: EnrichOutcome;
+  try {
+    outcome = await exerciseMetadataFor(db, context).enrichOrganization();
+  } catch {
+    return METADATA_MESSAGES.failed;
+  }
+  if (outcome.status !== "done") return "Não foi possível concluir. Tente novamente.";
+  refresh();
+  if (outcome.exercises === 0)
+    return "Sua biblioteca ainda não tem exercícios próprios. Os do sistema já vêm com metadados inferidos.";
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  const parts = [
+    plural(outcome.inferred, "campo inferido", "campos inferidos"),
+    `${outcome.unchanged} sem mudança`,
+    plural(
+      outcome.keptByPerson,
+      "mantido porque alguém revisou ou marcou como pendente",
+      "mantidos porque alguém revisou ou marcou como pendente",
+    ),
+  ];
+  if (outcome.cleared) parts.push(plural(outcome.cleared, "voltou a pendente", "voltaram a pendente"));
+  return `Inferência concluída em ${plural(outcome.exercises, "exercício", "exercícios")} da sua biblioteca: ${parts.join(", ")}. Os valores inferidos aparecem como "Inferido (não revisado)" até alguém revisá-los.`;
 }

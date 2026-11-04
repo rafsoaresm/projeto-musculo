@@ -80,4 +80,6 @@ export const ALL_MIGRATIONS = [
   "0041_prescription_occurrences.sql",
   "0042_prescription_proposals.sql",
   "0043_execution_occurrences.sql",
+  "0044_exercise_metadata.sql",
+  "0045_exercise_metadata_inferred_seed.sql",
 ];

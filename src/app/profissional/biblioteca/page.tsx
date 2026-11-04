@@ -6,6 +6,10 @@ import { exercisesFor, type ExerciseFilters } from "@/db/exercises";
 import { PageHeading } from "@/components/ui";
 import { CATEGORIES } from "@/modules/biblioteca/contracts";
 import { ExerciseTable } from "@/modules/biblioteca/exercise-table";
+import { exerciseMetadataFor } from "@/db/exercise-metadata";
+import { EnrichLibraryButton } from "@/modules/biblioteca/exercise-metadata-form";
+import { SUMMARY_FILTERS } from "@/modules/biblioteca/metadata/view";
+import type { MetadataSummary } from "@/modules/biblioteca/metadata/vocabulary";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Biblioteca de exercícios" };
@@ -30,18 +34,30 @@ export default async function Library({
         ? "ORGANIZATION"
         : "ALL";
   const archived = first(params.arquivados) === "1";
-  const rows = await exercisesFor(db, context).list({
+  const metadataParam = first(params.metadados);
+  const metadataFilter = SUMMARY_FILTERS.find((item) => item.param === metadataParam);
+  const listed = await exercisesFor(db, context).list({
     query,
     category,
     scope,
     includeArchived: archived,
   });
+  const resolved = await exerciseMetadataFor(db, context).resolve(
+    listed.filter((row) => !row.archivedAt).map((row) => row.id),
+  );
+  const summaries: Record<string, MetadataSummary> = Object.fromEntries(
+    [...resolved.values()].map((entry) => [entry.exerciseId, entry.summary]),
+  );
+  // Archived rows have no metadata in use, so a metadata filter leaves them out.
+  const rows = metadataFilter
+    ? listed.filter((row) => summaries[row.id] === metadataFilter.summary)
+    : listed;
   return (
     <>
       <PageHeading
         eyebrow={workspace.name}
         title="Biblioteca de exercícios"
-        description="A biblioteca do sistema traz 64 exercícios. Os vídeos deles são links de busca, não vídeos revisados. Copie um exercício para a sua biblioteca para editá-lo."
+        description="A biblioteca do sistema traz 64 exercícios. Os vídeos deles são links de busca, não vídeos revisados, e os metadados para a prescrição automática são inferidos pelo nome, não revisados. Copie um exercício para a sua biblioteca para editá-lo."
         aside={
           <Link className="button primary" href="/profissional/biblioteca/novo">
             <Plus size={20} /> Novo exercício
@@ -70,12 +86,32 @@ export default async function Library({
             <option value="minha">Minha biblioteca</option>
           </select>
         </label>
+        <label>
+          Metadados
+          <select name="metadados" defaultValue={metadataFilter?.param ?? ""}>
+            <option value="">Todos</option>
+            {SUMMARY_FILTERS.map((item) => (
+              <option key={item.param} value={item.param}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="check-row">
           <input name="arquivados" type="checkbox" value="1" defaultChecked={archived} />
           Mostrar arquivados
         </label>
         <button className="button secondary">Filtrar</button>
       </form>
+      <section className="panel" aria-labelledby="enrich-title">
+        <h2 id="enrich-title">Metadados para a prescrição automática</h2>
+        <p className="muted">
+          Para os exercícios da sua biblioteca, a ferramenta pode inferir modalidade, músculos, padrão de
+          movimento, equipamento e lateralidade pelo nome, com regras documentadas. Tudo o que for inferido fica
+          como &quot;Inferido (não revisado)&quot;; o que alguém já revisou ou marcou como pendente não é alterado.
+        </p>
+        <EnrichLibraryButton />
+      </section>
       {rows.length === 0 ? (
         <section className="panel">
           <h2>Nenhum exercício encontrado.</h2>
@@ -86,7 +122,7 @@ export default async function Library({
           <p className="small muted" role="status">
             {rows.length} {rows.length === 1 ? "exercício" : "exercícios"}
           </p>
-          <ExerciseTable rows={rows} />
+          <ExerciseTable rows={rows} metadata={summaries} />
         </>
       )}
     </>

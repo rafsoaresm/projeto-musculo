@@ -113,6 +113,33 @@ Em `src/modules/training/contracts.ts` (`STRUCTURE_LIMITS`), todos técnicos e n
 
 A v1 (divisão por letras, 3–6 semanas, 3/6/12 fases, alvo 3–20) continua sendo lida e gravada como antes. A conversão v1 → v2 (`convertV1ToV2`) não move sessão, rótulo nem alvo; a volta (`convertV2ToV1`) só existe quando a estrutura cabe na v1.
 
+## Metadados da biblioteca (etapa S4)
+
+Cada campo de um exercício é guardado à parte, com a sua procedência (migration 0044, tabela `exercise_attributes`):
+
+| Procedência | O que quer dizer | Como aparece |
+|---|---|---|
+| REVIEWED | uma pessoa conferiu o valor (o profissional, para a organização; o gestor da plataforma, para a biblioteca do sistema) | "Revisado pela sua organização" / "Revisado (biblioteca do sistema)" |
+| INFERRED | uma regra determinística pelo nome produziu o valor; guarda a regra e a versão das regras | "Inferido (não revisado)", com "Regra X (versão)" ao abrir o campo |
+| PENDING | precisa de curadoria; o valor não é usado | "Pendente de curadoria" |
+
+Campos: modalidade, medida da dose, músculos principais e secundários, padrões de movimento, equipamento, equipamento alternativo (até 3 conjuntos), dificuldade (1 a 5), lateralidade, multiarticular, segundos por repetição e marcadores de cuidado. Os códigos são os do motor; a biblioteca só grava os códigos da lista em `src/modules/biblioteca/metadata/vocabulary.ts` (validados no código, sem CHECK, para crescer sem reconstruir tabela). Alternativas curadas ficam em `exercise_relations`, por organização; a remoção é uma data, nunca um apagamento. Toda mudança fica em `exercise_attribute_events`, só de acréscimo.
+
+**Precedência para uma organização** (`src/modules/biblioteca/metadata/status.ts` e a consulta de `src/db/exercise-metadata.ts`, mantidas iguais por teste): revisado pela organização > pendente pela organização > revisado no sistema > inferido pela organização > pendente no sistema > inferido no sistema. Valor revisado sempre vence o inferido; a inferência nunca sobrescreve o que uma pessoa decidiu (o banco recusa com `EXERCISE_ATTRIBUTE_REVIEW_WINS`).
+
+**Resumo por exercício:** "Pendente de curadoria" quando falta (ou está pendente) um dos campos de que o motor precisa (modalidade, medida, músculos principais, padrões, equipamento); "Inferido (não revisado)" quando todos existem e algum campo em uso é inferido; "Metadados revisados" quando todos os campos em uso foram revisados. Um campo opcional pendente só deixa de ser usado. O motor não escolhe automaticamente exercício pendente (S1); usa inferidos quando a confiança escolhida é "revisados e inferidos" (Q3).
+
+**Inferência** (`src/modules/biblioteca/metadata/inference-rules.json`, `gymgital-library-inference@2026.11.1`, base "Heurística operacional (editável)"; código em `inference-core.ts`):
+- o nome é normalizado (minúsculas, sem acento, o que não é letra nem número vira espaço) e dividido em palavras; uma palavra-chave casa quando as suas palavras aparecem em sequência no nome, cada palavra do nome começando pela da chave ("halter" casa "halteres");
+- os campos são inferidos na ordem `fieldOrder`; em cada campo vale a primeira regra que casa, na ordem do arquivo (as específicas vêm antes); uma regra com valor nulo decide "não inferir" (uma pessoa preenche); uma regra pode olhar campos inferidos antes (`when`);
+- só a modalidade tem recurso pela categoria (`MOD_BY_CATEGORY`), usado quando nenhuma regra casou; as regras que derivam outros campos da modalidade exigem um padrão de movimento reconhecido no nome, então a categoria sozinha nunca produz mais que a modalidade;
+- dificuldade, segundos por repetição e marcadores de cuidado nunca são inferidos;
+- sem acaso, relógio nem idioma do servidor: mesmo nome e mesma versão dão os mesmos bytes.
+
+**Onde roda:** a semente da biblioteca do sistema (migration 0045, gerada por `node --experimental-strip-types scripts/enrich-system-library.mjs`; um teste compara o arquivo com o gerador byte a byte) e o botão "Inferir metadados das minhas fichas" (só os exercícios próprios da organização, não arquivados; atualiza inferências antigas, devolve a pendente o que a regra deixou de produzir, nunca toca o que uma pessoa revisou ou marcou). Na semente, 12 dos 64 exercícios ficam pendentes porque o nome não diz o equipamento (ex.: "Elevação lateral") ou a medida ("Farmer walk").
+
+**Limites técnicos:** até 12 alternativas curadas por exercício e organização e até 3 conjuntos de equipamento alternativo (tela e entrada do motor pequenas); leituras e a inferência em lotes de 200 linhas por instrução (`json_each`), não medido sob workerd.
+
 ## A completar (S10)
 
-Metadados da biblioteca, perguntas feitas e por quê, onde ficam os dados de saúde e como a exclusão afeta a reprodução, números medidos.
+Perguntas feitas e por quê, onde ficam os dados de saúde e como a exclusão afeta a reprodução, números medidos.

@@ -4,10 +4,26 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { requireWorkspace } from "@/modules/auth/server";
 import { exercisesFor } from "@/db/exercises";
+import { exerciseMetadataFor } from "@/db/exercise-metadata";
 import { PageHeading, Pill } from "@/components/ui";
 import { ExerciseForm } from "@/modules/biblioteca/exercise-form";
 import { ExerciseAction } from "@/modules/biblioteca/exercise-actions";
 import { videoLabel } from "@/modules/biblioteca/labels";
+import {
+  ExerciseAlternatives,
+  ExerciseMetadataFields,
+  type MetadataFieldView,
+} from "@/modules/biblioteca/exercise-metadata-form";
+import { REQUIRED_FIELDS } from "@/modules/biblioteca/metadata/vocabulary";
+import { isMetadataField } from "@/modules/biblioteca/metadata/fields";
+import {
+  controlFor,
+  fieldTitle,
+  provenancePill,
+  ruleText,
+  summaryPill,
+  valueText,
+} from "@/modules/biblioteca/metadata/view";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Exercício" };
@@ -19,8 +35,34 @@ export default async function Exercise({
 }) {
   const { db, context, workspace } = await requireWorkspace();
   const { id } = await params;
-  const exercise = await exercisesFor(db, context).find(id);
+  const library = exercisesFor(db, context);
+  const exercise = await library.find(id);
   if (!exercise) notFound();
+  const metadata = await exerciseMetadataFor(db, context).detail(exercise.id);
+  if (!metadata) notFound();
+  const editable = !metadata.archived;
+  const fields: MetadataFieldView[] = metadata.fields.map((entry) => {
+    const hidden = entry.system && entry.effective?.scope === "ORGANIZATION";
+    return {
+      field: entry.field,
+      label: fieldTitle(entry.field),
+      valueText: valueText(entry.field, entry.effective?.value ?? null),
+      value: entry.effective?.value ?? null,
+      pill: provenancePill(entry.effective),
+      ruleText: ruleText(entry.effective),
+      systemText: hidden
+        ? `Na biblioteca do sistema: ${valueText(entry.field, entry.system!.value)} (${provenancePill({ ...entry.system!, scope: "SYSTEM", value: entry.system!.value }).text.toLowerCase()}). O ajuste da sua organização vale só para ela.`
+        : null,
+      version: entry.organization?.version ?? null,
+      control: controlFor(entry.field),
+      required: REQUIRED_FIELDS.includes(entry.field),
+    };
+  });
+  const taken = new Set([exercise.id, ...metadata.alternatives.map((item) => item.exerciseId)]);
+  const candidates = editable
+    ? (await library.list()).filter((row) => !taken.has(row.id)).map((row) => ({ id: row.id, name: row.name }))
+    : [];
+  const summary = summaryPill(metadata.summary);
   const own = exercise.scope === "ORGANIZATION";
   const video = videoLabel(exercise.videoStatus);
   return (
@@ -31,7 +73,7 @@ export default async function Exercise({
         description={
           own
             ? "Editar aqui não altera prescrições já feitas: cada prescrição guarda o nome e o vídeo do momento."
-            : "Exercício do sistema, somente leitura. Copie para a sua biblioteca para poder editá-lo."
+            : "Exercício do sistema, somente leitura. Copie para a sua biblioteca para poder editá-lo. Os metadados abaixo aceitam um ajuste só da sua organização."
         }
         aside={exercise.archivedAt ? <Pill>Arquivado</Pill> : undefined}
       />
@@ -91,9 +133,72 @@ export default async function Exercise({
           <ExerciseAction kind="archive" id={exercise.id} label="Arquivar exercício" />
         </section>
       )}
+      <section className="panel" aria-labelledby="metadata-title">
+        <h2 id="metadata-title">Metadados para a prescrição automática</h2>
+        <p>
+          <Pill tone={summary.tone}>{summary.text}</Pill>
+        </p>
+        <p className="muted">
+          A ferramenta usa estes dados para escolher exercícios. Valores inferidos vêm de uma regra pelo nome do
+          exercício e aparecem como &quot;Inferido (não revisado)&quot;: não são biomecânica validada. O que você
+          salvar fica como revisado por você e sempre vence o inferido.
+          {own ? "" : " Num exercício do sistema, o que você salvar é um ajuste só da sua organização."}
+        </p>
+        <ExerciseMetadataFields
+          exerciseId={exercise.id}
+          fields={fields}
+          editable={editable}
+          systemExercise={!own}
+        />
+        <h3>Alternativas (substituições)</h3>
+        <ExerciseAlternatives
+          exerciseId={exercise.id}
+          editable={editable}
+          candidates={candidates}
+          alternatives={metadata.alternatives.map((item) => ({
+            relationId: item.relationId,
+            exerciseId: item.exerciseId,
+            name: item.name,
+            removable: item.removable,
+            pill:
+              item.provenance === "REVIEWED"
+                ? { text: item.scope === "ORGANIZATION" ? "Revisada pela sua organização" : "Revisada (biblioteca do sistema)", tone: "success" }
+                : provenancePill({ value: null, provenance: item.provenance, scope: item.scope, ruleId: null, rulesVersion: null, reviewedAt: null }),
+          }))}
+        />
+        {metadata.history.length > 0 && (
+          <details className="metadata-history">
+            <summary>Histórico dos metadados</summary>
+            <ul>
+              {metadata.history.map((event, index) => (
+                <li key={index} className="small">
+                  {historyLine(event)}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </section>
       <Link href="/profissional/biblioteca" className="button secondary">
         <ArrowLeft size={17} /> Voltar à biblioteca
       </Link>
     </>
   );
+}
+
+const ACTIONS: Record<string, string> = {
+  SET: "valor salvo como revisado",
+  REVIEWED: "valor confirmado como revisado",
+  PENDING: "marcado como pendente",
+  INFERRED: "valor inferido pela regra",
+  RELATION_ADDED: "alternativa adicionada",
+  RELATION_REMOVED: "alternativa removida",
+};
+const dateTime = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" });
+
+function historyLine(event: { field: string; action: string; ruleId: string | null; scope: string; actor: string | null; createdAt: string }) {
+  const field = isMetadataField(event.field) ? fieldTitle(event.field) : "Alternativas";
+  const who = event.actor ?? (event.scope === "SYSTEM" ? "biblioteca do sistema" : "regra de inferência");
+  const rule = event.ruleId ? ` (${event.ruleId})` : "";
+  return `${dateTime.format(new Date(event.createdAt))} · ${field}: ${ACTIONS[event.action] ?? event.action}${rule} · ${who}`;
 }

@@ -2122,7 +2122,7 @@ label.check input {
 /* ---------- Exercise library ---------- */
 .filter-form {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr)) auto auto;
+  grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr)) auto auto;
   gap: 16px;
   align-items: end;
 }
@@ -2144,9 +2144,85 @@ label.check input {
 .detail-list dd {
   margin: 4px 0 0;
 }
-@media (max-width: 900px) {
+@media (max-width: 1100px) {
+  .filter-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 600px) {
   .filter-form {
     grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- Library metadata (motor S4) ---------- */
+.metadata-fields {
+  display: grid;
+  gap: 0;
+  margin: 16px 0 24px;
+  border-top: 1px solid var(--color-line);
+}
+.metadata-field {
+  border-bottom: 1px solid var(--color-line);
+}
+.metadata-field > summary {
+  display: grid;
+  grid-template-columns: minmax(0, 14rem) minmax(0, 1fr) auto;
+  gap: 8px 16px;
+  align-items: center;
+  padding: 12px 0;
+  cursor: pointer;
+  list-style-position: outside;
+}
+.metadata-field-name {
+  font-weight: 700;
+}
+.metadata-field-value {
+  overflow-wrap: anywhere;
+}
+.metadata-field-body {
+  display: grid;
+  gap: 12px;
+  padding: 0 0 16px;
+}
+.metadata-checks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 13rem), 1fr));
+  gap: 8px 16px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  min-width: 0;
+}
+.metadata-checks legend {
+  padding: 0 4px;
+  font-weight: 600;
+}
+.metadata-checks > p {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.metadata-alternatives {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 16px;
+  padding-left: 1.2rem;
+}
+.metadata-alternatives li {
+  overflow-wrap: anywhere;
+}
+.metadata-history {
+  margin-top: 16px;
+}
+.metadata-history ul {
+  display: grid;
+  gap: 4px;
+  padding-left: 1.2rem;
+}
+@media (max-width: 640px) {
+  .metadata-field > summary {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
