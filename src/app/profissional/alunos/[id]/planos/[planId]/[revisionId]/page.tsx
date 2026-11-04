@@ -86,10 +86,10 @@ export default async function PlanRevision({
   ]);
   const appliedId = history?.proposals.filter((p) => p.state === "APPLIED").at(-1)?.id ?? null;
   const applied = appliedId ? await proposals.summary(planId, revisionId, appliedId) : null;
-  const automatic = {
-    total: items.filter((item) => item.origin === "SYSTEM" || item.origin === "SYSTEM_EDITED").length,
-    edited: items.filter((item) => item.origin === "SYSTEM_EDITED").length,
-  };
+  // Edited counts the rows changed in any session too (per-session doses, take-outs and substitutions mark the session doses).
+  const automatic = items.some((item) => item.origin === "SYSTEM" || item.origin === "SYSTEM_EDITED")
+    ? await prescriptionFor(db, context).automaticCounts(planId, revisionId)
+    : { total: 0, edited: 0 };
   const decision =
     revision.state === "READY" ||
     revision.state === "APPROVED" ||

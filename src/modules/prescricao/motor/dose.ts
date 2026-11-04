@@ -216,6 +216,7 @@ export function resolveDose(log: RuleLog, parameters: GenerationParameters, req:
     .map((o, i) => ({ o, i }))
     .filter(({ o }) =>
       (o.stimulus === undefined || codeOf(o.stimulus) === req.stimulus) &&
+      !(o.exceptStimuli ?? []).some((s) => codeOf(s) === req.stimulus) &&
       (o.modality === undefined || codeOf(o.modality) === modality) &&
       (o.metric === undefined || o.metric === metric) &&
       (o.phaseIndex === undefined || o.phaseIndex === req.phaseIndex) &&

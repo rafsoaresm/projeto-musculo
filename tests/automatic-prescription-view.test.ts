@@ -22,6 +22,9 @@ import {
   type GenerationForm,
 } from "@/modules/prescricao/automatica/view";
 import { sessionTargets } from "@/modules/prescricao/occurrences";
+import { changedDoseFields, restTextForEditing } from "@/modules/prescricao/describe";
+import { generate } from "@/modules/prescricao/motor";
+import { CATALOG, baseInput, parameters, structure } from "./helpers/motor-fixtures";
 import type { ItemOut, OccurrenceOut, PhaseSummary } from "@/modules/prescricao/motor/types";
 
 // Motor S9: the pure rules behind the professional's screens (generation form, proposal view, per-session editor).
@@ -46,13 +49,41 @@ describe("dose policy table (Q1: prefilled, editable, a heuristic)", () => {
     });
   });
 
-  it("an edited 'any stimulus' row keeps the named rows of the same modality and metric as they are", () => {
+  it("an edited 'any stimulus' row is not sent to the stimuli that have their own row", () => {
     const any = keyOf("*", "CARDIO", "CONTINUOUS");
     const out = policyOverrides(rows, { [`${any}:durationMin`]: "900" });
     if (!out.ok) throw new Error("invalid");
-    expect(out.overrides[0]).toEqual({ modality: "CARDIO", metric: "CONTINUOUS", patch: { values: { durationMin: 900 } } });
-    // AEROBIC_ENDURANCE has its own CONTINUOUS row: sent with its own values, more specific, so it keeps winning.
-    expect(out.overrides).toContainEqual({ stimulus: "AEROBIC_ENDURANCE", modality: "CARDIO", metric: "CONTINUOUS", patch: { values: { durationMin: 1200, durationMax: 1800 } } });
+    // AEROBIC_ENDURANCE has its own CONTINUOUS row: excepted, and not re-sent with its heuristic defaults as a decision.
+    expect(out.overrides).toEqual([
+      { exceptStimuli: ["AEROBIC_ENDURANCE"], modality: "CARDIO", metric: "CONTINUOUS", patch: { values: { durationMin: 900 } } },
+    ]);
+  });
+
+  it("both rows edited: each stimulus gets what its row shows (engine run)", () => {
+    const any = keyOf("*", "CARDIO", "CONTINUOUS");
+    const named = keyOf("AEROBIC_ENDURANCE", "CARDIO", "CONTINUOUS");
+    const namedRow = rows.find((r) => r.key === named)!;
+    const namedMin = namedRow.defaults.find((d) => d.param === "durationMin")!.value;
+    const out = policyOverrides(rows, { [`${any}:durationMin`]: "900", [`${any}:durationMax`]: "1000", [`${named}:durationMax`]: "2000" });
+    if (!out.ok) throw new Error("invalid");
+    const cardio = (stimulus: string) => ({
+      weeks: 1, sessionsPerWeek: 1, stimulus, workouts: [{ label: "C", exerciseTarget: 1 }],
+    });
+    const r = generate(baseInput({
+      catalog: CATALOG.filter((e) => e.id === "ex-walk"),
+      parameters: parameters({
+        doseOverrides: out.overrides,
+        modalitiesByWorkout: [{ phaseIndex: 1, label: "C", modalities: ["CARDIO"] }, { phaseIndex: 2, label: "C", modalities: ["CARDIO"] }],
+      }),
+      structure: structure("2026-11-09", [cardio("AEROBIC_ENDURANCE"), cardio("Condicionamento geral")]),
+    }));
+    const doseOf = (phaseIndex: number) => r.occurrences.find((o) => o.phaseIndex === phaseIndex)!.items[0].dose;
+    // The named row: its own minimum (never the 900 typed for "any stimulus") and the maximum typed for it.
+    expect(doseOf(1)).toMatchObject({ metric: "CONTINUOUS", durationSeconds: { min: namedMin, max: 2000 } });
+    // A stimulus without its own row: the "any stimulus" row as typed.
+    expect(doseOf(2)).toMatchObject({ metric: "CONTINUOUS", durationSeconds: { min: 900, max: 1000 } });
+    const minBasis = r.occurrences.find((o) => o.phaseIndex === 1)!.items[0].trace.params.find((p) => p.param === "durationMin")!.basis;
+    expect(minBasis).not.toBe("PROFESSIONAL");
   });
 
   it("refuses an empty or negative cell and a minimum above its maximum, naming the cell", () => {
@@ -261,5 +292,24 @@ describe("per-session editor scope", () => {
     expect(sessionTargets(sessions, { sessionId: "w2a", prescribedExerciseId: "pe1" }, "PHASE")).toEqual({ sessionIds: ["w1a", "w2a", "w3a"], itemIds: ["x1", "x2", "x3"] });
     expect(sessionTargets(sessions, { sessionId: "w1b" }, "PHASE")).toEqual({ sessionIds: ["w1b"], itemIds: [] });
     expect(sessionTargets(sessions, { sessionId: "nope" }, "PHASE")).toEqual({ sessionIds: [], itemIds: [] });
+  });
+});
+
+describe("dose edit forms send only what changed (review of S9)", () => {
+  const initial = { sets: "3", reps: "8–12", loadInstruction: "", cadence: "", restSeconds: "90", restText: "", rirMin: "1", rirMax: "3", notes: "" };
+  it("a notes-only save sends the notes only, so the stored dose stays", () => {
+    expect(changedDoseFields(initial, { ...initial, notes: "Pegada neutra" })).toEqual({ notes: "Pegada neutra" });
+    expect(changedDoseFields(initial, initial)).toEqual({});
+  });
+  it("a changed dose field sends every dose field as typed; empty is null, never 0", () => {
+    expect(changedDoseFields(initial, { ...initial, sets: "4", rirMin: "" })).toEqual({
+      sets: "4", reps: "8–12", loadInstruction: null, cadence: null, restSeconds: 90, restText: null, rirMin: null, rirMax: 3,
+    });
+    expect(Object.keys(changedDoseFields(initial, initial, true))).toHaveLength(8);
+  });
+  it("opening an engine dose drops the rest written as text, but keeps the interval recovery", () => {
+    expect(restTextForEditing({ restText: "90 s", doseText: "3 × 8–12 · descanso 90 s" })).toBe("");
+    expect(restTextForEditing({ restText: "rec. 60–90 s", doseText: "1 × 6 × 30–60 s · recuperação passiva 60–90 s" })).toBe("rec. 60–90 s");
+    expect(restTextForEditing({ restText: "1 min", doseText: null })).toBe("1 min");
   });
 });

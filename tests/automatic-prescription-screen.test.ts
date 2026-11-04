@@ -2,6 +2,8 @@ import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import type { D1Database } from "@cloudflare/workers-types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { plansFor } from "@/db/plans";
+import { prescriptionFor } from "@/db/prescription";
+import { changedDoseFields, restTextForEditing } from "@/modules/prescricao/describe";
 import { proposalService, type ProposalOutcome } from "@/modules/prescricao/automatica/service";
 import { answersFromForm, EMPTY_FORM, openRequired } from "@/modules/prescricao/automatica/view";
 import { ALL_MIGRATIONS, migrate } from "./helpers/migrate";
@@ -89,9 +91,18 @@ describe("the generation form's data (UI items 1 and 6)", () => {
     expect(s.lastAnswers).toBeNull();
   });
 
-  it("is not reachable by another organization, an unassigned professional, or past DRAFT", async () => {
+  it("is not reachable by another organization or an unassigned professional", async () => {
     expect(await service("tech-b", "org-b").screen(plan.planId, plan.revisionId)).toEqual({ status: "not_found" });
     expect(await service("tech-c").screen(plan.planId, plan.revisionId)).toEqual({ status: "not_found" });
+  });
+
+  it("is not offered on a revision past DRAFT", async () => {
+    const other = await plansFor(db, scope("tech-a")).create("st-1", { title: "Plano pronto", input: V2 as never });
+    if (!other) throw new Error("plan");
+    expect(await plansFor(db, scope("tech-a")).markReady(other.planId, other.revisionId, NOW)).toBe(true);
+    const state = await db.prepare("SELECT state FROM plan_revisions WHERE id = ?1").bind(other.revisionId).first<{ state: string }>();
+    expect(state?.state).toBe("READY");
+    expect(await service().screen(other.planId, other.revisionId)).toEqual({ status: "not_open" });
   });
 });
 
@@ -137,6 +148,19 @@ describe("generation with the form's answers, the indicator, alternatives (UI it
     expect(await service("tech-b", "org-b").alternatives(plan.planId, plan.revisionId, target)).toEqual({ status: "not_found" });
     expect(await service("tech-c").alternatives(plan.planId, plan.revisionId, target)).toEqual({ status: "not_found" });
     expect(await service().alternatives(plan.planId, plan.revisionId, { ...target, phaseIndex: 0 })).toEqual({ status: "invalid" });
+    // A revoked assignment, a revoked membership and a deactivated professional lose both reads at once, and get them back.
+    const run = (sql: string) => db.prepare(sql).run();
+    for (const [what, cut, restore] of [
+      ["revoked assignment", "UPDATE care_assignments SET revoked_at = 'x' WHERE professional_id = 'pro-a'", "UPDATE care_assignments SET revoked_at = NULL WHERE professional_id = 'pro-a'"],
+      ["revoked membership", "UPDATE memberships SET revoked_at = 'x' WHERE user_id = 'tech-a'", "UPDATE memberships SET revoked_at = NULL WHERE user_id = 'tech-a'"],
+      ["deactivated user", "UPDATE users SET disabled_at = '2026-11-20T00:00:00.000Z' WHERE id = 'tech-a'", "UPDATE users SET disabled_at = NULL WHERE id = 'tech-a'"],
+    ] as const) {
+      await run(cut);
+      expect(await service().screen(plan.planId, plan.revisionId), what).toEqual({ status: "not_found" });
+      expect(await service().alternatives(plan.planId, plan.revisionId, target), what).toEqual({ status: "not_found" });
+      await run(restore);
+    }
+    expect((await service().alternatives(plan.planId, plan.revisionId, target)).status).toBe("ok");
 
     // The substitution the dialog sends, with the first alternative, on the whole phase.
     const header = await db.prepare("SELECT version FROM prescription_proposals WHERE id = ?1").bind(generated.proposalId).first<{ version: number }>();
@@ -157,5 +181,77 @@ describe("generation with the form's answers, the indicator, alternatives (UI it
     const again = await service().screen(plan.planId, plan.revisionId);
     if (again.status !== "ok") throw new Error(again.status);
     expect(again.screen.lastAnswers?.answers).toMatchObject({ equipmentCodes: ["BARBELL", "BENCH", "CABLE", "DUMBBELL", "MACHINE", "PULL_UP_BAR", "RACK"] });
+  });
+});
+
+describe("editing an applied proposal (UI items 7 and 11)", () => {
+  it("a notes-only save keeps the engine dose; the approval count includes edits made in one session", async () => {
+    const draft = await plansFor(db, scope("tech-a")).create("st-1", { title: "Plano editado", input: V2 as never });
+    if (!draft) throw new Error("plan");
+    const policy = await service().screen(draft.planId, draft.revisionId).then((o) => (o.status === "ok" ? o.screen.policy : []));
+    const built = answersFromForm(
+      {
+        ...EMPTY_FORM,
+        stimulus: [
+          { phaseIndex: 1, value: "HYPERTROPHY", basis: "PROFESSIONAL" },
+          { phaseIndex: 2, value: "STRENGTH", basis: "PROFESSIONAL" },
+        ],
+        equipment: ["BARBELL", "RACK", "MACHINE", "DUMBBELL", "BENCH", "CABLE", "PULL_UP_BAR"],
+        counts: [{ phaseIndex: 1, label: "B", count: "3" }],
+      },
+      policy,
+    );
+    if (!built.ok) throw new Error(built.errors.join());
+    const cv = (await db.prepare("SELECT content_version AS n FROM plan_revisions WHERE id = ?1").bind(draft.revisionId).first<{ n: number }>())!.n;
+    const generated = ok(await service().generate(draft.planId, draft.revisionId, { idempotencyKey: "edit-gen-00000-0000-0000-000000000001", baseContentVersion: cv, answers: built.answers }));
+    const applied = await service().apply(draft.planId, draft.revisionId, {
+      proposalId: generated.proposalId, idempotencyKey: "edit-apply-000-0000-0000-000000000001", expectedVersion: generated.version,
+      conflictMode: "PRESERVE", confirmedWorkouts: [], confirmInfeasible: false,
+    });
+    if (!applied.ok) throw new Error(applied.reason);
+
+    const repo = prescriptionFor(db, scope("tech-a"));
+    const before = await repo.automaticCounts(draft.planId, draft.revisionId);
+    expect(before.total).toBeGreaterThan(0);
+    expect(before.edited).toBe(0);
+    // Another organization and an unassigned professional count nothing.
+    expect(await prescriptionFor(db, scope("tech-b", "org-b")).automaticCounts(draft.planId, draft.revisionId)).toEqual({ total: 0, edited: 0 });
+    expect(await prescriptionFor(db, scope("tech-c")).automaticCounts(draft.planId, draft.revisionId)).toEqual({ total: 0, edited: 0 });
+
+    const sessions = await repo.occurrences(draft.planId, draft.revisionId, { phaseIndex: 1, week: 1 });
+    const x = sessions[0].items.find((i) => i.doseText)!;
+    expect(x).toBeDefined();
+    // What the per-session form opens with, and what it sends when only the notes change.
+    const initial = {
+      sets: x.sets ?? "", reps: x.reps ?? "", loadInstruction: x.loadInstruction ?? "", cadence: x.cadence ?? "",
+      restSeconds: x.restSeconds === null ? "" : String(x.restSeconds), restText: restTextForEditing(x),
+      rirMin: x.rirMin === null ? "" : String(x.rirMin), rirMax: x.rirMax === null ? "" : String(x.rirMax), notes: x.notes ?? "",
+    };
+    const notesOnly = changedDoseFields(initial, { ...initial, notes: "Pegada neutra" });
+    expect(notesOnly).toEqual({ notes: "Pegada neutra" });
+    expect(await repo.updateOccurrence(draft.planId, draft.revisionId, [x.id], notesOnly)).toMatchObject({ status: "saved" });
+    const kept = await db.prepare("SELECT dose_text AS doseText, dose_json AS doseJson, notes FROM prescribed_exercise_occurrences WHERE id = ?1").bind(x.id).first<{ doseText: string | null; doseJson: string | null; notes: string }>();
+    expect(kept).toEqual({ doseText: x.doseText, doseJson: expect.any(String), notes: "Pegada neutra" });
+    // Edited in one session only: the row itself is untouched, and the approval line counts it.
+    expect(await repo.automaticCounts(draft.planId, draft.revisionId)).toEqual({ total: before.total, edited: 1 });
+
+    // A typed dose replaces the stored one (stored as typed, B56).
+    const typed = changedDoseFields(initial, { ...initial, sets: "5" });
+    expect(Object.keys(typed)).toEqual(["sets", "reps", "loadInstruction", "cadence", "restSeconds", "restText", "rirMin", "rirMax"]);
+    expect(await repo.updateOccurrence(draft.planId, draft.revisionId, [x.id], typed)).toMatchObject({ status: "saved" });
+    const replaced = await db.prepare("SELECT dose_text AS doseText, sets FROM prescribed_exercise_occurrences WHERE id = ?1").bind(x.id).first<{ doseText: string | null; sets: string }>();
+    expect(replaced).toEqual({ doseText: null, sets: "5" });
+
+    // The workout card form: a notes-only save keeps the row's engine dose too.
+    const row = (await repo.listWithDose(draft.planId, draft.revisionId)).find((r) => r.doseText && r.id !== x.prescribedExerciseId)!;
+    const rowInitial = {
+      sets: row.sets ?? "", reps: row.reps ?? "", loadInstruction: row.loadInstruction ?? "", cadence: row.cadence ?? "",
+      restSeconds: row.restSeconds === null ? "" : String(row.restSeconds), restText: restTextForEditing(row),
+      rirMin: row.rirMin === null ? "" : String(row.rirMin), rirMax: row.rirMax === null ? "" : String(row.rirMax), notes: row.notes ?? "",
+    };
+    const payload = { ...changedDoseFields(rowInitial, { ...rowInitial, notes: "Sem pressa" }), videoUrl: row.videoUrl, notes: "Sem pressa" };
+    expect(await repo.update(draft.planId, draft.revisionId, row.id, payload)).toBe(true);
+    const rowAfter = (await repo.listWithDose(draft.planId, draft.revisionId)).find((r) => r.id === row.id)!;
+    expect(rowAfter).toMatchObject({ doseText: row.doseText, notes: "Sem pressa", sets: row.sets, restText: row.restText });
   });
 });

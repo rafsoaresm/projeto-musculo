@@ -7,7 +7,7 @@ import type { PrescribedItem, SessionOccurrence, OccurrenceItem } from "@/db/pre
 import type { PeriodizationSchedule } from "@/modules/training/contracts";
 import { formatCalendarDate } from "@/modules/training/format";
 import { revisionOriginLabel } from "./automatica/view";
-import { restTextForEditing, storedDoseText } from "./describe";
+import { changedDoseFields, restTextForEditing, storedDoseText } from "./describe";
 import { sessionTargets, type SessionScope } from "./occurrences";
 import { setOccurrenceIncluded, substituteInSessions, updateOccurrenceDose, type PrescriptionResult } from "./actions";
 import type { LibraryOption } from "./prescription-editor";
@@ -60,7 +60,13 @@ export function OccurrenceEditor({
     startTransition(async () => {
       setError("");
       setNotice("");
-      const result = await task();
+      let result: PrescriptionResult;
+      try {
+        result = await task();
+      } catch {
+        setError("Não foi possível falar com o servidor. Confira a conexão e tente de novo.");
+        return;
+      }
       if (result?.error) setError(result.error);
       else {
         setNotice(done);
@@ -191,7 +197,6 @@ function SessionItem({
   const origin = revisionOriginLabel(x.origin);
   const scopeText = SCOPES.find((s) => s.value === scope)!.text;
   const field = (key: keyof typeof value) => (event: { target: { value: string } }) => setValue({ ...value, [key]: event.target.value });
-  const number = (text: string) => (text.trim() === "" ? null : Number(text));
   const scopeChoice = (
     <fieldset className="auto-subsection">
       <legend>Onde vale</legend>
@@ -244,21 +249,12 @@ function SessionItem({
           onSubmit={(event) => {
             event.preventDefault();
             const { itemIds } = sessionTargets(sessions, { sessionId: session.id, prescribedExerciseId: x.prescribedExerciseId }, scope);
-            onDose(
-              itemIds,
-              {
-                sets: value.sets || null,
-                reps: value.reps || null,
-                loadInstruction: value.loadInstruction || null,
-                cadence: value.cadence || null,
-                restSeconds: number(value.restSeconds),
-                restText: value.restText || null,
-                rirMin: number(value.rirMin),
-                rirMax: number(value.rirMax),
-                notes: value.notes || null,
-              },
-              scopeText,
-            );
+            // Only what changed: a notes-only save keeps the stored dose of each session (design §5.2, S7). Nothing changed with
+            // more than this session chosen copies this session's dose, as typed, to the others.
+            const initial = fromItem();
+            const fields = changedDoseFields(initial, value);
+            const copy = !Object.keys(fields).length && scope !== "ONLY" ? changedDoseFields(initial, value, true) : fields;
+            if (Object.keys(copy).length) onDose(itemIds, copy, scopeText);
             setMode("view");
           }}
         >

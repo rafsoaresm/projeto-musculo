@@ -159,9 +159,10 @@ export type PolicyOverride = NonNullable<GenerationAnswersInput["policyOverrides
 
 /**
  * The edited policy as overrides (engine `DoseOverride`, applied as the professional's decision). A cell left as it was sends
- * nothing. A "*" row (any stimulus of the modality) has no stimulus in its override, and the engine would then also apply it to
- * the rows of a named stimulus of the same modality and metric; so those rows are sent too, with their own values, and being more
- * specific they keep winning. Returns the cells that are not valid numbers instead, so the form can say which.
+ * nothing. A "*" row (any stimulus of the modality) is the default of the stimuli without a row of their own: its override names
+ * those that have one (`exceptStimuli`), so an edit there never changes a named row, which keeps the value the table shows (its
+ * own edit or its heuristic default, still labelled as such). Returns the cells that are not valid numbers instead, so the form
+ * can say which.
  */
 export function policyOverrides(rows: PolicyRow[], edits: PolicyEdits): { ok: true; overrides: PolicyOverride[] } | { ok: false; invalid: string[] } {
   const invalid: string[] = [];
@@ -183,24 +184,17 @@ export function policyOverrides(rows: PolicyRow[], edits: PolicyEdits): { ok: tr
     }
     return values;
   };
-  const allValues = (row: PolicyRow) => Object.fromEntries(row.defaults.map(({ param, value }) => [param, valueOf(row, param, value)])) as Partial<Record<DoseParam, number>>;
   const overrides: PolicyOverride[] = [];
-  const keep = new Set<string>();
   for (const row of rows) {
     const values = changedValues(row);
     if (!Object.keys(values).length) continue;
     if (row.stimulus === "*") {
-      overrides.push({ modality: row.modality, metric: row.metric, patch: { values } });
-      for (const specific of rows)
-        if (specific.stimulus !== "*" && specific.modality === row.modality && specific.metric === row.metric) keep.add(specific.key);
-    } else {
-      overrides.push({ stimulus: row.stimulus, modality: row.modality, metric: row.metric, patch: { values } });
-      keep.delete(row.key);
-    }
+      const named = [
+        ...new Set(rows.filter((r) => r.stimulus !== "*" && r.modality === row.modality && r.metric === row.metric).map((r) => r.stimulus)),
+      ];
+      overrides.push({ ...(named.length ? { exceptStimuli: named } : {}), modality: row.modality, metric: row.metric, patch: { values } });
+    } else overrides.push({ stimulus: row.stimulus, modality: row.modality, metric: row.metric, patch: { values } });
   }
-  for (const row of rows)
-    if (keep.has(row.key) && !overrides.some((o) => o.stimulus === row.stimulus && o.modality === row.modality && o.metric === row.metric))
-      overrides.push({ stimulus: row.stimulus, modality: row.modality, metric: row.metric, patch: { values: allValues(row) } });
   // Range cells: a minimum above its maximum is refused here, before the engine says so.
   for (const o of overrides) {
     const v = o.patch.values ?? {};

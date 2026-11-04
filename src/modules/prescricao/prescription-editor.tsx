@@ -9,7 +9,7 @@ import { phaseWorkoutLabels } from "@/modules/training/periodization";
 import { workoutTitle } from "@/modules/training/format";
 import { CATEGORIES } from "@/modules/biblioteca/contracts";
 import { videoLabel } from "@/modules/biblioteca/labels";
-import { describeDose, restTextForEditing, storedDoseText } from "./describe";
+import { changedDoseFields, describeDose, restTextForEditing, storedDoseText } from "./describe";
 import { progressOf, type WorkoutProgress } from "./summary";
 import { revisionOriginLabel } from "./automatica/view";
 import { OccurrenceEditor } from "./occurrence-editor";
@@ -69,10 +69,17 @@ export function PrescriptionEditor({
   /** An automatic proposal is open for this draft: changes here need the proposal to be updated before it is applied. */
   openProposal?: boolean;
 }) {
-  const [phase, setPhase] = useState(() => {
-    const at = occurrence ? schedule.phases.findIndex((p) => p.index === occurrence.phaseIndex) : 0;
+  const phaseAt = (index: number | undefined) => {
+    const at = index === undefined ? 0 : schedule.phases.findIndex((p) => p.index === index);
     return at < 0 ? 0 : at;
-  });
+  };
+  const [phase, setPhase] = useState(() => phaseAt(occurrence?.phaseIndex));
+  // A phase link in "Doses por sessão" changes the phase of the page: the workout cards follow it.
+  const [shownPhaseIndex, setShownPhaseIndex] = useState(occurrence?.phaseIndex);
+  if (occurrence && occurrence.phaseIndex !== shownPhaseIndex) {
+    setShownPhaseIndex(occurrence.phaseIndex);
+    setPhase(phaseAt(occurrence.phaseIndex));
+  }
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [copyFromPhase, setCopyFromPhase] = useState("");
@@ -535,7 +542,7 @@ function ItemForm({
   onSave: (fields: Record<string, unknown>, customName?: string) => void;
   onCancel: () => void;
 }) {
-  const [value, setValue] = useState({
+  const [initial] = useState(() => ({
     name: item.name,
     sets: item.sets ?? "",
     reps: item.reps ?? "",
@@ -547,28 +554,19 @@ function ItemForm({
     rirMax: item.rirMax === null ? "" : String(item.rirMax),
     videoUrl: item.videoUrl ?? "",
     notes: item.notes ?? "",
-  });
+  }));
+  const [value, setValue] = useState(initial);
   const set = (key: keyof typeof value) => (event: { target: { value: string } }) =>
     setValue({ ...value, [key]: event.target.value });
-  const number = (text: string) => (text.trim() === "" ? null : Number(text));
   return (
     <form
       className="item-form"
       onSubmit={(event) => {
         event.preventDefault();
+        // Dose fields only when one of them changed: a save of the notes, the video or the name keeps the stored dose (an engine
+        // dose keeps its text); the repository fills what is not sent with what is stored.
         onSave(
-          {
-            sets: value.sets || null,
-            reps: value.reps || null,
-            loadInstruction: value.loadInstruction || null,
-            cadence: value.cadence || null,
-            restSeconds: number(value.restSeconds),
-            restText: value.restText || null,
-            rirMin: number(value.rirMin),
-            rirMax: number(value.rirMax),
-            videoUrl: value.videoUrl || null,
-            notes: value.notes || null,
-          },
+          { ...changedDoseFields(initial, value), videoUrl: value.videoUrl || null, notes: value.notes || null },
           item.exerciseId === null ? value.name : undefined,
         );
       }}

@@ -153,6 +153,8 @@ export const generationAnswersSchema = z
       z
         .object({
           stimulus: stimulusCode.optional(),
+          /** The "any stimulus" row of the table: not for the stimuli that have their own row. */
+          exceptStimuli: list(stimulusCode).optional(),
           modality: codeOf(MODALITIES, "Modalidade").optional(),
           metric: metric.optional(),
           phaseIndex: phaseIndex.optional(),
@@ -160,7 +162,8 @@ export const generationAnswersSchema = z
           exerciseId: exerciseId.optional(),
           patch: dosePatchSchema,
         })
-        .strict(),
+        .strict()
+        .refine((o) => o.stimulus === undefined || o.exceptStimuli === undefined, { message: "Exceções só valem para qualquer estímulo." }),
     ).default([]),
     metricOverrides: list(z.object({ exerciseId, metric }).strict())
       .refine((items) => unique(items.map((m) => m.exerciseId)), { message: "Uma medida por exercício." })

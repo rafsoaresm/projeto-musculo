@@ -284,6 +284,27 @@ export function prescriptionFor(
     },
 
     /**
+     * The approval line "Inclui N exercícios propostos automaticamente (M editados por você)" (motor S9): rows the engine wrote,
+     * and those the professional changed, on the row (any session) or in a session only (a dose, a take-out, a substitution mark
+     * the session doses). Same gate as `list`.
+     */
+    async automaticCounts(planId: string, revisionId: string): Promise<{ total: number; edited: number }> {
+      const row = await db
+        .prepare(
+          `SELECT COUNT(*) AS total,
+             COALESCE(SUM(CASE WHEN pe.origin = 'SYSTEM_EDITED' OR EXISTS (
+               SELECT 1 FROM prescribed_exercise_occurrences x
+               WHERE x.organization_id = ?1 AND x.revision_id = ?4 AND x.prescribed_exercise_id = pe.id AND x.origin = 'SYSTEM_EDITED'
+             ) THEN 1 ELSE 0 END), 0) AS edited
+           FROM prescribed_exercises pe
+           WHERE pe.organization_id = ?1 AND pe.revision_id = ?4 AND pe.origin IN ('SYSTEM', 'SYSTEM_EDITED') AND ${seen}`,
+        )
+        .bind(organizationId, userId, planId, revisionId)
+        .first<{ total: number; edited: number }>();
+      return { total: Number(row?.total ?? 0), edited: Number(row?.edited ?? 0) };
+    },
+
+    /**
      * The same rows as `list`, with the structured dose, its stored text and the application that wrote them (0041), for the
      * input adapter of the automatic prescription. Same gate as `list`.
      */

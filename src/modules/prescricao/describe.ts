@@ -36,9 +36,53 @@ export function describeDose(item: DoseFields): string {
 export const storedDoseText = (item: DoseFields & { doseText?: string | null }): string => item.doseText?.trim() || describeDose(item);
 
 /**
- * The "Descanso (texto)" field when a dose written by the engine (it has stored text) is opened for editing: the engine also
- * wrote the rest seconds as text, so keeping both would print the rest twice once the professional saves. A text typed by a
- * person (no stored text) is kept as it is.
+ * The "Descanso (texto)" field when a dose written by the engine (it has stored text) is opened for editing: for most metrics
+ * the engine also wrote the rest seconds as text ("60 s"), so keeping both would print the rest twice once the professional
+ * saves a typed dose. The interval recovery ("rec. 60–90 s") is not the rest seconds and is kept. A text typed by a person (no
+ * stored text) is kept as it is.
  */
 export const restTextForEditing = (item: { restText: string | null; doseText?: string | null }): string =>
-  item.doseText?.trim() ? "" : (item.restText ?? "");
+  item.doseText?.trim() && !(item.restText ?? "").startsWith("rec.") ? "" : (item.restText ?? "");
+
+/** The dose fields of an edit form, as typed (text). */
+export interface DoseFormText {
+  sets: string;
+  reps: string;
+  loadInstruction: string;
+  cadence: string;
+  restSeconds: string;
+  restText: string;
+  rirMin: string;
+  rirMax: string;
+}
+
+const DOSE_FORM_KEYS = ["sets", "reps", "loadInstruction", "cadence", "restSeconds", "restText", "rirMin", "rirMax"] as const;
+
+const numberOrNull = (text: string) => (text.trim() === "" ? null : Number(text));
+
+/**
+ * What a dose edit form sends: the dose fields only when one of them changed from what the form opened with (then all of them,
+ * as typed, which replaces the stored dose and its text), and the notes only when they changed. A notes-only save therefore keeps
+ * the stored dose (an engine dose keeps its text, its recovery, its load basis). Nothing changed = an empty object. `copyDose`
+ * sends the dose fields even unchanged (this session's dose copied, as typed, to other sessions).
+ */
+export function changedDoseFields(
+  initial: DoseFormText & { notes: string },
+  edited: DoseFormText & { notes: string },
+  copyDose = false,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (copyDose || DOSE_FORM_KEYS.some((key) => edited[key] !== initial[key]))
+    Object.assign(out, {
+      sets: edited.sets || null,
+      reps: edited.reps || null,
+      loadInstruction: edited.loadInstruction || null,
+      cadence: edited.cadence || null,
+      restSeconds: numberOrNull(edited.restSeconds),
+      restText: edited.restText || null,
+      rirMin: numberOrNull(edited.rirMin),
+      rirMax: numberOrNull(edited.rirMax),
+    });
+  if (edited.notes !== initial.notes) out.notes = edited.notes || null;
+  return out;
+}

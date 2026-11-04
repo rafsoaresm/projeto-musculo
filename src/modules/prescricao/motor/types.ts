@@ -318,6 +318,11 @@ export type FlagDecision =
 export interface DoseOverride {
   /** Ausente = qualquer. */
   stimulus?: string;
+  /**
+   * Só sem `stimulus`: estímulos aos quais o ajuste não se aplica. A linha "qualquer estímulo" da tabela de doses vale para os
+   * estímulos sem linha própria; editada, ela não deve mudar as linhas de um estímulo nomeado (que mostram o seu próprio valor).
+   */
+  exceptStimuli?: string[];
   modality?: string;
   metric?: Metric;
   phaseIndex?: number;

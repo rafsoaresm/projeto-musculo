@@ -125,11 +125,26 @@ test("automatic prescription from the periodization to the student's log", async
   await expect(page.getByText("Dose salva (só nesta sessão).")).toBeVisible();
   await expect(draftSession.getByText("Editada por você").first()).toBeVisible();
   await expect(draftSession.getByText("5 séries × 6 repetições", { exact: false })).toBeVisible();
+  // A notes-only save keeps the stored dose of the engine as it was (only the note is added).
+  const otherLabel = (await draftSession.getByRole("button", { name: /^Editar a dose de / }).nth(1).getAttribute("aria-label"))!;
+  const otherName = otherLabel.replace(/^Editar a dose de /, "").replace(/ na sessão \d+ da semana \d+$/, "");
+  const other = draftSession
+    .locator("ol.exercise-list > li")
+    .filter({ has: page.locator(".exercise-main > strong").getByText(otherName, { exact: true }) })
+    .first();
+  const doseLine = other.locator(".exercise-main > span").first();
+  const doseBefore = await doseLine.innerText();
+  await other.getByRole("button", { name: /^Editar a dose de / }).click();
+  await other.getByLabel("Observações").fill("Pegada neutra");
+  await other.getByRole("button", { name: "Salvar dose" }).click();
+  await expect(other.getByText("Obs.: Pegada neutra")).toBeVisible();
+  await expect(doseLine).toHaveText(doseBefore);
   await noHorizontalOverflow(page);
 
   // 11. Ready and approval by the professional; 12. delivery by the existing flow.
   await page.getByRole("button", { name: "Marcar estrutura como pronta" }).click();
-  await expect(page.getByText(/exercícios? propostos? automaticamente/)).toBeVisible();
+  // The edit made in week 2, session 1 only is counted (never "0 editados").
+  await expect(page.getByRole("note").filter({ hasText: /exercícios? propostos? automaticamente \([1-9]\d* editados? por você\)/ })).toBeVisible();
   await approveAndDeliver(page);
   // The history of the proposal stays, read-only.
   await page.goto(autoURL);
