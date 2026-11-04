@@ -2,6 +2,7 @@ import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import type { D1Database } from "@cloudflare/workers-types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { plansFor } from "@/db/plans";
+import { studentsFor } from "@/db/students";
 import { buildPeriodization } from "@/modules/training/periodization";
 import { ALL_MIGRATIONS, migrate } from "./helpers/migrate";
 
@@ -428,5 +429,28 @@ describe("plans in progress for the student picker", () => {
     expect((await mine.inProgress()).some((row) => row.studentId === "st-p1")).toBe(false);
     await db.prepare("UPDATE care_assignments SET revoked_at = NULL WHERE student_id = 'st-p1'").run();
     expect((await mine.inProgress()).some((row) => row.studentId === "st-p1")).toBe(true);
+  });
+});
+
+describe("students a user can prescribe for (the Novo plano picker)", () => {
+  it("keeps only students with an active technical assignment, the rule saving a plan checks", async () => {
+    await db.batch([
+      db.prepare("INSERT INTO students(id,organization_id,display_name) VALUES ('st-q1','org-a','Prescribable One'),('st-q2','org-a','Reached Only')"),
+      db.prepare("INSERT INTO care_assignments(organization_id,student_id,professional_id) VALUES ('org-a','st-q1','pro-a2'),('org-a','st-q2','pro-a')"),
+      // tech-a2 reaches st-q2 only through a portal access row, with no assignment.
+      db.prepare("INSERT INTO student_access(organization_id,student_id,user_id) VALUES ('org-a','st-q2','tech-a2')"),
+    ]);
+    const reach = (await studentsFor(db, scope("tech-a2")).list()).map((row) => row.id);
+    expect(reach).toEqual(expect.arrayContaining(["st-q1", "st-q2"]));
+    const ids = (await studentsFor(db, scope("tech-a2")).prescribable()).map((row) => row.id);
+    expect(ids).toContain("st-q1");
+    expect(ids).not.toContain("st-q2");
+    expect(await plansFor(db, scope("tech-a2")).create("st-q2", { title: "Sem atribuição", input: input() })).toBeNull();
+    // Another organization, a commercial member, a portal login and a technical member without the assignment see none of them.
+    for (const who of [scope("tech-a"), scope("commercial-a"), scope("client-1"), scope("tech-b", "org-b"), scope("tech-a2", "org-b")])
+      expect((await studentsFor(db, who).prescribable()).map((row) => row.id).filter((id) => id === "st-q1"), JSON.stringify(who)).toEqual([]);
+    // Revoking the assignment drops the student at once.
+    await db.prepare("UPDATE care_assignments SET revoked_at = '2026-11-01T00:00:00.000Z' WHERE student_id = 'st-q1'").run();
+    expect((await studentsFor(db, scope("tech-a2")).prescribable()).some((row) => row.id === "st-q1")).toBe(false);
   });
 });
