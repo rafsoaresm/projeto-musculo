@@ -7,7 +7,7 @@ import { outputHashOf, proposalsFor, jsonChunks } from "@/db/prescription-propos
 import { ADAPTER_ASSUMPTION_CODES } from "@/modules/prescricao/automatica/build-input";
 import type { GenerationAnswersInput } from "@/modules/prescricao/automatica/contracts";
 import { proposalService, withAdapter, type ProposalOutcome } from "@/modules/prescricao/automatica/service";
-import { canonicalJson, generate, sha256Hex, type EngineInput, type EngineResult } from "@/modules/prescricao/motor";
+import { ENGINE_VERSION, canonicalJson, generate, sha256Hex, type EngineInput, type EngineResult } from "@/modules/prescricao/motor";
 import { ALL_MIGRATIONS, migrate } from "./helpers/migrate";
 
 // Motor S6 on a real local D1 (Miniflare/workerd, migrations 0001–0045): the proposal repository and the proposal service the
@@ -158,7 +158,7 @@ describe("generating a proposal (ledger, rows, replay)", () => {
     expect(await count("SELECT COUNT(*) AS n FROM prescribed_exercises WHERE revision_id = ?1", d.revisionId)).toBe(0);
     const gen = await db.prepare("SELECT * FROM prescription_generations WHERE proposal_id = ?1").bind(out.proposalId).all<Record<string, unknown>>();
     expect(gen.results).toHaveLength(1);
-    expect(gen.results[0]).toMatchObject({ scope: "FULL", engine_version: "2.0.0", rules_id: "gymgital-base", status: snap.header.status, output_hash: snap.header.outputHash });
+    expect(gen.results[0]).toMatchObject({ scope: "FULL", engine_version: ENGINE_VERSION, rules_id: "gymgital-base", status: snap.header.status, output_hash: snap.header.outputHash });
     expect(String(gen.results[0].catalog_hash)).toMatch(/^[0-9a-f]{64}$/);
     const input = await db.prepare("SELECT student_id AS s, input_json AS j FROM prescription_generation_inputs WHERE generation_id = ?1").bind(gen.results[0].id).first<{ s: string; j: string }>();
     expect(input!.s).toBe("st-1");

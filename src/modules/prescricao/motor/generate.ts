@@ -3,6 +3,7 @@
  * (semana × sessão) recebe a sua dose (estímulo da ocorrência + progressão semanal). Puro,
  * síncrono e determinístico: mesma entrada → mesma saída, byte a byte.
  */
+import { auditPlan, boundAudit } from "./audit";
 import { applyBounds } from "./bounds";
 import { TECHNICAL_LIMITS } from "./bounds";
 import { resolveDose, toDisplayFields, validateDose, metricFor } from "./dose";
@@ -39,7 +40,7 @@ import type {
   WorkoutSummary,
 } from "./types";
 
-export const ENGINE_VERSION = "2.0.1";
+export const ENGINE_VERSION = "2.1.0";
 
 // ---------- contexto ----------
 
@@ -155,12 +156,21 @@ function countFor(input: EngineInput, phase: StructurePhase, workout: StructureW
   return { value: c.count, source: "PROFESSIONAL", basis: "PROFESSIONAL" };
 }
 
-function coverageFor(input: EngineInput, phase: StructurePhase, workout: StructureWorkout): Coverage | null {
-  if (workout.focus.muscles?.length || workout.focus.patterns?.length)
-    return { muscles: workout.focus.muscles ?? [], patterns: workout.focus.patterns ?? [], basis: "PROFESSIONAL" };
+/**
+ * Alvos de cobertura do treino: o foco do treino vence o alvo da fase. Com as regras da auditoria (2026.11.3+) o objeto também
+ * grava de onde veio (`origin`) e os alvos semanais da fase (`weeklySets`, com a base da entrada); versões anteriores, como antes.
+ */
+function coverageFor(ctx: EngineContext, phase: StructurePhase, workout: StructureWorkout): Coverage | null {
+  const { input, log } = ctx;
+  const audited = log.optional("AUDIT_THRESHOLDS") !== undefined;
   const c = input.parameters.phaseCoverage.find((x) => x.phaseIndex === phase.index);
-  if (c && (c.muscles?.length || c.patterns?.length))
-    return { muscles: c.muscles ?? [], patterns: c.patterns ?? [], basis: c.basis, ...(c.ruleId ? { ruleId: c.ruleId } : {}) };
+  const weeklySets = audited && c?.weeklySets?.length
+    ? { weeklySets: c.weeklySets.map((w) => ({ ...w, muscle: codeOf(w.muscle), basis: c.basis, ...(c.ruleId ? { ruleId: c.ruleId } : {}) })) }
+    : {};
+  if (workout.focus.muscles?.length || workout.focus.patterns?.length)
+    return { muscles: workout.focus.muscles ?? [], patterns: workout.focus.patterns ?? [], basis: "PROFESSIONAL", ...(audited ? { origin: "WORKOUT_FOCUS" as const } : {}), ...weeklySets };
+  if (c && (c.muscles?.length || c.patterns?.length || "weeklySets" in weeklySets))
+    return { muscles: c.muscles ?? [], patterns: c.patterns ?? [], basis: c.basis, ...(c.ruleId ? { ruleId: c.ruleId } : {}), ...(audited ? { origin: "PHASE_COVERAGE" as const } : {}), ...weeklySets };
   return null;
 }
 
@@ -287,7 +297,7 @@ export function planWorkout(ctx: EngineContext, phase: StructurePhase, workout: 
         count: count === "BY_TIME" ? "BY_TIME" : count.value,
         estimate: (list) => dosePreview(ctx, { phase, workout }, list, preserved),
         budgetMinutes: budget?.minutes ?? null,
-        coverage: coverageFor(input, phase, workout),
+        coverage: coverageFor(ctx, phase, workout),
         fixed, fixedCount: slots.length,
         preferred: new Set(input.parameters.preferredExerciseIds),
         experience: ctx.experience, history: ctx.history, usedInPhase, usedInPreviousPhase,
@@ -330,7 +340,7 @@ export function planWorkout(ctx: EngineContext, phase: StructurePhase, workout: 
   if (count === "BY_TIME" && runnable && !picks.length && !slots.length)
     issues.push({ severity: "ERROR", code: "CATALOG_INSUFFICIENT", path, ...at, message: `Treino ${workout.label}: nenhum exercício elegível para preencher pelo tempo.` });
   // cobertura
-  const coverage = coverageFor(input, phase, workout);
+  const coverage = coverageFor(ctx, phase, workout);
   const chosen = slots.map((s) => s.exercise).filter((e): e is CatalogExercise => e !== null);
   if (coverage) {
     for (const m of coverage.muscles)
@@ -509,16 +519,51 @@ function historySuggestions(ctx: EngineContext, occurrences: OccurrenceOut[]): H
   return out;
 }
 
+/**
+ * Contribuição do item no volume da semana (regras com auditoria): só números do próprio item (séries × sessões do treino na
+ * semana), para que uma mudança em outro treino não reescreva este item. Os totais da semana ficam na leitura (view).
+ */
+function weeklyContribution(ctx: EngineContext, o: OccurrenceOut, item: ItemOut): TraceEntry | null {
+  const { log } = ctx;
+  const e = item.exerciseId ? ctx.byId.get(item.exerciseId) : undefined;
+  const modalities = new Set(log.get("VOLUME_MODALITIES").map(codeOf));
+  if (!e?.modality || !modalities.has(codeOf(e.modality))) return null;
+  const direct = [...new Set(e.primaryMuscles.map(codeOf))];
+  const indirect = [...new Set(e.secondaryMuscles.map(codeOf))].filter((m) => !direct.includes(m));
+  if (!direct.length && !indirect.length) return null;
+  const phase = ctx.input.structure.phases.find((p) => p.index === o.phaseIndex);
+  const sessions = phase ? phase.occurrences.filter((x) => x.week === o.week && x.label === o.label).length : 0;
+  const sets = item.dose && (item.dose.metric === "REPS" || item.dose.metric === "TIME" || item.dose.metric === "DISTANCE") ? item.dose.sets : null;
+  const factor = log.get("INDIRECT_VOLUME_FACTOR");
+  if (sets === null)
+    return log.entry("INDIRECT_VOLUME_FACTOR", "WEEKLY_CONTRIBUTION", `Semana ${o.week}: séries não definidas; contribuição no volume não calculada.`);
+  const total = sets * sessions;
+  const parts = [
+    direct.length ? `${numberText(total)} séries diretas de ${labelsOf(MUSCLE_LABELS, direct)}` : null,
+    indirect.length ? `${numberText(total)} indiretas de ${labelsOf(MUSCLE_LABELS, indirect)} (peso ${numberText(factor)})` : null,
+  ].filter(Boolean);
+  return log.entry("INDIRECT_VOLUME_FACTOR", "WEEKLY_CONTRIBUTION",
+    `Semana ${o.week}: ${sessions} ${sessions === 1 ? "sessão" : "sessões"} do treino ${o.label} × ${numberText(sets)} séries = ${parts.join("; ")}.`);
+}
+
 /** Recalcula duração, avisos de validação, volume, alertas e estado sobre um resultado inteiro. */
 export function finalize(ctx: EngineContext, result: EngineResult): EngineResult {
   const { input, log } = ctx;
   const issues: Issue[] = result.issues.filter((i) => i.stage !== "VALIDATION");
   const replaced = existingSlotKeys(ctx);
   const workoutOf = (phaseIndex: number, label: string) => input.structure.phases.find((p) => p.index === phaseIndex)?.workouts.find((w) => w.label === label);
+  const audited = log.optional("AUDIT_THRESHOLDS") !== undefined;
   const occurrences = result.occurrences.map((o) => {
     const path = `occurrences.${o.phaseIndex}.${o.week}.${o.slot}`;
     const at = { phaseIndex: o.phaseIndex, label: o.label, stage: "VALIDATION" as const };
-    const items = o.items.map((item) => (item.origin === "PRESERVED" ? item : { ...item, display: toDisplayFields(item.dose) }));
+    const items = o.items.map((item) => {
+      const next = item.origin === "PRESERVED" ? item : { ...item, display: toDisplayFields(item.dose) };
+      if (!audited) return next;
+      // derivado: recalculado a cada operação (o anterior sai), depois das entradas da seleção
+      const contribution = weeklyContribution(ctx, o, next);
+      const selection = next.trace.selection.filter((t) => t.code !== "WEEKLY_CONTRIBUTION");
+      return { ...next, trace: { ...next.trace, selection: contribution ? [...selection, contribution] : selection } };
+    });
     const ids = new Set<string>();
     for (const item of items) {
       if (item.dose) for (const i of validateDose(item.dose)) issues.push({ ...i, path: `${path}.${item.slotKey}`, ...at, message: `${item.exerciseName}: ${i.message}.` });
@@ -549,16 +594,24 @@ export function finalize(ctx: EngineContext, result: EngineResult): EngineResult
   const all = uniqueIssues(issues);
   const errors = all.some((i) => i.severity === "ERROR");
   const warnings = all.some((i) => i.severity === "WARNING");
+  const volume = volumeFor(log, occurrences, ctx.byId);
+  // A auditoria (regras 2026.11.3+) é recalculada aqui em toda operação: nenhum achado antigo sobrevive.
+  const audit = log.optional("AUDIT_THRESHOLDS")
+    ? boundAudit(log, auditPlan({ log, phases: result.phases, structure: input.structure.phases, workouts: result.workouts, occurrences, volume, byId: ctx.byId }))
+    : undefined;
+  const rest: EngineResult = { ...result };
+  delete rest.audit;
   const next: EngineResult = {
-    ...result,
+    ...rest,
     occurrences,
     issues: all,
     flags: buildFlags(log, input),
-    volume: volumeFor(log, occurrences, ctx.byId),
+    volume,
     historySuggestions: historySuggestions(ctx, occurrences),
     status: errors ? "INFEASIBLE" : "SUCCEEDED",
     validation: errors ? "BLOCKED" : warnings ? "WARNINGS" : "PASSED",
     requiresProfessionalReview: true,
+    ...(audit ? { audit } : {}),
   };
   next.rulesUsed = log.rulesUsed(result.rulesUsed);
   const bounded = applyBounds(next);

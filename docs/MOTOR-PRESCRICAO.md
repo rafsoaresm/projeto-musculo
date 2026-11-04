@@ -68,7 +68,7 @@ Os valores padrão desta ferramenta não são recomendação universal (frase mo
 A tabela abaixo é gerada da versão em uso nas gerações novas (`src/modules/prescricao/motor/rules/gymgital-base-2026.11.2.json`; a `2026.11.1` continua em `gymgital-base.json` para as propostas gravadas com ela) por `renderRulesTable`; um teste (`tests/motor-rules.test.ts`) falha se ela divergir. Para mudar um número, publique uma versão nova do conjunto (as gravadas continuam reproduzíveis). O SHA-256 de cada conjunto publicado está fixado no teste: editar o JSON sob a mesma versão faz o teste falhar, e a correção é uma versão nova, não um hash novo.
 
 <!-- regras:inicio -->
-Conjunto `gymgital-base` versão `2026.11.2`.
+Conjunto `gymgital-base` versão `2026.11.3`.
 
 | Regra | Base | O que faz | Valor |
 |---|---|---|---|
@@ -94,6 +94,10 @@ Conjunto `gymgital-base` versão `2026.11.2`.
 | PROGRESSION_HISTORY | Heurística operacional (editável) | Sugestão de progressão pelo histórico: exposições completas e comparáveis seguidas e aumento máximo relativo. Só sugestão; nunca gravada como valor. | `{"consecutiveSuccesses":2,"maximumIncrementFraction":0.1}` |
 | MOVEMENT_FINDING_PATTERN_MAP | Heurística operacional (editável) | Teste de movimento da avaliação → padrões que podem ser excluídos com um clique do profissional. Nunca é contraindicação automática. | `{"SQUAT":["SQUAT"],"HIP_HINGE":["HINGE"],"LUNGE":["LUNGE"],"PUSH":["HORIZONTAL_PUSH","VERTICAL_PUSH"],"PULL":["HORIZONTAL_PULL","VERTICAL_PULL"]}` |
 | MOVEMENT_FINDING_GRADES | Heurística operacional (editável) | Graus do teste de movimento que geram sugestão de decisão. | `["MODERATE","STOPPED_BY_PAIN"]` |
+| AUDIT_THRESHOLDS | Heurística operacional (editável) | Limiares da auditoria técnica do plano: acima deles a auditoria explica e sugere revisão; nunca bloqueia nem muda a proposta. Frações de 0 a 1; doseRestFactorMax é a razão máxima entre o descanso do item e o da política para o estímulo; maxFindings limita os achados listados um a um. | `{"weekJumpFraction":0.25,"phaseJumpFraction":0.25,"uniformShare":0.8,"uniformMinItems":6,"balanceRatioMax":2,"regionShareMax":0.6,"workoutShareMax":0.7,"durationUnderuseFraction":0.6,"patternRepeatInSession":3,"doseRestFactorMax":2,"maxFindings":150}` |
+| AUDIT_COMPREHENSIVE_STIMULI | Heurística operacional (editável) | Estímulos em que a auditoria descreve a distribuição muscular mesmo sem alvos (hipertrofia abrangente). Nos demais (força, cardio, mobilidade…) só há achados musculares quando o profissional definiu alvos. | `["HYPERTROPHY"]` |
+| AUDIT_BALANCE_PAIRS | Heurística operacional (editável) | Pares de padrões comparados quando pertinentes ao objetivo e à estrutura (fase abrangente, algum lado com estímulo e o lado dominante não sendo exatamente o alvo explícito do profissional). | `[{"code":"KNEE_HIP","a":["SQUAT","LUNGE","KNEE_EXTENSION"],"b":["HINGE","HIP_EXTENSION","KNEE_FLEXION"]},{"code":"PUSH_PULL","a":["HORIZONTAL_PUSH","VERTICAL_PUSH"],"b":["HORIZONTAL_PULL","VERTICAL_PULL"]}]` |
+| AUDIT_REGIONS | Heurística operacional (editável) | Agrupamento de músculos em regiões para descrever concentração de volume e o formato observado da divisão (corpo inteiro, superior e inferior). Só descreve; não renomeia treinos. | `{"LOWER":["QUADRICEPS","HAMSTRINGS","GLUTEUS","ADDUCTORS","ABDUCTORS","CALVES"],"UPPER_PUSH":["CHEST","FRONT_DELTOID","SIDE_DELTOID","TRICEPS"],"UPPER_PULL":["LATS","UPPER_BACK","TRAPEZIUS","REAR_DELTOID","BICEPS","FOREARMS"],"TRUNK":["ABS","OBLIQUES","ERECTORS"]}` |
 
 Doses padrão (`DOSE_DEFAULTS`):
 

@@ -123,3 +123,6 @@ export function baseInput(over: Partial<EngineInput> = {}): EngineInput {
 }
 
 export const codes = (r: { issues: Array<{ code: string }> }) => r.issues.map((i) => i.code);
+
+/** Versão anterior à auditoria: testes que fixam detalhes da seleção ou do resultado da 2026.11.2 usam esta versão explicitamente. */
+export const LEGACY_RULES = { id: "gymgital-base", version: "2026.11.2" } as const;

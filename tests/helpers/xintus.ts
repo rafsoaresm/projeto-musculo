@@ -5,7 +5,7 @@
  */
 import {
   DEFAULT_RULESET, revalidate, toDisplayFields,
-  type CatalogExercise, type Dose, type EngineInput, type EngineResult, type ItemOut, type OccurrenceOut, type RuleSetRef,
+  type CatalogExercise, type CoverageTargets, type Dose, type EngineInput, type EngineResult, type ItemOut, type OccurrenceOut, type RuleSetRef,
 } from "@/modules/prescricao/motor";
 import { FLEXITEST_CODES, FLEXITEST_LABEL } from "@/modules/avaliacoes/v2/flexitest";
 import { CATALOG, FULL_GYM, baseInput, exercise, parameters, structure } from "./motor-fixtures";
@@ -82,7 +82,11 @@ function paramsOf(dose: Dose | null, basis: "POLICY" | "PROFESSIONAL"): ItemOut[
  * Um resultado montado à mão a partir de um plano (exercícios e doses por ocorrência) e revalidado pelo motor, que calcula
  * duração, volume e, nas regras com auditoria, a auditoria. `items(occ)` devolve os itens de cada sessão da estrutura.
  */
-export function resultFrom(input: EngineInput, items: (occ: { phaseIndex: number; week: number; slot: number; label: string }) => PlanItemSeed[]): EngineResult {
+export function resultFrom(
+  input: EngineInput,
+  items: (occ: { phaseIndex: number; week: number; slot: number; label: string }) => PlanItemSeed[],
+  coverage: (phaseIndex: number, label: string) => CoverageTargets | null = () => null,
+): EngineResult {
   const byId = new Map(input.catalog.map((e) => [e.id, e]));
   const occurrences: OccurrenceOut[] = [];
   for (const phase of input.structure.phases)
@@ -112,7 +116,7 @@ export function resultFrom(input: EngineInput, items: (occ: { phaseIndex: number
     phases: input.structure.phases.map((p) => ({ phaseIndex: p.index, name: p.name, weeks: p.weeks, sessionsPerWeek: p.sessionsPerWeek, progression: null })),
     workouts: input.structure.phases.flatMap((p) => p.workouts.map((w) => ({
       phaseIndex: p.index, label: w.label, name: w.name, stimulus: p.stimulus ?? null, modalities: { value: ["RESISTANCE"], source: "RULES" as const, basis: "HEURISTIC" as const },
-      count: null, coverage: null, eligible: 0, excluded: {},
+      count: null, coverage: coverage(p.index, w.label), eligible: 0, excluded: {},
     }))),
     occurrences, issues: [], assumptions: [], flags: [], volume: [], historySuggestions: [], rulesUsed: [],
   };

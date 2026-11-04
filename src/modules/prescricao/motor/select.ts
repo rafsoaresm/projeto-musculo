@@ -5,7 +5,7 @@
  */
 import { cmp, codeOf, MUSCLE_LABELS, normalizeText, numberText, PATTERN_LABELS } from "./vocabulary";
 import type { RuleLog } from "./trace";
-import type { Alternative, Basis, CatalogExercise, ExistingItem, Experience, ItemMetadata, Metric, TraceEntry } from "./types";
+import type { Alternative, Basis, CatalogExercise, CoverageTargets, ExistingItem, Experience, ItemMetadata, Metric, TraceEntry } from "./types";
 
 // ---------- chaves de item ----------
 
@@ -39,12 +39,7 @@ export function nameKeyOf(name: string, nameKey?: string): string {
 
 // ---------- seleção ----------
 
-export interface Coverage {
-  muscles: string[];
-  patterns: string[];
-  basis: Basis;
-  ruleId?: string;
-}
+export type Coverage = CoverageTargets;
 
 export interface SelectionRequest {
   stimulus: string | null;

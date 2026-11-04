@@ -5,8 +5,10 @@
  */
 import base from "./gymgital-base.json";
 import base2 from "./gymgital-base-2026.11.2.json";
+import base3 from "./gymgital-base-2026.11.3.json";
 import referencesFile from "./references.json";
 import type { Basis, DoseParam, Experience, LoadBasis, Metric, RuleSetRef } from "../types";
+import { MUSCLE_LABELS, PATTERN_LABELS } from "../vocabulary";
 
 export interface DoseDefault {
   /** Código do estímulo, ou "*" para qualquer estímulo da modalidade. */
@@ -67,9 +69,37 @@ export interface RuleValues {
   MOVEMENT_FINDING_GRADES: string[];
 }
 
-/** Regras que só existem a partir de uma versão (2026.11.2): uma versão anterior não as tem e o motor segue sem elas. */
+/** Limiares da auditoria técnica do plano (2026.11.3). Frações em [0, 1]; nenhum bloqueia. */
+export interface AuditThresholds {
+  weekJumpFraction: number;
+  phaseJumpFraction: number;
+  uniformShare: number;
+  uniformMinItems: number;
+  balanceRatioMax: number;
+  regionShareMax: number;
+  workoutShareMax: number;
+  durationUnderuseFraction: number;
+  patternRepeatInSession: number;
+  doseRestFactorMax: number;
+  maxFindings: number;
+}
+
+export interface AuditBalancePair {
+  code: string;
+  a: string[];
+  b: string[];
+}
+
+/**
+ * Regras que só existem a partir de uma versão: uma versão anterior não as tem e o motor segue sem elas.
+ * 2026.11.2: EXTERNAL_LOAD_STIMULI. 2026.11.3: AUDIT_* (auditoria técnica do plano).
+ */
 export interface OptionalRuleValues {
   EXTERNAL_LOAD_STIMULI: string[];
+  AUDIT_THRESHOLDS: AuditThresholds;
+  AUDIT_COMPREHENSIVE_STIMULI: string[];
+  AUDIT_BALANCE_PAIRS: AuditBalancePair[];
+  AUDIT_REGIONS: Record<string, string[]>;
 }
 
 export type RequiredRuleId = keyof RuleValues;
@@ -115,11 +145,17 @@ const GYMGITAL_BASE_2026_11_1 = deepFreeze(JSON.parse(JSON.stringify(base)) as R
  * 2026.11.2: treino sem alvos espalha os padrões (noTargetsPatternRepeat) e, nos estímulos de carga, um exercício resistido sem
  * nenhum equipamento perde pontos (EXTERNAL_LOAD_STIMULI, noExternalLoad). O resto é igual à 2026.11.1.
  */
-const GYMGITAL_BASE = deepFreeze(JSON.parse(JSON.stringify(base2)) as RuleSet);
+const GYMGITAL_BASE_2026_11_2 = deepFreeze(JSON.parse(JSON.stringify(base2)) as RuleSet);
+/**
+ * 2026.11.3: 2026.11.2 + regras da auditoria técnica do plano (AUDIT_THRESHOLDS, AUDIT_COMPREHENSIVE_STIMULI, AUDIT_BALANCE_PAIRS,
+ * AUDIT_REGIONS). Seleção e doses iguais às da 2026.11.2.
+ */
+const GYMGITAL_BASE = deepFreeze(JSON.parse(JSON.stringify(base3)) as RuleSet);
 
 /** Conjuntos publicados. Uma versão publicada nunca muda: novos números entram como nova versão. */
 export const RULESETS: Readonly<Record<string, RuleSet>> = deepFreeze({
   [`${GYMGITAL_BASE_2026_11_1.id}@${GYMGITAL_BASE_2026_11_1.version}`]: GYMGITAL_BASE_2026_11_1,
+  [`${GYMGITAL_BASE_2026_11_2.id}@${GYMGITAL_BASE_2026_11_2.version}`]: GYMGITAL_BASE_2026_11_2,
   [`${GYMGITAL_BASE.id}@${GYMGITAL_BASE.version}`]: GYMGITAL_BASE,
 });
 
@@ -185,6 +221,38 @@ export function validateRuleSet(rules: RuleSet): string[] {
   }
   const keys = rules.rules.DOSE_DEFAULTS.value.map((d) => `${d.stimulus}|${d.modality}|${d.metric}`);
   if (new Set(keys).size !== keys.length) problems.push("DOSE_DEFAULTS: entradas repetidas para o mesmo estímulo, modalidade e métrica");
+  problems.push(...auditRuleProblems(rules));
+  return problems;
+}
+
+const AUDIT_FRACTIONS = ["weekJumpFraction", "phaseJumpFraction", "uniformShare", "regionShareMax", "workoutShareMax", "durationUnderuseFraction"] as const;
+const AUDIT_COUNTS = ["uniformMinItems", "patternRepeatInSession", "maxFindings"] as const;
+
+/** Regras da auditoria (opcionais): números no domínio certo e códigos existentes no vocabulário. */
+function auditRuleProblems(rules: RuleSet): string[] {
+  const problems: string[] = [];
+  const t = rules.rules.AUDIT_THRESHOLDS?.value;
+  if (t) {
+    for (const k of AUDIT_FRACTIONS) if (!(typeof t[k] === "number" && t[k] >= 0 && t[k] <= 1)) problems.push(`AUDIT_THRESHOLDS.${k}: fora de [0, 1]`);
+    for (const k of AUDIT_COUNTS) if (!(Number.isInteger(t[k]) && t[k] >= 1)) problems.push(`AUDIT_THRESHOLDS.${k}: inteiro ≥ 1`);
+    if (!(typeof t.balanceRatioMax === "number" && t.balanceRatioMax >= 1)) problems.push("AUDIT_THRESHOLDS.balanceRatioMax: deve ser ≥ 1");
+    if (!(typeof t.doseRestFactorMax === "number" && t.doseRestFactorMax >= 1)) problems.push("AUDIT_THRESHOLDS.doseRestFactorMax: deve ser ≥ 1");
+  }
+  for (const p of rules.rules.AUDIT_BALANCE_PAIRS?.value ?? []) {
+    if (!p.code?.trim() || !p.a.length || !p.b.length) problems.push(`AUDIT_BALANCE_PAIRS.${p.code}: par incompleto`);
+    for (const code of [...p.a, ...p.b]) if (!PATTERN_LABELS[code]) problems.push(`AUDIT_BALANCE_PAIRS.${p.code}: padrão desconhecido ${code}`);
+    if (p.a.some((x) => p.b.includes(x))) problems.push(`AUDIT_BALANCE_PAIRS.${p.code}: padrão nos dois lados`);
+  }
+  const regions = rules.rules.AUDIT_REGIONS?.value;
+  if (regions) {
+    const seen = new Set<string>();
+    for (const [region, muscles] of Object.entries(regions))
+      for (const m of muscles) {
+        if (!MUSCLE_LABELS[m]) problems.push(`AUDIT_REGIONS.${region}: músculo desconhecido ${m}`);
+        if (seen.has(m)) problems.push(`AUDIT_REGIONS: ${m} em mais de uma região`);
+        seen.add(m);
+      }
+  }
   return problems;
 }
 

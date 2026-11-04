@@ -12,5 +12,6 @@ export { canonicalInput, canonicalRequest, canonicalJson, sha256Hex } from "./ha
 export { scheduleOccurrences, dateAdd, validDate } from "./calendar";
 export { slotKeyOf, parseSlotKey } from "./select";
 export { TECHNICAL_LIMITS } from "./bounds";
-export { RULESETS, REFERENCES, DEFAULT_RULESET, getRuleSet, validateRuleSet, renderRulesTable, BASIS_TEXT } from "./rules";
-export { VOCABULARY_VERSION, ISSUE_LABELS, STIMULUS_LABELS, MODALITY_LABELS, PATTERN_LABELS } from "./vocabulary";
+export { RULESETS, REFERENCES, DEFAULT_RULESET, getRuleSet, validateRuleSet, renderRulesTable, BASIS_TEXT, type RuleSet } from "./rules";
+export { auditPlan, boundAudit, AUDIT_VERSION, type AuditInput } from "./audit";
+export { VOCABULARY_VERSION, AUDIT_LABELS, ISSUE_LABELS, STIMULUS_LABELS, MODALITY_LABELS, PATTERN_LABELS } from "./vocabulary";
