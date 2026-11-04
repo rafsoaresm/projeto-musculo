@@ -157,6 +157,8 @@ describe("motor: regras, bases e referências", () => {
         queue.push(target);
       }
     }
+    // nem a revisão opcional por IA nem o adaptador entram no grafo do motor
+    expect([...seen].filter((f) => f.includes("/automatica/"))).toEqual([]);
     // o grafo sai da pasta do motor (contratos da prescrição e da biblioteca) e foi seguido
     expect([...seen].some((f) => f.includes("modules/biblioteca/contracts"))).toBe(true);
   });
