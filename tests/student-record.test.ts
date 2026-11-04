@@ -31,6 +31,8 @@ const revision = (state: PlanState, over: Partial<PlanRevisionSummary> = {}): Pl
   readyAt: null,
   approvedAt: null,
   deliveredAt: null,
+  contentVersion: 0,
+  prescriptionModel: "TEMPLATE",
   ...over,
 });
 const plan = (...revisions: PlanRevisionSummary[]): PlanSummary => ({ id: "p1", title: "Hipertrofia", createdAt: "2026-11-01T10:00:00.000Z", revisions });

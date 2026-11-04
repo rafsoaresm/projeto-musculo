@@ -35,7 +35,10 @@ async function delivered(student = "st-1", owner = "tech-a", minute = 0, raw = f
     await rx.add(created.planId, created.revisionId, { phaseIndex: 1, workoutLabel: FB }, { customName: `Exercício ${i + 1}` }, { sets: "3", reps: "10" });
   await rx.copyPhase(created.planId, created.revisionId, 1, 2);
   await rx.copyPhase(created.planId, created.revisionId, 1, 3);
-  expect(await plans.markReady(created.planId, created.revisionId)).toBe(true);
+  if (raw) {
+    // markReady of now also closes automatic proposals (0042, not there yet before 0039): READY as the application of then wrote it.
+    await run("UPDATE plan_revisions SET state = 'READY', ready_at = ?2 WHERE id = ?1", created.revisionId, at(minute).toISOString());
+  } else expect(await plans.markReady(created.planId, created.revisionId)).toBe(true);
   if (raw) {
     // Before 0039 the application of now cannot read the revision (its columns do not exist yet): approved and delivered as the
     // application of then wrote it.

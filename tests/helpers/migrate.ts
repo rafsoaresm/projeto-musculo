@@ -77,4 +77,7 @@ export const ALL_MIGRATIONS = [
   "0038_read_trail_sign_in_failures.sql",
   "0039_delivery_names.sql",
   "0040_result_classifications.sql",
+  "0041_prescription_occurrences.sql",
+  "0042_prescription_proposals.sql",
+  "0043_execution_occurrences.sql",
 ];

@@ -45,7 +45,12 @@ export interface PlanRevisionSummary {
   readyAt: string | null;
   approvedAt: string | null;
   deliveredAt: string | null;
+  /** Counter of content changes of the revision (0041): moves only while DRAFT, never back. */
+  contentVersion: number;
+  /** TEMPLATE: one dose per workout (every revision before 0041). OCCURRENCE: one dose per session of each week (motor v2). */
+  prescriptionModel: PrescriptionModel;
 }
+export type PrescriptionModel = "TEMPLATE" | "OCCURRENCE";
 /** Who delivered a revision, as the names were at the moment of the delivery (slice 0.90). Null: not delivered, or no name then. */
 export interface DeliveredNames {
   deliveredByName: string | null;
@@ -172,7 +177,8 @@ export function plansFor(
              r.start_date AS startDate, r.end_date AS endDate,
              r.total_weeks AS totalWeeks, r.total_sessions AS totalSessions,
              r.updated_at AS updatedAt, r.ready_at AS readyAt,
-             r.approved_at AS approvedAt, r.delivered_at AS deliveredAt
+             r.approved_at AS approvedAt, r.delivered_at AS deliveredAt,
+             r.content_version AS contentVersion, r.prescription_model AS prescriptionModel
            FROM training_plans p
            JOIN plan_revisions r
              ON r.organization_id = p.organization_id AND r.plan_id = p.id
@@ -205,6 +211,8 @@ export function plansFor(
           readyAt: row.readyAt,
           approvedAt: row.approvedAt,
           deliveredAt: row.deliveredAt,
+          contentVersion: row.contentVersion,
+          prescriptionModel: row.prescriptionModel,
         });
         plans.set(row.planId, plan);
       }
@@ -300,6 +308,7 @@ export function plansFor(
              r.approved_at AS approvedAt, r.delivered_at AS deliveredAt,
              r.delivered_by_name AS deliveredByName, r.delivered_organization_name AS deliveredOrganizationName,
              r.based_on_revision_id AS basedOnRevisionId,
+             r.content_version AS contentVersion, r.prescription_model AS prescriptionModel,
              r.input_json AS inputJson, r.schedule_json AS scheduleJson
            FROM training_plans p
            JOIN plan_revisions r
@@ -335,6 +344,8 @@ export function plansFor(
           deliveredAt: row.deliveredAt,
           deliveredByName: row.deliveredByName,
           deliveredOrganizationName: row.deliveredOrganizationName,
+          contentVersion: row.contentVersion,
+          prescriptionModel: row.prescriptionModel,
           basedOnRevisionId: row.basedOnRevisionId,
           input: parsePeriodizationInput(JSON.parse(row.inputJson)),
           schedule: JSON.parse(row.scheduleJson) as PeriodizationSchedule,
@@ -453,13 +464,17 @@ export function plansFor(
       return results[0].meta.changes > 0;
     },
 
-    /** DRAFT to READY: the structure is validated. It is not approval or delivery. */
+    /**
+     * DRAFT to READY: the structure is validated. It is not approval or delivery. An automatic proposal still open on the draft is
+     * closed as SUPERSEDED in the same batch (nothing of it is applied), with its decision and event: a READY revision is never edited.
+     */
     async markReady(
       planId: string,
       revisionId: string,
       now = new Date(),
     ): Promise<boolean> {
       const stamp = now.toISOString();
+      const writeId = crypto.randomUUID();
       const results = await db.batch([
         db
           .prepare(
@@ -469,6 +484,29 @@ export function plansFor(
           )
           .bind(organizationId, userId, stamp, revisionId, planId),
         eventAfterChange("MARKED_READY", revisionId, stamp),
+        // Only when the statement above made this revision READY (same batch, same transaction).
+        db
+          .prepare(
+            `UPDATE prescription_proposals
+             SET state = 'SUPERSEDED', version = version + 1, last_write_id = ?3, closed_at = ?4,
+               closed_by_user_id = ?2, updated_at = ?4
+             WHERE organization_id = ?1 AND revision_id = ?5 AND plan_id = ?6 AND state = 'OPEN'
+               AND EXISTS (SELECT 1 FROM plan_revisions r
+                 WHERE r.organization_id = ?1 AND r.id = ?5 AND r.plan_id = ?6 AND r.state = 'READY' AND r.ready_at = ?4)`,
+          )
+          .bind(organizationId, userId, writeId, stamp, revisionId, planId),
+        eventAfterChange("PROPOSAL_SUPERSEDED", revisionId, stamp),
+        db
+          .prepare(
+            `INSERT INTO proposal_decisions
+               (id, organization_id, proposal_id, actor_user_id, action, write_id, target_json,
+                proposal_version_after, created_at)
+             SELECT ?3, p.organization_id, p.id, ?2, 'SUPERSEDED', ?4, '{}', p.version, ?5
+             FROM prescription_proposals p
+             WHERE p.organization_id = ?1 AND p.revision_id = ?6 AND p.state = 'SUPERSEDED'
+               AND p.last_write_id = ?4`,
+          )
+          .bind(organizationId, userId, crypto.randomUUID(), writeId, stamp, revisionId),
       ]);
       return results[0].meta.changes > 0;
     },
@@ -552,7 +590,11 @@ export function plansFor(
 
     /**
      * Copies a non-draft revision into a new draft with a new identity. History is
-     * never rewritten, and one plan has at most one open draft.
+     * never rewritten, and one plan has at most one open draft. The prescription travels
+     * with it under new ids made here (not in SQL), each row keeping where it came from
+     * (copied_from_id), its origin and its provenance (application, engine slot,
+     * substitution remapped to the copy). An OCCURRENCE revision also copies its session
+     * occurrences and the dose of each exercise in each of them. No proposal is copied.
      */
     async newRevisionFrom(
       planId: string,
@@ -561,6 +603,27 @@ export function plansFor(
     ): Promise<NewRevisionResult> {
       const revisionId = crypto.randomUUID();
       const stamp = now.toISOString();
+      // The source is past DRAFT, so its rows are frozen (0007): what is read here is what the batch copies.
+      const source = await db
+        .prepare(
+          `SELECT pe.id AS id, pe.substitutes_prescribed_exercise_id AS substitutes
+           FROM prescribed_exercises pe
+           JOIN plan_revisions r ON r.organization_id = pe.organization_id AND r.id = pe.revision_id
+           JOIN training_plans p ON p.organization_id = r.organization_id AND p.id = r.plan_id
+           WHERE pe.organization_id = ?1 AND r.plan_id = ?3 AND r.id = ?4 AND r.state <> 'DRAFT'
+             AND ${gate("p")}
+           ORDER BY pe.phase_index, pe.workout_label, pe.position, pe.id`,
+        )
+        .bind(organizationId, userId, planId, sourceRevisionId)
+        .all<{ id: string; substitutes: string | null }>();
+      const newIds = new Map(source.results.map((row) => [row.id, crypto.randomUUID()]));
+      const copies = source.results.map((row) => ({
+        n: newIds.get(row.id),
+        s: row.id,
+        // A substitution of a row of the same revision points at that row's copy; anything else is not carried.
+        x: row.substitutes ? (newIds.get(row.substitutes) ?? null) : null,
+      }));
+      const created = `EXISTS (SELECT 1 FROM plan_revisions n WHERE n.organization_id = ?1 AND n.id = ?3 AND n.state = 'DRAFT')`;
       try {
         const results = await db.batch([
           db
@@ -568,13 +631,13 @@ export function plansFor(
               `INSERT INTO plan_revisions
                  (id, organization_id, plan_id, revision_number, state, input_json,
                   schedule_json, engine_version, start_date, end_date, total_weeks,
-                  total_sessions, based_on_revision_id, created_by_user_id, created_at,
-                  updated_at)
+                  total_sessions, based_on_revision_id, prescription_model, created_by_user_id,
+                  created_at, updated_at)
                SELECT ?3, r.organization_id, r.plan_id,
                  (SELECT COALESCE(MAX(x.revision_number), 0) + 1
                     FROM plan_revisions x WHERE x.plan_id = r.plan_id),
                  'DRAFT', r.input_json, r.schedule_json, r.engine_version, r.start_date,
-                 r.end_date, r.total_weeks, r.total_sessions, r.id, ?2, ?4, ?4
+                 r.end_date, r.total_weeks, r.total_sessions, r.id, r.prescription_model, ?2, ?4, ?4
                FROM plan_revisions r
                JOIN training_plans p
                  ON p.organization_id = r.organization_id AND p.id = r.plan_id
@@ -590,25 +653,24 @@ export function plansFor(
               sourceRevisionId,
             ),
           eventAfterChange("REVISION_CREATED", revisionId, stamp),
-          // The prescription travels with the revision, under new IDs, so editing the
-          // copy never touches the revision it came from. Inserts nothing when the
-          // revision above was refused.
+          // Inserts nothing when the revision above was refused.
           db
             .prepare(
               `INSERT INTO prescribed_exercises
                  (id, organization_id, revision_id, phase_index, workout_label, position,
                   exercise_id, name, video_url, video_status, sets, reps, load_instruction,
                   cadence, rest_seconds, rest_text, rir_min, rir_max, notes, origin,
-                  created_by_user_id, created_at, updated_at)
-               SELECT lower(hex(randomblob(16))), src.organization_id, ?3, src.phase_index,
+                  dose_json, dose_text, application_id, source_slot_key, copied_from_id,
+                  substitutes_prescribed_exercise_id, created_by_user_id, created_at, updated_at)
+               SELECT json_extract(j.value, '$.n'), src.organization_id, ?3, src.phase_index,
                  src.workout_label, src.position, src.exercise_id, src.name, src.video_url,
                  src.video_status, src.sets, src.reps, src.load_instruction, src.cadence,
                  src.rest_seconds, src.rest_text, src.rir_min, src.rir_max, src.notes,
-                 src.origin, ?2, ?4, ?4
-               FROM prescribed_exercises src
-               WHERE src.organization_id = ?1 AND src.revision_id = ?6
-                 AND EXISTS (SELECT 1 FROM plan_revisions n
-                               WHERE n.organization_id = ?1 AND n.id = ?3)`,
+                 src.origin, src.dose_json, src.dose_text, src.application_id, src.source_slot_key,
+                 src.id, json_extract(j.value, '$.x'), ?2, ?4, ?4
+               FROM json_each(?7) j
+               JOIN prescribed_exercises src ON src.id = json_extract(j.value, '$.s')
+               WHERE src.organization_id = ?1 AND src.revision_id = ?6 AND ${created}`,
             )
             .bind(
               organizationId,
@@ -617,13 +679,55 @@ export function plansFor(
               stamp,
               planId,
               sourceRevisionId,
+              JSON.stringify(copies),
             ),
+          // The schedule is copied unchanged, so each occurrence keeps its week, slot and dates.
+          db
+            .prepare(
+              `INSERT INTO plan_session_occurrences
+                 (id, organization_id, revision_id, phase_index, week_index, slot_index, workout_label,
+                  week_start, planned_date, stimulus, created_by_user_id, created_at, updated_at)
+               SELECT lower(hex(randomblob(16))), o.organization_id, ?3, o.phase_index, o.week_index,
+                 o.slot_index, o.workout_label, o.week_start, o.planned_date, o.stimulus, ?2, ?4, ?4
+               FROM plan_session_occurrences o
+               WHERE o.organization_id = ?1 AND o.revision_id = ?5 AND ${created}`,
+            )
+            .bind(organizationId, userId, revisionId, stamp, sourceRevisionId),
+          db
+            .prepare(
+              `INSERT INTO prescribed_exercise_occurrences
+                 (id, organization_id, revision_id, prescribed_exercise_id, occurrence_id, included,
+                  sets, reps, load_instruction, cadence, rest_seconds, rest_text, rir_min, rir_max, notes,
+                  dose_json, dose_text, trace_json, origin, source_proposal_item_id,
+                  created_by_user_id, created_at, updated_at)
+               SELECT lower(hex(randomblob(16))), x.organization_id, ?3, pe.id, no.id, x.included,
+                 x.sets, x.reps, x.load_instruction, x.cadence, x.rest_seconds, x.rest_text, x.rir_min,
+                 x.rir_max, x.notes, x.dose_json, x.dose_text, x.trace_json, x.origin,
+                 x.source_proposal_item_id, ?2, ?4, ?4
+               FROM prescribed_exercise_occurrences x
+               JOIN plan_session_occurrences oo ON oo.organization_id = x.organization_id AND oo.id = x.occurrence_id
+               JOIN prescribed_exercises pe
+                 ON pe.organization_id = ?1 AND pe.revision_id = ?3 AND pe.copied_from_id = x.prescribed_exercise_id
+               JOIN plan_session_occurrences no
+                 ON no.organization_id = ?1 AND no.revision_id = ?3 AND no.phase_index = oo.phase_index
+                   AND no.week_index = oo.week_index AND no.slot_index = oo.slot_index
+               WHERE x.organization_id = ?1 AND x.revision_id = ?5 AND ${created}`,
+            )
+            .bind(organizationId, userId, revisionId, stamp, sourceRevisionId),
+          // The occurrence tables have no bump triggers (0041): one explicit bump for the batch.
+          db
+            .prepare(
+              `UPDATE plan_revisions SET content_version = content_version + 1
+               WHERE organization_id = ?1 AND id = ?3 AND state = 'DRAFT'
+                 AND EXISTS (SELECT 1 FROM plan_session_occurrences o WHERE o.revision_id = ?3)`,
+            )
+            .bind(organizationId, userId, revisionId),
         ]);
         return results[0].meta.changes > 0
           ? { status: "created", revisionId }
           : { status: "not_found" };
       } catch (error) {
-        if (String(error).includes("UNIQUE")) return { status: "draft_open" };
+        if (String(error).includes("UNIQUE constraint failed: plan_revisions.plan_id")) return { status: "draft_open" };
         throw error;
       }
     },

@@ -83,6 +83,10 @@ export function prescriptionFor(
       )
       .bind(organizationId, userId, planId, revisionId, crypto.randomUUID(), stamp);
   const isUnique = (error: unknown) => String(error).includes("UNIQUE");
+  // How many rows the statement right before wrote itself. D1's meta.changes adds the rows written by triggers (since 0041 every
+  // prescribed_exercises write bumps plan_revisions.content_version), so it is no longer a count; SQL changes() is.
+  const directChanges = (): D1PreparedStatement => db.prepare("SELECT changes() AS n");
+  const changesOf = (result: { results?: unknown[] }) => Number((result.results?.[0] as { n?: number } | undefined)?.n ?? 0);
 
   const api = {
     async list(planId: string, revisionId: string): Promise<PrescribedItem[]> {
@@ -304,7 +308,9 @@ export function prescriptionFor(
       ];
       try {
         const results = await db.batch(statements);
-        return results.slice(1).every((result) => result.meta.changes === 1);
+        // Each statement targets one id. D1's meta.changes also counts rows written by triggers (the content_version bump of
+        // 0041), so "changed" is > 0, never an exact count.
+        return results.slice(1).every((result) => result.meta.changes > 0);
       } catch (error) {
         if (isUnique(error)) return false;
         throw error;
@@ -449,12 +455,15 @@ export function prescriptionFor(
               organizationId, userId, planId, revisionId, fromPhase, toPhase, stamp,
               JSON.stringify(common),
             ),
+          // The rows the insert itself wrote: SQL changes() leaves out trigger rows, D1's meta.changes does not (0041 bump).
+          // A SELECT leaves changes() as it is, so the event below still reads the insert.
+          directChanges(),
           eventAfterChange(planId, revisionId, stamp),
         ]);
         return results[0].meta.changes > 0
           ? {
               status: "saved",
-              copied: results[0].meta.changes,
+              copied: changesOf(results[1]),
               skipped: usedLabels.filter((label) => !destinationLabels.includes(label)),
             }
           : { status: "not_found" };
@@ -512,10 +521,11 @@ export function prescriptionFor(
               organizationId, userId, planId, revisionId, "", stamp,
               from.phaseIndex, from.workoutLabel, to.phaseIndex, to.workoutLabel,
             ),
+          directChanges(),
           eventAfterChange(planId, revisionId, stamp),
         ]);
         return results[0].meta.changes > 0
-          ? { status: "saved", count: results[0].meta.changes }
+          ? { status: "saved", count: changesOf(results[1]) }
           : { status: "not_found" };
       } catch (error) {
         if (isUnique(error)) return { status: "destination_not_empty" };
