@@ -1,4 +1,4 @@
-import type { Dose, ProgressionProposal, TrainingExposure } from "./types.ts";
+import type { Dose, ProgressionProposal, TrainingExposure } from "./types";
 export interface ProgressionSettings { consecutiveSuccesses?: number; incrementKg?: number; maximumIncrementFraction?: number; }
 /** A proposal, not an automatic modification of delivered sessions. */
 export function proposeProgression(exposures: TrainingExposure[], exerciseId: string, prescribed: Dose, settings: ProgressionSettings = {}): ProgressionProposal {
