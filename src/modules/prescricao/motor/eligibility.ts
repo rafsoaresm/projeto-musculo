@@ -12,6 +12,7 @@ export type IneligibleReason =
   | "METADATA_INFERRED"
   | "MODALITY"
   | "EQUIPMENT"
+  | "EQUIPMENT_PENDING"
   | "EXCLUDED_EXERCISE"
   | "EXCLUDED_PATTERN"
   | "EXCLUDED_CAUTION";
@@ -22,6 +23,7 @@ export const INELIGIBLE_TEXT: Record<IneligibleReason, string> = {
   METADATA_INFERRED: "metadados apenas inferidos (o profissional pediu só revisados)",
   MODALITY: "modalidade diferente",
   EQUIPMENT: "equipamento indisponível",
+  EQUIPMENT_PENDING: "equipamento pendente de curadoria na biblioteca",
   EXCLUDED_EXERCISE: "excluído pelo profissional",
   EXCLUDED_PATTERN: "padrão excluído pelo profissional",
   EXCLUDED_CAUTION: "cuidado excluído pelo profissional",
@@ -76,6 +78,7 @@ export function ineligibleReason(
   if (ctx.excludedIds.has(e.id) || workoutExcluded.has(e.id)) return "EXCLUDED_EXERCISE";
   if (e.patterns.some((p) => ctx.excludedPatterns.has(codeOf(p)))) return "EXCLUDED_PATTERN";
   if (e.cautionTags.some((t) => ctx.excludedTags.has(codeOf(t)))) return "EXCLUDED_CAUTION";
+  if (e.equipmentKnown === false) return "EQUIPMENT_PENDING";
   if (!equipmentOk(e, ctx.equipment)) return "EQUIPMENT";
   return null;
 }

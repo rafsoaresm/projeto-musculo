@@ -109,6 +109,9 @@ describe("the answers contract (GenerationAnswers)", () => {
     bad({ policyOverrides: [{ patch: { values: { sets: Number.POSITIVE_INFINITY } } }] });
     bad({ progressionByPhase: [{ phaseIndex: 1, progression: { model: "LINEAR", ramps: [{ param: "kg", from: 1, to: 2 }] } }] });
     bad({ doseMode: "INVENT" });
+    // An alert code is a code: free text (it would stay in a table that is never deleted) is refused.
+    bad({ acceptedFlagDecisions: [{ flagCode: "dor lombar crônica, hérnia L5", decision: { kind: "ACKNOWLEDGE" } }] });
+    expect(parseGenerationAnswers({ acceptedFlagDecisions: [{ flagCode: "HISTORY_PAIN:sys-agachamento-livre", decision: { kind: "ACKNOWLEDGE" } }] }).acceptedFlagDecisions).toHaveLength(1);
   });
 
   it("takes an empty object (everything still to be answered) and keeps the defaults visible as absent", () => {

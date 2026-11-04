@@ -2,6 +2,9 @@
  * Vocabulário do motor: códigos e rótulos em pt-BR. Códigos desconhecidos são aceitos (qualquer
  * objetivo, modalidade ou padrão): sem rótulo conhecido, aparecem como foram escritos.
  */
+import { EQUIPMENT, METRICS, MUSCLES, PATTERNS } from "@/modules/biblioteca/metadata/vocabulary";
+import type { DoseParam } from "./types";
+
 export const VOCABULARY_VERSION = "2026.11.1";
 
 /** Compara por ponto de código (independe de ICU e de idioma do servidor). */
@@ -40,19 +43,46 @@ export const MODALITY_LABELS: Record<string, string> = {
   SKILL: "Habilidade",
 };
 
-export const PATTERN_LABELS: Record<string, string> = {
-  SQUAT: "Agachar",
-  HINGE: "Dobradiça de quadril",
-  LUNGE: "Afundo",
-  HORIZONTAL_PUSH: "Empurrar horizontal",
-  HORIZONTAL_PULL: "Puxar horizontal",
-  VERTICAL_PUSH: "Empurrar vertical",
-  VERTICAL_PULL: "Puxar vertical",
-  ANTI_EXTENSION: "Antiextensão",
-  CYCLICAL: "Cíclico",
-  MOBILITY: "Mobilidade",
-  BALANCE: "Equilíbrio",
+/** Rótulos da biblioteca (mesmo vocabulário de códigos): o texto do motor nunca mostra o código cru. */
+export const PATTERN_LABELS: Record<string, string> = { ...PATTERNS };
+export const MUSCLE_LABELS: Record<string, string> = { ...MUSCLES };
+export const EQUIPMENT_LABELS: Record<string, string> = { ...EQUIPMENT };
+export const METRIC_LABELS: Record<string, string> = { ...METRICS };
+
+/** Parâmetros da dose como o profissional lê, com a unidade quando há. */
+export const DOSE_PARAM_LABELS: Record<DoseParam, string> = {
+  sets: "Séries",
+  repsMin: "Repetições (mín.)",
+  repsMax: "Repetições (máx.)",
+  durationMin: "Duração mín. (s)",
+  durationMax: "Duração máx. (s)",
+  distanceMin: "Distância mín. (m)",
+  distanceMax: "Distância máx. (m)",
+  restSeconds: "Descanso (s)",
+  rirMin: "RIR mín.",
+  rirMax: "RIR máx.",
+  rpeMin: "RPE mín.",
+  rpeMax: "RPE máx.",
+  blocks: "Blocos",
+  repeats: "Repetições do bloco",
+  workDurationMin: "Esforço mín. (s)",
+  workDurationMax: "Esforço máx. (s)",
+  workDistanceMin: "Esforço mín. (m)",
+  workDistanceMax: "Esforço máx. (m)",
+  recoveryMin: "Recuperação mín. (s)",
+  recoveryMax: "Recuperação máx. (s)",
+  restBetweenBlocks: "Descanso entre blocos (s)",
 };
+
+/** Lista de códigos em texto, com o rótulo de cada um (o código só quando não há rótulo). */
+export function labelsOf(map: Record<string, string>, codes: readonly string[]): string {
+  return codes.map((c) => map[c] ?? c).join(", ");
+}
+
+/** Número para o texto em português: vírgula decimal, no máximo duas casas (sem ICU: o texto entra no hash da saída). */
+export function numberText(n: number): string {
+  return String(Math.round(n * 100) / 100).replace(".", ",");
+}
 
 export function labelOf(map: Record<string, string>, code: string | null | undefined): string {
   if (!code) return "—";

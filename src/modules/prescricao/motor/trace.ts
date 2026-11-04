@@ -1,4 +1,4 @@
-import { getRuleSet, verifiedRefs, type RuleId, type RuleSet, type RuleValues } from "./rules";
+import { getRuleSet, verifiedRefs, type OptionalRuleId, type OptionalRuleValues, type RequiredRuleId, type RuleEntry, type RuleId, type RuleSet, type RuleValues } from "./rules";
 import { cmp } from "./vocabulary";
 import type { Basis, Issue, ParamTrace, RuleUse, TraceEntry } from "./types";
 
@@ -10,13 +10,21 @@ export class RuleLog {
   private readonly used = new Set<RuleId>();
   constructor(readonly rules: RuleSet) {}
 
-  get<K extends RuleId>(id: K): RuleValues[K] {
+  get<K extends RequiredRuleId>(id: K): RuleValues[K] {
     this.used.add(id);
-    return this.rules.rules[id].value;
+    return (this.rules.rules[id] as RuleEntry<RuleValues[K]>).value;
+  }
+
+  /** Uma regra que a versão em uso pode não ter: undefined (e não registrada como usada) quando falta. */
+  optional<K extends OptionalRuleId>(id: K): OptionalRuleValues[K] | undefined {
+    const entry = this.rules.rules[id] as { value: OptionalRuleValues[K] } | undefined;
+    if (!entry) return undefined;
+    this.used.add(id);
+    return entry.value;
   }
 
   basis(id: RuleId): Basis {
-    return this.rules.rules[id].basis;
+    return this.rules.rules[id]?.basis ?? "HEURISTIC";
   }
 
   entry(id: RuleId, code: string, detail: string): TraceEntry {
@@ -33,7 +41,7 @@ export class RuleLog {
   rulesUsed(extra: RuleUse[] = []): RuleUse[] {
     const out = new Map<string, RuleUse>();
     for (const r of extra) out.set(r.ruleId, r);
-    for (const id of this.used) out.set(id, { ruleId: id, basis: this.basis(id), label: this.rules.rules[id].description });
+    for (const id of this.used) out.set(id, { ruleId: id, basis: this.basis(id), label: this.rules.rules[id]?.description ?? id });
     return [...out.values()].sort((a, b) => cmp(a.ruleId, b.ruleId));
   }
 }

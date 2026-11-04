@@ -249,6 +249,8 @@ export function catalogExercise(record: ExerciseRecord, meta: ResolvedMetadata |
     secondaryMuscles: strings(value("secondary_muscles")),
     patterns: strings(value("movement_patterns")),
     equipment: strings(value("equipment")),
+    // A pending (or never filled) equipment field is unknown, not "needs none": the engine refuses it even when picked by hand.
+    ...(meta?.fields.equipment && meta.fields.equipment.provenance !== "PENDING" && meta.fields.equipment.value !== null ? {} : { equipmentKnown: false }),
     equipmentAlternatives: Array.isArray(alternatives) ? alternatives.filter(Array.isArray).map(strings) : [],
     difficulty: typeof difficulty === "number" ? difficulty : null,
     laterality: laterality === "UNILATERAL" || laterality === "BILATERAL" ? laterality : null,

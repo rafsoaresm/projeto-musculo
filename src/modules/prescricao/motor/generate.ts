@@ -15,7 +15,7 @@ import { existingFor, metadataOf, nameKeyOf, parseSlotKey, rankAlternatives, sel
 import { ruleLogFor, RuleLog, uniqueIssues } from "./trace";
 import { validateInput } from "./validate";
 import { volumeFor } from "./volume";
-import { cmp, codeOf, normalizeText, STIMULUS_LABELS, VOCABULARY_VERSION } from "./vocabulary";
+import { cmp, codeOf, labelsOf, MODALITY_LABELS, MUSCLE_LABELS, normalizeText, numberText, PATTERN_LABELS, STIMULUS_LABELS, VOCABULARY_VERSION } from "./vocabulary";
 import type {
   Assumption,
   CatalogExercise,
@@ -296,12 +296,18 @@ export function planWorkout(ctx: EngineContext, phase: StructurePhase, workout: 
     : [];
   const eligibilityEntry: TraceEntry = {
     code: "ELIGIBLE", basis: modalities?.basis ?? "PROFESSIONAL", ...(modalities?.ruleId ? { ruleId: modalities.ruleId } : {}),
-    detail: `Elegível: modalidade ${modalities?.value.join(", ") ?? "—"}, equipamento disponível, sem exclusões do profissional.`,
+    detail: `Elegível: modalidade ${modalities ? labelsOf(MODALITY_LABELS, modalities.value) : "—"}, sem exclusões do profissional.`,
   };
+  const equipmentEntry = (e: CatalogExercise): TraceEntry =>
+    input.parameters.availableEquipment === null
+      ? { code: "EQUIPMENT", basis: "HEURISTIC", detail: "Equipamentos disponíveis não informados: entrou por não precisar de equipamento." }
+      : !e.equipment.length
+        ? { code: "EQUIPMENT", basis: "PROFESSIONAL", detail: "Não precisa de equipamento." }
+        : { code: "EQUIPMENT", basis: "PROFESSIONAL", detail: "Equipamento entre os informados como disponíveis." };
   for (const [rank, p] of picks.entries())
     slots.push({
       slotKey: nextKey(p.exercise.id, nameKeyOf(p.exercise.name, p.exercise.nameKey)), exercise: p.exercise, existing: null, origin: "ENGINE",
-      selection: [eligibilityEntry, ...p.trace, { code: "RANK", basis: log.basis("SELECTION_WEIGHTS"), ruleId: "SELECTION_WEIGHTS", detail: `Escolha ${rank + 1} pela pontuação ${Math.round(p.score * 100) / 100}; empate pelo código do exercício.` }],
+      selection: [eligibilityEntry, equipmentEntry(p.exercise), ...p.trace, { code: "RANK", basis: log.basis("SELECTION_WEIGHTS"), ruleId: "SELECTION_WEIGHTS", detail: `Escolha ${rank + 1} pela pontuação ${numberText(p.score)}${p.tie ? "; empate desfeito pelo código do exercício" : ""}.` }],
       alternatives: [],
     });
   if (count === "BY_TIME" && runnable) {
@@ -329,16 +335,16 @@ export function planWorkout(ctx: EngineContext, phase: StructurePhase, workout: 
   if (coverage) {
     for (const m of coverage.muscles)
       if (!chosen.some((e) => e.primaryMuscles.some((x) => codeOf(x) === codeOf(m))))
-        issues.push({ severity: "WARNING", code: "MUSCLE_NOT_COVERED", path, ...at, message: `Treino ${workout.label}: ${m} sem exercício como músculo principal.` });
+        issues.push({ severity: "WARNING", code: "MUSCLE_NOT_COVERED", path, ...at, message: `Treino ${workout.label}: ${MUSCLE_LABELS[codeOf(m)] ?? m} sem exercício como músculo principal.` });
     for (const p of coverage.patterns)
       if (!chosen.some((e) => e.patterns.map(codeOf).includes(codeOf(p))))
-        issues.push({ severity: "WARNING", code: "PATTERN_NOT_COVERED", path, ...at, message: `Treino ${workout.label}: padrão ${p} sem exercício.` });
+        issues.push({ severity: "WARNING", code: "PATTERN_NOT_COVERED", path, ...at, message: `Treino ${workout.label}: padrão ${PATTERN_LABELS[codeOf(p)] ?? p} sem exercício.` });
   } else if (occs.length && runnable) {
     const def = log.get("DEFAULT_COVERAGE");
     const patterns = [...new Set((modalities?.value ?? []).flatMap((m) => def[m] ?? []))];
     issues.push({ severity: "WARNING", code: "NO_TARGETS", path, ...at,
       message: `Treino ${workout.label}: sem músculos ou padrões-alvo; a seleção seguiu a elegibilidade e a variação entre treinos.`,
-      suggestions: patterns.map((p) => ({ value: p, ruleId: "DEFAULT_COVERAGE", label: p })) });
+      suggestions: patterns.map((p) => ({ value: p, ruleId: "DEFAULT_COVERAGE", label: PATTERN_LABELS[p] ?? p })) });
   }
   // alternativas
   const limit = log.get("ALTERNATIVES_LIMIT");

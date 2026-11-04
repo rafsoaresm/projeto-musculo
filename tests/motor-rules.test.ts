@@ -150,6 +150,7 @@ describe("motor: regras, bases e referências", () => {
     // Mudou um número? Publique uma nova versão em rules/ e acrescente o hash dela aqui; nunca troque um hash existente.
     const PUBLISHED: Record<string, string> = {
       "gymgital-base@2026.11.1": "556661b43ccff6132af17ba773dcbfb5e43bdb077a0e41ca21df53ab0f798764",
+      "gymgital-base@2026.11.2": "7e08a7c38504ed0b033532c57b813decba7789e5d419fd5dff3143d1ba2a2ae5",
     };
     for (const [id, rules] of Object.entries(RULESETS)) {
       expect(PUBLISHED[id], `${id} sem hash fixado`).toBeDefined();

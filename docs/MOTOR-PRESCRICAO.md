@@ -1,6 +1,8 @@
 # Motor de prescrição automática
 
-Documento do motor de prescrição (pedido do usuário de 04/11/2026, PR #95). **Estado: só o motor (etapa S1).** O motor é código puro em `src/modules/prescricao/motor/`, testado isoladamente (`tests/motor-*.test.ts`). **Ainda não está ligado ao banco, às telas nem ao fluxo de aprovação e entrega**: isso vem nas etapas seguintes (estrutura v2, migrations 0041–0045, adaptador, propostas, aplicação, leitores e interface). As seções marcadas "a completar" são preenchidas na etapa final (S10).
+Documento do motor de prescrição (pedido do usuário de 04/11/2026, PR #95). **Estado: versão 0.94.0, etapas S1 a S10 feitas, não publicada** (PR #95 aberto; nada implantado no Webflow Cloud). O motor é código puro em `src/modules/prescricao/motor/`; o adaptador dos dados reais, as propostas, a aplicação ao rascunho, os leitores por sessão e as telas estão ligados ao fluxo de sempre (Aluno → Triagem → Avaliação física → Periodização → Gerar prescrição → Revisar → Aprovar → Entregar). Migrations 0041 a 0045, todas aditivas. O que foi e o que **não** foi verificado está em [`VALIDACAO.md`](VALIDACAO.md) (seção da 0.94.0); o que segue aberto, com quem destrava, em [`PENDENCIAS.md`](PENDENCIAS.md) (R14, R15, T8, B56 a B61, C42).
+
+Fluxo, em uma linha: na revisão em rascunho, depois de salvar a periodização, "Gerar prescrição automática" abre o formulário (perguntas obrigatórias, política de doses editável, progressão por fase); o motor gera **todas** as sessões de todas as fases e semanas como **proposta** (nada é escrito na prescrição); o profissional revisa, troca, regenera e aplica ao rascunho; depois edita por sessão, marca como pronta, aprova e entrega pelo fluxo que já existia. O motor nunca aprova, nunca entrega e nunca sobrescreve em silêncio uma prescrição manual, uma revisão aprovada ou um plano entregue.
 
 ## O que o motor faz
 
@@ -22,18 +24,47 @@ Documento do motor de prescrição (pedido do usuário de 04/11/2026, PR #95). *
 
 - Não inventa dados: falta de estímulo, quantidade, equipamento, métrica ou regra de dose vira pergunta ou aviso, nunca número. Vazio nunca é 0.
 - Não trata observações isoladas da avaliação (postura, flexibilidade) como contraindicação; alertas só sugerem decisões, que valem depois do clique do profissional.
-- Não lê check-ins (decisão Q6).
+- Não lê check-ins (decisão Q6): aparecem como contexto, fora da seleção.
+- Não propõe quilos, zonas de frequência cardíaca, ritmos nem potência: a carga é escolhida na execução para o esforço indicado, e a intensidade de cardio fica com o profissional.
+- Não aprova, não marca como pronta e não entrega; não escreve na prescrição sem "Aplicar ao rascunho"; não toca revisões fora do rascunho (o banco recusa).
+- Não usa IA nem rede: nenhum cálculo depende de modelo de linguagem.
+- Não apresenta os valores padrão como protocolo científico validado: hoje nenhum valor tem base `EVIDENCE`.
+- Não escolhe exercício com metadado "pendente de curadoria", nem equipamento pendente como "sem equipamento".
+- Não sugere aumento de carga pelo histórico: o incremento do equipamento não é guardado em lugar nenhum, então o máximo é "manter a carga" (B58).
+
+## Versões
+
+| O quê | Versão | Onde | Gravada em |
+|---|---|---|---|
+| Motor | `2.0.0` (`ENGINE_VERSION`) | `motor/generate.ts` | `prescription_proposals.engine_version`, `prescription_generations` |
+| Regras das gerações novas | `gymgital-base@2026.11.2` | `motor/rules/gymgital-base-2026.11.2.json` | `rules_id`, `rules_version` da proposta e de cada geração |
+| Regras anteriores (propostas gravadas com elas) | `gymgital-base@2026.11.1` | `motor/rules/gymgital-base.json` | idem; continua carregável e com o mesmo SHA-256 |
+| Vocabulário (códigos e rótulos) | `2026.11.1` (`VOCABULARY_VERSION`) | `motor/vocabulary.ts` | `prescription_generations` |
+| Inferência de metadados da biblioteca | `gymgital-library-inference@2026.11.2` | `src/modules/biblioteca/metadata/inference-rules.json` | cada valor inferido (`exercise_attributes`) e o evento dele |
+| Aplicação | `0.94.0` | `package.json` | — |
+
+Cada conjunto de regras publicado é congelado: o SHA-256 do arquivo está fixado em `tests/motor-rules.test.ts`, e mudar um número é publicar uma versão nova. Uma proposta continua sendo regenerada com a versão com que nasceu (regras que não existiam numa versão anterior valem como peso 0 nela), então uma proposta antiga reproduz os mesmos bytes. Gerar de novo (descartar e gerar) usa a versão atual.
 
 ## Bases de cada valor
 
-Todo número da proposta diz de onde veio: `EVIDENCE` (só com referência verificada; hoje **nenhuma**), `HEURISTIC` ("Heurística operacional (editável)": valor padrão das regras), `HEURISTIC_ACCEPTED` (sugestão que o profissional aceitou, com a regra), `PROFESSIONAL` (digitado ou escolhido pelo profissional, ou estrutura feita por ele), `STUDENT_DATA` (dado do aluno). Os valores padrão desta ferramenta não são recomendação universal.
+Todo número e toda escolha da proposta diz de onde veio. A base aparece no "Por quê?" de cada item, separada em "Escolha:" e "Dose:".
+
+| Base | Rótulo na tela | Quando |
+|---|---|---|
+| `EVIDENCE` | Evidência (referência verificada) | Só com uma referência conferida no repositório. **Hoje nenhuma**: as duas referências citadas estão NÃO VERIFICADAS e não aparecem para usuários (Q2; conferência com o Técnico, T8). Um teste recusa regra com base `EVIDENCE` que cite referência não verificada |
+| `HEURISTIC` | Heurística operacional (editável) | Valor padrão das regras (`rules/*.json`): doses, pesos de seleção, duração, arredondamentos |
+| `HEURISTIC_ACCEPTED` | Heurística aceita por você (na proposta) / pelo profissional (nas regras) | Sugestão de uma regra que o profissional clicou (estímulo sugerido pelo objetivo, cobertura padrão, exclusão sugerida por um alerta); guarda a regra. Só vale para o que a regra sugeriu de fato (`UNSUPPORTED_SUGGESTION` senão) |
+| `PROFESSIONAL` | Decisão do profissional | Digitado ou escolhido pelo profissional: estrutura da periodização, estímulo escolhido, ajuste da política, troca de exercício, trava |
+| `STUDENT_DATA` | Dado do aluno | Ficha (nível, objetivo, minutos), triagem, avaliação, histórico de execução (continuidade, dor) |
+
+Os valores padrão desta ferramenta não são recomendação universal (frase mostrada no formulário e na tabela de doses).
 
 ## Regras
 
-A tabela abaixo é gerada de `src/modules/prescricao/motor/rules/gymgital-base.json` por `renderRulesTable`; um teste (`tests/motor-rules.test.ts`) falha se ela divergir. Para mudar um número, publique uma versão nova do conjunto (as gravadas continuam reproduzíveis). O SHA-256 de cada conjunto publicado está fixado no teste: editar o JSON sob a mesma versão faz o teste falhar, e a correção é uma versão nova, não um hash novo.
+A tabela abaixo é gerada da versão em uso nas gerações novas (`src/modules/prescricao/motor/rules/gymgital-base-2026.11.2.json`; a `2026.11.1` continua em `gymgital-base.json` para as propostas gravadas com ela) por `renderRulesTable`; um teste (`tests/motor-rules.test.ts`) falha se ela divergir. Para mudar um número, publique uma versão nova do conjunto (as gravadas continuam reproduzíveis). O SHA-256 de cada conjunto publicado está fixado no teste: editar o JSON sob a mesma versão faz o teste falhar, e a correção é uma versão nova, não um hash novo.
 
 <!-- regras:inicio -->
-Conjunto `gymgital-base` versão `2026.11.1`.
+Conjunto `gymgital-base` versão `2026.11.2`.
 
 | Regra | Base | O que faz | Valor |
 |---|---|---|---|
@@ -44,8 +75,9 @@ Conjunto `gymgital-base` versão `2026.11.1`.
 | GOAL_STIMULUS_HINTS | Heurística operacional (editável) | Palavras do objetivo do aluno que sugerem um estímulo. Só produzem sugestões; nada é pré-selecionado. | `[{"keywords":["hipertrof","massa","muscul","definic"],"stimulus":"HYPERTROPHY"},{"keywords":["forca","forte"],"stimulus":"STRENGTH"},{"keywords":["potenc","explos","salto"],"stimulus":"POWER"},{"keywords":["resistencia muscular"],"stimulus":"MUSCULAR_ENDURANCE"},{"keywords":["corrida","aerob","cardio","condicion","emagrec","maratona"],"stimulus":"AEROBIC_ENDURANCE"},{"keywords":["mobilidade","flexibilidade","alongamento"],"stimulus":"MOBILITY"},{"keywords":["equilibrio","queda"],"stimulus":"BALANCE"},{"keywords":["saude","qualidade de vida","bem-estar","condicionamento geral"],"stimulus":"GENERAL_FITNESS"}]` |
 | DEFAULT_COVERAGE | Heurística operacional (editável) | Padrões sugeridos (botões) quando o treino não tem alvo. Aceitar registra HEURISTIC_ACCEPTED. | `{"RESISTANCE":["SQUAT","HINGE","HORIZONTAL_PUSH","HORIZONTAL_PULL","VERTICAL_PUSH","VERTICAL_PULL","ANTI_EXTENSION"],"CARDIO":["CYCLICAL"],"MOBILITY":["MOBILITY"],"BALANCE":["BALANCE"]}` |
 | EXPERIENCE_MAP | Heurística operacional (editável) | Texto do nível no perfil do aluno para a experiência usada na seleção. | `{"iniciante":"BEGINNER","intermediario":"INTERMEDIATE","avancado":"ADVANCED"}` |
-| SELECTION_WEIGHTS | Heurística operacional (editável) | Pesos da pontuação de seleção (gulosa por cobertura marginal). Empates pelo id, por ponto de código. | `{"primaryTarget":60,"primaryRepeatDivisor":2,"secondaryTarget":10,"patternNew":30,"patternRepeat":5,"noTargets":10,"compound":8,"preferred":20,"historyContinuity":6,"historyPain":-40,"usedInOtherWorkoutOfPhase":-15,"usedInPreviousPhase":-5,"beginnerDifficulty":-6,"otherDifficulty":-0.5,"inferredMetadata":-3,"avoidCurrent":-1000}` |
+| SELECTION_WEIGHTS | Heurística operacional (editável) | Pesos da pontuação de seleção (gulosa por cobertura marginal). Empates pelo id, por ponto de código. | `{"primaryTarget":60,"primaryRepeatDivisor":2,"secondaryTarget":10,"patternNew":30,"patternRepeat":5,"noTargets":10,"noTargetsPatternRepeat":-12,"compound":8,"noExternalLoad":-8,"preferred":20,"historyContinuity":6,"historyPain":-40,"usedInOtherWorkoutOfPhase":-15,"usedInPreviousPhase":-5,"beginnerDifficulty":-6,"otherDifficulty":-0.5,"inferredMetadata":-3,"avoidCurrent":-1000}` |
 | COMPOUND_PRIORITY_STIMULI | Heurística operacional (editável) | Estímulos em que exercícios multiarticulares recebem bônus de seleção. | `["HYPERTROPHY","STRENGTH","POWER","GENERAL_FITNESS"]` |
+| EXTERNAL_LOAD_STIMULI | Heurística operacional (editável) | Estímulos em que um exercício resistido sem nenhum equipamento (sem carga externa a progredir) perde pontos na seleção (peso noExternalLoad). Não exclui: só pesa contra na pontuação. | `["STRENGTH","POWER","HYPERTROPHY"]` |
 | ALTERNATIVES_LIMIT | Heurística operacional (editável) | Quantas alternativas o motor lista por item. | `4` |
 | ALTERNATIVE_WEIGHTS | Heurística operacional (editável) | Pontuação das alternativas de um item: substituição curada na biblioteca, músculo principal em comum, padrão em comum, mesma métrica. Sem nada em comum, o exercício não é listado como alternativa. | `{"curated":100,"sharedPrimary":10,"sharedPattern":8,"sameMetric":3}` |
 | DURATION | Heurística operacional (editável) | Estimativa de duração: aquecimento, transição por exercício, segundos por repetição quando o exercício não informa, fator unilateral. Usa o máximo das faixas (estimativa conservadora). | `{"warmupSeconds":300,"transitionSecondsPerExercise":60,"defaultSecondsPerRep":4,"unilateralFactor":2}` |
@@ -90,9 +122,47 @@ Referências:
 
 Referências não verificadas não aparecem em traços nem na interface, e nenhuma regra que as cite pode ter base `EVIDENCE` (teste em `tests/motor-rules.test.ts`). A conferência das duas é do Técnico (ver `PENDENCIAS.md`).
 
+## Modelos de dose
+
+Cada exercício tem uma **medida** (metadado da biblioteca, ou escolhida pelo profissional por exercício na geração), e a dose tem o formato dessa medida (`Dose` em `motor/types.ts`). Força e hipertrofia não são forçadas em séries × repetições quando o exercício é por tempo ou distância, e cardio não vira "séries".
+
+| Medida | Campos | Intensidade possível | Observação |
+|---|---|---|---|
+| `REPS` (repetições) | séries, faixa de repetições, descanso, cadência, método (normal, bi-set, circuito, drop-set, rest-pause, cluster, EMOM, AMRAP, outro), base da carga | RIR, PSE (RPE), %1RM, texto | `loadKg` é sempre vazio: o texto de carga diz "Escolher a carga na execução para o esforço indicado" (`LOAD_INSTRUCTION_DEFAULT`) |
+| `TIME` (tempo) | séries, faixa de duração, descanso, método | RIR, PSE, texto | pranchas, isometrias, mobilidade, equilíbrio |
+| `DISTANCE` (distância) | séries, faixa de distância, descanso | PSE, texto | carregadas, deslocamentos |
+| `INTERVALS` (intervalado) | blocos, repetições, estímulo (duração ou distância), recuperação (duração, ativa ou passiva), descanso entre blocos | zona, ritmo, PSE, texto | a zona e o ritmo nunca são preenchidos pelo motor |
+| `CONTINUOUS` (contínuo) | duração e/ou distância | zona, ritmo, PSE, texto | idem |
+
+**Camadas da dose** (`motor/dose.ts`), cada parâmetro com a sua base: (1) a linha da política para o estímulo da fase, a modalidade e a medida (`DOSE_DEFAULTS`; a linha `*` vale para estímulos sem linha própria), `HEURISTIC`; (2) os ajustes da tabela feitos pelo profissional no formulário (`policyOverrides`), `PROFESSIONAL`; uma linha `*` editada não muda as linhas de estímulo nomeado (`exceptStimuli`); (3) a progressão semanal da fase; (4) a descarga. Sem linha de política para a combinação, a dose fica **vazia** com o aviso `DOSE_POLICY_MISSING` ("Sem regra de dose"), nunca um número. Com "Deixar todas as doses em branco" (`doseMode: LEAVE_EMPTY`) o motor só escolhe os exercícios.
+
+**Progressão semanal** (`WeeklyProgression`, `motor/progress-week.ts`): sem progressão (padrão de cada fase até o profissional escolher; R14), linear (do valor da semana 1 ao da última, arredondado por `LINEAR_ROUNDING`), em degraus (soma a cada N semanas, com teto), sequência ondulatória (estímulo por semana ou por sessão da semana), blocos de semanas com estímulo próprio, ajustes de semanas específicas e descarga (séries × fração, arredondado, mínimo 0). As partes se combinam. O formulário oferece sem progressão, linear e em degraus, mais descarga; os demais modelos existem no motor e nos testes, sem tela própria (B59).
+
+**Sugestão pelo histórico** (`motor/progression.ts`, `PROGRESSION_HISTORY`): com exposições completas e comparáveis seguidas, aparece no item como "Sugestão por histórico: manter a carga (… kg)", com a explicação e "Não muda a dose: a decisão é sua". Nunca vira valor gravado.
+
 ## Limites técnicos
 
-Em `motor/bounds.ts` (`TECHNICAL_LIMITS`), cada um com o motivo: 12 fases (CHECK 1..12 das tabelas 0006/0012; refazer não é aditivo), 14 sessões por semana, 30 exercícios por treino (`MAX_PER_WORKOUT` e `MAX_EXERCISES` da execução, até medição), tamanhos das colunas de traço (8000), alternativas (4000), chave do item (300) e textos de exibição (séries 20, repetições 40, carga 120, cadência 40, descanso 40, texto da dose 300). Acima do tamanho, o motor resume e avisa (`TRACE_TRUNCATED`, `DISPLAY_TRUNCATED`, `ISSUES_AGGREGATED`). Avisos: até 300 um a um (erros primeiro); o resto, inclusive erros, agrupado por severidade, código e fase com contagem (um erro agrupado continua ERROR). Teste: 12 fases × 4 semanas × 6 sessões com uma dose inválida em todos os itens dá resumo (sem as sessões) abaixo de 500000 caracteres. O teto de sessões totais e de unidades de trabalho por pedido será medido na S6 (`workerd` local).
+Nenhum limite abaixo é regra de treino; cada um tem um motivo técnico. Os números medidos são de **workerd local** (Miniflare com D1 local, Xeon 2,1 GHz, 4 núcleos, mediana de 3 execuções, 04/11/2026; `MOTOR_MEASURE=1 npx vitest run tests/motor-measure.test.ts`), **não** do Webflow Cloud nem do D1 remoto (C42).
+
+| Limite | Valor | Motivo | Medido |
+|---|---|---|---|
+| Fases | 12 | CHECK 1..12 de `prescribed_exercises.phase_index` (0006) e `workout_sessions.phase_index` (0012); refazer a tabela não é aditivo (Q4) | — |
+| Sessões por semana | 14 | duas por dia em todos os dias | — |
+| Sessões no ciclo | 504 | o maior total que a v1 já permitia (12 × 6 × 7); nunca baixar, senão estruturas salvas deixam de ser lidas | aplicar 504 × 30 (2.520 linhas, 15.120 doses) ao rascunho: 1,4 s; 504 × 10: 453 ms; 96 × 8: 68 ms |
+| Exercícios por treino | 30 (`MAX_PER_WORKOUT`, `MAX_EXERCISES` da execução) | Q10: mantido até uma medição mostrar que subir é seguro | coberto pelas medições de 504 × 30; subir não foi medido |
+| Séries por exercício no registro do aluno | 12 (`MAX_SETS`) | 30 × 20 séries são 631 comandos num lote; o limite de comandos por chamada do D1 remoto não foi verificado | 30 × 12 (391 comandos): 32 ms; 30 × 20: 36 ms |
+| Unidades de trabalho por pedido | 40.000 (sessões × exercícios da biblioteca) | tempo de CPU por pedido; acima disso a geração é feita em partes ("Geradas N de M fases") | 1.536 un.: 25 ms; 40.000 un.: ≈ 0,3 a 0,6 s de motor (8 a 15 µs por unidade) |
+| Bloco de linhas por instrução | 256 KB de `json_each` (um valor ligado) | limite de 2 MB por valor do D1 com folga | ≈ 10 MB de linhas: 64 KB 1,2 s (112 instruções), 256 KB 492 ms (28), 1 MB 337 ms (8) |
+| Gravar uma proposta | — | — | 24 × 6: 72 ms; 96 × 8: 231 ms |
+| Histórico lido | 200 sessões na janela de 180 dias (`EXPOSURE_MAX_SESSIONS`) | leitura limitada no pior caso (30 exercícios × 20 séries); o corte vira a premissa `HISTORY_TRUNCATED` | não medido |
+| Lote da biblioteca e da inferência | 200 itens por instrução | poucas dezenas de KB por instrução | não medido |
+| Respostas da geração | até 500 itens por lista (`MAX_ANSWER_LIST`) | tamanho do corpo de uma ação | — |
+| Edição por sessão | até 600 doses (`MAX_OCCURRENCE_EDIT`) | as 504 sessões com folga | — |
+| Colunas de traço e exibição | traço 8.000, alternativas 4.000, chave 300; séries 20, repetições 40, carga 120, cadência 40, descanso 40, texto da dose 300; resumo da proposta 500.000; entrada guardada 900.000 | tamanhos das colunas (0006, 0041, 0042); acima disso o motor resume e avisa | 12 fases × 4 semanas × 6 sessões com erro em todos os itens: resumo abaixo de 500.000 caracteres |
+
+Detalhes por limite em `motor/bounds.ts` (`TECHNICAL_LIMITS`), `src/modules/training/contracts.ts` (`STRUCTURE_LIMITS`) e nas seções das etapas abaixo.
+
+Em `motor/bounds.ts` (`TECHNICAL_LIMITS`), cada um com o motivo: 12 fases (CHECK 1..12 das tabelas 0006/0012; refazer não é aditivo), 14 sessões por semana, 30 exercícios por treino (`MAX_PER_WORKOUT` e `MAX_EXERCISES` da execução, até medição), tamanhos das colunas de traço (8000), alternativas (4000), chave do item (300) e textos de exibição (séries 20, repetições 40, carga 120, cadência 40, descanso 40, texto da dose 300). Acima do tamanho, o motor resume e avisa (`TRACE_TRUNCATED`, `DISPLAY_TRUNCATED`, `ISSUES_AGGREGATED`). Avisos: até 300 um a um (erros primeiro); o resto, inclusive erros, agrupado por severidade, código e fase com contagem (um erro agrupado continua ERROR). Teste: 12 fases × 4 semanas × 6 sessões com uma dose inválida em todos os itens dá resumo (sem as sessões) abaixo de 500000 caracteres. O teto de sessões totais e de unidades de trabalho por pedido foi medido na S6 e na S7 (`workerd` local; tabela acima).
 
 ### Estrutura da periodização v2 (etapa S2)
 
@@ -228,7 +298,7 @@ As telas usam os componentes e o sistema de desenho existentes (`panel`, `Pill`,
 | 2 | Indicador de processamento | `GenerationForm`: área `role="status"`/`aria-live` com "Gerando a proposta…" e "Geradas N de M fases"; uma periodização maior que o limite por pedido é continuada pedido a pedido até completar (`continueProposal`), com o número de fases vindo do servidor (`progress`) |
 | 3 | Proposta completa | `ProposalView` (`automatica/proposal-view.tsx`): situação, validação, versão, fases geradas, avisos e alertas, motor e regras |
 | 4 | Navegação entre fases, semanas e treinos | links (`?fase=&semana=`, `next/link`, sem `Tabs`), sessões da semana em cartões por treino |
-| 5 | Exercícios, doses e progressões | cada item com o texto da dose gravado; "Progressão nesta fase · Treino X" (`proposalProgression`) |
+| 5 | Exercícios, doses e progressões | cada item com o texto da dose gravado e, quando há histórico, "Sugestão por histórico: …" (`historySuggestionText`); "Progressão nesta fase · Treino X" (`proposalProgression`); "Volume semanal por músculo" por semana (`weekVolume`) |
 | 6 | Alertas, premissas e justificativas | painel "Alertas, premissas e avisos" (alertas com "Aceitar: …" e "Ciente", avisos da fase, premissas e regras usadas com a base de cada uma); "Por quê?" por item com as bases (`itemBases`) e cada valor com a sua base; "Inferido (não revisado)" quando o item usa metadado inferido; na geração, "Dados considerados" (`ContextSummary`) com a origem de cada fato, os textos livres da ficha mostrados sem interpretar e as premissas |
 | 7 | Edição manual | depois de aplicar, no `PrescriptionEditor` em modo OCCURRENCE: os cartões dos treinos editam as linhas (valem para todas as sessões) e "Doses por sessão" (`occurrence-editor.tsx`) edita a dose em "Só nesta sessão", "Nesta fase, a partir desta semana" ou "Todas as semanas da fase", tira ou devolve um exercício de uma sessão e substitui um exercício nas sessões escolhidas; origem de cada linha e dose: "Proposta automática", "Editada por você", "Sua" |
 | 8 | Substituição de exercícios | `SubstituteDialog`: alternativas do motor (revisado/inferido, com os motivos) ou qualquer exercício da biblioteca visível; "Só nesta sessão", "Da semana N em diante", "Na fase inteira" |
@@ -244,6 +314,35 @@ As telas usam os componentes e o sistema de desenho existentes (`panel`, `Pill`,
 - **Contagem da aprovação:** "M editados por você" conta as linhas do motor mudadas na linha ou em qualquer sessão (dose por sessão, tirar de uma sessão, substituição), pelo repositório (`automaticCounts`, mesmo filtro de acesso de `list`).
 - **Desvio do desenho (anotado em B56):** a edição por sessão usa os campos digitados de sempre (séries, repetições, carga, cadência, descanso, RIR, observações), não um formulário estruturado por métrica (`dose-form` do desenho); uma dose editada assim fica como dose digitada (sem texto estruturado), como no TEMPLATE. As respostas da geração anterior são reaproveitadas num clique para o formulário inteiro, não valor a valor.
 
-## A completar (S10)
+## O que é perguntado na geração e por quê (etapa S10)
 
-Perguntas feitas e por quê, onde ficam os dados de saúde e como a exclusão afeta a reprodução, números medidos.
+O adaptador (`build-input.ts`) transforma o que falta em pergunta, nunca em número. Nada vem pré-selecionado; as sugestões aparecem como botões "Sugestão da ferramenta (heurística)".
+
+| Pergunta | Obrigatória? | Por quê |
+|---|---|---|
+| Estímulo de cada fase (hipertrofia, força, potência, resistência muscular, condicionamento geral, aeróbio, intervalado, mobilidade, equilíbrio, recuperação) | sim | define a linha da política de doses e as modalidades elegíveis; a periodização salva não diz o estímulo, e o objetivo da ficha só sugere (`GOAL_STIMULUS_HINTS`) |
+| Equipamentos disponíveis (ou "sem equipamento") | sim | a ficha guarda equipamentos como texto livre, que o motor não interpreta; sem resposta, o motor teria de presumir o local de treino |
+| Quantidade de exercícios de um treino "sem alvo" | sim | a estrutura v2 permite treino sem alvo; o motor não escolhe uma quantidade sozinho (a opção "pelo tempo" usa `COUNT_FROM_TIME`) |
+| Modalidades de um treino cujo estímulo não tem modalidade padrão | sim | sem preenchimento entre modalidades |
+| Tempo por sessão e se é limite ou referência | não (informativa) | sem tempo, a duração não é comparada; com limite, passar dele torna a proposta INFEASIBLE |
+| Ficha ausente, nível ou objetivo ausentes | não (informativa) | a seleção segue sem o dado e a premissa diz isso |
+| Avaliação ausente ou "Sim" no PAR-Q/anamnese sem decisão | não (informativa) | alerta para o profissional; não bloqueia a geração (R13) |
+| Política de doses, modo das doses, confiança nos metadados, progressão semanal, exercícios e padrões a evitar, preferidos, marcadores de cuidado, medida por exercício | não (vêm preenchidos com o padrão de 04/11/2026 ou vazios) | ajustes do profissional; o padrão usado vira premissa ("dose pela política", "metadados revisados e inferidos", "tempo como referência") |
+
+Cada resposta fica guardada na proposta (`parameters_json`) e é reaproveitada em "Usar as respostas da geração anterior".
+
+## Dados de saúde: onde ficam e como a exclusão afeta a reprodução (etapa S10)
+
+O motor lê dados de saúde (triagem, anamnese, postura, testes, histórico com dor), mas grava o mínimo, e só do lado do servidor. Nenhum texto livre de saúde digitado pelo profissional ou pelo aluno (lesões, observações, detalhes da anamnese) é interpretado ou copiado para as tabelas do motor; o teste de `tests/prescription-proposals.test.ts` grava um marcador nesses textos e confere que ele não aparece.
+
+| Onde | O que guarda de saúde | Pode ser apagado? |
+|---|---|---|
+| `prescription_generation_inputs` (0042) | a **entrada canônica completa** da geração: fatos do aluno (estado da triagem, rótulos do catálogo da anamnese com "Sim", achados de postura, testes, histórico de execução com dor), por `student_id` | sim, por `student_id` (Q9); **o app ainda não tem o fluxo que apaga** (B57) |
+| `prescription_generations` (0042) | só ids, códigos, contagens e hashes (`facts_json` com referências, nenhum texto de saúde) | não (só acréscimo; gatilho `prescription_generations_no_delete`) |
+| `prescription_proposals.summary_json` e `parameters_json` (0042) | alertas com o **rótulo do catálogo** (ex.: "Anamnese: … : Sim (detalhes na avaliação)", "Agachamento: Interrompido por dor/desconforto") e as decisões de alerta por **código** (`flagCode` só aceita `^[A-Za-z0-9_.:-]+$`) | não (gatilho `prescription_proposals_no_delete`; R15) |
+| `proposal_items.trace_json`, `prescribed_exercise_occurrences.trace_json` | o "Por quê?" de cada item: códigos de regra e bases, e "dor relatada no histórico" como motivo de pontuação | itens de proposta só enquanto aberta; os da prescrição seguem a revisão (imutáveis depois de aprovada) |
+| `proposal_decisions` | alvo e mudança de cada decisão (códigos e ids) | não (só acréscimo) |
+
+**Exclusão e reprodução:** enquanto a entrada existe, reproduzir a geração inteira a partir dela dá o mesmo `output_hash` (testado). Apagada a entrada, a geração mantém os hashes e as versões (dá para provar *que* algo foi gerado e com quais regras), mas não dá para reproduzir. Propostas, a prescrição aplicada e o plano entregue não mudam com a exclusão. Regenerações parciais não são reproduzíveis só pela entrada guardada: dependem da cadeia de resultados anteriores (anotado em B56). A cópia dos dados do aluno ("Baixar meus dados") leva só o conteúdo entregue (Q9): nada de rastro, base, alerta ou entrada da geração.
+
+**Não verificado:** a exclusão de `prescription_generation_inputs` por um fluxo do titular (não existe); se os rótulos de catálogo guardados nas propostas, que não podem ser apagados, são aceitáveis numa exclusão a pedido do titular (R15, decisão do Responsável com o Advogado).

@@ -576,6 +576,9 @@ export function plansFor(
                end_date = ?7, total_weeks = ?8, total_sessions = ?9, updated_at = ?10
              WHERE organization_id = ?1 AND id = ?11 AND plan_id = ?12 AND state = 'DRAFT'
                AND ${revisionGate("plan_revisions")}
+               -- The sessions sync above was built for the model read before this batch: an apply that turned the draft into
+               -- OCCURRENCE in between must not leave the new structure without its sessions (refused, the caller re-reads).
+               AND prescription_model = ?14
                AND NOT EXISTS (
                  SELECT 1 FROM prescribed_exercises pe WHERE pe.revision_id = plan_revisions.id
                    AND NOT EXISTS (SELECT 1 FROM json_each(?13) j
@@ -592,6 +595,7 @@ export function plansFor(
             revisionId,
             planId,
             JSON.stringify(kept.map((slot) => ({ p: slot.phaseIndex, w: slot.label }))),
+            current.revision.prescriptionModel,
           ),
         eventAfterChange("DRAFT_SAVED", revisionId, stamp),
         ...occurrenceStatements,
@@ -600,7 +604,11 @@ export function plansFor(
         if (String(error).includes("OCCURRENCE_ITEMS_FIRST")) throw new Error("OCCURRENCE_PRESCRIPTION_WOULD_BE_LOST");
         throw error;
       });
-      return results[0].meta.changes > 0;
+      if (results[0].meta.changes > 0) return true;
+      const after = await this.findRevision(planId, revisionId);
+      if (after?.revision.state === "DRAFT" && after.revision.prescriptionModel !== current.revision.prescriptionModel)
+        throw new Error("DRAFT_MODEL_CHANGED");
+      return false;
     },
 
 

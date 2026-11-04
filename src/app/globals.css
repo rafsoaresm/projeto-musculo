@@ -1378,7 +1378,7 @@ button.account-link {
   margin-bottom: 20px;
 }
 .phase-tab {
-  min-height: 40px;
+  min-height: 44px;
   padding: 8px 16px;
   border-radius: var(--radius-button);
   background: #fff;
@@ -7865,15 +7865,23 @@ table.plan-overview td[data-label="Plano"] {
   flex-wrap: wrap;
   gap: 6px;
 }
+/* Same family as the phase tabs (pill, bold, small), lighter when selected so phase and week read as two levels. */
 .week-nav a {
   display: inline-flex;
   align-items: center;
-  min-height: 36px;
-  padding: 6px 12px;
+  min-height: 44px;
+  padding: 8px 14px;
   border: 1px solid var(--color-line-strong);
-  border-radius: var(--radius-xs);
-  color: inherit;
+  border-radius: var(--radius-button);
+  background: #fff;
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
   text-decoration: none;
+}
+.week-nav a:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary-strong);
 }
 .week-nav a[aria-current="page"] {
   background: var(--color-primary-soft);
@@ -7974,7 +7982,7 @@ table.plan-overview td[data-label="Plano"] {
   padding: 0;
 }
 .chip {
-  min-height: 36px;
+  min-height: 44px;
   padding: 6px 12px;
   border: 1px dashed var(--color-line-strong);
   border-radius: var(--radius-xs);
@@ -8012,7 +8020,7 @@ table.plan-overview td[data-label="Plano"] {
 .policy-values input {
   width: 100%;
   min-width: 0;
-  min-height: 36px;
+  min-height: 44px;
   padding: 6px 10px;
 }
 .auto-details > summary {
@@ -8145,6 +8153,7 @@ a.phase-tab[aria-current="page"] {
 .why-details > summary {
   display: inline-flex;
   align-items: center;
+  min-height: 44px;
   gap: 6px;
   cursor: pointer;
   font-size: var(--font-size-sm);
@@ -8253,4 +8262,20 @@ a.phase-tab[aria-current="page"] {
 .proposal-grid {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
   margin-top: 12px;
+}
+
+/* Motor S9 review: who backs what on an item, the history suggestion, and the hint that a wide table scrolls sideways. */
+.basis-row {
+  align-items: center;
+}
+.history-suggestion {
+  margin: 0;
+}
+.scroll-hint {
+  display: none;
+}
+@media (max-width: 767px) {
+  .scroll-hint {
+    display: inline;
+  }
 }

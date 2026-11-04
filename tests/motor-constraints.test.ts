@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TECHNICAL_LIMITS, canonicalJson, generate, type CatalogExercise } from "@/modules/prescricao/motor";
+import { TECHNICAL_LIMITS, canonicalJson, generate, substitute, type CatalogExercise } from "@/modules/prescricao/motor";
 import { baseInput, CATALOG, codes, exercise, parameters, structure } from "./helpers/motor-fixtures";
 
 const chosenIds = (r: ReturnType<typeof generate>) => new Set(r.occurrences.flatMap((o) => o.items.map((i) => i.exerciseId)));
@@ -256,5 +256,52 @@ describe("motor: limites técnicos do resumo", () => {
     expect(grouped.every((g) => g.severity === "ERROR" && g.phaseIndex !== undefined)).toBe(true);
     expect(r.issues.length).toBeLessThanOrEqual(TECHNICAL_LIMITS.MAX_ISSUES + 12 * 10 + 1);
     expect(canonicalJson({ ...r, occurrences: [] }).length).toBeLessThanOrEqual(500000);
+  });
+});
+
+describe("revisão final: textos em português, seleção sem alvos, equipamento pendente", () => {
+  it("o \"Por quê?\" e as alternativas usam rótulos (sem códigos) e vírgula decimal; empate só quando houve", () => {
+    const r = generate(baseInput());
+    const details = r.occurrences.flatMap((o) => o.items).flatMap((i) => i.trace.selection.map((t) => t.detail));
+    expect(details.some((d) => d.includes("Músculo-alvo Quadríceps como principal"))).toBe(true);
+    expect(details.some((d) => /(Músculo|Padrão)-alvo [a-z]/.test(d) || /[A-Z]{3,}_[A-Z]/.test(d))).toBe(false);
+    expect(details.some((d) => d.includes("equipamento disponível"))).toBe(false);
+    expect(details.some((d) => /\d\.\d/.test(d))).toBe(false);
+    const rank = details.filter((d) => d.startsWith("Escolha "));
+    expect(rank.some((d) => !d.includes("empate"))).toBe(true);
+    const noEquipment = generate(baseInput({ parameters: parameters({ availableEquipment: null }) }));
+    expect(noEquipment.occurrences.flatMap((o) => o.items).flatMap((i) => i.trace.selection.map((t) => t.detail)))
+      .toContain("Equipamentos disponíveis não informados: entrou por não precisar de equipamento.");
+  });
+
+  it("sem alvos e com estímulo de força: o motor não abre com o agachamento sem carga nem repete o padrão no treino", () => {
+    const input = baseInput({
+      structure: structure("2026-11-09", [{ weeks: 1, sessionsPerWeek: 1, stimulus: "STRENGTH", workouts: [{ label: "A", exerciseTarget: 4 }] }]),
+    });
+    const r = generate(input);
+    const items = r.occurrences[0].items;
+    expect(items[0].exerciseId).not.toBe("ex-airsquat");
+    const patterns = items.map((i) => CATALOG.find((e) => e.id === i.exerciseId)!.patterns[0]);
+    expect(new Set(patterns).size).toBe(patterns.length);
+    // A proposta gravada com a versão anterior das regras continua reproduzível (sem as regras novas).
+    const old = generate({ ...input, rules: { id: "gymgital-base", version: "2026.11.1" } });
+    expect(old.status).toBe("SUCCEEDED");
+    expect(old.rulesUsed.some((u) => u.ruleId === "EXTERNAL_LOAD_STIMULI")).toBe(false);
+  });
+
+  it("equipamento pendente de curadoria não vale como \"sem equipamento\", nem quando o profissional escolhe o exercício", () => {
+    const pending = exercise({ id: "ex-smith", name: "Agachamento no Smith", primaryMuscles: ["QUADRICEPS"], patterns: ["SQUAT"], metadataStatus: "PENDING", equipmentKnown: false });
+    const input = baseInput({ catalog: [...CATALOG, pending], parameters: parameters({ availableEquipment: [] }) });
+    const before = generate(input);
+    const target = before.occurrences[0].items.find((i) => i.origin === "ENGINE")!;
+    const out = substitute(input, before, { phaseIndex: 1, slotKey: target.slotKey, applies: { kind: "PHASE" } }, "ex-smith");
+    expect(out).toMatchObject({ ok: false, code: "REPLACEMENT_INELIGIBLE" });
+    expect(!out.ok && out.message).toContain("equipamento pendente de curadoria");
+  });
+
+  it("o alerta do teste de movimento diz o grau uma vez, pelo rótulo, e o padrão pelo nome", () => {
+    const r = generate(baseInput({ student: { ...baseInput().student, findings: [{ kind: "MOVEMENT", code: "SQUAT", label: "Agachamento: Interrompido por dor/desconforto", grade: "STOPPED_BY_PAIN" }] } }));
+    const flag = r.flags.find((f) => f.code.startsWith("MOVEMENT_FINDING:"))!;
+    expect(flag.message).toBe("Agachamento: Interrompido por dor/desconforto. Sugestão para decidir: evitar o padrão Agachar. Não é contraindicação automática.");
   });
 });

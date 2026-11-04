@@ -800,6 +800,34 @@ describe("review of S7: what the professional wrote per session survives the edi
     expect(copied.every((x) => x.included === 1 && x.sets === "3" && x.reps === "30 s")).toBe(true);
   });
 
+  it("a structure save that races an apply (model read as TEMPLATE, OCCURRENCE when written) is refused, then syncs the sessions when saved again", async () => {
+    const d = await newDraft();
+    const out = await generated(d);
+    let raced = false;
+    // The apply lands between saveDraft's read of the model and its batch, as with two tabs or a double submit.
+    const racing = new Proxy(db, {
+      get(target, prop, receiver) {
+        if (prop !== "batch") return Reflect.get(target, prop, receiver);
+        return async (statements: Parameters<D1Database["batch"]>[0]) => {
+          if (!raced) {
+            raced = true;
+            applied(await service().apply(d.planId, d.revisionId, applyPayload(out.proposalId, out.version)));
+          }
+          return target.batch(statements);
+        };
+      },
+    }) as D1Database;
+    await expect(plansFor(racing, scope("tech-a")).saveDraft(d.planId, d.revisionId, withBaseWeeks(4))).rejects.toThrow("DRAFT_MODEL_CHANGED");
+    expect(raced).toBe(true);
+    const revision = await db.prepare("SELECT prescription_model AS m, total_weeks AS w FROM plan_revisions WHERE id = ?1").bind(d.revisionId).first<{ m: string; w: number }>();
+    expect(revision).toEqual({ m: "OCCURRENCE", w: 6 });
+    // Saved again on the fresh read: the new week of phase 1 gets its sessions.
+    expect(await plans().saveDraft(d.planId, d.revisionId, withBaseWeeks(4))).toBe(true);
+    const phase1 = (await sessions(d)).filter((o) => o.phase_index === 1);
+    expect(phase1).toHaveLength(8);
+    expect(Math.max(...phase1.map((o) => o.week_index))).toBe(4);
+  });
+
   it("a revoked assignment or membership, or a disabled user, can neither apply nor edit per session", async () => {
     const d = await newDraft();
     const out = await generated(d);

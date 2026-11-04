@@ -4,6 +4,7 @@
  * Os valores ficam em JSON para serem lidos por TypeScript e por scripts `.mjs` sem carregador TS.
  */
 import base from "./gymgital-base.json";
+import base2 from "./gymgital-base-2026.11.2.json";
 import referencesFile from "./references.json";
 import type { Basis, DoseParam, Experience, LoadBasis, Metric, RuleSetRef } from "../types";
 
@@ -44,7 +45,8 @@ export interface RuleValues {
   GOAL_STIMULUS_HINTS: Array<{ keywords: string[]; stimulus: string }>;
   DEFAULT_COVERAGE: Record<string, string[]>;
   EXPERIENCE_MAP: Record<string, Experience>;
-  SELECTION_WEIGHTS: Record<SelectionWeight, number>;
+  /** Pesos novos de uma versão ficam opcionais: versões anteriores não os têm e valem como peso 0. */
+  SELECTION_WEIGHTS: Record<SelectionWeight, number> & Partial<Record<"noTargetsPatternRepeat" | "noExternalLoad", number>>;
   COMPOUND_PRIORITY_STIMULI: string[];
   ALTERNATIVES_LIMIT: number;
   ALTERNATIVE_WEIGHTS: { curated: number; sharedPrimary: number; sharedPattern: number; sameMetric: number };
@@ -65,7 +67,14 @@ export interface RuleValues {
   MOVEMENT_FINDING_GRADES: string[];
 }
 
-export type RuleId = keyof RuleValues;
+/** Regras que só existem a partir de uma versão (2026.11.2): uma versão anterior não as tem e o motor segue sem elas. */
+export interface OptionalRuleValues {
+  EXTERNAL_LOAD_STIMULI: string[];
+}
+
+export type RequiredRuleId = keyof RuleValues;
+export type OptionalRuleId = keyof OptionalRuleValues;
+export type RuleId = RequiredRuleId | OptionalRuleId;
 
 export interface RuleEntry<T> {
   basis: Basis;
@@ -79,7 +88,7 @@ export interface RuleSet {
   id: string;
   version: string;
   comment?: string;
-  rules: { [K in RuleId]: RuleEntry<RuleValues[K]> };
+  rules: { [K in RequiredRuleId]: RuleEntry<RuleValues[K]> } & { [K in OptionalRuleId]?: RuleEntry<OptionalRuleValues[K]> };
 }
 
 export interface Reference {
@@ -101,13 +110,20 @@ export const REFERENCES: readonly Reference[] = deepFreeze(
   (referencesFile as unknown as { references: Reference[] }).references.map((r) => ({ ...r })),
 );
 
-const GYMGITAL_BASE = deepFreeze(JSON.parse(JSON.stringify(base)) as RuleSet);
+const GYMGITAL_BASE_2026_11_1 = deepFreeze(JSON.parse(JSON.stringify(base)) as RuleSet);
+/**
+ * 2026.11.2: treino sem alvos espalha os padrões (noTargetsPatternRepeat) e, nos estímulos de carga, um exercício resistido sem
+ * nenhum equipamento perde pontos (EXTERNAL_LOAD_STIMULI, noExternalLoad). O resto é igual à 2026.11.1.
+ */
+const GYMGITAL_BASE = deepFreeze(JSON.parse(JSON.stringify(base2)) as RuleSet);
 
 /** Conjuntos publicados. Uma versão publicada nunca muda: novos números entram como nova versão. */
 export const RULESETS: Readonly<Record<string, RuleSet>> = deepFreeze({
+  [`${GYMGITAL_BASE_2026_11_1.id}@${GYMGITAL_BASE_2026_11_1.version}`]: GYMGITAL_BASE_2026_11_1,
   [`${GYMGITAL_BASE.id}@${GYMGITAL_BASE.version}`]: GYMGITAL_BASE,
 });
 
+/** A versão usada nas gerações novas (a mais recente); propostas gravadas seguem com a versão delas. */
 export const DEFAULT_RULESET: RuleSetRef = { id: GYMGITAL_BASE.id, version: GYMGITAL_BASE.version };
 
 export function getRuleSet(ref: RuleSetRef): RuleSet | null {
@@ -116,7 +132,7 @@ export function getRuleSet(ref: RuleSetRef): RuleSet | null {
 
 /** Referências de uma regra que podem aparecer: apenas as VERIFIED. */
 export function verifiedRefs(rules: RuleSet, ruleId: RuleId): string[] {
-  const refs = rules.rules[ruleId].refs ?? [];
+  const refs = rules.rules[ruleId]?.refs ?? [];
   return refs.filter((id) => REFERENCES.some((r) => r.id === id && r.status === "VERIFIED"));
 }
 

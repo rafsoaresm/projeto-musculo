@@ -3,7 +3,7 @@
  * → progressão semanal), cada parâmetro com a sua base. Texto pt-BR para exibição.
  * O motor nunca propõe quilos, zonas ou ritmos: esses só vêm do profissional.
  */
-import { codeOf } from "./vocabulary";
+import { codeOf, METRIC_LABELS, MODALITY_LABELS, STIMULUS_LABELS } from "./vocabulary";
 import type { RuleLog } from "./trace";
 import type { DoseDefault } from "./rules";
 import { applyWeeklyProgression } from "./progress-week";
@@ -228,7 +228,7 @@ export function resolveDose(log: RuleLog, parameters: GenerationParameters, req:
   if (!rule && !overrides.length) {
     issues.push({
       severity: "WARNING", code: "DOSE_POLICY_MISSING",
-      message: `${req.exercise.name}: nenhuma regra de dose para ${req.stimulus} / ${modality || "modalidade não informada"} / ${metric}; a dose fica vazia para o profissional preencher.`,
+      message: `${req.exercise.name}: nenhuma regra de dose para ${STIMULUS_LABELS[req.stimulus] ?? req.stimulus} / ${modality ? MODALITY_LABELS[modality] ?? modality : "modalidade não informada"} / ${METRIC_LABELS[metric] ?? metric}; a dose fica vazia para o profissional preencher.`,
     });
     return { dose: null, metric, params: metricTrace ? [metricTrace] : [], issues };
   }

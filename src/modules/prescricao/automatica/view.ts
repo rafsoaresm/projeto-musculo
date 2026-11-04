@@ -11,14 +11,18 @@ import type { DoseDefault, RuleSet } from "@/modules/prescricao/motor/rules";
 import type {
   Basis,
   DoseParam,
+  HistorySuggestion,
   Issue,
   ItemOut,
   Metric,
   OccurrenceOut,
   PhaseSummary,
+  ProgressionProposal,
+  RuleUse,
+  VolumeRow,
   WeeklyProgression,
 } from "@/modules/prescricao/motor/types";
-import { MODALITY_LABELS, STIMULUS_LABELS } from "@/modules/prescricao/motor/vocabulary";
+import { DOSE_PARAM_LABELS, MODALITY_LABELS, MUSCLE_LABELS, STIMULUS_LABELS } from "@/modules/prescricao/motor/vocabulary";
 import type { GenerationAnswersInput, GenerationQuestion } from "./contracts";
 
 // ---------- labels ----------
@@ -66,30 +70,8 @@ export const SEVERITY_TONES: Record<Issue["severity"], "danger" | "warning" | "n
 
 export const NOT_UNIVERSAL = "Os valores padrão desta ferramenta não são recomendação universal.";
 
-/** Dose parameters as the professional reads them, with the unit when there is one. */
-export const PARAM_LABELS: Record<DoseParam, string> = {
-  sets: "Séries",
-  repsMin: "Repetições (mín.)",
-  repsMax: "Repetições (máx.)",
-  durationMin: "Duração mín. (s)",
-  durationMax: "Duração máx. (s)",
-  distanceMin: "Distância mín. (m)",
-  distanceMax: "Distância máx. (m)",
-  restSeconds: "Descanso (s)",
-  rirMin: "RIR mín.",
-  rirMax: "RIR máx.",
-  rpeMin: "RPE mín.",
-  rpeMax: "RPE máx.",
-  blocks: "Blocos",
-  repeats: "Repetições do bloco",
-  workDurationMin: "Esforço mín. (s)",
-  workDurationMax: "Esforço máx. (s)",
-  workDistanceMin: "Esforço mín. (m)",
-  workDistanceMax: "Esforço máx. (m)",
-  recoveryMin: "Recuperação mín. (s)",
-  recoveryMax: "Recuperação máx. (s)",
-  restBetweenBlocks: "Descanso entre blocos (s)",
-};
+/** Dose parameters as the professional reads them, with the unit when there is one (the engine's own labels). */
+export const PARAM_LABELS = DOSE_PARAM_LABELS;
 
 const TRACE_PARAM_LABELS: Record<string, string> = {
   stimulus: "Estímulo",
@@ -413,10 +395,86 @@ export function pickWeek(phase: PhaseSummary | undefined, raw: string | undefine
   return phase && Number.isInteger(n) && n >= 1 && n <= phase.weeks ? n : 1;
 }
 
-/** The distinct bases of an item's trace, in a fixed order: what the "Por quê?" pills show. */
+const KIND_PARAMS: ReadonlySet<string> = new Set(["stimulus", "modality", "metric"]);
+const BASIS_ORDER: Basis[] = ["EVIDENCE", "STUDENT_DATA", "PROFESSIONAL", "HEURISTIC_ACCEPTED", "HEURISTIC"];
+const ordered = (seen: Set<Basis>) => BASIS_ORDER.filter((b) => seen.has(b));
+
+/** The distinct bases of an item's trace, in a fixed order. */
 export function itemBases(item: Pick<ItemOut, "trace">): Basis[] {
-  const seen = new Set<Basis>([...item.trace.selection.map((t) => t.basis), ...item.trace.params.map((p) => p.basis)]);
-  return (["EVIDENCE", "STUDENT_DATA", "PROFESSIONAL", "HEURISTIC_ACCEPTED", "HEURISTIC"] as Basis[]).filter((b) => seen.has(b));
+  return ordered(new Set<Basis>([...item.trace.selection.map((t) => t.basis), ...item.trace.params.map((p) => p.basis)]));
+}
+
+/**
+ * The bases of an item split by what they back: the choice of the exercise and the values of its dose. The pills then say which
+ * basis belongs to which (a professional's stimulus next to a heuristic dose is not "Decisão do profissional" for the dose).
+ */
+export function itemBasisGroups(item: Pick<ItemOut, "trace">): { selection: Basis[]; dose: Basis[] } {
+  return {
+    // Stimulus, modality and measure say what kind of work it is (they back the choice); the dose is the values themselves.
+    selection: ordered(new Set([...item.trace.selection.map((t) => t.basis), ...item.trace.params.filter((p) => KIND_PARAMS.has(p.param)).map((p) => p.basis)])),
+    dose: ordered(new Set(item.trace.params.filter((p) => !KIND_PARAMS.has(p.param)).map((p) => p.basis))),
+  };
+}
+
+/** How a weekly progression model is named on screen. */
+export const PROGRESSION_MODEL_LABELS: Record<WeeklyProgression["model"], string> = {
+  NONE: "sem progressão",
+  LINEAR: "linear",
+  STEP: "em degraus",
+  SEQUENCE: "ondulatória",
+  BLOCK: "em blocos",
+  CUSTOM: "personalizada",
+};
+
+const HISTORY_ACTIONS: Record<ProgressionProposal["action"], string> = {
+  INCREASE: "Sugestão por histórico: aumentar a carga",
+  MAINTAIN: "Sugestão por histórico: manter a carga",
+  REVIEW: "Histórico pede revisão",
+  INSUFFICIENT_DATA: "Histórico insuficiente para sugerir",
+};
+
+/**
+ * The suggestion the engine read from the student's logs for one item of a phase, as text (design: "a progressão por histórico é
+ * só sugestão"). Never applied to the dose: the professional decides. Null when the engine made none for this item.
+ */
+export function historySuggestionText(
+  suggestions: readonly HistorySuggestion[],
+  phaseIndex: number,
+  slotKey: string,
+): { title: string; detail: string; tone: "brand" | "warning" | "neutral"; basis: Basis } | null {
+  const s = suggestions.find((x) => x.phaseIndex === phaseIndex && x.slotKey === slotKey);
+  if (!s) return null;
+  const p = s.proposal;
+  const load = p.suggestedLoadKg !== null ? ` (${String(p.suggestedLoadKg).replace(".", ",")} kg)` : "";
+  const used = p.exposuresUsed ? ` Registros usados: ${p.exposuresUsed}.` : "";
+  return {
+    title: `${HISTORY_ACTIONS[p.action]}${load}`,
+    detail: `${p.explanation}${used}`,
+    tone: p.action === "REVIEW" ? "warning" : p.action === "INSUFFICIENT_DATA" ? "neutral" : "brand",
+    basis: p.basis,
+  };
+}
+
+export interface VolumeView {
+  muscle: string;
+  direct: string;
+  indirect: string;
+  weighted: string;
+  sessions: number;
+}
+
+/** The weekly sets per muscle of one week of a phase (direct = principal, indirect = secondary), most worked first. */
+export function weekVolume(volume: readonly VolumeRow[], phaseIndex: number, week: number): VolumeView[] {
+  const n = (x: number) => String(x).replace(".", ",");
+  return volume
+    .filter((v) => v.phaseIndex === phaseIndex && v.week === week)
+    .sort((a, b) => b.weightedSets - a.weightedSets || a.muscle.localeCompare(b.muscle))
+    .map((v) => ({ muscle: MUSCLE_LABELS[v.muscle] ?? v.muscle, direct: n(v.directSets), indirect: n(v.indirectSets), weighted: n(v.weightedSets), sessions: v.occurrences }));
+}
+
+/** The label of a rule for a tooltip ("Pesos da pontuação de seleção…"), or its id when the summary does not list it. */
+export function ruleLabel(rulesUsed: readonly RuleUse[], ruleId: string): string {
+  return rulesUsed.find((r) => r.ruleId === ruleId)?.label ?? ruleId;
 }
 
 /** A traced value as text: numbers and words as they are, ranges as "a–b", anything else as compact JSON. */

@@ -7,8 +7,12 @@ import {
   answersFromForm,
   durationText,
   formFromAnswers,
+  historySuggestionText,
   issuesOfPhase,
   itemBases,
+  itemBasisGroups,
+  PROGRESSION_MODEL_LABELS,
+  weekVolume,
   numberOf,
   openRequired,
   pickPhase,
@@ -311,5 +315,47 @@ describe("dose edit forms send only what changed (review of S9)", () => {
     expect(restTextForEditing({ restText: "90 s", doseText: "3 × 8–12 · descanso 90 s" })).toBe("");
     expect(restTextForEditing({ restText: "rec. 60–90 s", doseText: "1 × 6 × 30–60 s · recuperação passiva 60–90 s" })).toBe("rec. 60–90 s");
     expect(restTextForEditing({ restText: "1 min", doseText: null })).toBe("1 min");
+  });
+});
+
+describe("final review: what the engine computes reaches the proposal screen", () => {
+  const legpressLog = (date: string) => ({
+    exerciseId: "ex-legpress", date, equipmentKey: "m1", metric: "REPS" as const, pain: false,
+    sets: [1, 2, 3].map(() => ({ reps: 12, durationSeconds: null, loadKg: 100, loadBasis: "TOTAL" as const, rir: 2, completed: true })),
+  });
+
+  it("the history suggestion of an item becomes text for that item only, never a dose", () => {
+    const r = generate(baseInput({ history: [legpressLog("2026-10-01"), legpressLog("2026-10-05")] }));
+    const occ = r.occurrences.find((o) => o.items.some((i) => i.exerciseId === "ex-legpress"))!;
+    const item = occ.items.find((i) => i.exerciseId === "ex-legpress")!;
+    const text = historySuggestionText(r.historySuggestions, occ.phaseIndex, item.slotKey);
+    expect(text).toMatchObject({ title: "Sugestão por histórico: manter a carga (100 kg)", basis: "STUDENT_DATA" });
+    expect(text!.detail).toContain("Registros usados: 2.");
+    const other = occ.items.find((i) => i.exerciseId !== "ex-legpress")!;
+    expect(historySuggestionText(r.historySuggestions, occ.phaseIndex, other.slotKey)).toBeNull();
+    expect(historySuggestionText(r.historySuggestions, occ.phaseIndex + 1, item.slotKey)).toBeNull();
+  });
+
+  it("the weekly volume per muscle of the selected week, with the library's labels and a decimal comma", () => {
+    const r = generate(baseInput());
+    const rows = weekVolume(r.volume, 1, 1);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.map((v) => v.muscle)).toContain("Quadríceps");
+    expect(rows.every((v) => !/^[A-Z_]+$/.test(v.muscle))).toBe(true);
+    expect(weekVolume([{ phaseIndex: 1, week: 1, muscle: "TRICEPS", directSets: 0, indirectSets: 3, weightedSets: 1.5, occurrences: 1 }], 1, 1)[0])
+      .toEqual({ muscle: "Tríceps", direct: "0", indirect: "3", weighted: "1,5", sessions: 1 });
+    expect(weekVolume(r.volume, 1, 99)).toEqual([]);
+  });
+
+  it("the bases are split between the choice of the exercise and the dose (a professional stimulus is not the dose's basis)", () => {
+    const r = generate(baseInput());
+    const item = r.occurrences[0].items.find((i) => i.origin === "ENGINE")!;
+    const groups = itemBasisGroups(item);
+    expect(groups.selection).toContain("PROFESSIONAL");
+    expect(groups.dose).toContain("HEURISTIC");
+    // The stimulus (and the measure) chosen by the professional back the choice, not the numbers: the dose is all heuristic here.
+    expect(item.trace.params.find((p) => p.param === "stimulus")?.basis).toBe("PROFESSIONAL");
+    expect(groups.dose).toEqual(["HEURISTIC"]);
+    expect(PROGRESSION_MODEL_LABELS.STEP).toBe("em degraus");
   });
 });

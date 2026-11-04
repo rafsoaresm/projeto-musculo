@@ -101,6 +101,12 @@ export const flagDecisionSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("ACKNOWLEDGE") }).strict(),
 ]);
 
+/**
+ * The code of an engine alert (`SCREENING_NOT_DONE`, `MOVEMENT_FINDING:squat:SQUAT`, `HISTORY_PAIN:<exercise id>`): codes and ids
+ * only, never free text. The answers are stored in `prescription_proposals`, which is never deleted, so health text must not fit.
+ */
+export const flagCodeSchema = z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9_.:-]+$/, "Código de alerta inválido.");
+
 export const generationAnswersSchema = z
   .object({
     /** The stimulus of each phase: typed or chosen by the professional, or a suggestion chip they clicked (HEURISTIC_ACCEPTED, with its rule). */
@@ -169,7 +175,7 @@ export const generationAnswersSchema = z
       .refine((items) => unique(items.map((m) => m.exerciseId)), { message: "Uma medida por exercício." })
       .default([]),
     metadataTrust: z.enum(["REVIEWED_ONLY", "REVIEWED_AND_INFERRED"]).optional(),
-    acceptedFlagDecisions: list(z.object({ flagCode: z.string().trim().min(1).max(200), decision: flagDecisionSchema }).strict())
+    acceptedFlagDecisions: list(z.object({ flagCode: flagCodeSchema, decision: flagDecisionSchema }).strict())
       .refine((items) => unique(items.map((d) => d.flagCode)), { message: "Uma decisão por alerta." })
       .default([]),
   })

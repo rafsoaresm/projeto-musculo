@@ -44,6 +44,7 @@ import type {
 import { ADAPTER_ASSUMPTION_CODES, ADAPTER_ISSUE_CODES, buildEngineInput, goalSuggestions } from "./build-input";
 import { loadGenerationContext } from "./context";
 import {
+  flagCodeSchema,
   flagDecisionSchema,
   parseGenerationAnswers,
   type GenerationAnswers,
@@ -93,7 +94,7 @@ const casSchema = z.object({ proposalId: z.string().min(1).max(64), writeId: int
 const lockSchema = casSchema
   .extend({ targets: z.array(z.object({ phaseIndex, slotKey }).strict()).min(1).max(MAX_LOCK_TARGETS), locked: z.boolean() })
   .strict();
-const flagSchema = casSchema.extend({ flagCode: z.string().trim().min(1).max(200), decision: flagDecisionSchema }).strict();
+const flagSchema = casSchema.extend({ flagCode: flagCodeSchema, decision: flagDecisionSchema }).strict();
 
 const applySchema = z
   .object({

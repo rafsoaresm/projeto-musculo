@@ -3,7 +3,7 @@
  * pesos das regras e desempate pelo id (ponto de código). Linhas existentes da revisão são
  * preservadas e contam para a quantidade; itens travados são mantidos.
  */
-import { cmp, codeOf, normalizeText } from "./vocabulary";
+import { cmp, codeOf, MUSCLE_LABELS, normalizeText, numberText, PATTERN_LABELS } from "./vocabulary";
 import type { RuleLog } from "./trace";
 import type { Alternative, Basis, CatalogExercise, ExistingItem, Experience, ItemMetadata, Metric, TraceEntry } from "./types";
 
@@ -70,9 +70,12 @@ export interface Pick {
   exercise: CatalogExercise;
   score: number;
   trace: TraceEntry[];
+  /** Outro candidato tinha a mesma pontuação: o código do exercício desempatou. */
+  tie: boolean;
 }
 
-const label = (m: string) => m.toLowerCase().replace(/_/g, " ");
+const muscle = (m: string) => MUSCLE_LABELS[m] ?? m;
+const pattern = (p: string) => PATTERN_LABELS[p] ?? p;
 
 function score(log: RuleLog, e: CatalogExercise, chosen: CatalogExercise[], req: SelectionRequest): { score: number; trace: TraceEntry[] } {
   const W = log.get("SELECTION_WEIGHTS");
@@ -81,7 +84,7 @@ function score(log: RuleLog, e: CatalogExercise, chosen: CatalogExercise[], req:
   const add = (value: number, code: string, detail: string, basis?: Basis) => {
     if (!value) return;
     total += value;
-    trace.push({ code, basis: basis ?? log.basis("SELECTION_WEIGHTS"), ruleId: "SELECTION_WEIGHTS", detail: `${detail} (${value > 0 ? "+" : ""}${Math.round(value * 100) / 100})` });
+    trace.push({ code, basis: basis ?? log.basis("SELECTION_WEIGHTS"), ruleId: "SELECTION_WEIGHTS", detail: `${detail} (${value > 0 ? "+" : ""}${numberText(value)})` });
   };
   const covered = new Map<string, number>();
   const patterns = new Set<string>();
@@ -93,16 +96,25 @@ function score(log: RuleLog, e: CatalogExercise, chosen: CatalogExercise[], req:
   const tm = new Set((targets?.muscles ?? []).map(codeOf));
   const tp = new Set((targets?.patterns ?? []).map(codeOf));
   for (const m of e.primaryMuscles.map(codeOf))
-    if (tm.has(m)) add(W.primaryTarget / (1 + (covered.get(m) ?? 0) * W.primaryRepeatDivisor), "TARGET_PRIMARY", `Músculo-alvo ${label(m)} como principal`);
+    if (tm.has(m)) add(W.primaryTarget / (1 + (covered.get(m) ?? 0) * W.primaryRepeatDivisor), "TARGET_PRIMARY", `Músculo-alvo ${muscle(m)} como principal`);
   for (const m of e.secondaryMuscles.map(codeOf))
-    if (tm.has(m)) add(W.secondaryTarget / (1 + (covered.get(m) ?? 0)), "TARGET_SECONDARY", `Músculo-alvo ${label(m)} como secundário`);
+    if (tm.has(m)) add(W.secondaryTarget / (1 + (covered.get(m) ?? 0)), "TARGET_SECONDARY", `Músculo-alvo ${muscle(m)} como secundário`);
   for (const p of e.patterns) {
     const c = codeOf(p);
-    if (tp.has(c)) add(patterns.has(c) ? W.patternRepeat : W.patternNew, patterns.has(c) ? "TARGET_PATTERN_REPEAT" : "TARGET_PATTERN", `Padrão-alvo ${label(c)}`);
+    if (tp.has(c)) add(patterns.has(c) ? W.patternRepeat : W.patternNew, patterns.has(c) ? "TARGET_PATTERN_REPEAT" : "TARGET_PATTERN", `Padrão-alvo ${pattern(c)}`);
   }
-  if (!tm.size && !tp.size) add(W.noTargets, "NO_TARGETS", "Treino sem alvos: entra pela elegibilidade");
+  if (!tm.size && !tp.size) {
+    add(W.noTargets, "NO_TARGETS", "Treino sem alvos: entra pela elegibilidade");
+    // Sem alvos, espalhar os padrões: cada padrão já escolhido neste treino pesa contra (antes, três agachamentos no mesmo treino).
+    const repeated = e.patterns.map(codeOf).filter((p) => patterns.has(p));
+    if (repeated.length && W.noTargetsPatternRepeat) add(W.noTargetsPatternRepeat * repeated.length, "NO_TARGETS_PATTERN_REPEAT", `Padrão já presente neste treino: ${repeated.map(pattern).join(", ")}`);
+  }
   if (e.compound === true && req.stimulus && log.get("COMPOUND_PRIORITY_STIMULI").includes(req.stimulus))
     add(W.compound, "COMPOUND", "Multiarticular num estímulo que os prioriza");
+  // Sem equipamento nenhum (nem alternativo), um exercício resistido não recebe carga externa: pesa contra nos estímulos de carga.
+  if (W.noExternalLoad && req.stimulus && log.optional("EXTERNAL_LOAD_STIMULI")?.includes(req.stimulus) && e.modality
+    && codeOf(e.modality) === "RESISTANCE" && e.equipmentKnown !== false && !e.equipment.length && !e.equipmentAlternatives.some((set) => set.length))
+    add(W.noExternalLoad, "NO_EXTERNAL_LOAD", "Sem carga externa num estímulo de carga");
   if (req.preferred.has(e.id)) add(W.preferred, "PREFERRED", "Preferido pelo profissional", "PROFESSIONAL");
   const h = req.history.get(e.id);
   if (h?.pain) add(W.historyPain, "HISTORY_PAIN", "Dor relatada no histórico", "STUDENT_DATA");
@@ -131,7 +143,8 @@ export function selectExercises(log: RuleLog, req: SelectionRequest): Pick[] {
     for (const e of pool) {
       if (used.has(e.id)) continue;
       const s = score(log, e, chosen, req);
-      if (!best || s.score > best.score) best = { exercise: e, score: s.score, trace: s.trace };
+      if (!best || s.score > best.score) best = { exercise: e, score: s.score, trace: s.trace, tie: false };
+      else if (s.score === best.score) best.tie = true;
     }
     if (!best) break;
     if (req.count === "BY_TIME" && picks.length + req.fixedCount >= minimum) {
@@ -172,12 +185,12 @@ export function rankAlternatives(
     const sharedM = e.primaryMuscles.map(codeOf).filter((m) => primary.has(m));
     if (sharedM.length) {
       s += W.sharedPrimary * sharedM.length;
-      reasons.push(`Mesmo músculo principal: ${sharedM.map(label).join(", ")}`);
+      reasons.push(`Mesmo músculo principal: ${sharedM.map(muscle).join(", ")}`);
     }
     const sharedP = e.patterns.map(codeOf).filter((p) => patterns.has(p));
     if (sharedP.length) {
       s += W.sharedPattern * sharedP.length;
-      reasons.push(`Mesmo padrão: ${sharedP.map(label).join(", ")}`);
+      reasons.push(`Mesmo padrão: ${sharedP.map(pattern).join(", ")}`);
     }
     if (!s) continue;
     if (targetMetric && e.metric === targetMetric) {

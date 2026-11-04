@@ -2,12 +2,12 @@
 
 Núcleo puro e determinístico (sem banco, rede, IA, relógio ou acaso). Documentação completa e tabela de regras: [`docs/MOTOR-PRESCRICAO.md`](../../../../docs/MOTOR-PRESCRICAO.md).
 
-**Estado:** etapa S5. O motor está implementado e testado (`tests/motor-*.test.ts`), e o adaptador dos dados reais (`src/modules/prescricao/automatica/`, só no servidor) monta a entrada a partir da ficha, da avaliação, da biblioteca, da periodização salva, das linhas já prescritas e do histórico (`tests/motor-input.test.ts`, `tests/generation-context.test.ts`). **Ainda não há gravação de proposta, tela nem ligação com a aprovação e a entrega** (etapas S6 a S9).
+**Estado:** versão 0.94.0 (etapas S1 a S10 feitas, PR #95, não publicada). O motor, o adaptador dos dados reais (`src/modules/prescricao/automatica/`, só no servidor), as propostas, a aplicação ao rascunho, os leitores por sessão e a interface do profissional estão ligados ao fluxo de aprovação e entrega de sempre. O que o motor faz e não faz, versões, bases, tabela de regras (com teste de divergência), modelos de dose, metadados da biblioteca, limites técnicos medidos, perguntas da geração e dados de saúde: [`docs/MOTOR-PRESCRICAO.md`](../../../../docs/MOTOR-PRESCRICAO.md).
 
 | Arquivo | Papel |
 |---|---|
 | `types.ts` | Tipos: fatos com base, doses por métrica, entrada, resultado, escopos |
-| `rules/` | Regras em JSON (`gymgital-base@2026.11.1`), registro congelado, referências (não verificadas) |
+| `rules/` | Regras em JSON (`gymgital-base@2026.11.1` e `@2026.11.2`, a usada nas gerações novas), registro congelado, referências (não verificadas) |
 | `generate.ts` | Geração completa, revalidação, unidades de trabalho |
 | `regenerate.ts` | Regenerar escopos, substituir, alternativas, rebase |
 | `select.ts`, `eligibility.ts` | Seleção gulosa por cobertura e elegibilidade (equipamento, modalidade, exclusões, confiança nos metadados) |

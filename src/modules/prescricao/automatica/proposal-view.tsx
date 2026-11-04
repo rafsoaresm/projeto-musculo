@@ -6,7 +6,7 @@ import { HelpCircle, Lock, RefreshCw, Repeat, Shuffle, Unlock } from "lucide-rea
 import { Kpi, Notice, Pill } from "@/components/ui";
 import { CAUTION_TAGS, PATTERNS } from "@/modules/biblioteca/metadata/vocabulary";
 import { ISSUE_LABELS, STIMULUS_LABELS } from "@/modules/prescricao/motor/vocabulary";
-import type { Flag, FlagDecision, ItemOut, OccurrenceOut, RegenerationScope } from "@/modules/prescricao/motor/types";
+import type { Flag, FlagDecision, HistorySuggestion, ItemOut, OccurrenceOut, RegenerationScope, RuleUse } from "@/modules/prescricao/motor/types";
 import type { ProposalSummary } from "@/db/prescription-proposals";
 import { workoutTitle } from "@/modules/training/format";
 import { formatCalendarDate } from "@/modules/training/format";
@@ -30,12 +30,16 @@ import {
   SEVERITY_LABELS,
   SEVERITY_TONES,
   durationText,
+  historySuggestionText,
   issuesOfPhase,
-  itemBases,
+  itemBasisGroups,
   labelsOf,
+  PROGRESSION_MODEL_LABELS,
   proposalProgression,
+  ruleLabel,
   traceParamLabel,
   traceValue,
+  weekVolume,
 } from "./view";
 
 /** The proposal header fields the screen needs (no answers, no ledger references). */
@@ -321,7 +325,7 @@ export function ProposalView({
         </nav>
         <p className="small muted">
           {phase.weeks} {phase.weeks === 1 ? "semana" : "semanas"} · {phase.sessionsPerWeek} {phase.sessionsPerWeek === 1 ? "sessão" : "sessões"} por semana
-          {phase.progression ? ` · progressão: ${phase.progression.value.model === "NONE" ? "sem progressão" : phase.progression.value.model.toLowerCase()} (${BASIS_LABELS[phase.progression.basis]})` : " · sem progressão semanal"}
+          {phase.progression ? ` · progressão: ${PROGRESSION_MODEL_LABELS[phase.progression.value.model] ?? phase.progression.value.model} (${BASIS_LABELS[phase.progression.basis]})` : " · sem progressão semanal"}
         </p>
         <div className="exercise-actions proposal-controls">
           <button type="button" className="button secondary small" disabled={pending} onClick={() => regenerate({ kind: "PHASE", phaseIndex }, `phase:${phaseIndex}`)}>
@@ -391,6 +395,9 @@ export function ProposalView({
                         <ProposalItem
                           key={item.slotKey}
                           item={item}
+                          phaseIndex={phaseIndex}
+                          suggestions={summary.historySuggestions ?? []}
+                          rulesUsed={summary.rulesUsed}
                           locked={lockedKeys.has(item.slotKey) || item.origin === "LOCKED"}
                           pending={pending}
                           onSubstitute={() => setSubstituting({ phaseIndex, slotKey: item.slotKey, week: o.week, slot: o.slot, name: item.exerciseName, phaseWeeks: phase.weeks })}
@@ -407,6 +414,7 @@ export function ProposalView({
             })}
           </div>
         )}
+        <WeekVolume rows={weekVolume(summary.volume ?? [], phaseIndex, week)} week={week} />
         {phase.weeks > 1 &&
           labels.map((label) => {
             const rows = proposalProgression(occurrences, phaseIndex, phase.weeks, label);
@@ -414,9 +422,12 @@ export function ProposalView({
             return (
               <details key={label} className="progression-details">
                 <summary>Progressão nesta fase · Treino {label}</summary>
-                <div className="execution-scroll">
+                <p className="small muted">
+                  Dose da primeira sessão do treino em cada semana. “—”: fora das sessões dessa semana.
+                  <span className="scroll-hint"> Deslize a tabela para o lado para ver todas as semanas.</span>
+                </p>
+                <div className="execution-scroll" tabIndex={0} role="region" aria-label={`Progressão do treino ${label}, rolável para o lado`}>
                   <table className="execution-table">
-                    <caption className="small muted">Dose da primeira sessão do treino em cada semana. “—”: fora das sessões dessa semana.</caption>
                     <thead>
                       <tr>
                         <th scope="col">Exercício</th>
@@ -465,6 +476,9 @@ export function ProposalView({
 
 function ProposalItem({
   item,
+  phaseIndex,
+  suggestions,
+  rulesUsed,
   locked,
   pending,
   onSubstitute,
@@ -472,14 +486,18 @@ function ProposalItem({
   onAnother,
 }: {
   item: ItemOut;
+  phaseIndex: number;
+  suggestions: readonly HistorySuggestion[];
+  rulesUsed: readonly RuleUse[];
   locked: boolean;
   pending: boolean;
   onSubstitute: () => void;
   onLock: (locked: boolean) => void;
   onAnother: () => void;
 }) {
-  const bases = itemBases(item);
+  const bases = itemBasisGroups(item);
   const meta = METADATA_LABELS[item.metadata];
+  const history = historySuggestionText(suggestions, phaseIndex, item.slotKey);
   const preserved = item.origin === "PRESERVED";
   return (
     <li>
@@ -489,12 +507,32 @@ function ProposalItem({
         <span className="pill-row">
           <Pill tone={item.origin === "ENGINE" ? "neutral" : "brand"}>{PROPOSAL_ORIGIN_LABELS[item.origin]}</Pill>
           {meta && <Pill tone="warning">{meta}</Pill>}
-          {bases.map((b) => (
-            <Pill key={b} tone={BASIS_TONES[b]}>
-              {BASIS_LABELS[b]}
-            </Pill>
-          ))}
         </span>
+        {bases.selection.length > 0 && (
+          <span className="pill-row basis-row">
+            <span className="small muted">Escolha:</span>
+            {bases.selection.map((b) => (
+              <Pill key={b} tone={BASIS_TONES[b]}>
+                {BASIS_LABELS[b]}
+              </Pill>
+            ))}
+          </span>
+        )}
+        {bases.dose.length > 0 && (
+          <span className="pill-row basis-row">
+            <span className="small muted">Dose:</span>
+            {bases.dose.map((b) => (
+              <Pill key={b} tone={BASIS_TONES[b]}>
+                {BASIS_LABELS[b]}
+              </Pill>
+            ))}
+          </span>
+        )}
+        {history && (
+          <p className="small history-suggestion">
+            <Pill tone={history.tone}>{history.title}</Pill> {history.detail} <span className="muted">Não muda a dose: a decisão é sua.</span>
+          </p>
+        )}
       </div>
       <details className="why-details">
         <summary>
@@ -503,13 +541,15 @@ function ProposalItem({
         <ul className="auto-list">
           {item.trace.selection.map((t, n) => (
             <li key={`${t.code}-${n}`} className="small">
-              <Pill tone={BASIS_TONES[t.basis]}>{BASIS_LABELS[t.basis]}</Pill> {t.detail}
-              {t.ruleId && <span className="muted"> ({t.ruleId})</span>}
+              <span title={t.ruleId ? `Regra: ${ruleLabel(rulesUsed, t.ruleId)}` : undefined}>
+                <Pill tone={BASIS_TONES[t.basis]}>{BASIS_LABELS[t.basis]}</Pill>
+              </span>{" "}
+              {t.detail}
             </li>
           ))}
         </ul>
         {item.trace.params.length > 0 && (
-          <div className="execution-scroll">
+          <div className="execution-scroll" tabIndex={0} role="region" aria-label={`Valores propostos para ${item.exerciseName}`}>
             <table className="execution-table">
               <thead>
                 <tr>
@@ -523,10 +563,7 @@ function ProposalItem({
                   <tr key={`${p.param}-${n}`}>
                     <th scope="row">{traceParamLabel(p.param)}</th>
                     <td>{traceValue(p.value, p.param)}</td>
-                    <td>
-                      {BASIS_LABELS[p.basis]}
-                      {p.ruleId ? ` (${p.ruleId})` : ""}
-                    </td>
+                    <td title={p.ruleId ? `Regra: ${ruleLabel(rulesUsed, p.ruleId)}` : undefined}>{BASIS_LABELS[p.basis]}</td>
                   </tr>
                 ))}
               </tbody>
@@ -550,5 +587,44 @@ function ProposalItem({
         </div>
       )}
     </li>
+  );
+}
+
+/** Weekly sets per muscle of the selected week (engine volume: direct = principal muscle, indirect = secondary). */
+function WeekVolume({ rows, week }: { rows: ReturnType<typeof weekVolume>; week: number }) {
+  if (!rows.length) return null;
+  return (
+    <details className="progression-details">
+      <summary>Volume semanal por músculo · Semana {week}</summary>
+      <p className="small muted">
+        Séries da semana: diretas (músculo principal) e indiretas (secundário); a ponderada soma as indiretas pelo fator da regra.
+        Conta só doses com séries. É informação para a sua revisão, não meta.
+        <span className="scroll-hint"> Deslize a tabela para o lado para ver todas as colunas.</span>
+      </p>
+      <div className="execution-scroll" tabIndex={0} role="region" aria-label={`Volume da semana ${week}, rolável para o lado`}>
+        <table className="execution-table">
+          <thead>
+            <tr>
+              <th scope="col">Músculo</th>
+              <th scope="col">Diretas</th>
+              <th scope="col">Indiretas</th>
+              <th scope="col">Ponderadas</th>
+              <th scope="col">Sessões</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.muscle}>
+                <th scope="row">{r.muscle}</th>
+                <td>{r.direct}</td>
+                <td>{r.indirect}</td>
+                <td>{r.weighted}</td>
+                <td>{r.sessions}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </details>
   );
 }

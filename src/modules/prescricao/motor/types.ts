@@ -160,8 +160,13 @@ export interface CatalogExercise {
   primaryMuscles: string[];
   secondaryMuscles: string[];
   patterns: string[];
-  /** Equipamento padrão: todos exigidos. Vazio = sem equipamento. */
+  /** Equipamento padrão: todos exigidos. Vazio = sem equipamento (só quando `equipmentKnown` não é false). */
   equipment: string[];
+  /**
+   * false = o campo de equipamento está pendente de curadoria: a lista vazia não quer dizer "sem equipamento", e o exercício
+   * não passa por nenhuma checagem de equipamento (nem quando o profissional o escolhe). Ausente = conhecido.
+   */
+  equipmentKnown?: boolean;
   /**
    * Conjuntos alternativos ao padrão: o exercício é elegível se o padrão estiver todo disponível
    * OU se algum destes conjuntos estiver todo disponível.

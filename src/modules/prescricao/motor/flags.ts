@@ -3,7 +3,7 @@
  * seleção sozinho. Cada sugestão vira uma decisão de um clique do profissional, usada na próxima
  * geração. Observações isoladas da avaliação (postura, flexibilidade) não são contraindicação.
  */
-import { cmp } from "./vocabulary";
+import { cmp, PATTERN_LABELS } from "./vocabulary";
 import type { RuleLog } from "./trace";
 import type { EngineInput, Flag, FlagDecision } from "./types";
 
@@ -34,7 +34,7 @@ export function buildFlags(log: RuleLog, input: EngineInput): Flag[] {
       for (const pattern of map[f.code]) {
         flags.push({
           code: `MOVEMENT_FINDING:${f.code}:${pattern}`, severity: "WARNING", source: "ASSESSMENT", ...fref,
-          message: `${f.label}: grau ${f.grade}. Sugestão para decidir: excluir o padrão ${pattern}. Não é contraindicação automática.`,
+          message: `${f.label}. Sugestão para decidir: evitar o padrão ${PATTERN_LABELS[pattern] ?? pattern}. Não é contraindicação automática.`,
           suggestedDecision: { kind: "EXCLUDE_PATTERN", pattern },
         });
       }

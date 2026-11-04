@@ -3,9 +3,12 @@
  * ajustes por semana e descarga. As partes se combinam; os números vêm do profissional (ou da
  * estrutura) e os arredondamentos das regras. Nunca lança: entradas inválidas viram avisos.
  */
+import { DOSE_PARAM_LABELS } from "./vocabulary";
 import type { RuleLog } from "./trace";
 import type { DoseDraft } from "./dose";
 import type { Basis, DoseParam, Fact, Issue, Metric, WeeklyProgression } from "./types";
+
+const pl = (p: string) => (DOSE_PARAM_LABELS as Record<string, string>)[p] ?? p;
 
 const PARAMS: ReadonlySet<string> = new Set<DoseParam>([
   "sets", "repsMin", "repsMax", "durationMin", "durationMax", "distanceMin", "distanceMax", "restSeconds", "rirMin", "rirMax",
@@ -20,14 +23,14 @@ export function validateProgression(p: WeeklyProgression, weeks: number): string
   const out: string[] = [];
   for (const r of p.ramps ?? []) {
     if (!PARAMS.has(r.param)) out.push(`rampa: parâmetro desconhecido ${r.param}`);
-    if (!finite(r.from) || !finite(r.to)) out.push(`rampa de ${r.param}: falta o valor inicial ou o final`);
-    else if (r.from < 0 || r.to < 0) out.push(`rampa de ${r.param}: valor negativo`);
+    if (!finite(r.from) || !finite(r.to)) out.push(`rampa de ${pl(r.param)}: falta o valor inicial ou o final`);
+    else if (r.from < 0 || r.to < 0) out.push(`rampa de ${pl(r.param)}: valor negativo`);
   }
   for (const s of p.steps ?? []) {
     if (!PARAMS.has(s.param)) out.push(`degrau: parâmetro desconhecido ${s.param}`);
-    if (!finite(s.delta)) out.push(`degrau de ${s.param}: incremento inválido`);
-    if (!Number.isInteger(s.everyWeeks) || s.everyWeeks < 1) out.push(`degrau de ${s.param}: "a cada" precisa ser inteiro ≥ 1`);
-    if (s.limit !== undefined && (!finite(s.limit) || s.limit < 0)) out.push(`degrau de ${s.param}: limite inválido`);
+    if (!finite(s.delta)) out.push(`degrau de ${pl(s.param)}: incremento inválido`);
+    if (!Number.isInteger(s.everyWeeks) || s.everyWeeks < 1) out.push(`degrau de ${pl(s.param)}: "a cada" precisa ser inteiro ≥ 1`);
+    if (s.limit !== undefined && (!finite(s.limit) || s.limit < 0)) out.push(`degrau de ${pl(s.param)}: limite inválido`);
   }
   if (p.sequence) {
     if (!p.sequence.stimuli.length) out.push("sequência ondulatória vazia");
@@ -99,7 +102,7 @@ export function applyWeeklyProgression(
   for (const r of p.ramps ?? []) {
     if (!applies(r.metric)) continue;
     if (draft.values[r.param] === undefined) {
-      issues.push({ severity: "INFO", code: "PROGRESSION_PARAM_MISSING", message: `Rampa sobre ${r.param}, que esta dose não tem; ignorada.` });
+      issues.push({ severity: "INFO", code: "PROGRESSION_PARAM_MISSING", message: `Rampa sobre ${pl(r.param)}, que esta dose não tem; ignorada.` });
       continue;
     }
     const { decimals } = log.get("LINEAR_ROUNDING");
@@ -110,7 +113,7 @@ export function applyWeeklyProgression(
     if (!applies(s.metric)) continue;
     const current = draft.values[s.param];
     if (current === undefined) {
-      issues.push({ severity: "INFO", code: "PROGRESSION_PARAM_MISSING", message: `Degrau sobre ${s.param}, que esta dose não tem; ignorado.` });
+      issues.push({ severity: "INFO", code: "PROGRESSION_PARAM_MISSING", message: `Degrau sobre ${pl(s.param)}, que esta dose não tem; ignorado.` });
       continue;
     }
     const n = Math.floor((week - 1) / s.everyWeeks);

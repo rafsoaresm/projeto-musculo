@@ -213,7 +213,8 @@ describe("motor: revisão nunca troca sozinho o que o profissional decidiu (tóp
     const noDumbbell = { ...input, parameters: parameters({ availableEquipment: ["BARBELL", "RACK", "MACHINE", "BENCH", "CABLE"] }) };
     const r = ok(regenerate(noDumbbell, sub, { kind: "PHASE", phaseIndex: 1 }));
     expect(codes(r)).toContain("SUBSTITUTION_DROPPED");
-    expect(r.occurrences.flatMap((o) => o.items).some((i) => i.exerciseId === "ex-goblet")).toBe(false);
+    // Only the regenerated phase: phase 2 kept its own (full gym) picks, where the goblet squat may be the engine's choice.
+    expect(r.occurrences.filter((o) => o.phaseIndex === 1).flatMap((o) => o.items).some((i) => i.exerciseId === "ex-goblet")).toBe(false);
   });
 
   it("travar um item trocado numa só sessão não o espalha pelo treino ao regenerar a fase", () => {
