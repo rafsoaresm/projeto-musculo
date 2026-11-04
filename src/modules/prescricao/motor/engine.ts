@@ -1,7 +1,7 @@
 import type {
   Dose, DosePolicy, Exercise, GenerationInput, GenerationResult, Issue,
   Phase, PrescriptionItem, PrescriptionPolicies, Session, Stimulus, Template, VolumeRow,
-} from "./types.ts";
+} from "./types";
 
 export const ENGINE_VERSION = "1.0.0";
 export const POLICY_VERSION = "gymgital-base-2026.11";
