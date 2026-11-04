@@ -2,6 +2,13 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Patch 2.0.1 do motor — 04/11/2026 (branch de revisão, não publicada)
+
+- **Alterações de código nesta branch:** preserva observações individuais do Flexiteste no contexto de geração; corrige sugestão por histórico para exigir as N execuções cronologicamente mais recentes, sem descartar uma execução incompleta recente. ENGINE_VERSION passou a 2.0.1. Sem migration ou alteração de ruleset.
+- **Testes adicionados, NÃO executados neste ambiente conectado:** tests/motor-input.test.ts, tests/motor-progression.test.ts. Não interpretar os resultados históricos da 0.94.0 abaixo como validação deste patch.
+- **A validar antes de merge:** npm run check; npm run build:cloud; e2e de geração, regeneração, aplicação e entrega; comportamento em ambiente Webflow Cloud e registro com D1 remoto quando for autorizado publicar.
+- **Escopo A entregue parcialmente:** somente patches de fato e de progressão. **Ainda não implementados:** auditoria do microciclo semanal, seleção por distribuição total de volume, política de dose específica e análise opcional com IA. Handoff: [HANDOFF-MOTOR-PRESCRICAO-INDIVIDUALIZACAO-V3.md](HANDOFF-MOTOR-PRESCRICAO-INDIVIDUALIZACAO-V3.md).
+
 ## Fatia 0.94.0: motor de prescrição automática (PR #95, etapas S1 a S10; não publicado)
 
 **Migrations 0041 a 0045** (aditivas; a 0040 era a mais recente da 0.93): ocorrências por sessão e modelo da revisão (0041), propostas, gerações, entradas apagáveis, decisões e aplicações (0042), ligações das linhas à aplicação (0043), metadados da biblioteca com procedência (0044) e semente inferida da biblioteca do sistema (0045). `package.json` e `package-lock.json` em `0.94.0`. Documento do motor: [`MOTOR-PRESCRICAO.md`](MOTOR-PRESCRICAO.md) (o que faz e não faz, versões, as cinco bases, tabela de regras gerada do JSON com teste de divergência, modelos de dose, metadados e procedência, limites técnicos com motivo e números medidos, perguntas da geração, dados de saúde e exclusão). As seções S1 a S9 e a das correções da revisão final, abaixo, trazem cada etapa.
