@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { StudentProfile } from "@/db/student-profile";
 import { emptyProfile } from "@/modules/ficha/contracts";
 import { toExposureHistory } from "@/modules/execucao/exposures";
-import { buildEngineInput } from "@/modules/prescricao/automatica/build-input";
+import { buildEngineInput, suggestedTargets } from "@/modules/prescricao/automatica/build-input";
 import { parseGenerationAnswers, type GenerationAnswersInput } from "@/modules/prescricao/automatica/contracts";
-import type { GenerationContext } from "@/modules/prescricao/automatica/facts";
+import { structureFacts, type GenerationContext } from "@/modules/prescricao/automatica/facts";
 import { patchAnswers, screenTargetSuggestions } from "@/modules/prescricao/automatica/service";
 import {
   answersFromForm,
@@ -17,6 +17,7 @@ import {
   targetSuggestionView,
 } from "@/modules/prescricao/automatica/view";
 import { generate, type EngineResult } from "@/modules/prescricao/motor";
+import { DEFAULT_RULESET } from "@/modules/prescricao/motor/rules";
 import { targetSuggestion, type TargetSuggestion } from "@/modules/prescricao/motor/targets";
 import { buildPeriodization } from "@/modules/training/periodization";
 import { AUDIT_RULES, CATALOG, LEGACY_RULES } from "./helpers/motor-fixtures";
@@ -55,6 +56,7 @@ const built = (ctx: GenerationContext, answers: GenerationAnswersInput, rules?: 
   if (!out.ok) throw new Error(`${out.code} ${JSON.stringify(out)}`);
   return out;
 };
+const ABCD_RULES = DEFAULT_RULESET;
 const suggestionOf = (ctx: GenerationContext): TargetSuggestion => {
   const input = built(ctx, BASE).input;
   const s = targetSuggestion(input.rules, input.structure.phases[0], input).suggestion;
@@ -97,8 +99,12 @@ describe("the adapter: targets per workout and weekly sets (design V3 §3.6)", (
     expect(buildEngineInput(ABCD, parseGenerationAnswers({ ...BASE, coverageByWorkout: [{ phaseIndex: 1, label: "Z", muscles: ["CHEST"] }] }))).toEqual({
       ok: false, code: "UNKNOWN_TARGET", targets: [{ phaseIndex: 1, label: "Z" }],
     });
-    // Without targets per workout, the input is the same as before this field existed.
-    expect(built(ABCD, { ...BASE, coverageByWorkout: [] }).input).toEqual(built(ABCD, BASE).input);
+    // Without targets per workout (or with an empty entry) the structure is the saved one as `structureFacts` reads it, under
+    // every rule set: older proposals regenerate with the structure they had.
+    for (const rules of [undefined, AUDIT_RULES, LEGACY_RULES]) {
+      expect(built(ABCD, BASE, rules).input.structure).toEqual(structureFacts(ABCD.revision.schedule));
+      expect(built(ABCD, { ...BASE, coverageByWorkout: [{ phaseIndex: 1, label: "A", muscles: [] }] }, rules).input.structure).toEqual(structureFacts(ABCD.revision.schedule));
+    }
   });
 
   it("keeps weekly sets only for rule sets with the audit; an older proposal's input gains no unknown field", () => {
@@ -168,6 +174,24 @@ describe("accepting the suggested targets: one branch per rule set, exact equali
   });
 });
 
+describe("the proposal card's suggestion reads only the structure and the answers (design V3 §7.2, §7.4)", () => {
+  it("is the suggestion an acceptance is checked against, and the accepted entry passes the server check", () => {
+    const answers = parseGenerationAnswers(BASE);
+    const [one] = suggestedTargets(ABCD.revision.schedule, answers, ABCD_RULES, [1]);
+    expect(one).toEqual({ phaseIndex: 1, suggestion: suggestionOf(ABCD), reason: null });
+    expect(buildEngineInput(ABCD, parseGenerationAnswers({ ...BASE, phaseCoverage: [suggestionEntry(one.suggestion!)] }))).toMatchObject({ ok: true });
+    // Targets per workout in the answers shape the structure the same way on both sides.
+    const split = parseGenerationAnswers({ ...BASE, coverageByWorkout: [{ phaseIndex: 1, label: "A", muscles: ["CHEST"] }] });
+    const s = suggestedTargets(ABCD.revision.schedule, split, ABCD_RULES, [1])[0].suggestion!;
+    expect(buildEngineInput(ABCD, parseGenerationAnswers({ ...BASE, coverageByWorkout: split.coverageByWorkout, phaseCoverage: [suggestionEntry(s)] }))).toMatchObject({ ok: true });
+    // No stimulus answered: no suggestion, and the reason says so. Unknown phases are left out; older rule sets give nothing.
+    expect(suggestedTargets(ABCD.revision.schedule, parseGenerationAnswers({}), ABCD_RULES, [1])).toEqual([{ phaseIndex: 1, suggestion: null, reason: "UNKNOWN_STIMULUS" }]);
+    expect(suggestedTargets(ABCD.revision.schedule, answers, ABCD_RULES, [9])).toEqual([]);
+    expect(suggestedTargets(ABCD.revision.schedule, answers, AUDIT_RULES, [1])).toEqual([]);
+    expect(suggestedTargets(ABCD.revision.schedule, answers, LEGACY_RULES, [1])).toEqual([]);
+  });
+});
+
 describe("free splits through the adapter (design V3 §8.3.5)", () => {
   it("ABCD upper/lower: no upper muscle is primary in a lower workout and vice versa; CHEST (≥ 2 sessions) goes to the two upper workouts", () => {
     const answers: GenerationAnswersInput = {
@@ -225,6 +249,13 @@ describe("a regeneration patch merges the targets by phase and by workout (desig
     ]);
     expect((patchAnswers(stored, {}) as Record<string, unknown>).phaseCoverage).toEqual(stored.phaseCoverage);
     expect(patchAnswers(stored, [1])).toEqual([1]);
+    // A keyed field sent as something other than a list reaches the strict parse as sent, and is refused there.
+    for (const malformed of [{ phaseCoverage: "x" }, { coverageByWorkout: 42 }, { acceptedFlagDecisions: { flagCode: "X" } }]) {
+      const patched = patchAnswers(stored, malformed) as Record<string, unknown>;
+      const [field, value] = Object.entries(malformed)[0];
+      expect(patched[field]).toEqual(value);
+      expect(() => parseGenerationAnswers(patched)).toThrow();
+    }
   });
 });
 
@@ -246,6 +277,10 @@ describe("the card and the form (design V3 §7.4)", () => {
     expect(coverageFromEdit(1, { ...editFromSuggestion(s, labels), minDirectSessions: "1,5" }, s)).toMatchObject({ ok: false });
     // nothing chosen at all: no coverage
     expect(coverageFromEdit(1, { muscles: [], patterns: [], minWeighted: "", maxWeighted: "", minDirectSessions: "", byWorkout: [] }, null)).toEqual({ ok: true, coverage: null, byWorkout: [] });
+    // On the proposal (the phase has no targets) an empty edit would regenerate for nothing: refused with a message.
+    const empty = { muscles: [], patterns: [], minWeighted: "", maxWeighted: "", minDirectSessions: "", byWorkout: [{ label: "A", muscles: [] }] };
+    expect(coverageFromEdit(1, empty, s, { requireTargets: true })).toMatchObject({ ok: false });
+    expect(coverageFromEdit(1, { ...empty, byWorkout: [{ label: "A", muscles: ["CHEST"] }] }, s, { requireTargets: true })).toMatchObject({ ok: true });
     // both answers go through the strict contract
     for (const out of [same, fewer, split]) if (out.ok) expect(() => parseGenerationAnswers({ phaseCoverage: out.coverage ? [out.coverage] : [], coverageByWorkout: out.byWorkout })).not.toThrow();
   });

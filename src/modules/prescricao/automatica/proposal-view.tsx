@@ -164,6 +164,7 @@ export function ProposalView({
         answers: { ...(coverage ? { phaseCoverage: [coverage] } : {}), ...(byWorkout.length ? { coverageByWorkout: byWorkout } : {}) },
       }),
     );
+  const experienceUnknown = summary.assumptions.some((a) => a.code === "EXPERIENCE_UNKNOWN");
   const cardFor = new Set(acceptSuggestions && audit?.source === "STORED" ? targetSuggestions.map((t) => t.phaseIndex) : []);
   const decide = (flag: Flag, decision: FlagDecision) =>
     run(`flag:${flag.code}:${decision.kind}`, (ids) => acceptFlagDecision(planId, revisionId, { ...cas, writeId: ids.write, flagCode: flag.code, decision }));
@@ -450,6 +451,8 @@ export function ProposalView({
                           key={item.slotKey}
                           item={item}
                           phaseIndex={phaseIndex}
+                          week={o.week}
+                          experienceUnknown={experienceUnknown}
                           contribution={contributionView(item, audit?.report ?? null, phaseIndex, o.week)}
                           suggestions={summary.historySuggestions ?? []}
                           rulesUsed={summary.rulesUsed}
@@ -532,6 +535,8 @@ export function ProposalView({
 function ProposalItem({
   item,
   phaseIndex,
+  week,
+  experienceUnknown,
   contribution,
   suggestions,
   rulesUsed,
@@ -543,6 +548,8 @@ function ProposalItem({
 }: {
   item: ItemOut;
   phaseIndex: number;
+  week: number;
+  experienceUnknown: boolean;
   contribution: ReturnType<typeof contributionView>;
   suggestions: readonly HistorySuggestion[];
   rulesUsed: readonly RuleUse[];
@@ -556,7 +563,7 @@ function ProposalItem({
   const meta = METADATA_LABELS[item.metadata];
   const history = historySuggestionText(suggestions, phaseIndex, item.slotKey);
   const preserved = item.origin === "PRESERVED";
-  const why = whyView(item, { rulesUsed, contribution });
+  const why = whyView(item, { rulesUsed, contribution, week, experienceUnknown });
   return (
     <li>
       <div className="exercise-main">

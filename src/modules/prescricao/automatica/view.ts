@@ -1047,10 +1047,29 @@ const setsWord = (v: unknown) => (typeof v === "number" ? `${numberText(v)} ${v 
  */
 export function whyView(
   item: Pick<ItemOut, "trace">,
-  options: { rulesUsed: readonly RuleUse[]; contribution: { lines: string[]; weekTotal: string | null } | null },
+  options: {
+    rulesUsed: readonly RuleUse[];
+    contribution: { lines: string[]; weekTotal: string | null } | null;
+    /** The week of the phase this item's session is in (the progression is per week). */
+    week?: number;
+    /** The proposal recorded EXPERIENCE_UNKNOWN: the level was not in the records, so it is not student data. */
+    experienceUnknown?: boolean;
+  },
 ): WhySection[] {
   const rule = (id: string | undefined) => (id ? ruleLabel(options.rulesUsed, id) : null);
   const sel = item.trace.selection;
+  // The difficulty term is weighted by the student's experience level (EXPERIENCE_MAP): the level is student data when the
+  // records had it; when not, the proposal's assumption says how it was weighed instead.
+  const difficulty = sel.find((t) => t.code === "DIFFICULTY");
+  const levelLine = difficulty
+    ? options.experienceUnknown
+      ? { text: `Nível de experiência não informado: a dificuldade pesou como para não iniciantes (${difficulty.detail}).`, basis: "HEURISTIC" as Basis, rule: rule("EXPERIENCE_MAP") }
+      : {
+          text: `Nível de experiência do perfil (${difficulty.detail.includes("para iniciante") ? "iniciante" : "não iniciante"}) usado no peso da dificuldade: ${difficulty.detail}.`,
+          basis: "STUDENT_DATA" as Basis,
+          rule: rule("EXPERIENCE_MAP"),
+        }
+    : null;
   const sections: WhySection[] = [
     {
       key: "choice",
@@ -1065,6 +1084,7 @@ export function whyView(
         ...item.trace.params
           .filter((p) => p.basis === "STUDENT_DATA")
           .map((p) => ({ text: `${traceParamLabel(p.param)}: ${traceValue(p.value, p.param)}${p.refs?.length ? ` (${p.refs.join(", ")})` : ""}`, basis: p.basis, rule: rule(p.ruleId) })),
+        ...(levelLine ? [levelLine] : []),
       ],
     },
     {
@@ -1090,7 +1110,9 @@ export function whyView(
               ? `${setsWord(sets.value)}: valor seu (dose preservada, editada ou ajustada por você).`
               : sets.ruleId === "DOSE_DEFAULTS"
                 ? `${setsWord(sets.value)}: política de doses da geração para o estímulo desta sessão.`
-                : `${setsWord(sets.value)} nesta sessão.`,
+                : options.week !== undefined && sets.ruleId
+                  ? `${setsWord(sets.value)} na semana ${options.week} da fase, ${sets.ruleId === "DELOAD_ROUNDING" ? "semana de descarga da progressão" : "pela progressão da fase"}.`
+                  : `${setsWord(sets.value)} nesta sessão.`,
           basis: sets.basis,
           rule: rule(sets.ruleId),
         },
@@ -1206,6 +1228,7 @@ export function coverageFromEdit(
   phaseIndex: number,
   edit: TargetEdit,
   suggestion: TargetSuggestion | null,
+  options: { requireTargets?: boolean } = {},
 ): { ok: true; coverage: CoverageAnswer | null; byWorkout: WorkoutCoverageAnswer[] } | { ok: false; errors: string[] } {
   const errors: string[] = [];
   const parse = (text: string, what: string, opts: { int?: boolean; min: number; max: number }) => {
@@ -1237,6 +1260,8 @@ export function coverageFromEdit(
     muscles.length || patterns.length || weeklySets.length
       ? { phaseIndex, ...(muscles.length ? { muscles } : {}), ...(patterns.length ? { patterns } : {}), ...(weeklySets.length ? { weeklySets } : {}), basis: "PROFESSIONAL" }
       : null;
+  // On the proposal the phase has no targets (that is why the card is there): an empty edit would regenerate it for nothing.
+  if (options.requireTargets && !coverage && !byWorkout.length) return { ok: false, errors: ["Marque ao menos um músculo ou padrão, da fase ou de um treino, ou cancele."] };
   return { ok: true, coverage, byWorkout };
 }
 

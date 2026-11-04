@@ -244,6 +244,7 @@ function Finding({ f, href, targets }: { f: AuditFindingView; href: (phaseIndex:
           pending={targets.pending}
           acceptText="Aceitar e regenerar a fase"
           commitText="Nada é aplicado sem o seu aceite. Ao aceitar, a fase é regenerada; itens mantidos, travados e trocados por você continuam."
+          requireTargets
           onAccept={targets.onAccept}
           onApply={(coverage, byWorkout) => targets.onApply(card.phaseIndex, coverage, byWorkout)}
         />

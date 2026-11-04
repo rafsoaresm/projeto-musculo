@@ -636,12 +636,31 @@ describe("Motor V3 S4: 'Por quê?' answers the six questions (design §5, §7.1)
     expect(changeConditions(item([{ code: "UNMAPPED_CODE" }]))).toEqual([]);
   });
 
+  it("the experience level that weighed the difficulty is student data, or the assumption when it was not recorded; sets name the progression week", () => {
+    const withDifficulty = occ.items.find((i) => i.trace.selection.some((t) => t.code === "DIFFICULTY"))!;
+    const known = whyView(withDifficulty, { rulesUsed: xintus.rulesUsed, contribution: null }).find((s) => s.key === "student")!;
+    expect(known.lines.at(-1)).toMatchObject({ basis: "STUDENT_DATA", text: expect.stringMatching(/^Nível de experiência do perfil \(não iniciante\) usado no peso da dificuldade: Dificuldade/) });
+    const unknown = whyView(withDifficulty, { rulesUsed: xintus.rulesUsed, contribution: null, experienceUnknown: true }).find((s) => s.key === "student")!;
+    expect(unknown.lines.at(-1)).toMatchObject({ basis: "HEURISTIC", text: expect.stringMatching(/^Nível de experiência não informado: a dificuldade pesou como para não iniciantes/) });
+    const beginner = { trace: { selection: [{ code: "DIFFICULTY", basis: "HEURISTIC", ruleId: "SELECTION_WEIGHTS", detail: "Dificuldade 3 para iniciante (-1,5)" }], params: [] } } as unknown as ItemOut;
+    expect(whyView(beginner, { rulesUsed: [], contribution: null }).find((s) => s.key === "student")!.lines[0].text).toMatch(/\(iniciante\)/);
+    // Sets set by the phase's progression say which week of the phase; the policy and the professional's values keep their text.
+    const progressed = { trace: { selection: [], params: [{ param: "sets", value: 2, basis: "HEURISTIC_ACCEPTED", ruleId: "PROGRESSION_TEMPLATES" }] } } as unknown as ItemOut;
+    expect(whyView(progressed, { rulesUsed: [], contribution: null, week: 2 }).find((s) => s.key === "sets")!.lines[0].text).toBe("2 séries na semana 2 da fase, pela progressão da fase.");
+    const deload = { trace: { selection: [], params: [{ param: "sets", value: 2, basis: "HEURISTIC", ruleId: "DELOAD_ROUNDING" }] } } as unknown as ItemOut;
+    expect(whyView(deload, { rulesUsed: [], contribution: null, week: 4 }).find((s) => s.key === "sets")!.lines[0].text).toBe("2 séries na semana 4 da fase, semana de descarga da progressão.");
+    expect(whyView(withDifficulty, { rulesUsed: xintus.rulesUsed, contribution: null, week: 3 }).find((s) => s.key === "sets")!.lines[0].text).toContain("política de doses");
+  });
+
   it("an item without sets, contribution or student data has only what it carries; a preserved row says it is the professional's", () => {
     const legacy = generate(xintusInput(LEGACY_RULES));
     const plain = legacy.occurrences[0].items[0];
     const why = whyView(plain, { rulesUsed: legacy.rulesUsed, contribution: contributionView(plain, null, 1, 1) });
     expect(why.map((s) => s.key)).not.toContain("contribution");
-    expect(why.map((s) => s.key)).not.toContain("student");
+    // Under the older rules only the experience level is student data here (it weighs the difficulty term), when the item has one.
+    const student = why.find((s) => s.key === "student");
+    if (plain.trace.selection.some((t) => t.code === "DIFFICULTY")) expect(student!.lines.map((l) => l.text)).toEqual([expect.stringMatching(/^Nível de experiência do perfil \(não iniciante\)/)]);
+    else expect(student).toBeUndefined();
     const empty = generate(xintusInput(DEFAULT_RULESET, { parameters: { ...xintusInput().parameters, doseMode: "LEAVE_EMPTY" } }));
     const blank = empty.occurrences[0].items[0];
     expect(whyView(blank, { rulesUsed: empty.rulesUsed, contribution: null }).map((s) => s.key)).not.toContain("sets");

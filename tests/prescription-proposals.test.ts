@@ -948,6 +948,25 @@ describe("Motor V3 S2: the plan audit with the proposal", () => {
     ok(await regen(3, { phaseCoverage: [{ ...subset, basis: "PROFESSIONAL", ruleId: undefined }] }));
   });
 
+  it("S4: an acceptance that stopped matching because the periodization changed answers with that change, not 'escolha de novo'", async () => {
+    const d = await newDraft();
+    const out = await generated(d);
+    const sug = await service().targetSuggestions(d.planId, d.revisionId, out.proposalId, [1]);
+    if (sug.status !== "ok") throw new Error(sug.status);
+    const s = sug.suggestions[0].suggestion!;
+    ok(await service().regenerate(d.planId, d.revisionId, { proposalId: out.proposalId, idempotencyKey: id("regen"), ...cas(1), scope: { kind: "PHASE", phaseIndex: 1 }, answers: { phaseCoverage: [suggestionEntry(s)] } }));
+    // Phase 1 now 4 sessions a week: the structure offers 4, so today's suggestion carries a minimum of sessions and the stored
+    // acceptance no longer matches it.
+    const busier = { ...V2, phases: [{ ...V2.phases[0], sessionsPerWeek: 4, trainingDays: [0, 1, 3, 4] }, V2.phases[1], V2.phases[2]] };
+    expect(await plansFor(db, scope("tech-a")).saveDraft(d.planId, d.revisionId, busier, NOW)).toBe(true);
+    const now = await service().targetSuggestions(d.planId, d.revisionId, out.proposalId, [1]);
+    if (now.status !== "ok") throw new Error(now.status);
+    expect(now.suggestions[0].suggestion!.weeklySets.some((w) => w.minDirectSessions === 2)).toBe(true);
+    expect(failure(await service().regenerate(d.planId, d.revisionId, { proposalId: out.proposalId, idempotencyKey: id("regen"), ...cas(2), scope: { kind: "PHASE", phaseIndex: 2 } }))).toBe("revision_changed");
+    expect(failure(await service().rebase(d.planId, d.revisionId, { proposalId: out.proposalId, idempotencyKey: id("key"), ...cas(2) }))).toBe("structure_changed");
+    expect((await repo().summary(d.planId, d.revisionId, out.proposalId))!.header.version).toBe(2);
+  });
+
   it("S4: proposals whose rules have no suggestion rule (2026.11.2) get no suggestions and no card", async () => {
     const { d, proposalId } = await legacyProposal();
     expect(await service().targetSuggestions(d.planId, d.revisionId, proposalId, [1])).toEqual({ status: "ok", suggestions: [] });

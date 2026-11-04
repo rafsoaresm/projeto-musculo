@@ -33,6 +33,7 @@ export function TargetSuggestionCard({
   pending,
   acceptText,
   commitText,
+  requireTargets = false,
   onAccept,
   onApply,
 }: {
@@ -46,6 +47,8 @@ export function TargetSuggestionCard({
   acceptText: string;
   /** What happens on acceptance, said before the buttons. */
   commitText: string;
+  /** An empty edit is refused (on the proposal it would regenerate the phase for nothing: it has no targets to clear). */
+  requireTargets?: boolean;
   onAccept: (entry: CoverageAnswer) => void;
   onApply: (coverage: CoverageAnswer | null, byWorkout: WorkoutCoverageAnswer[]) => void;
 }) {
@@ -57,7 +60,7 @@ export function TargetSuggestionCard({
 
   function apply() {
     if (!edit) return;
-    const out = coverageFromEdit(phaseIndex, edit, suggestion);
+    const out = coverageFromEdit(phaseIndex, edit, suggestion, { requireTargets });
     if (!out.ok) {
       setErrors(out.errors);
       return;

@@ -118,6 +118,63 @@ function withWorkoutCoverage(structure: StructureFacts, entries: GenerationAnswe
   };
 }
 
+/**
+ * The engine's parameters from the answers: only what the professional answered, plus the two defaults decided on 04/11/2026.
+ * `audited`: the rule set has the audit (AUDIT_THRESHOLDS); only then do weekly targets reach the engine.
+ */
+function engineParameters(answers: GenerationAnswers, audited: boolean): GenerationParameters {
+  return {
+    doseMode: answers.doseMode ?? "FILL_FROM_POLICY",
+    metadataTrust: answers.metadataTrust ?? "REVIEWED_AND_INFERRED",
+    stimulusByPhase: answers.stimulusByPhase.map((s) => ({ phaseIndex: s.phaseIndex, value: s.value, basis: s.basis, ...(s.ruleId ? { ruleId: s.ruleId } : {}) })),
+    modalitiesByWorkout: answers.modalitiesByWorkout,
+    availableEquipment: answers.equipmentCodes === undefined ? null : answers.equipmentCodes === "NONE" ? [] : [...answers.equipmentCodes].sort(cmp),
+    availableMinutes: answers.availableMinutes ?? null,
+    timeBudget: answers.timeBudget ?? "SOFT",
+    exerciseCountByWorkout: answers.exerciseCountByWorkout,
+    preferredExerciseIds: answers.preferredExerciseIds,
+    excludedExerciseIds: answers.excludedExerciseIds,
+    excludedPatterns: answers.excludedPatterns,
+    excludedCautionTags: answers.excludedCautionTags,
+    phaseCoverage: answers.phaseCoverage.map((c) => ({
+      phaseIndex: c.phaseIndex, basis: c.basis,
+      ...(c.muscles ? { muscles: c.muscles } : {}), ...(c.patterns ? { patterns: c.patterns } : {}),
+      // Weekly targets exist only for rule sets with the audit: an older proposal's input stays as it was (no unknown field).
+      ...(c.weeklySets?.length && audited ? { weeklySets: c.weeklySets.map(weeklyEntry) } : {}),
+      ...(c.ruleId ? { ruleId: c.ruleId } : {}),
+    })),
+    progressionByPhase: answers.progressionByPhase,
+    doseOverrides: answers.policyOverrides,
+    metricOverrides: answers.metricOverrides,
+    acceptedFlagDecisions: answers.acceptedFlagDecisions,
+  };
+}
+
+/**
+ * The suggested targets of some phases of an open proposal, exactly as `buildEngineInput` checks an acceptance: the saved
+ * structure with the targets per workout of the answers, and the engine parameters of the answers. It reads nothing else
+ * (no library, history or student data), so the proposal page can show the card without a full generation context. Phases
+ * not in the structure are left out; `reason` says why a phase has no suggestion.
+ */
+export function suggestedTargets(
+  schedule: GenerationContext["revision"]["schedule"],
+  answers: GenerationAnswers,
+  rules: RuleSetRef,
+  phaseIndexes: readonly number[],
+): Array<{ phaseIndex: number; suggestion: TargetSuggestion | null; reason: string | null }> {
+  const ruleSet = getRuleSet(rules);
+  if (!ruleSet?.rules.MICROCYCLE_TARGET_SUGGESTIONS || !phaseIndexes.length) return [];
+  const structure = withWorkoutCoverage(structureFacts(schedule), answers.coverageByWorkout);
+  const parameters = engineParameters(answers, Boolean(ruleSet.rules.AUDIT_THRESHOLDS));
+  const wanted = new Set(phaseIndexes);
+  return structure.phases
+    .filter((p) => wanted.has(p.index))
+    .map((phase) => {
+      const out = targetSuggestion(rules, phase, { parameters });
+      return { phaseIndex: phase.index, suggestion: out.suggestion, reason: out.suggestion ? null : out.reason };
+    });
+}
+
 export function buildEngineInput(ctx: GenerationContext, answers: GenerationAnswers, options: BuildOptions = {}): BuildOutcome {
   const rules = options.rules ?? DEFAULT_RULESET;
   const ruleSet = getRuleSet(rules);
@@ -173,34 +230,10 @@ export function buildEngineInput(ctx: GenerationContext, answers: GenerationAnsw
   if (unsupported.length) return { ok: false, code: "UNSUPPORTED_SUGGESTION", targets: unsupported };
 
   // 2. The engine's parameters: only what the professional answered, plus the two defaults decided on 04/11/2026.
-  const audited = Boolean(ruleSet.rules.AUDIT_THRESHOLDS);
-  const parameters: GenerationParameters = {
-    doseMode: answers.doseMode ?? "FILL_FROM_POLICY",
-    metadataTrust: answers.metadataTrust ?? "REVIEWED_AND_INFERRED",
-    stimulusByPhase: answers.stimulusByPhase.map((s) => ({ phaseIndex: s.phaseIndex, value: s.value, basis: s.basis, ...(s.ruleId ? { ruleId: s.ruleId } : {}) })),
-    modalitiesByWorkout: answers.modalitiesByWorkout,
-    availableEquipment: answers.equipmentCodes === undefined ? null : answers.equipmentCodes === "NONE" ? [] : [...answers.equipmentCodes].sort(cmp),
-    availableMinutes: answers.availableMinutes ?? null,
-    timeBudget: answers.timeBudget ?? "SOFT",
-    exerciseCountByWorkout: answers.exerciseCountByWorkout,
-    preferredExerciseIds: answers.preferredExerciseIds,
-    excludedExerciseIds: answers.excludedExerciseIds,
-    excludedPatterns: answers.excludedPatterns,
-    excludedCautionTags: answers.excludedCautionTags,
-    phaseCoverage: answers.phaseCoverage.map((c) => ({
-      phaseIndex: c.phaseIndex, basis: c.basis,
-      ...(c.muscles ? { muscles: c.muscles } : {}), ...(c.patterns ? { patterns: c.patterns } : {}),
-      // Weekly targets exist only for rule sets with the audit: an older proposal's input stays as it was (no unknown field).
-      ...(c.weeklySets?.length && audited ? { weeklySets: c.weeklySets.map(weeklyEntry) } : {}),
-      ...(c.ruleId ? { ruleId: c.ruleId } : {}),
-    })),
-    progressionByPhase: answers.progressionByPhase,
-    doseOverrides: answers.policyOverrides,
-    metricOverrides: answers.metricOverrides,
-    acceptedFlagDecisions: answers.acceptedFlagDecisions,
-  };
+  const parameters = engineParameters(answers, Boolean(ruleSet.rules.AUDIT_THRESHOLDS));
   // 2b. A suggestion accepted as is must be exactly what the rule suggests for that phase today (same omission rule for the
-  // sessions per week), or it is the professional's choice and must say so.
+  // sessions per week), or it is the professional's choice and must say so. `suggestedTargets` computes the card's suggestion
+  // from these same two pieces (structure and parameters), so what "Aceitar" sends is what is checked here.
   const structure = withWorkoutCoverage(baseStructure, answers.coverageByWorkout);
   for (const c of toCheck) {
     const phase = structure.phases.find((p) => p.index === c.phaseIndex)!;

@@ -84,6 +84,21 @@ export async function loadCatalogForPlan(
 }
 
 /**
+ * Only the saved periodization of a DRAFT revision this user reaches, rebuilt as a generation reads it (the suggested targets of
+ * an open proposal, design V3 §7.4). The same guard as `loadGenerationContext`; nothing of the student is read.
+ */
+export async function loadScheduleForPlan(
+  db: D1Database,
+  context: AuthenticatedContext,
+  planId: string,
+  revisionId: string,
+): Promise<{ status: "ok"; schedule: GenerationContext["revision"]["schedule"] } | { status: "not_found" }> {
+  const found = await plansFor(db, context).findRevision(planId, revisionId);
+  if (!found || found.revision.state !== "DRAFT") return { status: "not_found" };
+  return { status: "ok", schedule: buildPeriodization(found.revision.input) };
+}
+
+/**
  * Reads everything one generation needs for a plan revision. `rules` picks the history window (EXPOSURE_WINDOW_DAYS of that
  * rule set); `now` gives the reference date in São Paulo (the engine never reads the clock).
  */
