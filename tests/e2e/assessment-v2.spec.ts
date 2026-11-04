@@ -627,7 +627,7 @@ test("the Movimento step records the posture in three views and the somatotype, 
 
 // Slice 0.80: the Flexiteste of "Movimento", the "Testes físicos" step and the final considerations of "Revisão" (handoff 3.4, 3.5; AV-05, AV-06).
 const FLEXITEST_PDF = [2, 3, 2, 2, 1, 1, 2, 3, 3, 2, 2, 3, 2, 2, 2];
-test("the Flexiteste, the physical tests and the final considerations save themselves and are recorded with no classification by the system", async ({ page }) => {
+test("the Flexiteste, the physical tests and the final considerations save themselves and are recorded; the system classifies only by the reference tables", async ({ page }) => {
   test.setTimeout(240_000);
   await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
   await createProfessional(page, "Estúdio dos testes físicos");
@@ -658,7 +658,7 @@ test("the Flexiteste, the physical tests and the final considerations save thems
   await expect(tally).toHaveText(["14 de 15 preenchidos", "Só com os 15 movimentos"]);
   await flexitest.getByRole("radiogroup", { name: "Flexão do joelho" }).getByRole("radio", { name: "Nível 3" }).check();
   await flexitest.getByLabel("Classificação (manual)").fill("Médio (-)");
-  await expect(flexitest.getByLabel("Classificação (manual)")).toHaveAccessibleDescription(/O sistema não classifica/);
+  await expect(flexitest.getByLabel("Classificação (manual)")).toHaveAccessibleDescription(/à parte da classificação automática/);
   await noHorizontalOverflow(page);
 
   // Testes físicos: a step of its own.
@@ -723,6 +723,11 @@ test("the Flexiteste, the physical tests and the final considerations save thems
   await expect(vo2Row).toContainText("37,90 ml/kg/min");
   await expect(vo2Row).toContainText("fórmula av2-2026-11 · estimativa");
   await expect(toRecord.getByRole("listitem").filter({ hasText: "Cooper, velocidade média" })).toContainText("11,0 km/h");
+  // Slice 0.92: the total by the user's Flexiteste table (31 – 40); the Cooper waits for "Referência das tabelas" (no equation here); the
+  // VO₂ estimate and the endurance tests have no table.
+  await expect(toRecord.getByRole("listitem").filter({ hasText: "Flexiteste, soma dos 15 níveis" })).toContainText("Classificação: Médio negativo");
+  await expect(toRecord.getByRole("listitem").filter({ hasText: "Cooper, velocidade média" })).toContainText("Classificação da distância (2.200 m): sem referência escolhida");
+  await expect(vo2Row).not.toContainText("Classificação");
   await noHorizontalOverflow(page);
 
   // Finalized: the record shows the levels, the tests as typed and the texts; the results with their method.
@@ -731,6 +736,7 @@ test("the Flexiteste, the physical tests and the final considerations save thems
   await expect(page.getByRole("heading", { name: /^Avaliação física de \d{2}\/\d{2}\/\d{4}$/, level: 1 })).toBeVisible();
   const results = page.getByRole("list", { name: "Resultados" });
   await expect(results.getByRole("listitem").filter({ hasText: "Flexiteste, soma dos 15 níveis" })).toContainText("32 pontos");
+  await expect(results.getByRole("listitem").filter({ hasText: "Flexiteste, soma dos 15 níveis" })).toContainText("Classificação: Médio negativo");
   await expect(results.getByRole("listitem").filter({ hasText: "Cooper, VO₂máx estimado" })).toContainText("37,90 ml/kg/min");
   const recordedMovement = page.getByRole("region", { name: "Postura e movimento" });
   await expect(recordedMovement.getByText("15 de 15 preenchidos · total: 32 pontos", { exact: false })).toBeVisible();

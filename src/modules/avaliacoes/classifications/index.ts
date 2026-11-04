@@ -11,8 +11,8 @@
  *
  * The other results (density, masses, sum of skinfolds, bilateral differences, VO₂ estimate) and the endurance tests have no table.
  */
-import { classify, type Classification, type ReferenceOrigin } from "./classify";
-import type { TableId, TableSex } from "./tables";
+import { classify, REFERENCE_LABEL, type Classification, type ReferenceOrigin } from "./classify";
+import { REFERENCE_TABLES, type TableId, type TableSex } from "./tables";
 
 export * from "./classify";
 export * from "./tables";
@@ -46,4 +46,19 @@ export function classifyResult(code: string, value: number, inputs: Record<strin
   const classified = table === "cooper_12min" ? inputs?.distanceM : value;
   if (typeof classified !== "number" || !Number.isFinite(classified)) return null;
   return classify({ table, value: classified, ageYears: context.ageYears, sex: context.sex, referenceFrom: context.referenceFrom });
+}
+
+/**
+ * "Referência das tabelas" of a recorded assessment, as frozen in its classifications (not read again from the draft): "Feminina, escolhida na
+ * Revisão", "Masculina, a da equação das dobras" or "Não escolhida"; null when no table that depends on it classified anything (nothing to say,
+ * or a record made before the tables).
+ */
+export function recordedTableReference(classifications: readonly (Classification | null | undefined)[]): string | null {
+  const used = classifications.filter((item): item is Classification => item !== null && item !== undefined && REFERENCE_TABLES[item.table].dependsOnSex);
+  const withSex = used.find((item) => item.sex !== null);
+  if (withSex?.sex) {
+    const label = REFERENCE_LABEL[withSex.sex];
+    return `${label.charAt(0).toUpperCase()}${label.slice(1)}, ${withSex.referenceFrom === "equation" ? "a da equação das dobras" : "escolhida na Revisão"}`;
+  }
+  return used.some((item) => item.status === "no_reference") ? "Não escolhida" : null;
 }

@@ -8,7 +8,8 @@
  * - Cooper, 12 minutes: the distance in metres (the time is fixed for this test), the date, place, conditions and contraindications. The average
  *   speed and the estimated VO₂max come from the versioned formulas (handoff 5) at finalize.
  *
- * Every classification is the professional's text (handoff 3.5: "classificação manual até tabela homologada"); nothing here classifies.
+ * The classification fields here are the professional's text (handoff 3.5), kept apart. Slice 0.92: the Cooper distance is classified by the
+ * reference table (Cooper, 1982) at finalize, with the average speed (src/modules/avaliacoes/classifications); the endurance tests have no table.
  * Pure: no screen and no database here, so the server checks a save with the same rules the screen uses.
  */
 import { z } from "zod";
@@ -259,4 +260,4 @@ export const testsProblemsMessage = (problems: string[]) =>
 
 /** The line said wherever a test's classification shows: it is the professional's, not the system's. */
 export const TESTS_CLASSIFICATION_NOTE =
-  "Escrita pelo profissional. As resistências abdominal e de membros superiores não têm tabela de referência; a distância do Cooper é classificada pela tabela de Cooper (1982), em “Resultados”.";
+  "Escrita pelo profissional. As resistências abdominal e de membros superiores não têm tabela de referência; a distância do Cooper é classificada pela tabela de Cooper (1982), nos resultados da avaliação.";

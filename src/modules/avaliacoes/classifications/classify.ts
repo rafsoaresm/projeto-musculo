@@ -144,8 +144,15 @@ export function classify(input: ClassifyInput): Classification {
 /* ---------- In words ---------- */
 
 const number = (value: number, decimals: number) => new Intl.NumberFormat("pt-BR", { minimumFractionDigits: decimals, maximumFractionDigits: decimals }).format(value);
-/** The value with one decimal more than the table, as the results show it (17,3%; 0,644; 23,63), so the rounding is visible. */
-const rawNumber = (value: number, decimals: number) => new Intl.NumberFormat("pt-BR", { maximumFractionDigits: decimals + 1 }).format(value);
+/**
+ * The value with one decimal more than the table, as the result rows show it (17,3%; 0,737; 23,63). When that rounds to the compared value
+ * itself (16,96%, 0,7399), the trailing zero is kept (17,0%; 0,740), so the rounding stays visible and never reads "17% comparado como 17%".
+ */
+const rawNumber = (value: number, decimals: number) =>
+  new Intl.NumberFormat("pt-BR", {
+    minimumFractionDigits: roundTo(value, decimals + 1) === roundTo(value, decimals) ? decimals + 1 : 0,
+    maximumFractionDigits: decimals + 1,
+  }).format(value);
 
 /** The level (or what the table does not say), as the screens and the report print it. */
 export function classificationLevel(classification: Classification): string {
@@ -181,11 +188,26 @@ export function classificationDetail(classification: Classification): string {
     parts.push(roundTo(classification.value, 4) === classification.comparedValue ? `comparado como ${compared}` : `${raw} comparado como ${compared}`);
   }
   if (classification.status === "no_reference") parts.push("escolha a referência das tabelas (masculina ou feminina) na Revisão");
-  if (classification.status === "no_age") parts.push("falta a data de nascimento no cadastro");
+  // The age comes from the student's data as the assessment took them when it started: a birth date filled in afterwards does not reach it.
+  if (classification.status === "no_age") parts.push("a avaliação não tem data de nascimento (o cadastro não tinha quando ela começou)");
   if (classification.sex) parts.push(`referência ${REFERENCE_LABEL[classification.sex]}${classification.referenceFrom === "equation" ? " (da equação das dobras)" : ""}`);
   parts.push(`tabela ${classification.version}`);
   return parts.join(" · ");
 }
+
+/**
+ * What the classification is of, when it is not the value of the row it sits on: the Cooper 12 min table classifies the distance run, shown on
+ * the row of the average speed (the test records no result of its own for the distance). Null for the others.
+ */
+export function classificationSubject(classification: Classification): string | null {
+  return classification.table === "cooper_12min" ? `da distância (${number(classification.value, 0)} m)` : null;
+}
+
+/** "Classificação" or "Classificação da distância (1.800 m)", before the level. */
+export const classificationHeading = (classification: Classification | null) => {
+  const subject = classification ? classificationSubject(classification) : null;
+  return subject ? `Classificação ${subject}` : "Classificação";
+};
 
 /** The one line of the report and of the evolution table: "Acima da Média — Percentual de gordura, homens, …". */
 export const classificationLine = (classification: Classification) => `${classificationLevel(classification)} — ${classificationDetail(classification)}`;

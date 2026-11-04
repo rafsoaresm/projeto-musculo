@@ -246,7 +246,7 @@ export const COOPER_TABLE: ReferenceTable = {
 
 /* ---------- Waist-hip ratio: adapted from Bray et Gray (1988) ---------- */
 
-export const WAIST_HIP_SOURCE = "Adaptado de Bray et Gray, 1988";
+export const WAIST_HIP_SOURCE = "Adaptado de Bray et Gray (1988)";
 export const WAIST_HIP_AGES: readonly [number, number, string][] = [
   [20, 29, "20 a 29 anos"],
   [30, 39, "30 a 39 anos"],

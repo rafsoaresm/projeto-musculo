@@ -117,4 +117,4 @@ export const totalText = (total: number | null) => (total === null ? `Só com os
 
 /** The line said wherever a Flexiteste classification shows: it is the professional's, not the system's. */
 export const FLEXITEST_CLASSIFICATION_NOTE =
-  "Escrita pelo profissional, à parte da classificação automática do total pela tabela de referência do Flexiteste (em “Resultados”, com os 15 movimentos).";
+  "Escrita pelo profissional, à parte da classificação automática do total pela tabela de referência do Flexiteste (nos resultados da avaliação, com os 15 movimentos).";

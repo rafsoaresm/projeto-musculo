@@ -5,7 +5,7 @@ import { MetricChart } from "../metric-chart";
 import { CONVERSION_LABEL } from "./composition";
 import { BREAK_LABEL, resultEvolution, type ComparableSeries, type EvolutionPoint, type EvolutionSource, type ResultEvolution } from "./evolution";
 import { FLAG_LABEL, RESULT_LABEL, formatResult, isResultEstimate, methodLabel, resultDigits } from "./review";
-import { BEFORE_TABLES, classificationDetail, classificationLevel, isClassifiedCode } from "../classifications";
+import { BEFORE_TABLES, classificationDetail, classificationLevel, classificationSubject, CLASSIFIED_CODES, isClassifiedCode } from "../classifications";
 
 const valueText = (code: string, point: Pick<EvolutionPoint, "value" | "unit">) =>
   point.value === null ? "Sem valor" : formatResult(code, point.value, point.unit);
@@ -127,7 +127,7 @@ export function ResultsEvolution({ history, headingId = "resultados-evolucao", h
                         <th scope="col">Data</th>
                         <th scope="col">Valor</th>
                         <th scope="col">Método</th>
-                        {isClassifiedCode(group.code) && <th scope="col">Classificação</th>}
+                        {isClassifiedCode(group.code) && <th scope="col">{CLASSIFIED_CODES[group.code] === "cooper_12min" ? "Classificação da distância" : "Classificação"}</th>}
                         <th scope="col">Comparação</th>
                       </tr>
                     </thead>
@@ -153,10 +153,13 @@ export function ResultsEvolution({ history, headingId = "resultados-evolucao", h
                             </span>
                           </td>
                           {isClassifiedCode(group.code) && (
-                            <td data-label="Classificação">
+                            <td data-label={CLASSIFIED_CODES[group.code] === "cooper_12min" ? "Classificação da distância" : "Classificação"}>
                               {point.classification ? (
                                 <span className="av2-evolution-method-cell">
-                                  <strong>{classificationLevel(point.classification)}</strong>
+                                  <span>
+                                    {classificationSubject(point.classification) && `${point.classification.value.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} m: `}
+                                    <strong>{classificationLevel(point.classification)}</strong>
+                                  </span>
                                   <span className="small muted">{classificationDetail(point.classification)}</span>
                                 </span>
                               ) : (

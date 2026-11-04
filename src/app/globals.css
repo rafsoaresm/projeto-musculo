@@ -7145,6 +7145,17 @@ fieldset.yes-no legend {
 .av2-result-value {
   font-variant-numeric: tabular-nums;
 }
+/* "Referência das tabelas" (0.92) over the results it decides, with room before the first row. One field in half of the card (two columns, not
+   the four of a form line), so its value and its note keep their own width; one column when the card is narrow. */
+.av2-reference {
+  --av2-columns: 2;
+  margin-bottom: 12px;
+}
+@container (max-width: 420px) {
+  .av2-reference {
+    --av2-columns: 1;
+  }
+}
 /* Under the value and the method, aligned with the value: the level, then the table, column, source and precision in a muted line. */
 .av2-result-class {
   grid-column: 2 / -1;

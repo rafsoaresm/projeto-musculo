@@ -58,15 +58,14 @@ import {
 } from "./physical-tests";
 import { HEATH_CARTER_NOTE, findingsText, postureEmpty, regionsOf, somatotypeText, type PosturePayload } from "./posture";
 import { FLAG_LABEL, RESULT_LABEL, formatResult, isResultEstimate, methodLabel, resultNote } from "./review";
-import { BEFORE_TABLES, TABLES_NOTE, classificationLine, isClassifiedCode } from "../classifications";
+import { BEFORE_TABLES, TABLES_NOTE, classificationHeading, classificationLine, isClassifiedCode, recordedTableReference } from "../classifications";
 import { ANAMNESIS_CODES, PARQ_CODES, parqAnswer, type ProfilePayload, type ScreeningPayload } from "./screening";
 import { photoViewLabel, type PhotoView } from "../photos";
 import { recordedPhotoGroups } from "./posture-photos";
 import { NOT_INCLUDED, PART_LABEL, excludedPartsOf, isPartEnabled, isStepEnabled, templateLine, type EnabledParts, type TemplatePart } from "./template";
 
 /** The line every report carries in place of the institutional disclaimer the handoff asks for but does not give (handoff 3.5). */
-export const REPORT_NOTICE =
-  "Classificação automática só pelas tabelas de referência indicadas em cada resultado (gordura, IMC, RCQ, Cooper 12 min e Flexiteste); só os resultados marcados “estimativa” vêm de equações.";
+export const REPORT_NOTICE = `${TABLES_NOTE} A classificação é a registrada ao finalizar, com a tabela indicada em cada resultado. Só os resultados marcados “estimativa” vêm de equações.`;
 /** The short form of `REPORT_NOTICE`, for the footer of each page. */
 export const REPORT_FOOTER_NOTICE = "Classificação só pelas tabelas de referência indicadas.";
 /** How an empty field reads in the report, so a reader does not take a blank for a zero. */
@@ -309,7 +308,7 @@ export function resultRows(results: readonly ResultRow[]) {
       classification: !isClassifiedCode(result.code)
         ? null
         : result.classification
-          ? `Classificação: ${classificationLine(result.classification)}`
+          ? `${classificationHeading(result.classification)}: ${classificationLine(result.classification)}`
           : `Classificação: ${BEFORE_TABLES}`,
     };
   });
@@ -334,11 +333,14 @@ export function validationLines(results: readonly ResultRow[]): string[] {
 }
 
 function resultsSection(results: readonly ResultRow[]): ReportSection {
+  // Slice 0.92: the reference the tables used, as frozen in the classifications (absent on a record made before the tables).
+  const reference = recordedTableReference(results.map((result) => result.classification));
   return {
     title: "Resultados",
     blocks: [
       notDone("Calculados ao finalizar, com o método e a versão da fórmula. Só os marcados como estimativa vêm da equação de um estudo."),
       notDone(TABLES_NOTE),
+      ...(reference ? facts([row("Referência das tabelas", reference)]) : []),
       results.length > 0 ? { kind: "results", rows: resultRows(results) } : { kind: "text", text: "Nenhum resultado foi calculado." },
       ...validationLines(results).map((text): ReportBlock => ({ kind: "text", text, muted: true })),
     ],

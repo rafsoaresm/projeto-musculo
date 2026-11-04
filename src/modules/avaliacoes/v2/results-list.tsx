@@ -1,4 +1,4 @@
-import { BEFORE_TABLES, classificationDetail, classificationLevel, isClassifiedCode, type Classification } from "../classifications";
+import { BEFORE_TABLES, classificationDetail, classificationHeading, classificationLevel, isClassifiedCode, type Classification } from "../classifications";
 import { FLAG_LABEL, RESULT_LABEL, formatResult, isResultEstimate, methodLabel, resultNote } from "./review";
 
 export interface ResultItem {
@@ -19,7 +19,7 @@ export function ResultClassification({ result }: { result: Pick<ResultItem, "cod
   return (
     <span className="av2-result-class">
       <span>
-        Classificação: <strong>{classification ? classificationLevel(classification) : BEFORE_TABLES}</strong>
+        {classificationHeading(classification)}: <strong>{classification ? classificationLevel(classification) : BEFORE_TABLES}</strong>
       </span>
       {classification && <span className="small muted">{classificationDetail(classification)}</span>}
     </span>
