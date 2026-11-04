@@ -9,8 +9,11 @@ import { phaseWorkoutLabels } from "@/modules/training/periodization";
 import { workoutTitle } from "@/modules/training/format";
 import { CATEGORIES } from "@/modules/biblioteca/contracts";
 import { videoLabel } from "@/modules/biblioteca/labels";
-import { describeDose } from "./describe";
+import { describeDose, restTextForEditing, storedDoseText } from "./describe";
 import { progressOf, type WorkoutProgress } from "./summary";
+import { revisionOriginLabel } from "./automatica/view";
+import { OccurrenceEditor } from "./occurrence-editor";
+import type { SessionOccurrence } from "@/db/prescription";
 import {
   addExercise,
   copyMesocycle,
@@ -48,15 +51,28 @@ export function PrescriptionEditor({
   items,
   library,
   readOnly,
+  occurrence,
+  openProposal = false,
 }: {
   planId: string;
   revisionId: string;
   schedule: PeriodizationSchedule;
-  items: PrescribedItem[];
+  /** Rows of the revision; `doseText` is the text stored when the engine wrote the dose (motor S9), shown as it is. */
+  items: Array<PrescribedItem & { doseText?: string | null }>;
   library: LibraryOption[];
   readOnly: boolean;
+  /**
+   * A revision written session by session (OCCURRENCE, motor S9): the sessions of one phase and the week shown, for the "Doses
+   * por sessão" section. Absent for every TEMPLATE revision, which is drawn exactly as before.
+   */
+  occurrence?: { selfHref: string; phaseIndex: number; week: number; sessions: SessionOccurrence[] };
+  /** An automatic proposal is open for this draft: changes here need the proposal to be updated before it is applied. */
+  openProposal?: boolean;
 }) {
-  const [phase, setPhase] = useState(0);
+  const [phase, setPhase] = useState(() => {
+    const at = occurrence ? schedule.phases.findIndex((p) => p.index === occurrence.phaseIndex) : 0;
+    return at < 0 ? 0 : at;
+  });
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [copyFromPhase, setCopyFromPhase] = useState("");
@@ -86,8 +102,15 @@ export function PrescriptionEditor({
       <p className="muted">
         {readOnly
           ? "Esta revisão está fechada: os exercícios abaixo não mudam. Para alterar, crie uma nova revisão."
-          : "Você escolhe cada exercício e digita cada valor. Nada é sugerido nem preenchido por padrão, e o alvo de exercícios por treino é só uma referência. A prescrição usa a estrutura já salva."}
+          : occurrence
+            ? "Exercícios propostos automaticamente e aplicados a este rascunho, com dose por sessão. Revise e edite à vontade: nada vai ao aluno antes da sua aprovação e da entrega."
+            : "Você escolhe cada exercício e digita cada valor. Nada é sugerido nem preenchido por padrão, e o alvo de exercícios por treino é só uma referência. A prescrição usa a estrutura já salva."}
       </p>
+      {openProposal && !readOnly && (
+        <p className="small" role="note">
+          <Pill tone="warning">Proposta aberta</Pill> Há uma proposta automática aberta; mudanças aqui exigem atualizar a proposta antes de aplicar.
+        </p>
+      )}
       <p className="small" role="status">
         <Pill tone={below ? "warning" : "success"}>
           {below
@@ -211,9 +234,24 @@ export function PrescriptionEditor({
             readOnly={readOnly}
             pending={pending}
             run={run}
+            perSession={Boolean(occurrence)}
           />
         ))}
       </div>
+      {occurrence && (
+        <OccurrenceEditor
+          planId={planId}
+          revisionId={revisionId}
+          selfHref={occurrence.selfHref}
+          schedule={schedule}
+          phaseIndex={occurrence.phaseIndex}
+          week={occurrence.week}
+          sessions={occurrence.sessions}
+          items={items}
+          library={library}
+          readOnly={readOnly}
+        />
+      )}
     </section>
   );
 }
@@ -229,17 +267,20 @@ function WorkoutCard({
   readOnly,
   pending,
   run,
+  perSession = false,
 }: {
   planId: string;
   revisionId: string;
   target: Target;
   progress: WorkoutProgress;
-  items: PrescribedItem[];
+  items: Array<PrescribedItem & { doseText?: string | null }>;
   allProgress: WorkoutProgress[];
   library: LibraryOption[];
   readOnly: boolean;
   pending: boolean;
   run: (task: () => Promise<PrescriptionResult>, done?: () => void) => void;
+  /** OCCURRENCE: each row shows where it came from, and the base dose is described as the dose of every session. */
+  perSession?: boolean;
 }) {
   const [category, setCategory] = useState("");
   const [exerciseId, setExerciseId] = useState("");
@@ -281,8 +322,14 @@ function WorkoutCard({
                 <div className="exercise-main">
                   <strong>{item.name}</strong>
                   <span className="small muted">
-                    {describeItem(item) || "Sem parâmetros definidos"}
+                    {perSession && "Dose base: "}
+                    {storedDoseText(item) || "Sem parâmetros definidos"}
                   </span>
+                  {perSession && (
+                    <span className="pill-row">
+                      <Pill tone={revisionOriginLabel(item.origin).tone}>{revisionOriginLabel(item.origin).text}</Pill>
+                    </span>
+                  )}
                   {item.notes && <span className="small muted">Obs.: {item.notes}</span>}
                   {item.videoUrl && (
                     <span className="small">
@@ -483,7 +530,7 @@ function ItemForm({
   onSave,
   onCancel,
 }: {
-  item: PrescribedItem;
+  item: PrescribedItem & { doseText?: string | null };
   pending: boolean;
   onSave: (fields: Record<string, unknown>, customName?: string) => void;
   onCancel: () => void;
@@ -495,7 +542,7 @@ function ItemForm({
     loadInstruction: item.loadInstruction ?? "",
     cadence: item.cadence ?? "",
     restSeconds: item.restSeconds === null ? "" : String(item.restSeconds),
-    restText: item.restText ?? "",
+    restText: restTextForEditing(item),
     rirMin: item.rirMin === null ? "" : String(item.rirMin),
     rirMax: item.rirMax === null ? "" : String(item.rirMax),
     videoUrl: item.videoUrl ?? "",

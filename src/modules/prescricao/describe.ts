@@ -34,3 +34,11 @@ export function describeDose(item: DoseFields): string {
  * structured one), or the typed fields in one line, as for every dose before 0041. Never re-rendered from a structured dose.
  */
 export const storedDoseText = (item: DoseFields & { doseText?: string | null }): string => item.doseText?.trim() || describeDose(item);
+
+/**
+ * The "Descanso (texto)" field when a dose written by the engine (it has stored text) is opened for editing: the engine also
+ * wrote the rest seconds as text, so keeping both would print the rest twice once the professional saves. A text typed by a
+ * person (no stored text) is kept as it is.
+ */
+export const restTextForEditing = (item: { restText: string | null; doseText?: string | null }): string =>
+  item.doseText?.trim() ? "" : (item.restText ?? "");

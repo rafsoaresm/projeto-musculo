@@ -7,6 +7,7 @@ import { requireWorkspace } from "@/modules/auth/server";
 import type { GenerationQuestion } from "./contracts";
 import {
   proposalService,
+  type AlternativesPayload,
   type ApplyPayload,
   type CasPayload,
   type ContinuePayload,
@@ -37,6 +38,8 @@ export type ProposalActionResult = {
     contentVersion?: number;
     reason?: string;
     questions?: GenerationQuestion[];
+    /** Phases with sessions in the proposal, of all phases: the processing indicator. */
+    progress?: { generated: number; total: number };
   };
 };
 
@@ -44,7 +47,13 @@ function toResult(outcome: ProposalOutcome): ProposalActionResult {
   if (outcome.ok)
     return {
       ...(outcome.notice ? { notice: outcome.notice } : {}),
-      data: { proposalId: outcome.proposalId, version: outcome.version, complete: outcome.complete, replayed: outcome.replayed },
+      data: {
+        proposalId: outcome.proposalId,
+        version: outcome.version,
+        complete: outcome.complete,
+        replayed: outcome.replayed,
+        ...(outcome.progress ? { progress: outcome.progress } : {}),
+      },
     };
   return {
     error: outcome.message,
@@ -96,6 +105,21 @@ export async function acceptFlagDecision(planId: string, revisionId: string, pay
 
 export async function discardProposal(planId: string, revisionId: string, payload: CasPayload): Promise<ProposalActionResult> {
   return run((s) => s.discard(planId, revisionId, payload));
+}
+
+/**
+ * Alternatives for one item of the open proposal (the substitution dialog). Reads only: nothing is written and no plan data
+ * other than the exercise names of the visible library comes back.
+ */
+export async function loadAlternatives(
+  planId: string,
+  revisionId: string,
+  payload: AlternativesPayload,
+): Promise<{ error?: string; alternatives?: Array<{ exerciseId: string; name: string; metadata: string; reasons: string[] }> }> {
+  const { db, context } = await requireWorkspace();
+  const out = await proposalService(db, context).alternatives(planId, revisionId, payload);
+  if (out.status !== "ok") return { error: "Não foi possível listar alternativas. Recarregue a página." };
+  return { alternatives: out.alternatives };
 }
 
 export type ApplyActionResult = {

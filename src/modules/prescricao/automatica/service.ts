@@ -29,7 +29,9 @@ import {
 import type { AuthenticatedContext } from "@/db/students";
 import { generate, phaseSummaries, workUnits } from "@/modules/prescricao/motor/generate";
 import { canonicalInput, canonicalJson, canonicalRequest, sha256Hex } from "@/modules/prescricao/motor/hash";
-import { rebase, regenerate, substitute } from "@/modules/prescricao/motor/regenerate";
+import { alternativesFor, rebase, regenerate, substitute } from "@/modules/prescricao/motor/regenerate";
+import { DEFAULT_RULESET, getRuleSet } from "@/modules/prescricao/motor/rules";
+import { STIMULUS_LABELS } from "@/modules/prescricao/motor/vocabulary";
 import { uniqueIssues } from "@/modules/prescricao/motor/trace";
 import type {
   EngineInput,
@@ -39,7 +41,7 @@ import type {
   RegenerationScope,
   SubstitutionTarget,
 } from "@/modules/prescricao/motor/types";
-import { ADAPTER_ASSUMPTION_CODES, ADAPTER_ISSUE_CODES, buildEngineInput } from "./build-input";
+import { ADAPTER_ASSUMPTION_CODES, ADAPTER_ISSUE_CODES, buildEngineInput, goalSuggestions } from "./build-input";
 import { loadGenerationContext } from "./context";
 import {
   flagDecisionSchema,
@@ -48,7 +50,8 @@ import {
   type GenerationFactRefs,
   type GenerationQuestion,
 } from "./contracts";
-import type { GenerationContext } from "./facts";
+import { studentFacts, type GenerationContext } from "./facts";
+import { policyRows, type PolicyRow } from "./view";
 import { WORK_UNITS_PER_REQUEST } from "./limits";
 
 // ---------- payloads ----------
@@ -103,7 +106,12 @@ const applySchema = z
   })
   .strict();
 
+const alternativesSchema = z
+  .object({ proposalId: z.string().min(1).max(64), phaseIndex, slotKey, week: week.optional(), slot: slot.optional() })
+  .strict();
+
 export type GeneratePayload = z.input<typeof generateSchema>;
+export type AlternativesPayload = z.input<typeof alternativesSchema>;
 export type ApplyPayload = z.input<typeof applySchema>;
 export type ContinuePayload = z.input<typeof continueSchema>;
 export type RegeneratePayload = z.input<typeof regenerateSchema>;
@@ -133,7 +141,16 @@ export type ProposalFailure =
   | "too_large";
 
 export type ProposalOutcome =
-  | { ok: true; proposalId: string; version: number; complete: boolean; replayed: boolean; notice?: string }
+  | {
+      ok: true;
+      proposalId: string;
+      version: number;
+      complete: boolean;
+      replayed: boolean;
+      notice?: string;
+      /** Phases with sessions in the proposal now, of all phases of the structure: the processing indicator ("3 de 8 fases"). */
+      progress?: { generated: number; total: number };
+    }
   | {
       ok: false;
       reason: ProposalFailure;
@@ -266,7 +283,117 @@ function fromMutate(proposalId: string, out: MutateOutcome, complete: boolean, n
   }
 }
 
+// ---------- what the screens read ----------
+
+/** One fact the generation will read, as the "Dados considerados" list shows it (no health free text here). */
+export interface ConsideredFact {
+  label: string;
+  value: string;
+  source: "Ficha" | "Avaliação" | "Periodização" | "Biblioteca" | "Histórico" | "Rascunho";
+}
+
+/** Everything the generation form needs, read again on every visit through the gated repositories. */
+export interface GenerationScreen {
+  contentVersion: number;
+  structure: Array<{
+    index: number;
+    name: string | null;
+    weeks: number;
+    sessionsPerWeek: number;
+    workouts: Array<{ label: string; name: string | null; target: number | null }>;
+  }>;
+  /** What the records do not say, with the current (empty) answers: required ones block "Gerar". */
+  questions: GenerationQuestion[];
+  assumptions: EngineResult["assumptions"];
+  issues: EngineResult["issues"];
+  considered: ConsideredFact[];
+  /** Free text of the student's records, shown next to the questions and never interpreted (design §2.2). */
+  freeText: Array<{ label: string; text: string }>;
+  /** Stimulus chips from the goal text (rule GOAL_STIMULUS_HINTS): nothing pre-selected. */
+  suggestions: Array<{ value: string; ruleId: string; label: string }>;
+  stimulusOptions: Array<{ value: string; label: string }>;
+  policy: PolicyRow[];
+  rules: { id: string; version: string };
+  library: Array<{ id: string; name: string; metadata: "REVIEWED" | "INFERRED" | "PENDING" }>;
+  lastAnswers: { createdAt: string; answers: unknown } | null;
+}
+
+const PROFILE_TEXT: Array<[keyof NonNullable<GenerationContext["profile"]>, string]> = [
+  ["equipment", "Equipamentos (ficha)"],
+  ["location", "Local de treino"],
+  ["experience", "Experiência"],
+  ["preferredExercises", "Exercícios preferidos"],
+  ["dislikedExercises", "Exercícios que não gosta"],
+  ["excludedExercises", "Exercícios a evitar"],
+  ["injuries", "Lesões"],
+  ["surgeries", "Cirurgias"],
+  ["pains", "Dores"],
+  ["limitations", "Limitações"],
+  ["medicationsConditions", "Medicamentos e condições"],
+  ["relevantNotes", "Observações relevantes"],
+  ["professionalNotes", "Notas do profissional"],
+];
+
+const PARQ_TEXT = { CLEAR: "Sem \"Sim\" no PAR-Q", POSITIVE: "PAR-Q com \"Sim\"", NOT_DONE: "Não feita" } as const;
+
+function screenOf(ctx: GenerationContext, built: Built | Extract<ReturnType<typeof buildEngineInput>, { ok: true }>): Omit<GenerationScreen, "lastAnswers"> {
+  const rules = getRuleSet(DEFAULT_RULESET)!;
+  const student = studentFacts(ctx.profile, ctx.assessment);
+  const p = ctx.profile;
+  const w = ctx.history.window;
+  const counts = { REVIEWED: 0, INFERRED: 0, PENDING: 0 };
+  for (const e of ctx.catalog) counts[e.metadataStatus] += 1;
+  const considered: ConsideredFact[] = [
+    { label: "Nível", value: p?.level ?? "Não informado", source: "Ficha" },
+    { label: "Objetivo", value: student.goal?.value ?? "Não informado", source: student.goal?.source === "ASSESSMENT" ? "Avaliação" : "Ficha" },
+    { label: "Dias por semana", value: p?.daysPerWeek ? String(p.daysPerWeek) : "Não informado", source: "Ficha" },
+    { label: "Tempo por sessão", value: p?.sessionMinutes ? `${p.sessionMinutes} min` : "Não informado", source: "Ficha" },
+    {
+      label: "Avaliação mais recente",
+      value: ctx.assessment ? `${ctx.assessment.assessedOn.slice(8, 10)}/${ctx.assessment.assessedOn.slice(5, 7)}/${ctx.assessment.assessedOn.slice(0, 4)}` : "Nenhuma registrada",
+      source: "Avaliação",
+    },
+    { label: "Triagem (PAR-Q)", value: PARQ_TEXT[student.screening.parq], source: "Avaliação" },
+    { label: "Achados da avaliação", value: student.findings.length ? `${student.findings.length} (contexto, não contraindicação)` : "Nenhum", source: "Avaliação" },
+    {
+      label: "Periodização salva",
+      value: `${ctx.revision.schedule.phases.length} ${ctx.revision.schedule.phases.length === 1 ? "fase" : "fases"} · ${ctx.revision.schedule.totalWeeks} semanas`,
+      source: "Periodização",
+    },
+    { label: "Biblioteca", value: `${ctx.catalog.length} exercícios: ${counts.REVIEWED} revisados, ${counts.INFERRED} inferidos, ${counts.PENDING} pendentes`, source: "Biblioteca" },
+    { label: "Histórico de execução", value: w.sessions ? `${w.sessions} ${w.sessions === 1 ? "sessão" : "sessões"} em ${w.sinceDays} dias` : `Nenhuma sessão em ${w.sinceDays} dias`, source: "Histórico" },
+    { label: "Exercícios já no rascunho", value: ctx.existing.length ? `${ctx.existing.length} (preservados)` : "Nenhum", source: "Rascunho" },
+  ];
+  const freeText = p ? PROFILE_TEXT.flatMap(([key, label]) => (typeof p[key] === "string" && (p[key] as string).trim() ? [{ label, text: p[key] as string }] : [])) : [];
+  const structure = built.input.structure.phases.map((ph) => ({
+    index: ph.index,
+    name: ph.name,
+    weeks: ph.weeks,
+    sessionsPerWeek: ph.sessionsPerWeek,
+    workouts: ph.workouts.map((wk) => ({ label: wk.label, name: wk.name, target: wk.exerciseTarget })),
+  }));
+  return {
+    contentVersion: ctx.revision.contentVersion,
+    structure,
+    questions: built.questions,
+    assumptions: built.assumptions,
+    issues: built.issues,
+    considered,
+    freeText,
+    suggestions: goalSuggestions(student.goal?.value ?? null),
+    stimulusOptions: Object.entries(STIMULUS_LABELS).map(([value, label]) => ({ value, label })),
+    policy: policyRows(rules),
+    rules: { id: rules.id, version: rules.version },
+    library: ctx.catalog.map((e) => ({ id: e.id, name: e.name, metadata: e.metadataStatus })).sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
+  };
+}
+
 // ---------- helpers ----------
+
+function progressOf(result: EngineResult): { generated: number; total: number } {
+  const done = new Set(result.occurrences.map((o) => o.phaseIndex));
+  return { generated: result.phases.filter((p) => done.has(p.phaseIndex)).length, total: result.phases.length };
+}
 
 const requestHash = (kind: string, payload: unknown) => sha256Hex(canonicalRequest(kind, payload));
 
@@ -467,7 +594,8 @@ export function proposalService(
     const rec = await record(ran.scope, key, ran.input, ctx, built.facts, answers, ran.scopeJson, base, built);
     const out = await repo.recordChange(planId, revisionId, p.proposalId, { expectedVersion: p.expectedVersion, writeId: p.writeId }, rec, previous, result, { target: ran.target }, now);
     const complete = result.phases.every((ph) => result.occurrences.some((o) => o.phaseIndex === ph.phaseIndex));
-    return fromMutate(p.proposalId, out, complete, factsChanged(header.lastFacts, built.facts) ? FACTS_NOTICE : undefined);
+    const outcome = fromMutate(p.proposalId, out, complete, factsChanged(header.lastFacts, built.facts) ? FACTS_NOTICE : undefined);
+    return outcome.ok && !outcome.replayed ? { ...outcome, progress: progressOf(result) } : outcome;
   }
 
   return {
@@ -499,7 +627,8 @@ export function proposalService(
       const result = withAdapter(generate(input), built);
       const rec = await record("FULL", key, input, ctx, built.facts, answers, { phases: picked }, ctx.revision.contentVersion, built);
       const out = await repo.recordGeneration(planId, revisionId, rec, result, now);
-      return fromGenerate(out, picked.length < all.length ? `Geradas ${picked.length} de ${all.length} fases (limite técnico por pedido). Continue a geração para as demais.` : undefined);
+      const generated = fromGenerate(out, picked.length < all.length ? `Geradas ${picked.length} de ${all.length} fases (limite técnico por pedido). Continue a geração para as demais.` : undefined);
+      return generated.ok && !generated.replayed ? { ...generated, progress: progressOf(result) } : generated;
     },
 
     /** "Continuar a geração": the next phases that fit, with the same answers and the current data. */
@@ -615,6 +744,45 @@ export function proposalService(
       const { proposalId, writeId, expectedVersion } = parsed.data;
       const out = await repo.discard(planId, revisionId, proposalId, { expectedVersion, writeId }, clock());
       return fromMutate(proposalId, out, (await repo.header(planId, revisionId, proposalId, "ANY"))?.complete ?? false);
+    },
+
+    /**
+     * The generation form's data (design §6.1 `generation-form`, `context-summary`): the structure, the questions still open
+     * with no answer yet, the adapter's assumptions, the facts that will be read, the dose policy table and the previous answers.
+     * Reads only; nothing is generated.
+     */
+    async screen(planId: string, revisionId: string): Promise<{ status: "ok"; screen: GenerationScreen } | { status: "not_found" | "not_open" }> {
+      const loaded = await loadGenerationContext(db, context, planId, revisionId, { now: clock() });
+      if (loaded.status !== "ok") return { status: loaded.status };
+      const built = buildEngineInput(loaded.context, parseGenerationAnswers({}));
+      if (!built.ok) return { status: "not_found" };
+      const last = await repo.lastAnswers(planId);
+      return { status: "ok", screen: { ...screenOf(loaded.context, built), lastAnswers: last ? { createdAt: last.createdAt, answers: last.answers } : null } };
+    },
+
+    /**
+     * Alternatives for one item of the open proposal (design §6.1 `substitute-dialog`): ranked by the engine from the visible
+     * library with the proposal's answers, each labelled reviewed or inferred. Empty when nothing compatible is left.
+     */
+    async alternatives(
+      planId: string,
+      revisionId: string,
+      raw: { proposalId: string; phaseIndex: number; slotKey: string; week?: number; slot?: number },
+    ): Promise<{ status: "ok"; alternatives: Array<{ exerciseId: string; name: string; metadata: string; reasons: string[] }> } | { status: "not_found" | "invalid" }> {
+      const parsed = alternativesSchema.safeParse(raw);
+      if (!parsed.success) return { status: "invalid" };
+      const snap = await repo.asEngineResult(planId, revisionId, parsed.data.proposalId);
+      if (!snap || snap.header.state !== "OPEN") return { status: "not_found" };
+      const answers = parseAnswers(snap.header.parameters);
+      if (!answers) return { status: "invalid" };
+      const prepared = await prepare(db, context, planId, revisionId, answers, lockedOf(snap.result), clock());
+      if (!prepared.ok) return { status: "not_found" };
+      const { proposalId, ...target } = parsed.data;
+      void proposalId;
+      const rules = getRuleSet(prepared.built.input.rules);
+      const limit = rules?.rules.ALTERNATIVES_LIMIT.value ?? 8;
+      const list = alternativesFor(prepared.built.input, snap.result, target, limit);
+      return { status: "ok", alternatives: list.map((a) => ({ exerciseId: a.exerciseId, name: a.name, metadata: a.metadata, reasons: a.reasons })) };
     },
 
     /** What "Aplicar ao rascunho" would write and what it asks first. Null when the proposal is not reachable. */

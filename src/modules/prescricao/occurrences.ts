@@ -77,3 +77,28 @@ export function occurrenceCounts(
     return { ...slot, count: counts.length ? Math.min(...counts) : 0 };
   });
 }
+
+/** Which sessions an edit per session covers (design §6.1 `dose-form`): this one, this one and the later weeks, or the whole phase. */
+export type SessionScope = "ONLY" | "FROM_WEEK" | "PHASE";
+
+/**
+ * The sessions of the same workout an edit reaches from one session, and the dose ids of one exercise in them. Sessions of other
+ * workouts are never reached. Pure: the editor computes the ids from what the page read and the repository checks them again.
+ */
+export function sessionTargets(
+  sessions: Array<{ id: string; week: number; label: string; items: Array<{ id: string; prescribedExerciseId: string }> }>,
+  from: { sessionId: string; prescribedExerciseId?: string },
+  scope: SessionScope,
+): { sessionIds: string[]; itemIds: string[] } {
+  const origin = sessions.find((s) => s.id === from.sessionId);
+  if (!origin) return { sessionIds: [], itemIds: [] };
+  const reached = sessions.filter(
+    (s) => s.label === origin.label && (scope === "PHASE" || (scope === "FROM_WEEK" ? s.week >= origin.week : s.id === origin.id)),
+  );
+  return {
+    sessionIds: reached.map((s) => s.id),
+    itemIds: from.prescribedExerciseId
+      ? reached.flatMap((s) => s.items.filter((x) => x.prescribedExerciseId === from.prescribedExerciseId).map((x) => x.id))
+      : [],
+  };
+}
