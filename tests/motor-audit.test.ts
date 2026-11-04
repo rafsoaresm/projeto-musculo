@@ -176,6 +176,34 @@ describe("auditoria: alvos (b), escolha (c) e escopo do alvo", () => {
     expect(of(result, "AUDIT_TARGET_PATTERN_UNMET")).toEqual([expect.objectContaining({ pattern: "KNEE_FLEXION", severity: "WARNING", measured: { unit: "SESSIONS", value: 0 } })]);
   });
 
+  it("alvo do treino em rotação irregular: só as semanas em que o treino tem sessão (ABC em 2 por semana)", () => {
+    // semanas: 1 = A B, 2 = C A, 3 = B C; o treino C não tem sessão na semana 1
+    const seed: PhaseSeed = { weeks: 3, sessionsPerWeek: 2, stimulus: "HYPERTROPHY", rotation: ["A", "B", "C"], workouts: [{ label: "A" }, { label: "B" }, { label: "C" }] };
+    const focusC = (_p: number, l: string) => (l === "C" ? phaseCov(["CALVES"], [], { origin: "WORKOUT_FOCUS" }) : null);
+    const met = planned([seed], { A: ["ex-squat", "ex-bench"], B: ["ex-rdl", "ex-row"], C: ["ex-calf", "ex-ohp"] }, { coverage: focusC }).result;
+    expect(audit(met).phases[0].workouts.find((w) => w.label === "C")!.exposuresPerWeek).toEqual({ min: 0, max: 1 });
+    expect(of(met, "AUDIT_TARGET_MUSCLE_UNMET")).toEqual([]);
+    const unmet = planned([seed], { A: ["ex-squat", "ex-bench"], B: ["ex-rdl", "ex-row"], C: ["ex-lunge", "ex-ohp"] }, { coverage: focusC }).result;
+    expect(of(unmet, "AUDIT_TARGET_MUSCLE_UNMET")).toEqual([expect.objectContaining({ muscle: "CALVES", label: "C", week: 2, measured: { unit: "SESSIONS", value: 0 } })]);
+  });
+
+  it("sem `origin` gravado, a estrutura diz a origem: foco do treino A e alvo da fase no B não viram alvos por treino", () => {
+    const seed: PhaseSeed = { ...phase, workouts: [{ label: "A", focus: { muscles: ["CHEST"] } }, { label: "B" }] };
+    const cov = (_p: number, l: string): CoverageTargets => (l === "A" ? { muscles: ["CHEST"], patterns: [], basis: "PROFESSIONAL" } : { muscles: ["QUADRICEPS"], patterns: [], basis: "PROFESSIONAL" });
+    // quadríceps só no treino A: alvo da fase atendido na fase; lido como alvo do treino B, seria um falso "0 sessões"
+    const { result } = planned([seed], XINTUS_PREVIOUS_PLAN, { sets, coverage: cov });
+    expect(of(result, "AUDIT_TARGET_MUSCLE_UNMET")).toEqual([]);
+    expect(audit(result).phases[0].muscles.find((m) => m.muscle === "QUADRICEPS")!.target).toMatchObject({ origin: "PHASE_COVERAGE" });
+    expect(audit(result).phases[0].muscles.find((m) => m.muscle === "CHEST")!.target).toMatchObject({ origin: "WORKOUT_FOCUS" });
+  });
+
+  it("generate: só weeklySets (sem músculos nem padrões) não some com o aviso NO_TARGETS do motor", () => {
+    const params = parameters({ phaseCoverage: [{ phaseIndex: 1, weeklySets: [{ muscle: "CALVES", minWeighted: 6 }], basis: "PROFESSIONAL" }] });
+    const r = generate(baseInput({ catalog: XINTUS_CATALOG, structure: structure("2026-11-09", [phase]), parameters: params }));
+    expect(r.issues.filter((i) => i.code === "NO_TARGETS").length).toBe(2);
+    expect(r.validation).not.toBe("PASSED");
+  });
+
   it("generate: weeklySets e origin entram nos alvos gravados só com as regras da auditoria", () => {
     const params = parameters({ phaseCoverage: [{ phaseIndex: 1, muscles: ["QUADRICEPS"], weeklySets: [{ muscle: "QUADRICEPS", minWeighted: 10, maxWeighted: 20 }], basis: "PROFESSIONAL" }] });
     const st = structure("2026-11-09", [phase]);
@@ -233,7 +261,9 @@ describe("auditoria: generalidade (força, cardio, mobilidade, várias divisões
     const full = generate(baseInput({ structure: st, parameters: parameters({ availableMinutes: 60 }) }));
     const under = of(full, "AUDIT_DURATION_UNDERUSED");
     expect(under.length).toBe(2);
-    expect(under[0]).toMatchObject({ target: { unit: "MINUTES", max: 60, basis: "PROFESSIONAL", origin: "AVAILABILITY" } });
+    // faixa de uso esperada: do limiar (60% de 60 min, heurística) ao tempo disponível; nunca "alvo ≤ 60" sozinho
+    expect(under[0]).toMatchObject({ target: { unit: "MINUTES", min: 36, max: 60, basis: "PROFESSIONAL", ruleId: "AUDIT_THRESHOLDS", origin: "AVAILABILITY" } });
+    expect(under[0].measured!.value).toBeLessThan(36);
     const empty = generate(baseInput({ structure: st, parameters: parameters({ availableMinutes: 60, doseMode: "LEAVE_EMPTY" }) }));
     expect(of(empty, "AUDIT_DURATION_UNDERUSED")).toEqual([]);
   });
@@ -285,6 +315,18 @@ describe("auditoria: ocorrências reais (rotação irregular, datas vazias, sema
     expect(of(partial, "AUDIT_PARTIAL_WEEK")).toEqual([expect.objectContaining({ week: 4, measured: { unit: "SESSIONS", value: 2, detail: { sessionsPerWeek: 4 } } })]);
     expect(of(partial, "AUDIT_WEEK_VOLUME_JUMP")).toEqual([]);
     expect(audit(partial).phases[0].occurrencesPerWeek).toEqual({ min: 2, max: 4 });
+  });
+
+  it("rotação irregular não é salto de volume: semanas com treinos diferentes não se comparam", () => {
+    // ABC em 4 por semana, A com 8 exercícios e B, C com 3; semana 3 = C A B C, semana 4 = A B C A; séries constantes
+    const seed: PhaseSeed = { weeks: 4, sessionsPerWeek: 4, stimulus: "HYPERTROPHY", rotation: ["A", "B", "C"], workouts: [{ label: "A" }, { label: "B" }, { label: "C" }] };
+    const plan = {
+      A: ["ex-squat", "ex-bench", "ex-legext", "ex-row", "ex-ohp", "ex-curl", "ex-triceps", "ex-calf"],
+      B: ["ex-rdl", "ex-pulldown", "ex-lateral"], C: ["ex-lunge", "ex-dbpress", "ex-facepull"],
+    };
+    const { result } = planned([seed], plan);
+    expect(audit(result).phases[0].weekRows.map((w) => w.weighted).filter((x, i, a) => a.indexOf(x) === i).length).toBeGreaterThan(1);
+    expect(of(result, "AUDIT_WEEK_VOLUME_JUMP")).toEqual([]);
   });
 
   it("datas vazias: contadas, e nada mais muda", () => {
@@ -349,6 +391,30 @@ describe("auditoria: vazio nunca é 0", () => {
     expect(of(result, "AUDIT_NO_DIRECT_STIMULUS")).toEqual([]);
     expect(of(result, "AUDIT_NON_TARGET_OMITTED")).toEqual([]);
     expect(of(result, "AUDIT_UNCOUNTED_ITEMS")[0].rationale).toMatch(/não foram contados/);
+  });
+});
+
+describe("auditoria: item não contado com alvo", () => {
+  it("linha personalizada no treino A e alvo de posteriores: nada de 'medido 0', séries e equilíbrio pulados", () => {
+    const phase: PhaseSeed = { weeks: 2, sessionsPerWeek: 4, stimulus: "HYPERTROPHY", rotation: ["A", "B"], workouts: [{ label: "A" }, { label: "B" }] };
+    const custom: PlanItemSeed = { exerciseId: null, name: "Flexora do aluno", dose: repsDose(3), doseBasis: "PROFESSIONAL", origin: "PRESERVED" };
+    const { result } = planned([phase], { A: ["ex-squat", "ex-legext", "ex-bench", custom], B: ["ex-hipthrust", "ex-row", "ex-pulldown"] }, {
+      coverage: () => phaseCov(["HAMSTRINGS"], [], { weeklySets: [{ muscle: "QUADRICEPS", minWeighted: 30, basis: "PROFESSIONAL" }] }),
+    });
+    const p = audit(result).phases[0];
+    expect(p.weekRows.every((w) => w.uncountedItems === 2 && w.weighted === null)).toBe(true);
+    expect(p.muscles.find((m) => m.muscle === "HAMSTRINGS")).toMatchObject({ classification: "UNKNOWN", direct: null, indirect: null, weighted: null });
+    expect(p.patterns.every((x) => x.sets === null)).toBe(true);
+    for (const code of ["AUDIT_TARGET_MUSCLE_UNMET", "AUDIT_PATTERN_IMBALANCE", "AUDIT_WEEK_VOLUME_JUMP", "AUDIT_WORKOUT_SHARE"]) expect(of(result, code), code).toEqual([]);
+    expect(of(result, "AUDIT_UNCOUNTED_ITEMS")[0].rationale).toMatch(/não é dado como 0/);
+  });
+
+  it("item não contado só no treino A: alvo do treino B continua checado", () => {
+    const phase: PhaseSeed = { weeks: 2, sessionsPerWeek: 4, stimulus: "HYPERTROPHY", rotation: ["A", "B"], workouts: [{ label: "A" }, { label: "B" }] };
+    const custom: PlanItemSeed = { exerciseId: null, name: "Flexora do aluno", dose: repsDose(3), origin: "PRESERVED" };
+    const focusB = (_p: number, l: string) => (l === "B" ? phaseCov(["HAMSTRINGS"], [], { origin: "WORKOUT_FOCUS" }) : null);
+    const { result } = planned([phase], { A: ["ex-squat", custom], B: ["ex-hipthrust", "ex-row"] }, { coverage: focusB });
+    expect(of(result, "AUDIT_TARGET_MUSCLE_UNMET")).toEqual([expect.objectContaining({ muscle: "HAMSTRINGS", label: "B", week: 1 })]);
   });
 });
 

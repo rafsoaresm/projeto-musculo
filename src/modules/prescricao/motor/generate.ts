@@ -342,7 +342,8 @@ export function planWorkout(ctx: EngineContext, phase: StructurePhase, workout: 
   // cobertura
   const coverage = coverageFor(ctx, phase, workout);
   const chosen = slots.map((s) => s.exercise).filter((e): e is CatalogExercise => e !== null);
-  if (coverage) {
+  // Só `weeklySets` (sem músculos nem padrões) não orienta a seleção: o aviso NO_TARGETS continua.
+  if (coverage && (coverage.muscles.length || coverage.patterns.length)) {
     for (const m of coverage.muscles)
       if (!chosen.some((e) => e.primaryMuscles.some((x) => codeOf(x) === codeOf(m))))
         issues.push({ severity: "WARNING", code: "MUSCLE_NOT_COVERED", path, ...at, message: `Treino ${workout.label}: ${MUSCLE_LABELS[codeOf(m)] ?? m} sem exercício como músculo principal.` });

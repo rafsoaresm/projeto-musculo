@@ -131,9 +131,14 @@ function sameCoverage(a: CoverageTargets, b: CoverageTargets): boolean {
   return [...a.muscles].sort(cmp).join() === [...b.muscles].sort(cmp).join() && [...a.patterns].sort(cmp).join() === [...b.patterns].sort(cmp).join() && a.basis === b.basis;
 }
 
-function targetsOf(workouts: WorkoutSummary[]): TargetSpec[] {
+function targetsOf(workouts: WorkoutSummary[], structure: StructurePhase | null): TargetSpec[] {
   const covered = workouts.filter((w) => w.coverage);
-  // Propostas sem `origin` gravado (antes da auditoria): o mesmo alvo em todos os treinos da fase é lido como alvo da fase.
+  // Propostas sem `origin` gravado (antes da auditoria): com a estrutura da entrada, o foco do treino diz a origem (o motor
+  // usa o foco no lugar da cobertura da fase); sem ela, o mesmo alvo em todos os treinos da fase é lido como alvo da fase.
+  const focused = (label: string): boolean | null => {
+    const w = structure?.workouts.find((x) => x.label === label);
+    return w ? Boolean(w.focus.muscles?.length || w.focus.patterns?.length) : null;
+  };
   const inferred: "WORKOUT_FOCUS" | "PHASE_COVERAGE" =
     covered.length === workouts.length && covered.length > 0 && covered.every((w) => sameCoverage(w.coverage!, covered[0].coverage!)) ? "PHASE_COVERAGE" : "WORKOUT_FOCUS";
   const specs = new Map<string, TargetSpec>();
@@ -151,7 +156,8 @@ function targetsOf(workouts: WorkoutSummary[]): TargetSpec[] {
   };
   for (const w of covered) {
     const c = w.coverage!;
-    const origin = c.origin ?? inferred;
+    const fromStructure = focused(w.label);
+    const origin = c.origin ?? (fromStructure === null ? inferred : fromStructure ? "WORKOUT_FOCUS" : "PHASE_COVERAGE");
     const label = origin === "PHASE_COVERAGE" ? null : w.label;
     const base = { basis: c.basis, ...(c.ruleId ? { ruleId: c.ruleId } : {}), origin, label };
     for (const m of c.muscles) add({ kind: "MUSCLE", code: codeOf(m), minSessions: 1, ...base });
@@ -205,10 +211,13 @@ function auditPhase(pc: PhaseContext): AuditPhase {
     for (const f of wf) for (const m of f.primary) (direct.get(m) ?? direct.set(m, new Set()).get(m)!).add(f.occ.slot);
     const directSessions: Record<string, number> = {};
     for (const m of [...direct.keys()].sort(cmp)) directSessions[m] = direct.get(m)!.size;
-    const weighted = unknownSetItems > 0 ? null : r2(wf.reduce((s, f) => s + (f.weighted ?? 0), 0));
+    const weighted = unknownSetItems > 0 || uncountedItems > 0 ? null : r2(wf.reduce((s, f) => s + (f.weighted ?? 0), 0));
     return { week, occurrences, full: occurrences >= summary.sessionsPerWeek, unknownSetItems, uncountedItems, directSessions, weighted };
   });
-  const known = (w: number) => weekRows[w - 1]?.unknownSetItems === 0;
+  // Séries conhecidas na semana: nenhum item de volume sem séries e nenhum item não contado (§3.5.12).
+  const known = (w: number) => weekRows[w - 1]?.unknownSetItems === 0 && weekRows[w - 1]?.uncountedItems === 0;
+  /** A semana tem item não contado no escopo (treino do alvo ou fase): uma ausência ali pode ser só o item que não se lê. */
+  const uncountedIn = (w: number, label: string | null) => facts.some((f) => f.uncounted && f.occ.week === w && (label === null || f.occ.label === label));
   const fullWeeks = weekRows.filter((w) => w.full).map((w) => w.week);
   const checkWeeks = fullWeeks.length ? fullWeeks : weekRows.filter((w) => w.occurrences > 0).map((w) => w.week);
   const partialWeeks = weekRows.filter((w) => !w.full).map((w) => w.week);
@@ -218,7 +227,7 @@ function auditPhase(pc: PhaseContext): AuditPhase {
   const hasVolume = volumeFacts.length > 0 || facts.some((f) => f.unknownSets);
   const stimuli = [...new Set(occs.map((o) => o.stimulus?.value).filter((s): s is string => Boolean(s)))].sort(cmp);
   const comprehensive = hasVolume && stimuli.some((s) => pc.comprehensiveStimuli.has(s));
-  const targets = targetsOf(pc.workouts);
+  const targets = targetsOf(pc.workouts, pc.a.structure?.find((x) => x.index === p) ?? null);
   const hasTargets = pc.workouts.some((w) => w.coverage);
   const volRows = a.volume.filter((v) => v.phaseIndex === p);
   const volAt = (week: number, m: string) => volRows.find((v) => v.week === week && v.muscle === m);
@@ -257,7 +266,7 @@ function auditPhase(pc: PhaseContext): AuditPhase {
   const muscles = [...muscleSet].sort(cmp);
   const primaryIn = new Set(volumeFacts.flatMap((f) => f.primary));
   const secondaryIn = new Set(volumeFacts.flatMap((f) => f.secondary));
-  const setRange = (pick: (week: number) => number): AuditRange | null => (anyUnknown || !weeks.length ? null : rangeOf(weeks.map(pick)));
+  const setRange = (pick: (week: number) => number): AuditRange | null => (anyUnknown || anyUncounted || !weeks.length ? null : rangeOf(weeks.map(pick)));
   const rowTarget = (m: string): AuditTarget | undefined => {
     const specs = targets.filter((s) => s.kind === "MUSCLE" && s.code === m);
     if (!specs.length) return undefined;
@@ -289,7 +298,7 @@ function auditPhase(pc: PhaseContext): AuditPhase {
     const unknown = pf.some((f) => f.sets === null);
     return {
       pattern, isTarget: targets.some((s) => s.kind === "PATTERN" && s.code === pattern),
-      sets: unknown || !weeks.length ? null : rangeOf(weeks.map((w) => pf.filter((f) => f.occ.week === w).reduce((s, f) => s + (f.sets ?? 0), 0))),
+      sets: unknown || anyUncounted || !weeks.length ? null : rangeOf(weeks.map((w) => pf.filter((f) => f.occ.week === w).reduce((s, f) => s + (f.sets ?? 0), 0))),
       sessions: rangeOf(weeks.map((w) => sessionsWith(pf, w, () => true))),
     };
   });
@@ -340,7 +349,7 @@ function auditPhase(pc: PhaseContext): AuditPhase {
     const total = weekRows.reduce((s, w) => s + w.unknownSetItems + w.uncountedItems, 0);
     const skipped = [
       anyUnknown ? "com séries não definidas, as checagens por séries (faixas semanais, saltos de volume, passo de séries, concentração e divisão entre treinos) foram puladas nessas semanas; presença e frequência continuam" : null,
-      anyUncounted ? "itens fora da biblioteca ou sem músculos não foram contados: músculos sem item ficam como desconhecidos, não como ausentes" : null,
+      anyUncounted ? "itens fora da biblioteca ou sem músculos não foram contados: músculos sem item ficam como desconhecidos, não como ausentes; nessas semanas as checagens por séries e o equilíbrio entre padrões foram pulados, e um alvo sem item direto não é dado como 0" : null,
     ].filter(Boolean).join("; ");
     findings.push(finding({
       code: "AUDIT_UNCOUNTED_ITEMS", severity: "INFO", status: "DESCRIPTIVE", phaseIndex: p,
@@ -366,8 +375,11 @@ function auditPhase(pc: PhaseContext): AuditPhase {
       return best;
     };
     const scopeText = s.label ? `no treino ${s.label}` : "na fase";
+    // Alvo do treino: só as semanas em que o calendário dá sessão a esse treino (rotação irregular). Semanas com item não contado
+    // no escopo ficam fora da checagem de presença: a ausência ali não é medida (vazio nunca vira 0).
+    const presenceWeeks = checkWeeks.filter((w) => (s.label === null || occs.some((o) => o.week === w && o.label === s.label)) && !uncountedIn(w, s.label));
     if (s.kind === "PATTERN") {
-      const low = worst(checkWeeks, (w) => sessionsWith(scopeFacts, w, (f) => f.patterns.includes(s.code)), "min");
+      const low = worst(presenceWeeks, (w) => sessionsWith(scopeFacts, w, (f) => f.patterns.includes(s.code)), "min");
       if (low && low.value < 1)
         findings.push(finding({
           code: "AUDIT_TARGET_PATTERN_UNMET", severity: "WARNING", status: "OPEN", phaseIndex: p, week: low.week, pattern: s.code, ...at,
@@ -378,7 +390,7 @@ function auditPhase(pc: PhaseContext): AuditPhase {
       continue;
     }
     const sessions = (w: number) => sessionsWith(scopeFacts, w, (f) => f.primary.includes(s.code));
-    const low = worst(checkWeeks, sessions, "min");
+    const low = worst(presenceWeeks, sessions, "min");
     if (low && low.value < s.minSessions) {
       findings.push(finding({
         code: "AUDIT_TARGET_MUSCLE_UNMET", severity: "WARNING", status: "OPEN", phaseIndex: p, week: low.week, muscle: s.code, ...at,
@@ -422,7 +434,7 @@ function auditPhase(pc: PhaseContext): AuditPhase {
     if (indirectOnly.length) {
       const detail: Record<string, number> = {};
       for (const r of indirectOnly) detail[r.muscle] = r.indirect ? r.indirect.max : r.directSessions.max;
-      const bySets = !anyUnknown;
+      const bySets = !anyUnknown && !anyUncounted;
       const open = comprehensive && !hasTargets;
       findings.push(finding({
         code: "AUDIT_INDIRECT_ONLY", severity: "INFO", status: open ? "OPEN" : "BY_DESIGN", phaseIndex: p,
@@ -465,6 +477,8 @@ function auditPhase(pc: PhaseContext): AuditPhase {
     for (const pair of pc.a.log.optional("AUDIT_BALANCE_PAIRS") ?? []) {
       let best: { week: number; a: number; b: number; ratio: number; unit: "DIRECT_SETS" | "SESSIONS" } | null = null;
       for (const w of checkWeeks) {
+        // Item não contado: não se sabe de que lado ele está; a semana fica fora (§3.5.12).
+        if (weekRows[w - 1].uncountedItems > 0) continue;
         const side = (codes: string[]) => volumeFacts.filter((f) => f.occ.week === w && f.patterns.some((x) => codes.includes(x)));
         const sa = side(pair.a);
         const sb = side(pair.b);
@@ -580,6 +594,8 @@ function auditPhase(pc: PhaseContext): AuditPhase {
     const from = weekRows[i];
     const to = weekRows[i + 1];
     if (!from.full || !to.full || from.occurrences !== to.occurrences || from.weighted === null || to.weighted === null || from.weighted <= 0) continue;
+    // Rotação irregular (ABC em 4 sessões): semanas com treinos diferentes não se comparam; a diferença seria só a rotação.
+    if (labelMix(occs, from.week) !== labelMix(occs, to.week)) continue;
     const fraction = (to.weighted - from.weighted) / from.weighted;
     if (fraction <= t.weekJumpFraction) continue;
     findings.push(finding({
@@ -609,13 +625,19 @@ function auditPhase(pc: PhaseContext): AuditPhase {
     findings.push(finding({
       code: "AUDIT_DURATION_UNDERUSED", severity: "INFO", status: "OPEN", phaseIndex: p, label: w.label,
       measured: { unit: "MINUTES", value: max },
-      target: { unit: "MINUTES", max: w.budgetMinutes, basis: source === "PROFILE" ? "STUDENT_DATA" : "PROFESSIONAL", origin: "AVAILABILITY" },
+      // Faixa de uso esperada: de durationUnderuseFraction × tempo disponível (heurística) até o tempo disponível.
+      target: { unit: "MINUTES", min: r2(t.durationUnderuseFraction * w.budgetMinutes), max: w.budgetMinutes, basis: source === "PROFILE" ? "STUDENT_DATA" : "PROFESSIONAL", ruleId: "AUDIT_THRESHOLDS", origin: "AVAILABILITY" },
       sourceRefs: [rule("AUDIT_THRESHOLDS"), rule("DURATION"), `coverage:${p}:${w.label}`],
       rationale: `${where()}: as sessões do treino ${w.label} levam no máximo ≈ ${numberText(max)} min de ${numberText(w.budgetMinutes)} min disponíveis (abaixo de ${pct(t.durationUnderuseFraction)}, heurística operacional).`,
       suggestedAction: "Confirme se sobra tempo de propósito; se não, revise quantidade ou doses.",
     }));
   }
   return phase;
+}
+
+/** Treinos da semana, com repetição (ex.: "A,A,B,C"). */
+function labelMix(occs: OccurrenceOut[], week: number): string {
+  return occs.filter((o) => o.week === week).map((o) => o.label).sort(cmp).join();
 }
 
 function sessionsMax(facts: ItemFact[], weeks: number[], m: string): number {
