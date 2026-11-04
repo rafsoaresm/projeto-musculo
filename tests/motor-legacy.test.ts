@@ -1,6 +1,6 @@
 /**
  * Reprodução das versões publicadas: uma proposta gerada com 2026.11.1 ou 2026.11.2 regenera byte a byte (exceto
- * `engineVersion`). Os hashes abaixo foram calculados no código anterior à auditoria (motor 2.0.1, 04/11/2026).
+ * `engineVersion`); o mesmo vale para 2026.11.3 (auditoria com a seleção antiga). Ver as datas e versões de cada lista abaixo.
  * NUNCA troque um hash desta lista: se ele mudou, o motor mudou o comportamento de uma versão publicada.
  */
 import { describe, expect, it } from "vitest";
@@ -57,7 +57,8 @@ function cases(rules: RuleSetRef): Array<[string, () => unknown]> {
   ];
 }
 
-// Calculados em 04/11/2026 sobre o motor 2.0.1 (antes da auditoria). Nunca troque.
+// 2026.11.1 e 2026.11.2: calculados em 04/11/2026 sobre o motor 2.0.1 (antes da auditoria). 2026.11.3 (auditoria, seleção
+// antiga): calculados em 04/11/2026 sobre o motor 2.1.0 (fim da S2), antes da seleção por microciclo. Nunca troque.
 const GOLDEN: Record<string, Record<string, string>> = {
   "2026.11.1": {
     "variety:base": "55f62bfa2378ff4912ee9f8fbcb0419cc87115ecf44f3d2afa331efa03b8a4c7",
@@ -93,6 +94,24 @@ const GOLDEN: Record<string, Record<string, string>> = {
     "substitute:from-week": "942b261c7773e99571138f5b783d275feaf738a9f88c39c105b4206032e15e75",
     "substitute:phase": "b33434ec1db6dd639a63a770d0654fe25dfa3928b53a3291d78278dc5624524b",
     "rebase": "d9c1c8856a0aaa87eb8d3b1dcc48b03f122e35762212bb2422cdee2edd060481",
+    "alternatives": "1d0ce3f318f7c3b6f9f3088908f2d28ad133ca6bde1e58fd6e180f8969df065e",
+  },
+  "2026.11.3": {
+    "variety:base": "36e4de1f3873a90ce0d600af3d4d1073c396694bdb300d4d64421917bf7ef178",
+    "variety:linear": "848bbd941925b5347c0281a5c7cc00da5486deb12136958fd6b17dca3d3b44ef",
+    "variety:cardio-mobility": "434b174ccb72841ecad51ce6b8f06400e8a41c8ae9d2147c307be0d17d7c7c19",
+    "xintus": "dc5991fec24584919117ac2ea59553bab8a436dab05a27e6c5fafb5a6583002e",
+    "xintus:previous": "45d26b14770201aa73723e5eb1a6b4d4d400da2a90f5dab575c078dd12c821fb",
+    "big-abc": "8ed54536e43dd27887781924dd35da55c62792e21f865ff4eeecd544cffda395",
+    "regenerate:item": "878a564ffad2c19f083dbad4d6370ab9792fd09812648fd9880747fae1729349",
+    "regenerate:week": "f29f5a6528ab948e34e6b4ed93f0d90c64af17e320bf7f0e1749ec913e76d716",
+    "regenerate:workout": "7869247062c8aec9223d883c2e95490e343f1e8e109cd223be6c53b6a13f2d2c",
+    "regenerate:phase": "6e62d936412863730d5823efe7c430297d892760f8f24290346cae9811c11695",
+    "regenerate:from-phase": "6785da6183523fd4da4bb667783cd2f9d857c751b13b92febcaf1cf4160c7a66",
+    "substitute:occurrence": "8dca9a3aa5cc555e42b98737897499883135bd1238d00879dd99404706e5f45f",
+    "substitute:from-week": "8e6d49520a2fb0e3552e8e695cb3933c2f753821857b04e507d391839ff8a724",
+    "substitute:phase": "cd57fb70f0663f84c71576d438b80102a1739d74397c51ece5471e261c16ee11",
+    "rebase": "c981a8383c613e09747546b111bc767012660477962c7cd0e77179e925f0e5a2",
     "alternatives": "1d0ce3f318f7c3b6f9f3088908f2d28ad133ca6bde1e58fd6e180f8969df065e",
   },
 };
