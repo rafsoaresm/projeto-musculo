@@ -8,7 +8,7 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { assessmentsFor } from "@/db/assessments";
 import { exerciseMetadataFor } from "@/db/exercise-metadata";
-import { exercisesFor } from "@/db/exercises";
+import { exercisesFor, type ExerciseRecord } from "@/db/exercises";
 import { plansFor } from "@/db/plans";
 import { prescriptionFor } from "@/db/prescription";
 import { profilesFor } from "@/db/student-profile";
@@ -23,7 +23,7 @@ import { todayInBrazil } from "@/modules/execucao/contracts";
 import { toExposureHistory } from "@/modules/execucao/exposures";
 import { canonicalJson, sha256Hex } from "@/modules/prescricao/motor/hash";
 import { DEFAULT_RULESET, getRuleSet } from "@/modules/prescricao/motor/rules";
-import type { RuleSetRef } from "@/modules/prescricao/motor/types";
+import type { CatalogExercise, RuleSetRef } from "@/modules/prescricao/motor/types";
 import { buildPeriodization } from "@/modules/training/periodization";
 import { buildCatalog, withoutCautionField, type AssessmentRecord, type GenerationContext } from "./facts";
 
@@ -59,6 +59,30 @@ async function newestAssessment(db: D1Database, context: AuthenticatedContext, s
   };
 }
 
+/** The visible library with its resolved metadata, as the engine reads it. */
+async function catalogOf(db: D1Database, context: AuthenticatedContext, records: ExerciseRecord[]) {
+  const metadata = await exerciseMetadataFor(db, context).resolve(records.map((r) => r.id));
+  return { catalog: buildCatalog(records, metadata), metadata };
+}
+
+/**
+ * Only the library part of a generation context, for a plan revision this user reaches (design V3 §3.9: the audit computed at
+ * view time for a proposal recorded before the audit). The same guard as `loadGenerationContext` (organization, active user,
+ * active technical assignment, revocation, through `plansFor`), in any revision state; nothing else of the student is read.
+ */
+export async function loadCatalogForPlan(
+  db: D1Database,
+  context: AuthenticatedContext,
+  planId: string,
+  revisionId: string,
+): Promise<{ status: "ok"; catalog: CatalogExercise[] } | { status: "not_found" }> {
+  const found = await plansFor(db, context).findRevision(planId, revisionId);
+  if (!found) return { status: "not_found" };
+  const records = await exercisesFor(db, context).list({});
+  const { catalog } = await catalogOf(db, context, records);
+  return { status: "ok", catalog };
+}
+
 /**
  * Reads everything one generation needs for a plan revision. `rules` picks the history window (EXPOSURE_WINDOW_DAYS of that
  * rule set); `now` gives the reference date in São Paulo (the engine never reads the clock).
@@ -86,8 +110,7 @@ export async function loadGenerationContext(
   ]);
   // The revision was reachable a moment ago; a null here means access changed meanwhile: answer as not found.
   if (!window) return { status: "not_found" };
-  const metadata = await exerciseMetadataFor(db, context).resolve(records.map((r) => r.id));
-  const catalog = buildCatalog(records, metadata);
+  const { catalog, metadata } = await catalogOf(db, context, records);
   // The library as this generation read it: exercises with their resolved metadata (per-field provenance and alternatives
   // included), in a stable order. A reviewed field or a swapped alternative changes it even when the counts stay the same.
   const catalogHash = await sha256Hex(

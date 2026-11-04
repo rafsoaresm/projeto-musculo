@@ -13,6 +13,15 @@ import {
   itemBasisGroups,
   PROGRESSION_MODEL_LABELS,
   weekVolume,
+  auditPhaseRows,
+  auditTargetText,
+  auditValueText,
+  auditView,
+  canAcceptSuggestions,
+  contributionView,
+  rangeText,
+  storedAudit,
+  UNDEFINED_SETS,
   numberOf,
   openRequired,
   pickPhase,
@@ -28,7 +37,9 @@ import {
 import { sessionTargets } from "@/modules/prescricao/occurrences";
 import { changedDoseFields, restTextForEditing } from "@/modules/prescricao/describe";
 import { generate } from "@/modules/prescricao/motor";
-import { CATALOG, baseInput, parameters, structure } from "./helpers/motor-fixtures";
+import { CATALOG, LEGACY_RULES, baseInput, parameters, structure } from "./helpers/motor-fixtures";
+import { xintusInput } from "./helpers/xintus";
+import type { AuditReport } from "@/modules/prescricao/motor/types";
 import type { ItemOut, OccurrenceOut, PhaseSummary } from "@/modules/prescricao/motor/types";
 
 // Motor S9: the pure rules behind the professional's screens (generation form, proposal view, per-session editor).
@@ -343,7 +354,7 @@ describe("final review: what the engine computes reaches the proposal screen", (
     expect(rows.map((v) => v.muscle)).toContain("Quadríceps");
     expect(rows.every((v) => !/^[A-Z_]+$/.test(v.muscle))).toBe(true);
     expect(weekVolume([{ phaseIndex: 1, week: 1, muscle: "TRICEPS", directSets: 0, indirectSets: 3, weightedSets: 1.5, occurrences: 1 }], 1, 1)[0])
-      .toEqual({ muscle: "Tríceps", direct: "0", indirect: "3", weighted: "1,5", sessions: 1 });
+      .toEqual({ muscle: "Tríceps", direct: "0", indirect: "3", weighted: "1,5", sessions: 1, directSessions: "—", target: null });
     expect(weekVolume(r.volume, 1, 99)).toEqual([]);
   });
 
@@ -357,5 +368,146 @@ describe("final review: what the engine computes reaches the proposal screen", (
     expect(item.trace.params.find((p) => p.param === "stimulus")?.basis).toBe("PROFESSIONAL");
     expect(groups.dose).toEqual(["HEURISTIC"]);
     expect(PROGRESSION_MODEL_LABELS.STEP).toBe("em degraus");
+  });
+});
+
+// Motor V3 S2 (design V3 §7.1): the audit panel's model, the weekly table's extra columns and "Contribuição na semana".
+describe("Motor V3 S2: the plan audit on the proposal screen", () => {
+  const xintus = generate(xintusInput());
+  const audit = xintus.audit!;
+  const stored = storedAudit(xintus)!;
+
+  it("the stored audit comes from the summary; a summary without one gives null (computed at view time instead)", () => {
+    expect(stored).toEqual({ report: audit, source: "STORED", rules: audit.rules });
+    const legacy = generate(xintusInput(LEGACY_RULES));
+    expect(legacy.audit).toBeUndefined();
+    expect(storedAudit(legacy)).toBeNull();
+  });
+
+  it("acceptance follows the proposal's own rule set: no rule set so far carries the suggestion rule", () => {
+    expect(canAcceptSuggestions(getRuleSet(LEGACY_RULES))).toBe(false);
+    expect(canAcceptSuggestions(getRuleSet(DEFAULT_RULESET))).toBe(false);
+    expect(canAcceptSuggestions(null)).toBe(false);
+    expect(canAcceptSuggestions({ rules: { MICROCYCLE_TARGET_SUGGESTIONS: {} } } as never)).toBe(true);
+  });
+
+  it("KPIs from the real sessions (Xintus ABAB: 4 per week), attention vs observations vs description, grouped by phase", () => {
+    const view = auditView(stored, { engineVersion: xintus.engineVersion, acceptSuggestions: false });
+    expect(view.viewNotice).toBeNull();
+    expect(view.kpis.sessionsPerWeek).toBe("4");
+    expect(view.kpis.phases).toBe("3 de 3");
+    const count = (status: (f: AuditReport["findings"][number]) => boolean) => audit.findings.filter(status).length;
+    expect(view.kpis.attention).toBe(count((f) => f.severity === "WARNING" && f.status !== "DESCRIPTIVE"));
+    expect(view.kpis.observations).toBe(count((f) => f.severity === "INFO" && f.status !== "DESCRIPTIVE"));
+    expect(view.descriptive.flatMap((g) => g.findings).length).toBe(count((f) => f.status === "DESCRIPTIVE"));
+    // The 2 → 3 sets step of week 2 → 3 is a point of attention, with the measured numbers and a link to the week.
+    const jump = view.attention.flatMap((g) => g.findings).find((f) => f.code === "AUDIT_WEEK_VOLUME_JUMP")!;
+    expect(jump.label).toBe("Salto de volume entre semanas");
+    expect(jump.measured).toMatch(/^Medido: \d+(,\d+)? séries ponderadas \(antes: \d+(,\d+)? séries ponderadas\)$/);
+    expect(jump.target).toEqual({ text: "Sem alvo definido", basis: null });
+    expect(jump.links[0]).toMatchObject({ phaseIndex: 1, text: expect.stringMatching(/^Ver a semana \d+ da fase 1$/) });
+    // Groups are in phase order; descriptive findings never count as observations.
+    for (const groups of [view.attention, view.observations, view.descriptive])
+      expect(groups.map((g) => g.phaseIndex ?? 0)).toEqual([...groups.map((g) => g.phaseIndex ?? 0)].sort((a, b) => a - b));
+    const noTargets = view.observations.flatMap((g) => g.findings).find((f) => f.code === "AUDIT_NO_TARGETS")!;
+    expect(noTargets.offerSuggestion).toBe(false);
+    expect(noTargets.links).toEqual([{ phaseIndex: 1, text: "Ver a fase 1" }]);
+    expect(noTargets.location).toBeNull();
+  });
+
+  it("an audit computed now is labelled with its rules and the engine, and never offers an acceptance", () => {
+    const view = auditView({ ...stored, source: "VIEW" }, { engineVersion: "2.0.1", acceptSuggestions: true });
+    expect(view.viewNotice).toBe(
+      "Auditoria calculada agora com as regras gymgital-base 2026.11.3, porque esta proposta foi gerada antes da auditoria (motor 2.0.1). Não foi gravada na proposta.",
+    );
+    expect([...view.attention, ...view.observations, ...view.descriptive].flatMap((g) => g.findings).every((f) => !f.offerSuggestion)).toBe(true);
+    // A recorded audit under rules that can back it would offer it, on AUDIT_NO_TARGETS only (the card comes with those rules).
+    const offered = auditView(stored, { engineVersion: "2.1.0", acceptSuggestions: true }).observations.flatMap((g) => g.findings);
+    expect(offered.filter((f) => f.offerSuggestion).map((f) => f.code)).toEqual(offered.filter((f) => f.code === "AUDIT_NO_TARGETS").map((f) => f.code));
+  });
+
+  it("measured and target texts: units, ranges, basis; nothing invented", () => {
+    expect(auditValueText("SESSIONS", 1)).toBe("1 sessão");
+    expect(auditValueText("DIRECT_SETS", 0)).toBe("0 séries diretas");
+    expect(auditValueText("SHARE", 0.456)).toBe("45,6%");
+    expect(auditValueText("RATIO", 3.5)).toBe("3,5 : 1");
+    expect(auditValueText("MINUTES", 38)).toBe("38 min");
+    expect(auditTargetText({ unit: "SESSIONS", min: 1, basis: "PROFESSIONAL", origin: "PHASE_COVERAGE" })).toBe("≥ 1 sessão");
+    expect(auditTargetText({ unit: "WEIGHTED_SETS", min: 10, max: 20, basis: "HEURISTIC_ACCEPTED", origin: "PHASE_COVERAGE" })).toBe("10–20 séries ponderadas");
+    expect(auditTargetText({ unit: "MINUTES", max: 60, basis: "STUDENT_DATA", origin: "AVAILABILITY" })).toBe("≤ 60 min");
+    expect(auditTargetText({ unit: "MINUTES", basis: "STUDENT_DATA", origin: "AVAILABILITY" })).toBeNull();
+    expect(rangeText({ min: 3, max: 3 })).toBe("3");
+    expect(rangeText({ min: 1.5, max: 4 })).toBe("1,5–4");
+    expect(rangeText(null)).toBeNull();
+    // An imbalance shows both sides and the pair's name, never "0 : 1".
+    const imbalance: AuditReport["findings"][number] = {
+      code: "AUDIT_PATTERN_IMBALANCE", severity: "INFO", status: "OPEN", stage: "VALIDATION", phaseIndex: 1, week: 4, pattern: "KNEE_HIP",
+      measured: { unit: "RATIO", value: 0, detail: { a: 12, b: 0 } }, sourceRefs: [], rationale: "r", suggestedAction: null,
+    };
+    const iv = auditView({ ...stored, report: { ...audit, findings: [imbalance] } }, { engineVersion: "2.1.0", acceptSuggestions: false }).observations[0].findings[0];
+    expect(iv).toMatchObject({ measured: "Medido: 12 × 0 séries diretas", location: "Semana 4 · dominantes de joelho × de quadril" });
+    const unmet: AuditReport["findings"][number] = {
+      code: "AUDIT_TARGET_MUSCLE_UNMET", severity: "WARNING", status: "OPEN", stage: "VALIDATION", phaseIndex: 2, week: 3, label: "A", muscle: "QUADRICEPS",
+      measured: { unit: "SESSIONS", value: 0 }, target: { unit: "SESSIONS", min: 1, basis: "PROFESSIONAL", origin: "WORKOUT_FOCUS" },
+      sourceRefs: [], rationale: "r", suggestedAction: null, count: 3,
+    };
+    const v = auditView({ ...stored, report: { ...audit, findings: [unmet] } }, { engineVersion: "2.1.0", acceptSuggestions: false });
+    expect(v.attention).toHaveLength(1);
+    expect(v.attention[0].title).toBe("Fase 2");
+    expect(v.attention[0].findings[0]).toMatchObject({
+      location: "Semana 3 · treino A · Quadríceps",
+      measured: "Medido: 0 sessões",
+      target: { text: "Alvo: ≥ 1 sessão", basis: "PROFESSIONAL" },
+      aggregated: "(3 achados iguais agrupados)",
+      links: [{ phaseIndex: 2, week: 3, text: "Ver a semana 3 da fase 2" }],
+    });
+  });
+
+  it("the phase tables: ranges per week, situation, split shape; unknown sets read 'séries não definidas', never 0", () => {
+    const rows = auditPhaseRows(audit, 1)!;
+    expect(rows.shape).not.toBeNull();
+    const quads = rows.muscles.find((m) => m.muscle === "Quadríceps")!;
+    expect(quads.situation).toBe("Direto");
+    expect(quads.direct).toMatch(/^\d+(–\d+)?$/);
+    expect(rows.muscles.every((m) => !/^[A-Z_]+$/.test(m.muscle))).toBe(true);
+    expect(rows.patterns.every((p) => p.sessions !== "0")).toBe(true);
+    expect(auditPhaseRows(audit, 9)).toBeNull();
+    // Empty doses (LEAVE_EMPTY): set ranges are unknown, presence still counts.
+    const empty = generate(xintusInput(DEFAULT_RULESET, { parameters: { ...xintusInput().parameters, doseMode: "LEAVE_EMPTY" } }));
+    const er = auditPhaseRows(empty.audit!, 1)!;
+    const q = er.muscles.find((m) => m.muscle === "Quadríceps")!;
+    expect([q.direct, q.indirect, q.weighted]).toEqual([UNDEFINED_SETS, UNDEFINED_SETS, UNDEFINED_SETS]);
+    expect(q.situation).toBe("Direto");
+    expect(Number(q.directSessions.split("–")[0])).toBeGreaterThan(0);
+  });
+
+  it("the weekly table gains sessions with direct stimulus (from the audit) and the target; '—' without an audit", () => {
+    const rows = weekVolume(xintus.volume, 1, 1, audit);
+    const quads = rows.find((r) => r.muscle === "Quadríceps")!;
+    expect(Number(quads.directSessions)).toBe(audit.phases[0].weekRows[0].directSessions.QUADRICEPS);
+    expect(quads.target).toBeNull();
+    expect(weekVolume(xintus.volume, 1, 1).every((r) => r.directSessions === "—" && r.target === null)).toBe(true);
+    // A muscle only worked indirectly that week has 0 sessions with direct stimulus when every item was counted.
+    const indirect = rows.find((r) => r.direct === "0");
+    if (indirect) expect(indirect.directSessions).toBe("0");
+  });
+
+  it("'Contribuição na semana': the item's recorded sentence plus the week total from the audit, or nothing", () => {
+    const occ = xintus.occurrences.find((o) => o.phaseIndex === 1 && o.week === 3)!;
+    const item = occ.items.find((i) => i.trace.selection.some((t) => t.code === "WEEKLY_CONTRIBUTION"))!;
+    const c = contributionView(item, audit, 1, 3)!;
+    expect(c.lines).toHaveLength(1);
+    expect(c.lines[0]).toMatch(/^Semana 3: 2 sessões do treino [AB] × \d+ séries = /);
+    expect(c.weekTotal).toBe(`Total da semana 3 na fase (4 sessões): ${auditValueText("WEIGHTED_SETS", audit.phases[0].weekRows[2].weighted!)}.`);
+    expect(contributionView(item, null, 1, 3)!.weekTotal).toBeNull();
+    // Rules without the audit: no entry, nothing shown.
+    const legacy = generate(xintusInput(LEGACY_RULES));
+    expect(contributionView(legacy.occurrences[0].items[0], null, 1, 1)).toBeNull();
+    // Unknown sets: the total is not computed (never 0).
+    const empty = generate(xintusInput(DEFAULT_RULESET, { parameters: { ...xintusInput().parameters, doseMode: "LEAVE_EMPTY" } }));
+    const eItem = empty.occurrences[0].items.find((i) => i.trace.selection.some((t) => t.code === "WEEKLY_CONTRIBUTION"))!;
+    const ec = contributionView(eItem, empty.audit!, 1, empty.occurrences[0].week)!;
+    expect(ec.lines[0]).toContain("séries não definidas");
+    expect(ec.weekTotal).toContain("não calculado");
   });
 });

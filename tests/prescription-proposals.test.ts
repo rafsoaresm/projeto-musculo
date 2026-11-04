@@ -6,7 +6,11 @@ import { prescriptionFor } from "@/db/prescription";
 import { outputHashOf, proposalsFor, jsonChunks } from "@/db/prescription-proposals";
 import { ADAPTER_ASSUMPTION_CODES } from "@/modules/prescricao/automatica/build-input";
 import type { GenerationAnswersInput } from "@/modules/prescricao/automatica/contracts";
-import { proposalService, withAdapter, type ProposalOutcome } from "@/modules/prescricao/automatica/service";
+import { AUDIT_RULESET, auditOfStored, proposalService, withAdapter, type ProposalOutcome } from "@/modules/prescricao/automatica/service";
+import { loadCatalogForPlan } from "@/modules/prescricao/automatica/context";
+import { auditView, canAcceptSuggestions, storedAudit } from "@/modules/prescricao/automatica/view";
+import { DEFAULT_RULESET, getRuleSet } from "@/modules/prescricao/motor/rules";
+import { LEGACY_RULES } from "./helpers/motor-fixtures";
 import { ENGINE_VERSION, canonicalJson, generate, sha256Hex, type EngineInput, type EngineResult } from "@/modules/prescricao/motor";
 import { ALL_MIGRATIONS, migrate } from "./helpers/migrate";
 
@@ -661,5 +665,190 @@ describe("topic 13: isolation between organizations and access", () => {
     expect(failure(await s.regenerate(d.planId, d.revisionId, { proposalId: out.proposalId, idempotencyKey: id("key"), ...cas(2), scope: { kind: "PHASE", phaseIndex: 1 } }))).toBe("not_found");
     expect(failure(await s.discard(d.planId, d.revisionId, { proposalId: out.proposalId, ...cas(2) }))).toBe("not_found");
     expect((await snapshot(d, out.proposalId)).header).toMatchObject({ state: "OPEN", version: 2 });
+  });
+});
+
+// Motor V3 S2 (design V3 §3.8–3.10, §8.7): the plan audit is recorded with the proposal and recomputed by every change (no stale
+// finding), a proposal recorded before the audit gets one computed at view time and never written back, every change of an open
+// proposal runs with the proposal's own rule set, and the view-time path keeps the tenant guards.
+describe("Motor V3 S2: the plan audit with the proposal", () => {
+  const catalogOf = async (d: Draft) => {
+    const loaded = await loadCatalogForPlan(db, scope("tech-a"), d.planId, d.revisionId);
+    if (loaded.status !== "ok") throw new Error("catalog");
+    return loaded.catalog;
+  };
+  /** The stored audit equals the audit recomputed now from the stored content: nothing stale survived the last change. */
+  const fresh = async (d: Draft, proposalId: string) => {
+    const snap = await snapshot(d, proposalId);
+    expect(snap.result.audit).toBeDefined();
+    expect(snap.result.audit).toEqual(auditOfStored(snap.result, await catalogOf(d), snap.result.audit!.rules));
+    return snap;
+  };
+  const codesOf = (snap: { result: EngineResult }, phaseIndex: number) => (snap.result.audit?.findings ?? []).filter((f) => f.phaseIndex === phaseIndex).map((f) => f.code);
+  const repeatedOf = (snap: { result: EngineResult }, name: string) =>
+    (snap.result.audit?.findings ?? []).filter((f) => f.code === "AUDIT_EXERCISE_REPEATED" && f.phaseIndex === 1 && f.rationale.includes(`: ${name} aparece`));
+
+  /** A proposal as generated before the audit: content produced by the engine with rules 2026.11.2, recorded by the repository. */
+  async function legacyProposal(): Promise<{ d: Draft; proposalId: string }> {
+    const d = await newDraft();
+    const first = await generated(d);
+    const row = await db
+      .prepare("SELECT i.input_json AS j FROM prescription_generation_inputs i JOIN prescription_generations g ON g.id = i.generation_id WHERE g.proposal_id = ?1")
+      .bind(first.proposalId)
+      .first<{ j: string }>();
+    const stored = JSON.parse(row!.j) as { input: EngineInput; adapter: Pick<EngineResult, "assumptions" | "issues"> };
+    ok(await service().discard(d.planId, d.revisionId, { proposalId: first.proposalId, ...cas(1) }));
+    const input: EngineInput = { ...stored.input, rules: { ...LEGACY_RULES } };
+    const result = withAdapter(generate(input), stored.adapter);
+    expect(result.rules.version).toBe("2026.11.2");
+    expect(result.audit).toBeUndefined();
+    const rec = {
+      idempotencyKey: id("gen"), requestHash: "0".repeat(64), scope: "FULL" as const, scopeJson: {}, baseContentVersion: await contentVersion(d),
+      catalogHash: "0".repeat(64), inputHash: "0".repeat(64), facts: {}, studentId: "st-1", inputJson: null, parameters: ANSWERS,
+    };
+    const out = await repo().recordGeneration(d.planId, d.revisionId, rec, result, NOW);
+    if (out.status !== "created") throw new Error(out.status);
+    return { d, proposalId: out.proposalId };
+  }
+
+  it("a new generation records its audit with the rules it ran with; status and validation come only from the issues", async () => {
+    const d = await newDraft();
+    const out = await generated(d);
+    const snap = await fresh(d, out.proposalId);
+    const audit = snap.result.audit!;
+    expect(audit.rules).toEqual(DEFAULT_RULESET);
+    expect(audit.rules.version).toBe("2026.11.3");
+    expect(snap.header.rulesVersion).toBe("2026.11.3");
+    expect(audit.phasesAudited).toEqual([1, 2, 3]);
+    // Phase 1 is hypertrophy with no structured targets: the absence is described, never filled in.
+    expect(codesOf(snap, 1)).toContain("AUDIT_NO_TARGETS");
+    // Real sessions per week: phase 1 has two per week (A, B).
+    expect(audit.phases[0].occurrencesPerWeek.max).toBe(2);
+    const issues = snap.result.issues;
+    expect(snap.header.validation).toBe(issues.some((i) => i.severity === "ERROR") ? "BLOCKED" : issues.some((i) => i.severity === "WARNING") ? "WARNINGS" : "PASSED");
+    const summary = await repo().summary(d.planId, d.revisionId, out.proposalId);
+    expect(storedAudit(summary!.summary)).toEqual({ report: audit, source: "STORED", rules: audit.rules });
+    expect(JSON.stringify(summary!.summary).length).toBeLessThan(500_000);
+  });
+
+  it("substitute, regenerate and rebase recompute it: a finding leaves with its cause, one caused by the change appears", async () => {
+    const d = await newDraft();
+    const out = await generated(d);
+    let snap = await fresh(d, out.proposalId);
+    const inPhase1 = (label: string) => snap.result.occurrences.find((o) => o.phaseIndex === 1 && o.label === label)!;
+    const a = inPhase1("A").items[0];
+    const bIds = new Set(inPhase1("B").items.map((i) => i.exerciseId));
+    const aIds = new Set(inPhase1("A").items.map((i) => i.exerciseId));
+    const borrowed = inPhase1("B").items.find((i) => !aIds.has(i.exerciseId))!;
+    expect(bIds.has(a.exerciseId)).toBe(false);
+    expect(repeatedOf(snap, borrowed.exerciseName)).toHaveLength(0);
+    // A's first exercise becomes one of B's in the whole phase: the same exercise in two workouts is now observed.
+    ok(await service().substitute(d.planId, d.revisionId, { proposalId: out.proposalId, idempotencyKey: id("key"), ...cas(1), target: { phaseIndex: 1, slotKey: a.slotKey, applies: { kind: "PHASE" } }, newExerciseId: borrowed.exerciseId! }));
+    snap = await fresh(d, out.proposalId);
+    expect(repeatedOf(snap, borrowed.exerciseName)).toHaveLength(1);
+    // Back to the original exercise: the finding leaves with its cause.
+    const now = inPhase1("A").items.find((i) => i.exerciseId === borrowed.exerciseId)!;
+    ok(await service().substitute(d.planId, d.revisionId, { proposalId: out.proposalId, idempotencyKey: id("key"), ...cas(2), target: { phaseIndex: 1, slotKey: now.slotKey, applies: { kind: "PHASE" } }, newExerciseId: a.exerciseId! }));
+    snap = await fresh(d, out.proposalId);
+    expect(repeatedOf(snap, borrowed.exerciseName)).toHaveLength(0);
+    // Regenerating a workout and a phase leaves the stored audit equal to a recomputation.
+    ok(await service().regenerate(d.planId, d.revisionId, { proposalId: out.proposalId, idempotencyKey: id("key"), ...cas(3), scope: { kind: "WORKOUT", phaseIndex: 1, label: "B" } }));
+    await fresh(d, out.proposalId);
+    ok(await service().regenerate(d.planId, d.revisionId, { proposalId: out.proposalId, idempotencyKey: id("key"), ...cas(4), scope: { kind: "PHASE", phaseIndex: 2 } }));
+    snap = await fresh(d, out.proposalId);
+    expect(codesOf(snap, 1)).not.toContain("AUDIT_UNCOUNTED_ITEMS");
+    // Rebase brings a custom row (no library exercise) in: the audit now says it could not be counted.
+    await prescriptionFor(db, scope("tech-a")).add(d.planId, d.revisionId, { phaseIndex: 1, workoutLabel: "A" }, { customName: "Mobilidade do professor" });
+    ok(await service().rebase(d.planId, d.revisionId, { proposalId: out.proposalId, idempotencyKey: id("key"), ...cas(5) }));
+    snap = await fresh(d, out.proposalId);
+    expect(codesOf(snap, 1)).toContain("AUDIT_UNCOUNTED_ITEMS");
+    expect(snap.result.audit!.phases[0].weekRows.every((w) => w.uncountedItems > 0)).toBe(true);
+  });
+
+  it("lock and unlock change only the origin: the stored audit stays equal to a recomputation", async () => {
+    const d = await newDraft();
+    const out = await generated(d);
+    const before = await fresh(d, out.proposalId);
+    const targets = [{ phaseIndex: 1, slotKey: before.result.occurrences[0].items[0].slotKey }];
+    ok(await service().lock(d.planId, d.revisionId, { proposalId: out.proposalId, ...cas(1), targets, locked: true }));
+    const locked = await fresh(d, out.proposalId);
+    expect(locked.result.occurrences[0].items[0].origin).toBe("LOCKED");
+    ok(await service().lock(d.planId, d.revisionId, { proposalId: out.proposalId, ...cas(2), targets, locked: false }));
+    const unlocked = await fresh(d, out.proposalId);
+    expect(unlocked.result.audit).toEqual(before.result.audit);
+  });
+
+  it("an open proposal is changed with its own rule set (2026.11.2 stays 2026.11.2, with no audit stored)", async () => {
+    const { d, proposalId } = await legacyProposal();
+    const header = (await repo().header(d.planId, d.revisionId, proposalId))!;
+    expect(header.rulesVersion).toBe("2026.11.2");
+    ok(await service().regenerate(d.planId, d.revisionId, { proposalId, idempotencyKey: id("key"), ...cas(1), scope: { kind: "PHASE", phaseIndex: 1 } }));
+    const occ = (await snapshot(d, proposalId)).result.occurrences.find((o) => o.phaseIndex === 1)!;
+    ok(await service().substitute(d.planId, d.revisionId, { proposalId, idempotencyKey: id("key"), ...cas(2), target: { phaseIndex: 1, slotKey: occ.items[0].slotKey, applies: { kind: "OCCURRENCE", week: occ.week, slot: occ.slot } }, newExerciseId: (await catalogOf(d)).find((e) => !occ.items.some((i) => i.exerciseId === e.id))!.id }));
+    ok(await service().regenerate(d.planId, d.revisionId, { proposalId, idempotencyKey: id("key"), ...cas(3), scope: { kind: "WEEK", phaseIndex: 2, week: 1 } }));
+    const gens = await db.prepare("SELECT scope, rules_version AS v FROM prescription_generations WHERE proposal_id = ?1 ORDER BY created_at, scope").bind(proposalId).all<{ scope: string; v: string }>();
+    expect(gens.results.map((g) => g.v)).toEqual(gens.results.map(() => "2026.11.2"));
+    expect(gens.results.length).toBeGreaterThanOrEqual(3);
+    const snap = await snapshot(d, proposalId);
+    expect(snap.result.rules.version).toBe("2026.11.2");
+    expect(snap.result.audit).toBeUndefined();
+    // No derived trace of the audit rules either: the content is the 2026.11.2 engine's.
+    expect(snap.result.occurrences.every((o) => o.items.every((i) => i.trace.selection.every((t) => t.code !== "WEEKLY_CONTRIBUTION")))).toBe(true);
+    // Alternatives are ranked with the proposal's rules too.
+    expect((await service().alternatives(d.planId, d.revisionId, { proposalId, phaseIndex: 1, slotKey: occ.items[0].slotKey })).status).toBe("ok");
+  });
+
+  it("a proposal recorded before the audit gets one computed at view time, labelled, never written back, with no suggestion card", async () => {
+    const { d, proposalId } = await legacyProposal();
+    const rowBefore = await db.prepare("SELECT version, summary_json AS s, updated_at AS u FROM prescription_proposals WHERE id = ?1").bind(proposalId).first<{ version: number; s: string; u: string }>();
+    const decisionsBefore = await count("SELECT COUNT(*) AS n FROM proposal_decisions WHERE proposal_id = ?1", proposalId);
+    const out = await service().viewAudit(d.planId, d.revisionId, proposalId);
+    if (out.status !== "ok") throw new Error(out.status);
+    expect(out.source).toBe("VIEW");
+    expect(out.rules).toEqual(AUDIT_RULESET);
+    expect(out.audit.rules).toEqual(AUDIT_RULESET);
+    expect(out.audit.phasesAudited).toEqual([1, 2, 3]);
+    const snap = await snapshot(d, proposalId);
+    expect(out.audit).toEqual(auditOfStored(snap.result, await catalogOf(d)));
+    // Nothing written: the row, its version, its summary and its decisions are as they were.
+    const rowAfter = await db.prepare("SELECT version, summary_json AS s, updated_at AS u FROM prescription_proposals WHERE id = ?1").bind(proposalId).first<{ version: number; s: string; u: string }>();
+    expect(rowAfter).toEqual(rowBefore);
+    expect(JSON.parse(rowAfter!.s).audit).toBeUndefined();
+    expect(await count("SELECT COUNT(*) AS n FROM proposal_decisions WHERE proposal_id = ?1", proposalId)).toBe(decisionsBefore);
+    // The screen labels it and offers no acceptance: the proposal's own rules (2026.11.2) cannot back one.
+    const legacyRules = getRuleSet(LEGACY_RULES);
+    expect(canAcceptSuggestions(legacyRules)).toBe(false);
+    const view = auditView({ report: out.audit, source: out.source, rules: out.rules }, { engineVersion: snap.header.engineVersion, acceptSuggestions: canAcceptSuggestions(legacyRules) });
+    expect(view.viewNotice).toContain("Auditoria calculada agora com as regras gymgital-base 2026.11.3");
+    expect(view.viewNotice).toContain("Não foi gravada na proposta.");
+    const all = [...view.attention, ...view.observations, ...view.descriptive].flatMap((g) => g.findings);
+    expect(all.some((f) => f.code === "AUDIT_NO_TARGETS")).toBe(true);
+    expect(all.every((f) => !f.offerSuggestion)).toBe(true);
+    // A 2026.11.3 proposal (audit stored, no suggestion rule) offers none either.
+    expect(canAcceptSuggestions(getRuleSet(DEFAULT_RULESET))).toBe(false);
+  });
+
+  it("the stored audit is read from the summary already loaded; viewAudit on such a proposal reads it back, computes nothing", async () => {
+    const d = await newDraft();
+    const out = await generated(d);
+    const summary = (await repo().summary(d.planId, d.revisionId, out.proposalId))!.summary;
+    const stored = storedAudit(summary)!;
+    expect(stored.report).toBe(summary.audit);
+    const viewed = await service().viewAudit(d.planId, d.revisionId, out.proposalId);
+    expect(viewed).toEqual({ status: "ok", audit: summary.audit, source: "STORED", rules: summary.audit!.rules });
+  });
+
+  it("viewAudit and the catalog read keep the tenant guards: other organization, revoked, disabled or unassigned → not found", async () => {
+    const { d, proposalId } = await legacyProposal();
+    expect((await service().viewAudit(d.planId, d.revisionId, proposalId)).status).toBe("ok");
+    const outsiders: Array<[string, string]> = [["tech-b", "org-b"], ["tech-b", "org-a"], ["tech-rev", "org-a"], ["tech-ra", "org-a"], ["tech-off", "org-a"], ["tech-a2", "org-a"], ["commercial-a", "org-a"], ["client-1", "org-a"]];
+    for (const [user, org] of outsiders) {
+      expect((await service(user, org).viewAudit(d.planId, d.revisionId, proposalId)).status, `${user}@${org}`).toBe("not_found");
+      expect((await loadCatalogForPlan(db, scope(user, org), d.planId, d.revisionId)).status, `${user}@${org}`).toBe("not_found");
+    }
+    // A proposal id of another plan, through this plan's address: not found.
+    const other = await newDraft();
+    const otherOut = await generated(other);
+    expect((await service().viewAudit(d.planId, d.revisionId, otherOut.proposalId)).status).toBe("not_found");
   });
 });

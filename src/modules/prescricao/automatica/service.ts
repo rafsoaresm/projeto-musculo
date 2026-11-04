@@ -32,17 +32,22 @@ import { canonicalInput, canonicalJson, canonicalRequest, sha256Hex } from "@/mo
 import { alternativesFor, rebase, regenerate, substitute } from "@/modules/prescricao/motor/regenerate";
 import { DEFAULT_RULESET, getRuleSet } from "@/modules/prescricao/motor/rules";
 import { STIMULUS_LABELS } from "@/modules/prescricao/motor/vocabulary";
-import { uniqueIssues } from "@/modules/prescricao/motor/trace";
+import { ruleLogFor, uniqueIssues } from "@/modules/prescricao/motor/trace";
+import { auditPlan, boundAudit } from "@/modules/prescricao/motor/audit";
+import { volumeFor } from "@/modules/prescricao/motor/volume";
 import type {
+  AuditReport,
+  CatalogExercise,
   EngineInput,
   EngineOutcome,
   EngineResult,
   ItemTarget,
   RegenerationScope,
+  RuleSetRef,
   SubstitutionTarget,
 } from "@/modules/prescricao/motor/types";
 import { ADAPTER_ASSUMPTION_CODES, ADAPTER_ISSUE_CODES, buildEngineInput, goalSuggestions } from "./build-input";
-import { loadGenerationContext } from "./context";
+import { loadCatalogForPlan, loadGenerationContext } from "./context";
 import {
   flagCodeSchema,
   flagDecisionSchema,
@@ -482,7 +487,15 @@ function parseAnswers(raw: unknown): GenerationAnswers | null {
 
 type Built = Extract<ReturnType<typeof buildEngineInput>, { ok: true }>;
 
-/** Reads the real data again and builds the engine input; any failure is an outcome. */
+const RULES_GONE = "As regras com que esta proposta foi gerada não estão mais disponíveis. Descarte e gere de novo.";
+
+/** The rule set a proposal was born with: every later change of it runs with the same one (docs/MOTOR-PRESCRICAO.md). */
+const rulesOf = (header: Pick<ProposalHeader, "rulesId" | "rulesVersion">): RuleSetRef => ({ id: header.rulesId, version: header.rulesVersion });
+
+/**
+ * Reads the real data again and builds the engine input; any failure is an outcome. `rules`: the default for a new proposal, the
+ * proposal's own rule set for every change of an open one (continue, regenerate, substitute, rebase, alternatives).
+ */
 async function prepare(
   db: D1Database,
   context: AuthenticatedContext,
@@ -491,11 +504,14 @@ async function prepare(
   answers: GenerationAnswers,
   locked: ItemTarget[],
   now: Date,
+  rules: RuleSetRef = DEFAULT_RULESET,
 ): Promise<{ ok: true; ctx: GenerationContext; built: Built } | { ok: false; outcome: ProposalOutcome }> {
-  const loaded = await loadGenerationContext(db, context, planId, revisionId, { now });
+  // A proposal recorded with rules this code no longer has cannot be changed: never run it with other rules.
+  if (!getRuleSet(rules)) return { ok: false, outcome: fail("invalid", { message: RULES_GONE }) };
+  const loaded = await loadGenerationContext(db, context, planId, revisionId, { now, rules });
   if (loaded.status === "not_found") return { ok: false, outcome: fail("not_found") };
   if (loaded.status === "not_open") return { ok: false, outcome: fail("not_open") };
-  const built = buildEngineInput(loaded.context, answers, { locked });
+  const built = buildEngineInput(loaded.context, answers, { locked, rules });
   if (!built.ok) {
     if (built.code === "UNKNOWN_EXERCISE") return { ok: false, outcome: fail("unknown_exercise") };
     if (built.code === "UNKNOWN_TARGET") return { ok: false, outcome: fail("invalid_target", { message: "Alguma resposta cita uma fase ou um treino que não existe na periodização salva." }) };
@@ -545,6 +561,28 @@ function engineOk(out: EngineOutcome): { ok: true; result: EngineResult } | { ok
   return { ok: false, outcome: fail("engine_refused", { message: out.message }) };
 }
 
+// ---------- the audit of a proposal recorded before the audit (design V3 §3.9) ----------
+
+/** The rules of an audit computed at view time: the current default (it carries the audit rules). */
+export const AUDIT_RULESET: RuleSetRef = DEFAULT_RULESET;
+
+/**
+ * The plan audit of a stored proposal that has none (generated before engine 2.1.0), from its stored content and today's
+ * library, with the audit rules of `rules`. Pure: the proposal is not changed and nothing is written back. Exercises no longer
+ * in the library count as "não contado". Before 2.1.0 the adapter sent only minutes as a workout's focus (`facts.ts`), so every
+ * stored target came from the phase coverage: it is read as a phase target. Null when `rules` has no audit rules.
+ */
+export function auditOfStored(result: Pick<EngineResult, "phases" | "workouts" | "occurrences">, catalog: readonly CatalogExercise[], rules: RuleSetRef = AUDIT_RULESET): AuditReport | null {
+  const log = ruleLogFor(rules);
+  if (!log || !log.optional("AUDIT_THRESHOLDS")) return null;
+  const byId = new Map(catalog.map((e) => [e.id, e]));
+  const workouts = result.workouts.map((w) => (w.coverage && !w.coverage.origin ? { ...w, coverage: { ...w.coverage, origin: "PHASE_COVERAGE" as const } } : w));
+  const volume = volumeFor(log, result.occurrences, byId);
+  return boundAudit(log, auditPlan({ log, phases: result.phases, structure: null, workouts, occurrences: result.occurrences, volume, byId }));
+}
+
+export type AuditOutcome = { status: "ok"; audit: AuditReport; source: "STORED" | "VIEW"; rules: RuleSetRef } | { status: "not_found" };
+
 // ---------- the service ----------
 
 export function proposalService(
@@ -583,7 +621,7 @@ export function proposalService(
     if (header.version !== p.expectedVersion) return fail("conflict", { version: header.version });
     const answers = parseAnswers(opts.answersPatch === undefined ? header.parameters : patchAnswers(header.parameters, opts.answersPatch));
     if (!answers) return fail("invalid", { message: "As respostas desta proposta não são mais aceitas pelas regras atuais. Descarte e gere de novo." });
-    const prepared = await prepare(db, context, planId, revisionId, answers, lockedOf(previous), now);
+    const prepared = await prepare(db, context, planId, revisionId, answers, lockedOf(previous), now, rulesOf(header));
     if (!prepared.ok) return prepared.outcome;
     const { ctx, built } = prepared;
     if (!opts.rebase && ctx.revision.contentVersion !== header.baseContentVersion)
@@ -776,7 +814,7 @@ export function proposalService(
       if (!snap || snap.header.state !== "OPEN") return { status: "not_found" };
       const answers = parseAnswers(snap.header.parameters);
       if (!answers) return { status: "invalid" };
-      const prepared = await prepare(db, context, planId, revisionId, answers, lockedOf(snap.result), clock());
+      const prepared = await prepare(db, context, planId, revisionId, answers, lockedOf(snap.result), clock(), rulesOf(snap.header));
       if (!prepared.ok) return { status: "not_found" };
       const { proposalId, ...target } = parsed.data;
       void proposalId;
@@ -784,6 +822,21 @@ export function proposalService(
       const limit = rules?.rules.ALTERNATIVES_LIMIT.value ?? 8;
       const list = alternativesFor(prepared.built.input, snap.result, target, limit);
       return { status: "ok", alternatives: list.map((a) => ({ exerciseId: a.exerciseId, name: a.name, metadata: a.metadata, reasons: a.reasons })) };
+    },
+
+    /**
+     * The plan audit of an open proposal (design V3 §3.9). A proposal generated with the audit rules carries it in its summary
+     * (the page reads it from there, with no call here). One generated before has none: it is computed now from the whole stored
+     * proposal (one gated read) and the library (gated `loadCatalogForPlan`), labelled with the rules used, and never written back.
+     */
+    async viewAudit(planId: string, revisionId: string, proposalId: string): Promise<AuditOutcome> {
+      const snap = await repo.asEngineResult(planId, revisionId, proposalId);
+      if (!snap) return { status: "not_found" };
+      if (snap.result.audit) return { status: "ok", audit: snap.result.audit, source: "STORED", rules: snap.result.audit.rules };
+      const loaded = await loadCatalogForPlan(db, context, planId, revisionId);
+      if (loaded.status !== "ok") return { status: "not_found" };
+      const audit = auditOfStored(snap.result, loaded.catalog);
+      return audit ? { status: "ok", audit, source: "VIEW", rules: audit.rules } : { status: "not_found" };
     },
 
     /** What "Aplicar ao rascunho" would write and what it asks first. Null when the proposal is not reachable. */

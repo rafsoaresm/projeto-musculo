@@ -9,6 +9,13 @@
  */
 import type { DoseDefault, RuleSet } from "@/modules/prescricao/motor/rules";
 import type {
+  AuditFinding,
+  AuditMuscleRow,
+  AuditPhase,
+  AuditRange,
+  AuditReport,
+  AuditTarget,
+  AuditUnit,
   Basis,
   DoseParam,
   HistorySuggestion,
@@ -18,11 +25,20 @@ import type {
   OccurrenceOut,
   PhaseSummary,
   ProgressionProposal,
+  RuleSetRef,
   RuleUse,
   VolumeRow,
   WeeklyProgression,
 } from "@/modules/prescricao/motor/types";
-import { DOSE_PARAM_LABELS, MODALITY_LABELS, MUSCLE_LABELS, STIMULUS_LABELS } from "@/modules/prescricao/motor/vocabulary";
+import {
+  AUDIT_LABELS,
+  DOSE_PARAM_LABELS,
+  MODALITY_LABELS,
+  MUSCLE_LABELS,
+  PATTERN_LABELS,
+  STIMULUS_LABELS,
+  numberText,
+} from "@/modules/prescricao/motor/vocabulary";
 import type { GenerationAnswersInput, GenerationQuestion } from "./contracts";
 
 // ---------- labels ----------
@@ -461,15 +477,43 @@ export interface VolumeView {
   indirect: string;
   weighted: string;
   sessions: number;
+  /** Sessions of the week with this muscle as principal (audit presence); "—" without an audit. */
+  directSessions: string;
+  /** The muscle's target in this phase (audit row), or null. */
+  target: string | null;
 }
 
-/** The weekly sets per muscle of one week of a phase (direct = principal, indirect = secondary), most worked first. */
-export function weekVolume(volume: readonly VolumeRow[], phaseIndex: number, week: number): VolumeView[] {
+/**
+ * The weekly sets per muscle of one week of a phase (direct = principal, indirect = secondary), most worked first. With the
+ * audit, also the sessions with direct stimulus and the muscle's target ("—" when the week has items that could not be counted
+ * and the muscle was not seen: unknown, not 0).
+ */
+export function weekVolume(volume: readonly VolumeRow[], phaseIndex: number, week: number, audit: AuditReport | null = null): VolumeView[] {
   const n = (x: number) => String(x).replace(".", ",");
+  const phase = audit?.phases.find((p) => p.phaseIndex === phaseIndex);
+  const row = phase?.weekRows[week - 1];
+  const direct = (muscle: string): string => {
+    if (!row) return "—";
+    const seen = row.directSessions[muscle];
+    if (seen !== undefined) return String(seen);
+    return row.uncountedItems > 0 ? "—" : "0";
+  };
+  const target = (muscle: string): string | null => {
+    const m = phase?.muscles.find((x) => x.muscle === muscle);
+    return m && (m.target || m.isTarget) ? targetCell(m.target, m.isTarget) : null;
+  };
   return volume
     .filter((v) => v.phaseIndex === phaseIndex && v.week === week)
     .sort((a, b) => b.weightedSets - a.weightedSets || a.muscle.localeCompare(b.muscle))
-    .map((v) => ({ muscle: MUSCLE_LABELS[v.muscle] ?? v.muscle, direct: n(v.directSets), indirect: n(v.indirectSets), weighted: n(v.weightedSets), sessions: v.occurrences }));
+    .map((v) => ({
+      muscle: MUSCLE_LABELS[v.muscle] ?? v.muscle,
+      direct: n(v.directSets),
+      indirect: n(v.indirectSets),
+      weighted: n(v.weightedSets),
+      sessions: v.occurrences,
+      directSessions: direct(v.muscle),
+      target: target(v.muscle),
+    }));
 }
 
 /** The label of a rule for a tooltip ("Pesos da pontuação de seleção…"), or its id when the summary does not list it. */
@@ -541,4 +585,302 @@ export function durationText(o: Pick<OccurrenceOut, "estimatedMinutes" | "durati
   if (o.estimatedMinutes === null) return null;
   const base = `${o.durationComplete ? "≈" : "≥"} ${o.estimatedMinutes} min`;
   return o.budgetMinutes ? `${base} de ${o.budgetMinutes}` : base;
+}
+
+// ---------- the plan audit (design V3 §3.9, §7.1) ----------
+
+/** The audit the screen shows, where it came from and with which rules. */
+export interface AuditSource {
+  report: AuditReport;
+  /** STORED: recorded with the proposal (recomputed on every change); VIEW: computed now for a proposal recorded before it. */
+  source: "STORED" | "VIEW";
+  rules: RuleSetRef;
+}
+
+/** The audit recorded in the summary the page already loaded (no extra read), or null for a proposal generated before it. */
+export function storedAudit(summary: { audit?: AuditReport }): AuditSource | null {
+  return summary.audit ? { report: summary.audit, source: "STORED", rules: summary.audit.rules } : null;
+}
+
+/**
+ * Whether the proposal's own rule set offers suggested targets to accept (`MICROCYCLE_TARGET_SUGGESTIONS`, rules 2026.11.4+).
+ * A regeneration runs with the proposal's rule set, which would refuse an acceptance that its rules cannot back, so no card or
+ * accept button is offered otherwise (design V3 §3.9, review point 9).
+ */
+export function canAcceptSuggestions(rules: Pick<RuleSet, "rules"> | null): boolean {
+  return Boolean(rules && "MICROCYCLE_TARGET_SUGGESTIONS" in rules.rules);
+}
+
+const num = (n: number) => numberText(Math.round(n * 100) / 100);
+
+/** "4" / "3–4"; null stays null (the caller says what it means). */
+export function rangeText(r: AuditRange | null): string | null {
+  if (!r) return null;
+  return r.min === r.max ? num(r.min) : `${num(r.min)}–${num(r.max)}`;
+}
+
+const UNIT_TEXT: Record<AuditUnit, [string, string]> = {
+  DIRECT_SETS: ["série direta", "séries diretas"],
+  INDIRECT_SETS: ["série indireta", "séries indiretas"],
+  WEIGHTED_SETS: ["série ponderada", "séries ponderadas"],
+  SESSIONS: ["sessão", "sessões"],
+  SHARE: ["", ""],
+  MINUTES: ["min", "min"],
+  ITEMS: ["item", "itens"],
+  RATIO: ["", ""],
+};
+
+/** A measured or target number with its unit ("0 séries diretas", "45%", "3,5 : 1", "38 min"). */
+export function auditValueText(unit: AuditUnit, value: number): string {
+  if (unit === "SHARE") return `${num(value * 100)}%`;
+  if (unit === "RATIO") return `${num(value)} : 1`;
+  const [one, many] = UNIT_TEXT[unit];
+  return `${num(value)} ${value === 1 ? one : many}`;
+}
+
+/** "≥ 1 sessão", "≤ 20 séries ponderadas", "10–20 séries ponderadas"; null without bounds. */
+export function auditTargetText(t: AuditTarget): string | null {
+  if (t.min !== undefined && t.max !== undefined) return t.min === t.max ? auditValueText(t.unit, t.min) : `${num(t.min)}–${auditValueText(t.unit, t.max)}`;
+  if (t.min !== undefined) return `≥ ${auditValueText(t.unit, t.min)}`;
+  if (t.max !== undefined) return `≤ ${auditValueText(t.unit, t.max)}`;
+  return null;
+}
+
+export interface AuditFindingView {
+  key: string;
+  code: string;
+  label: string;
+  severity: AuditFinding["severity"];
+  /** "Escolha do profissional" for BY_DESIGN; null otherwise (the group already says the rest). */
+  statusText: string | null;
+  /** "Semana 3 · treino A · Quadríceps" (the group names the phase); null when there is nothing more to say. */
+  location: string | null;
+  /** "Medido: 0 sessões na semana 3 (antes: …)"; null when the finding measures nothing. */
+  measured: string | null;
+  /** The target with its basis, or "Sem alvo definido" (never a heuristic presented as a target). */
+  target: { text: string; basis: Basis | null };
+  rationale: string;
+  suggestedAction: string | null;
+  /** Rows aggregated by the technical limit: "(14 achados iguais agrupados)". */
+  aggregated: string | null;
+  links: Array<{ phaseIndex: number; week?: number; text: string }>;
+  /** `AUDIT_NO_TARGETS` with an acceptance the proposal's rules can back (recorded audit only). The card itself comes later. */
+  offerSuggestion: boolean;
+}
+
+export interface AuditGroupView {
+  phaseIndex: number | null;
+  title: string;
+  findings: AuditFindingView[];
+}
+
+export interface AuditView {
+  auditVersion: string;
+  rules: RuleSetRef;
+  source: AuditSource["source"];
+  /** Only for an audit computed now: says so, with the rules and the engine of the proposal. */
+  viewNotice: string | null;
+  kpis: { sessionsPerWeek: string; attention: number; observations: number; phases: string };
+  attention: AuditGroupView[];
+  observations: AuditGroupView[];
+  descriptive: AuditGroupView[];
+}
+
+const muscleName = (m: string) => MUSCLE_LABELS[m] ?? m;
+/** Pairs of AUDIT_BALANCE_PAIRS as the professional reads them. */
+const PAIR_LABELS: Record<string, string> = {
+  KNEE_HIP: "dominantes de joelho × de quadril",
+  PUSH_PULL: "empurrar × puxar",
+};
+const patternName = (p: string) => PATTERN_LABELS[p] ?? p;
+
+function findingView(f: AuditFinding, n: number, offer: boolean): AuditFindingView {
+  const where: string[] = [];
+  const toPhase = f.toPhaseIndex !== undefined && f.toPhaseIndex !== f.phaseIndex ? f.toPhaseIndex : null;
+  if (f.week !== undefined) where.push(`Semana ${f.week}${f.toWeek !== undefined ? ` → ${toPhase !== null ? `fase ${toPhase}, ` : ""}semana ${f.toWeek}` : ""}`);
+  if (f.label) where.push(`treino ${f.label}`);
+  if (f.muscle) where.push(muscleName(f.muscle));
+  if (f.pattern) where.push(f.code === "AUDIT_PATTERN_IMBALANCE" ? (PAIR_LABELS[f.pattern] ?? f.pattern) : `padrão ${patternName(f.pattern)}`);
+  const m = f.measured;
+  const sides = f.code === "AUDIT_PATTERN_IMBALANCE" && m?.detail && m.detail.a !== undefined && m.detail.b !== undefined ? m.detail : null;
+  const measured = !m
+    ? null
+    : sides
+      // the two sides as measured (sets, or sessions when some sets are unknown); "0" on one side is "no stimulus there", not a ratio
+      ? `Medido: ${num(sides.a)} × ${num(sides.b)} ${m.unit === "SESSIONS" ? "sessões" : "séries diretas"}`
+      : `Medido: ${auditValueText(m.unit, m.value)}${m.from !== undefined ? ` (antes: ${auditValueText(m.unit, m.from)})` : ""}`;
+  const targetText = f.target ? auditTargetText(f.target) : null;
+  const links: AuditFindingView["links"] = [];
+  if (f.phaseIndex !== undefined) {
+    if (f.week !== undefined) links.push({ phaseIndex: f.phaseIndex, week: f.week, text: `Ver a semana ${f.week} da fase ${f.phaseIndex}` });
+    else links.push({ phaseIndex: f.phaseIndex, text: `Ver a fase ${f.phaseIndex}` });
+    const toPhase = f.toPhaseIndex ?? f.phaseIndex;
+    if (f.toWeek !== undefined && (toPhase !== f.phaseIndex || f.toWeek !== f.week))
+      links.push({ phaseIndex: toPhase, week: f.toWeek, text: `Ver a semana ${f.toWeek} da fase ${toPhase}` });
+  }
+  return {
+    key: `${f.code}-${f.phaseIndex ?? "x"}-${f.week ?? "x"}-${f.label ?? ""}-${f.muscle ?? f.pattern ?? ""}-${n}`,
+    code: f.code,
+    label: AUDIT_LABELS[f.code] ?? f.code,
+    severity: f.severity,
+    statusText: f.status === "BY_DESIGN" ? "Escolha do profissional" : null,
+    location: where.length ? where.join(" · ") : null,
+    measured,
+    target: targetText && f.target ? { text: `Alvo: ${targetText}`, basis: f.target.basis } : { text: "Sem alvo definido", basis: null },
+    rationale: f.rationale,
+    suggestedAction: f.suggestedAction,
+    aggregated: f.count && f.count > 1 ? `(${f.count} achados iguais agrupados)` : null,
+    links,
+    offerSuggestion: offer && f.code === "AUDIT_NO_TARGETS",
+  };
+}
+
+function byPhase(findings: AuditFindingView[], source: AuditFinding[]): AuditGroupView[] {
+  const groups = new Map<string, AuditGroupView>();
+  findings.forEach((v, n) => {
+    const p = source[n].phaseIndex ?? null;
+    const key = p === null ? "plan" : String(p);
+    const g = groups.get(key) ?? { phaseIndex: p, title: p === null ? "Plano inteiro" : `Fase ${p}`, findings: [] };
+    g.findings.push(v);
+    groups.set(key, g);
+  });
+  return [...groups.values()].sort((a, b) => (a.phaseIndex ?? 0) - (b.phaseIndex ?? 0));
+}
+
+/**
+ * The audit panel's model: KPIs, findings split into "Atenção" (WARNING), "Observações" (INFO) and "Descrição do plano"
+ * (DESCRIPTIVE, not counted as observations), each grouped by phase, with measured vs target, the basis of the target, links to
+ * the phase/week, and, for an audit computed now, the notice that says so. Nothing is invented: a finding without a target reads
+ * "Sem alvo definido".
+ */
+export function auditView(audit: AuditSource, options: { engineVersion: string; acceptSuggestions: boolean }): AuditView {
+  const { report } = audit;
+  const offer = audit.source === "STORED" && options.acceptSuggestions;
+  const views = report.findings.map((f, n) => findingView(f, n, offer));
+  const pick = (test: (f: AuditFinding) => boolean) => {
+    const idx = report.findings.map((f, n) => (test(f) ? n : -1)).filter((n) => n >= 0);
+    return byPhase(idx.map((n) => views[n]), idx.map((n) => report.findings[n]));
+  };
+  const attention = pick((f) => f.status !== "DESCRIPTIVE" && f.severity === "WARNING");
+  const observations = pick((f) => f.status !== "DESCRIPTIVE" && f.severity === "INFO");
+  const descriptive = pick((f) => f.status === "DESCRIPTIVE");
+  const count = (g: AuditGroupView[]) => g.reduce((a, x) => a + x.findings.length, 0);
+  const perWeek = report.phases.flatMap((p) => {
+    const full = p.weekRows.filter((w) => w.full);
+    return (full.length ? full : p.weekRows).map((w) => w.occurrences);
+  });
+  const total = report.phasesAudited.length + report.phasesMissing.length;
+  return {
+    auditVersion: report.auditVersion,
+    rules: audit.rules,
+    source: audit.source,
+    viewNotice:
+      audit.source === "VIEW"
+        ? `Auditoria calculada agora com as regras ${audit.rules.id} ${audit.rules.version}, porque esta proposta foi gerada antes da auditoria (motor ${options.engineVersion}). Não foi gravada na proposta.`
+        : null,
+    kpis: {
+      sessionsPerWeek: perWeek.length ? rangeText({ min: Math.min(...perWeek), max: Math.max(...perWeek) })! : "—",
+      attention: count(attention),
+      observations: count(observations),
+      phases: `${report.phasesAudited.length} de ${total}`,
+    },
+    attention,
+    observations,
+    descriptive,
+  };
+}
+
+const SHAPE_TEXT: Record<NonNullable<AuditPhase["splitShape"]>, string> = {
+  FULL_BODY: "corpo inteiro",
+  UPPER_LOWER: "superior e inferior",
+  SINGLE: "um treino",
+  OTHER: "outro",
+};
+const SITUATION_TEXT: Record<AuditMuscleRow["classification"], string> = {
+  DIRECT: "Direto",
+  INDIRECT_ONLY: "Só indireto",
+  NONE: "Sem estímulo",
+  UNKNOWN: "Não contado",
+};
+export const UNDEFINED_SETS = "séries não definidas";
+
+export interface AuditMuscleRowView {
+  muscle: string;
+  direct: string;
+  indirect: string;
+  weighted: string;
+  directSessions: string;
+  target: string;
+  situation: string;
+  isTarget: boolean;
+}
+export interface AuditPatternRowView {
+  pattern: string;
+  sets: string;
+  sessions: string;
+  target: string;
+}
+
+function targetCell(t: AuditTarget | undefined, isTarget: boolean): string {
+  if (t) {
+    const text = auditTargetText(t);
+    if (text) return `${text} (${BASIS_LABELS[t.basis]})`;
+  }
+  return isTarget ? "Alvo" : "—";
+}
+
+/**
+ * One phase of the audit as table rows (texts only): per muscle the weekly ranges (min–max across the weeks), the sessions with
+ * direct stimulus, the target and the situation; per pattern the weekly sets and sessions (patterns never worked and not targeted
+ * are left out). Unknown sets read "séries não definidas", never 0. Null when the phase was not audited.
+ */
+export function auditPhaseRows(report: AuditReport, phaseIndex: number): { shape: string | null; muscles: AuditMuscleRowView[]; patterns: AuditPatternRowView[] } | null {
+  const p = report.phases.find((x) => x.phaseIndex === phaseIndex);
+  if (!p) return null;
+  const order: Record<AuditMuscleRow["classification"], number> = { DIRECT: 0, INDIRECT_ONLY: 1, UNKNOWN: 2, NONE: 3 };
+  const muscles = [...p.muscles]
+    .sort((a, b) => Number(b.isTarget) - Number(a.isTarget) || order[a.classification] - order[b.classification] || muscleName(a.muscle).localeCompare(muscleName(b.muscle), "pt-BR"))
+    .map((m) => ({
+      muscle: muscleName(m.muscle),
+      direct: rangeText(m.direct) ?? UNDEFINED_SETS,
+      indirect: rangeText(m.indirect) ?? UNDEFINED_SETS,
+      weighted: rangeText(m.weighted) ?? UNDEFINED_SETS,
+      directSessions: rangeText(m.directSessions)!,
+      target: targetCell(m.target, m.isTarget),
+      situation: SITUATION_TEXT[m.classification],
+      isTarget: m.isTarget,
+    }));
+  const patterns = p.patterns
+    .filter((x) => x.isTarget || x.sessions.max > 0)
+    .sort((a, b) => Number(b.isTarget) - Number(a.isTarget) || b.sessions.max - a.sessions.max || patternName(a.pattern).localeCompare(patternName(b.pattern), "pt-BR"))
+    .map((x) => ({
+      pattern: patternName(x.pattern),
+      sets: rangeText(x.sets) ?? UNDEFINED_SETS,
+      sessions: rangeText(x.sessions)!,
+      target: x.isTarget ? "Alvo" : "—",
+    }));
+  return { shape: p.splitShape ? SHAPE_TEXT[p.splitShape] : null, muscles, patterns };
+}
+
+/**
+ * "Contribuição na semana" of an item: the item-local sentence the engine recorded (`WEEKLY_CONTRIBUTION`) and, from the audit,
+ * the total of that week of the phase (never stored with the item, so a change elsewhere does not rewrite it). Null when the
+ * item has no such entry (outside the volume modalities, or rules without the audit).
+ */
+export function contributionView(
+  item: Pick<ItemOut, "trace">,
+  audit: AuditReport | null,
+  phaseIndex: number,
+  week: number,
+): { lines: string[]; weekTotal: string | null } | null {
+  const lines = item.trace.selection.filter((t) => t.code === "WEEKLY_CONTRIBUTION").map((t) => t.detail);
+  if (!lines.length) return null;
+  const row = audit?.phases.find((p) => p.phaseIndex === phaseIndex)?.weekRows[week - 1];
+  const sessions = row ? `${row.occurrences} ${row.occurrences === 1 ? "sessão" : "sessões"}` : "";
+  const weekTotal = !row
+    ? null
+    : row.weighted === null
+      ? `Total da semana ${week} na fase (${sessions}): não calculado, há ${UNDEFINED_SETS}.`
+      : `Total da semana ${week} na fase (${sessions}): ${auditValueText("WEIGHTED_SETS", row.weighted)}.`;
+  return { lines, weekTotal };
 }

@@ -19,6 +19,7 @@ import {
   regenerateScope,
   type ProposalActionResult,
 } from "./actions";
+import { AuditPanel } from "./audit-panel";
 import { SubstituteDialog, type SubstituteTarget } from "./substitute-dialog";
 import { NETWORK_ERROR, useIntent } from "./use-intent";
 import {
@@ -29,6 +30,7 @@ import {
   PROPOSAL_ORIGIN_LABELS,
   SEVERITY_LABELS,
   SEVERITY_TONES,
+  contributionView,
   durationText,
   historySuggestionText,
   issuesOfPhase,
@@ -40,6 +42,7 @@ import {
   traceParamLabel,
   traceValue,
   weekVolume,
+  type AuditSource,
 } from "./view";
 
 /** The proposal header fields the screen needs (no answers, no ledger references). */
@@ -90,6 +93,8 @@ export function ProposalView({
   phaseIndex,
   week,
   library,
+  audit,
+  acceptSuggestions,
 }: {
   planId: string;
   revisionId: string;
@@ -100,6 +105,10 @@ export function ProposalView({
   phaseIndex: number;
   week: number;
   library: Array<{ id: string; name: string }>;
+  /** The plan audit: recorded with the proposal, or computed now for one generated before it; null when there is none. */
+  audit: AuditSource | null;
+  /** Whether the proposal's own rule set can back an accepted suggestion (design V3 §3.9). */
+  acceptSuggestions: boolean;
 }) {
   const router = useRouter();
   const intent = useIntent();
@@ -155,7 +164,8 @@ export function ProposalView({
           <Kpi label="Alertas" value={String(summary.flags.length)} />
         </div>
         <p className="small muted">
-          Motor {header.engineVersion} · regras {header.rulesId} {header.rulesVersion}. {NOT_UNIVERSAL} Nada aqui está no rascunho até você
+          Motor {header.engineVersion} · regras {header.rulesId} {header.rulesVersion}
+          {audit ? ` · auditoria ${audit.report.auditVersion}${audit.source === "VIEW" ? " (calculada agora)" : ""}` : ""}. {NOT_UNIVERSAL} Nada aqui está no rascunho até você
           aplicar; a aprovação continua sendo sua.
         </p>
         {stale && (
@@ -301,6 +311,8 @@ export function ProposalView({
         </details>
       </section>
 
+      {audit && <AuditPanel audit={audit} engineVersion={header.engineVersion} acceptSuggestions={acceptSuggestions} phaseIndex={phaseIndex} href={href} />}
+
       <section className="panel" aria-labelledby="sessoes-titulo">
         <h2 id="sessoes-titulo">Fases, semanas e sessões</h2>
         <nav className="phase-tabs" aria-label="Fases da proposta">
@@ -396,6 +408,7 @@ export function ProposalView({
                           key={item.slotKey}
                           item={item}
                           phaseIndex={phaseIndex}
+                          contribution={contributionView(item, audit?.report ?? null, phaseIndex, o.week)}
                           suggestions={summary.historySuggestions ?? []}
                           rulesUsed={summary.rulesUsed}
                           locked={lockedKeys.has(item.slotKey) || item.origin === "LOCKED"}
@@ -414,7 +427,7 @@ export function ProposalView({
             })}
           </div>
         )}
-        <WeekVolume rows={weekVolume(summary.volume ?? [], phaseIndex, week)} week={week} />
+        <WeekVolume rows={weekVolume(summary.volume ?? [], phaseIndex, week, audit?.report ?? null)} week={week} audited={audit !== null} />
         {phase.weeks > 1 &&
           labels.map((label) => {
             const rows = proposalProgression(occurrences, phaseIndex, phase.weeks, label);
@@ -477,6 +490,7 @@ export function ProposalView({
 function ProposalItem({
   item,
   phaseIndex,
+  contribution,
   suggestions,
   rulesUsed,
   locked,
@@ -487,6 +501,7 @@ function ProposalItem({
 }: {
   item: ItemOut;
   phaseIndex: number;
+  contribution: ReturnType<typeof contributionView>;
   suggestions: readonly HistorySuggestion[];
   rulesUsed: readonly RuleUse[];
   locked: boolean;
@@ -539,7 +554,7 @@ function ProposalItem({
           <HelpCircle size={15} aria-hidden="true" /> Por quê?
         </summary>
         <ul className="auto-list">
-          {item.trace.selection.map((t, n) => (
+          {item.trace.selection.filter((t) => t.code !== "WEEKLY_CONTRIBUTION").map((t, n) => (
             <li key={`${t.code}-${n}`} className="small">
               <span title={t.ruleId ? `Regra: ${ruleLabel(rulesUsed, t.ruleId)}` : undefined}>
                 <Pill tone={BASIS_TONES[t.basis]}>{BASIS_LABELS[t.basis]}</Pill>
@@ -570,6 +585,19 @@ function ProposalItem({
             </table>
           </div>
         )}
+        {contribution && (
+          <div className="why-block">
+            <h4 className="small-heading">Contribuição na semana</h4>
+            <ul className="auto-list">
+              {contribution.lines.map((line, n) => (
+                <li key={n} className="small">
+                  {line}
+                </li>
+              ))}
+              {contribution.weekTotal && <li className="small muted">{contribution.weekTotal}</li>}
+            </ul>
+          </div>
+        )}
       </details>
       {!preserved && (
         <div className="exercise-actions">
@@ -591,7 +619,7 @@ function ProposalItem({
 }
 
 /** Weekly sets per muscle of the selected week (engine volume: direct = principal muscle, indirect = secondary). */
-function WeekVolume({ rows, week }: { rows: ReturnType<typeof weekVolume>; week: number }) {
+function WeekVolume({ rows, week, audited }: { rows: ReturnType<typeof weekVolume>; week: number; audited: boolean }) {
   if (!rows.length) return null;
   return (
     <details className="progression-details">
@@ -610,6 +638,8 @@ function WeekVolume({ rows, week }: { rows: ReturnType<typeof weekVolume>; week:
               <th scope="col">Indiretas</th>
               <th scope="col">Ponderadas</th>
               <th scope="col">Sessões</th>
+              {audited && <th scope="col">Sessões c/ estímulo direto</th>}
+              {audited && <th scope="col">Alvo</th>}
             </tr>
           </thead>
           <tbody>
@@ -620,6 +650,8 @@ function WeekVolume({ rows, week }: { rows: ReturnType<typeof weekVolume>; week:
                 <td>{r.indirect}</td>
                 <td>{r.weighted}</td>
                 <td>{r.sessions}</td>
+                {audited && <td>{r.directSessions}</td>}
+                {audited && <td>{r.target ?? "—"}</td>}
               </tr>
             ))}
           </tbody>
