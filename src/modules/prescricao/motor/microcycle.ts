@@ -13,7 +13,7 @@ import {
   choiceEntries, completeWorkout, dosePreview, legacyPicks, prepareWorkout, openSlots,
   type EngineContext, type WorkoutDraft, type WorkoutPlan,
 } from "./generate";
-import { checkWeeksOf, exposuresOf, occurrenceStimulus, indexInWeek, progressionFor } from "./occurrence";
+import { checkWeeksOf, exposuresOf, occurrenceStimulus, indexInWeek, progressionFor, roundExposure, weeklyExposureOf } from "./occurrence";
 import { staticTerms, type StaticRequest } from "./select";
 import { cmp, codeOf, MUSCLE_LABELS, numberText, PATTERN_LABELS } from "./vocabulary";
 import type { CatalogExercise, Dose, Issue, OccurrenceOut, StructurePhase, TraceEntry } from "./types";
@@ -89,19 +89,29 @@ const patternsOf = (e: CatalogExercise) => shapeOf(e).patterns;
 /**
  * O que um treino mantido contribui por semana, a partir das sessões gravadas: em cada semana que conta, a soma das séries e
  * as sessões; depois o menor valor entre as semanas (a mesma regra das exposições). Uma troca que só existe a partir da
- * semana 3 não conta na pior semana.
+ * semana 3 não conta na pior semana. Quando o treino falta em alguma semana que conta (ABCD 3×/semana), a pior semana
+ * seria vazia: a conta passa a ser a pior sessão do treino × a média de sessões por semana (`weeklyExposureOf`).
  */
 export function fixedWorkoutFrom(ctx: EngineContext, phase: StructurePhase, label: string, occurrences: OccurrenceOut[]): FixedWorkout {
   const vol = volumeSet(ctx);
   const factor = ctx.log.get("INDIRECT_VOLUME_FACTOR");
   const weeks = checkWeeksOf(phase);
-  const perWeek = weeks.map((week) => {
+  const everyWeek = exposuresOf(phase, label, weeks) > 0;
+  const inWeeks = new Set(weeks);
+  // Unidades comparadas: as semanas que contam ou, se o treino falta em alguma, cada sessão dele nessas semanas.
+  const units: Array<(o: OccurrenceOut) => boolean> = everyWeek
+    ? weeks.map((week) => (o: OccurrenceOut) => o.week === week)
+    : occurrences
+        .filter((o) => o.phaseIndex === phase.index && o.label === label && inWeeks.has(o.week))
+        .map((occ) => (o: OccurrenceOut) => o === occ);
+  const scale = everyWeek ? 1 : weeklyExposureOf(phase, label, weeks);
+  const perWeek = units.map((inUnit) => {
     const weighted = new Map<string, number | null>();
     const direct = new Map<string, Set<number>>();
     const patterns = new Map<string, Set<number>>();
     const exercises = new Map<string, Set<number>>();
     for (const o of occurrences) {
-      if (o.phaseIndex !== phase.index || o.label !== label || o.week !== week) continue;
+      if (o.phaseIndex !== phase.index || o.label !== label || !inUnit(o)) continue;
       for (const item of o.items) {
         const e = item.exerciseId ? ctx.byId.get(item.exerciseId) : undefined;
         if (!e) continue;
@@ -133,13 +143,13 @@ export function fixedWorkoutFrom(ctx: EngineContext, phase: StructurePhase, labe
         if (v === null || min === null) min = null;
         else min = Math.min(min, v);
       }
-      out[k] = min === Infinity ? 0 : min;
+      out[k] = min === Infinity ? 0 : min === null ? null : roundExposure(min * scale);
     }
     return out;
   };
   const counts = (r: Record<string, number | null>) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v ?? 0])) as Record<string, number>;
   return {
-    exposures: exposuresOf(phase, label, weeks),
+    exposures: weeklyExposureOf(phase, label, weeks),
     weighted: minOf((w) => w.weighted, (v) => v),
     directSessions: counts(minOf((w) => w.direct, (v) => v.size)),
     patterns: counts(minOf((w) => w.patterns, (v) => v.size)),
@@ -201,14 +211,24 @@ class WeekState {
   }
   hold(id: string, lane: number, x: number): void {
     const m = this.holders.get(id) ?? this.holders.set(id, new Map()).get(id)!;
-    m.set(lane, (m.get(lane) ?? 0) + x);
+    m.set(lane, roundExposure((m.get(lane) ?? 0) + x));
+  }
+  /** Somas arredondadas (exposições podem ser frações: treino que não aparece toda semana). */
+  addWeighted(m: string, v: number): void {
+    this.weighted.set(m, roundExposure(this.w(m) + v));
+  }
+  addDirect(m: string, v: number): void {
+    this.directSessions.set(m, roundExposure(this.ds(m) + v));
+  }
+  addPattern(p: string, v: number): void {
+    this.patternExposure.set(p, roundExposure(this.pe(p) + v));
   }
   otherHolders(id: string, lane: number): number {
     const m = this.holders.get(id);
     if (!m) return 0;
-    let n = 0; // inteiros: a ordem da soma não muda o resultado
+    let n = 0; // a ordem dos treinos é fixa (inserção): a soma é a mesma a cada execução
     for (const [l, x] of m) if (l !== lane) n += x;
-    return n;
+    return roundExposure(n);
   }
 }
 
@@ -216,8 +236,10 @@ class WeekState {
 
 const muscleText = (m: string) => MUSCLE_LABELS[m] ?? m;
 const patternText = (p: string) => PATTERN_LABELS[p] ?? p;
-const sessions = (n: number) => `${numberText(n)} ${n === 1 ? "sessão" : "sessões"}`;
-const weeklySessions = (n: number) => `${numberText(n)} ${n === 1 ? "sessão semanal" : "sessões semanais"}`;
+/** Exposição fracionária = treino que não aparece em toda semana: o texto diz que é uma média. */
+const avg = (n: number) => (Number.isInteger(n) ? "" : " em média");
+const sessions = (n: number) => `${numberText(n)} ${n === 1 ? "sessão" : "sessões"}${avg(n)}`;
+const weeklySessions = (n: number) => `${numberText(n)} ${n === 1 ? "sessão semanal" : "sessões semanais"}${avg(n)}`;
 
 interface Scored {
   score: number;
@@ -250,26 +272,26 @@ function dynamicTerms(
     const setsKnown = t.minWeighted !== undefined && s !== null && !state.unknown.has(m);
     if (setsKnown) {
       const min = t.minWeighted as number;
-      const deficit = Math.max(0, min - state.w(m));
-      const adds = x * (s as number);
+      const deficit = roundExposure(Math.max(0, min - state.w(m)));
+      const adds = roundExposure(x * (s as number));
       const gain = Math.min(adds, deficit);
       if (gain > 0)
         add(M.weeklyDeficit * gain / Math.max(1, min), "MICRO_TARGET_DEFICIT",
           () => `${muscleText(m)} abaixo do alvo semanal: faltavam ${numberText(deficit)} séries ponderadas; este exercício soma ${numberText(adds)} (${sessions(x)} do treino ${label} × ${numberText(s as number)} séries)`);
       const ds = state.ds(m);
       if (ds < t.minSessions && !lane.primaryHere.has(m)) {
-        const g = Math.min(x, t.minSessions - ds);
+        const g = roundExposure(Math.min(x, t.minSessions - ds));
         add(M.frequencyGap * g, "MICRO_FREQUENCY", () => `${muscleText(m)}: ${numberText(ds)} de ${numberText(t.minSessions)} sessões semanais com estímulo direto; o treino ${label} soma ${numberText(g)}`);
       }
     } else if (!lane.primaryHere.has(m)) {
       // Alvo de presença (ou séries desconhecidas): o déficit é em sessões com estímulo direto na semana.
-      const deficit = Math.max(0, t.minSessions - state.ds(m));
-      const g = Math.min(x, deficit);
+      const deficit = roundExposure(Math.max(0, t.minSessions - state.ds(m)));
+      const g = roundExposure(Math.min(x, deficit));
       const unknownNote = t.minWeighted !== undefined ? "; séries não definidas: alvo de séries não usado" : "";
       // Cada sessão semanal que falta vale um déficit inteiro (como um alvo de uma sessão).
       if (g > 0)
         add(M.weeklyDeficit * g, "MICRO_TARGET_DEFICIT",
-          () => `${muscleText(m)}: ${deficit === 1 ? "faltava" : "faltavam"} ${weeklySessions(deficit)} com estímulo direto; o treino ${label} soma ${numberText(g)} (aparece ${numberText(x)}× por semana)${unknownNote}`);
+          () => `${muscleText(m)}: ${deficit === 1 ? "faltava" : "faltavam"} ${weeklySessions(deficit)} com estímulo direto; o treino ${label} soma ${numberText(g)} (aparece ${numberText(x)}× por semana${avg(x)})${unknownNote}`);
     }
   }
   const own = primary.filter((m) => { const t = muscles.get(m); return t?.focused && t.scope.has(lane.i); });
@@ -277,8 +299,8 @@ function dynamicTerms(
   for (const m of secondary) {
     const t = muscles.get(m);
     if (!t || !t.scope.has(lane.i) || t.minWeighted === undefined || s === null || state.unknown.has(m)) continue;
-    const deficit = Math.max(0, t.minWeighted - state.w(m));
-    const adds = x * s * factor;
+    const deficit = roundExposure(Math.max(0, t.minWeighted - state.w(m)));
+    const adds = roundExposure(x * s * factor);
     const gain = Math.min(adds, deficit);
     if (gain > 0)
       add(M.weeklyDeficit * gain / Math.max(1, t.minWeighted), "MICRO_TARGET_DEFICIT_SECONDARY",
@@ -288,8 +310,8 @@ function dynamicTerms(
     for (const m of [...primary, ...secondary]) {
       const max = muscles.get(m)?.maxWeighted;
       if (max === undefined || state.unknown.has(m)) continue;
-      const adds = x * s * (primary.includes(m) ? 1 : factor);
-      const excess = Math.min(adds, Math.max(0, state.w(m) + adds - max));
+      const adds = roundExposure(x * s * (primary.includes(m) ? 1 : factor));
+      const excess = roundExposure(Math.min(adds, Math.max(0, state.w(m) + adds - max)));
       if (excess > 0)
         add(M.overTarget * excess / Math.max(1, max), "MICRO_OVER_TARGET",
           () => `${muscleText(m)} passaria do máximo semanal de ${numberText(max)} séries ponderadas em ${numberText(excess)}`);
@@ -349,7 +371,7 @@ export function planPhaseMicrocycle(ctx: EngineContext, phase: StructurePhase, u
     const occ0 = draft.occs[0];
     const stim0 = occ0 ? occurrenceStimulus(input, phase, workout, occ0.week, indexInWeek(phase, occ0)) : null;
     return {
-      i, draft, vol: volLane, x: exposuresOf(phase, workout.label, weeks), remaining: fixed ? 0 : openSlots(draft), fixed,
+      i, draft, vol: volLane, x: weeklyExposureOf(phase, workout.label, weeks), remaining: fixed ? 0 : openSlots(draft), fixed,
       chosen: draft.slots.map((s) => s.exercise).filter((e): e is CatalogExercise => e !== null),
       ids: new Set(draft.taken), picks: [],
       candidates: draft.pool.filter((e) => !draft.taken.has(e.id) && !draft.blocked.has(e.id)),
@@ -406,17 +428,17 @@ export function planPhaseMicrocycle(ctx: EngineContext, phase: StructurePhase, u
     if (!lane.vol || !isVolume(e, vol)) return;
     for (const m of primaryOf(e)) {
       if (sets === null) state.unknown.add(m);
-      else state.weighted.set(m, state.w(m) + lane.x * sets);
+      else state.addWeighted(m, lane.x * sets);
       if (!lane.primaryHere.has(m)) {
         lane.primaryHere.add(m);
-        state.directSessions.set(m, state.ds(m) + lane.x);
+        state.addDirect(m, lane.x);
       }
     }
     for (const m of secondaryOf(e)) {
       if (sets === null) state.unknown.add(m);
-      else state.weighted.set(m, state.w(m) + lane.x * sets * factor);
+      else state.addWeighted(m, lane.x * sets * factor);
     }
-    for (const p of patternsOf(e)) state.patternExposure.set(p, state.pe(p) + lane.x);
+    for (const p of patternsOf(e)) state.addPattern(p, lane.x);
   };
   for (const lane of lanes) {
     if (lane.fixed) {
@@ -425,13 +447,13 @@ export function planPhaseMicrocycle(ctx: EngineContext, phase: StructurePhase, u
       if (!lane.vol) continue;
       for (const [m, v] of Object.entries(f.weighted)) {
         if (v === null) state.unknown.add(m);
-        else state.weighted.set(m, state.w(m) + v);
+        else state.addWeighted(m, v);
       }
       for (const [m, n] of Object.entries(f.directSessions)) {
         if (n > 0) lane.primaryHere.add(m);
-        state.directSessions.set(m, state.ds(m) + n);
+        state.addDirect(m, n);
       }
-      for (const [p, n] of Object.entries(f.patterns)) state.patternExposure.set(p, state.pe(p) + n);
+      for (const [p, n] of Object.entries(f.patterns)) state.addPattern(p, n);
       continue;
     }
     for (const slot of lane.draft.slots) {

@@ -54,3 +54,22 @@ export function exposuresOf(phase: StructurePhase, label: string, weeks: number[
   if (!weeks.length) return 0;
   return Math.min(...weeks.map((w) => phase.occurrences.filter((o) => o.week === w && o.label === label).length));
 }
+
+/**
+ * Exposição semanal usada pela seleção por microciclo e pela oferta dos alvos sugeridos: o mínimo inteiro por semana que
+ * conta (`exposuresOf`) quando o treino aparece em toda semana; quando ele falta em alguma (ABCD 3×/semana, ABC 2×, AB 1×),
+ * a média de sessões por semana que conta (fração, > 0). Sem isso, um treino que não aparece toda semana valeria 0 e
+ * nenhum alvo, repetição ou redundância pesaria nele. Arredondada em 1e-9 para que somas de frações sejam estáveis.
+ */
+export function weeklyExposureOf(phase: StructurePhase, label: string, weeks: number[] = checkWeeksOf(phase)): number {
+  const min = exposuresOf(phase, label, weeks);
+  if (min > 0 || !weeks.length) return min;
+  const inWeeks = new Set(weeks);
+  const n = phase.occurrences.filter((o) => o.label === label && inWeeks.has(o.week)).length;
+  return roundExposure(n / weeks.length);
+}
+
+/** Arredonda somas de exposições (frações) para comparações estáveis: 2/3 + 2/3 + 2/3 = 2. */
+export function roundExposure(n: number): number {
+  return Math.round(n * 1e9) / 1e9;
+}

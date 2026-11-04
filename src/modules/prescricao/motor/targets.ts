@@ -4,7 +4,7 @@
  */
 import { getRuleSet } from "./rules";
 import type { RuleLog } from "./trace";
-import { checkWeeksOf, exposuresOf, indexInWeek, occurrenceStimulus } from "./occurrence";
+import { checkWeeksOf, indexInWeek, occurrenceStimulus, roundExposure, weeklyExposureOf } from "./occurrence";
 import { cmp, codeOf } from "./vocabulary";
 import type { EngineInput, RuleSetRef, StructurePhase, WeeklySetsTarget } from "./types";
 
@@ -16,7 +16,10 @@ export interface TargetSuggestion {
   patterns: string[];
   /** Um alvo por músculo sugerido; `minDirectSessions` some quando forçaria o músculo em todos os treinos de volume. */
   weeklySets: WeeklySetsTarget[];
-  /** Sessões semanais com treino de volume (pior semana completa): o que a estrutura oferece a cada músculo. */
+  /**
+   * Sessões semanais com treino de volume: o que a estrutura oferece a cada músculo. Por treino, a pior semana que conta;
+   * treino que falta em alguma semana entra pela média (pode dar fração, ex.: ABC 2×/semana → 2).
+   */
   supply: number;
 }
 
@@ -51,7 +54,8 @@ export function targetSuggestion(rules: RuleSetRef | RuleLog, phase: StructurePh
   for (const w of phase.workouts) {
     const answered = input.parameters.modalitiesByWorkout.find((m) => m.phaseIndex === phase.index && m.label === w.label)?.modalities;
     const mods = w.focus.modalities?.length ? w.focus.modalities : answered?.length ? answered : set.rules.MODALITY_FOR_STIMULUS.value[stimulus] ?? [];
-    if (mods.some((m) => volume.has(codeOf(m)))) supply += exposuresOf(phase, w.label, weeks);
+    // Treino que falta em alguma semana (ABCD 3×/semana): conta a média de sessões por semana, não 0.
+    if (mods.some((m) => volume.has(codeOf(m)))) supply = roundExposure(supply + weeklyExposureOf(phase, w.label, weeks));
   }
   const muscles = [...(entry.muscles ?? [])].sort(cmp);
   const minDirect = entry.minDirectSessions !== undefined && entry.minDirectSessions < supply ? entry.minDirectSessions : undefined;

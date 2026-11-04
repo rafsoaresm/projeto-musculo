@@ -84,7 +84,14 @@ describe("auditoria: Xintus, plano anterior (ABAB, 4 sessões por semana)", () =
   it("sem alvos: descreve sem recomendar; panturrilha, bíceps e abdominais só aparecem na descrição", () => {
     for (const p of [1, 2, 3]) {
       expect(of(r, "AUDIT_NO_TARGETS", p)).toHaveLength(1);
-      expect(of(r, "AUDIT_NO_TARGETS", p)[0].suggestedAction).not.toMatch(/sugerid/i);
+      // 2026.11.4 (padrão): aponta para a mesma sugestão do aviso NO_TARGETS; 2026.11.3: sem referência à sugestão.
+      expect(of(r, "AUDIT_NO_TARGETS", p)[0]).toMatchObject({
+        suggestedAction: "Aceitar os alvos sugeridos (heurística operacional, editável) e regenerar a fase",
+        sourceRefs: ["rule:AUDIT_COMPREHENSIVE_STIMULI", "rule:MICROCYCLE_TARGET_SUGGESTIONS"],
+      });
+      const [old] = xintusPreviousResult(AUDIT_RULES).audit!.findings.filter((f) => f.code === "AUDIT_NO_TARGETS" && f.phaseIndex === p);
+      expect(old.suggestedAction).not.toMatch(/sugerid/i);
+      expect(old.sourceRefs).toEqual(["rule:AUDIT_COMPREHENSIVE_STIMULI"]);
       const [d] = of(r, "AUDIT_NO_DIRECT_STIMULUS", p);
       expect(d.status).toBe("DESCRIPTIVE");
       expect(Object.keys(d.measured!.detail!)).toContain("CALVES");

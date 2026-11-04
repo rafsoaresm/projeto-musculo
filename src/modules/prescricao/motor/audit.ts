@@ -462,14 +462,19 @@ function auditPhase(pc: PhaseContext): AuditPhase {
         suggestedAction: null,
       }));
   }
-  if (comprehensive && !hasTargets)
+  if (comprehensive && !hasTargets) {
+    // Com MICROCYCLE_TARGET_SUGGESTIONS no conjunto da proposta (2026.11.4+), o achado aponta para a mesma sugestão do aviso
+    // NO_TARGETS (uma sugestão só, aceite do profissional); sem a regra, o texto de antes.
+    const suggests = Boolean(pc.a.log.optional("MICROCYCLE_TARGET_SUGGESTIONS"));
     findings.push(finding({
       code: "AUDIT_NO_TARGETS", severity: "INFO", status: "OPEN", phaseIndex: p,
-      sourceRefs: [rule("AUDIT_COMPREHENSIVE_STIMULI")],
+      sourceRefs: suggests ? [rule("AUDIT_COMPREHENSIVE_STIMULI"), rule("MICROCYCLE_TARGET_SUGGESTIONS")] : [rule("AUDIT_COMPREHENSIVE_STIMULI")],
       rationale: `${where()}: fase de ${labelsOf(STIMULUS_LABELS, stimuli)} sem alvos estruturados de músculos ou padrões. A auditoria descreve a distribuição, mas não pode dizer se uma ausência é escolha.`,
-      // Seam S3: com MICROCYCLE_TARGET_SUGGESTIONS no conjunto, este achado passa a apontar para os alvos sugeridos para aceite.
-      suggestedAction: "Se quiser comparar o plano com alvos, defina músculos ou padrões-alvo da fase.",
+      suggestedAction: suggests
+        ? "Aceitar os alvos sugeridos (heurística operacional, editável) e regenerar a fase"
+        : "Se quiser comparar o plano com alvos, defina músculos ou padrões-alvo da fase.",
     }));
+  }
 
   // equilíbrio entre padrões
   if (comprehensive) {

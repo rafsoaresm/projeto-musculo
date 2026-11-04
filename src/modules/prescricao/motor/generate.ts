@@ -430,6 +430,10 @@ function noTargetsIssue(ctx: EngineContext, draft: WorkoutDraft): Issue {
   const at = { phaseIndex: phase.index, label: workout.label, stage: "SELECTION" as const };
   const message = `Treino ${workout.label}: sem músculos ou padrões-alvo; a seleção seguiu a elegibilidade e a variação entre treinos.`;
   if (log.optional("MICROCYCLE_TARGET_SUGGESTIONS")) {
+    // Treino sem modalidade de volume (cardio, mobilidade) numa fase de hipertrofia: os alvos sugeridos são de volume e não
+    // valem para ele; o aviso fica sem sugestão.
+    const vol = new Set(log.get("VOLUME_MODALITIES").map(codeOf));
+    if (!modalities?.value.some((m) => vol.has(codeOf(m)))) return { severity: "WARNING", code: "NO_TARGETS", path, ...at, message, suggestions: [] };
     const s = targetSuggestion(log, phase, ctx.input);
     if (!s.suggestion)
       return { severity: "WARNING", code: "NO_TARGETS", path, ...at,

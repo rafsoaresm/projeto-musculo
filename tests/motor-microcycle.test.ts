@@ -9,9 +9,11 @@ import {
   type RuleSet, type RuleSetRef, type StructurePhase,
 } from "@/modules/prescricao/motor";
 import { prepare } from "@/modules/prescricao/motor/generate";
-import { planPhaseMicrocycle } from "@/modules/prescricao/motor/microcycle";
+import { fixedWorkoutFrom, planPhaseMicrocycle } from "@/modules/prescricao/motor/microcycle";
 import { targetSuggestion } from "@/modules/prescricao/motor/targets";
 import { RuleLog } from "@/modules/prescricao/motor/trace";
+import { auditPlan, boundAudit } from "@/modules/prescricao/motor/audit";
+import { ruleLogFor } from "@/modules/prescricao/motor/trace";
 import { AUDIT_RULES, CATALOG, baseInput, codes, exercise, parameters, structure, type PhaseSeed } from "./helpers/motor-fixtures";
 import { XINTUS_CATALOG, xintusInput } from "./helpers/xintus";
 
@@ -249,6 +251,57 @@ describe("microciclo: divisões livres (AB, ABC, ABCD, corpo inteiro, superior e
   });
 });
 
+describe("microciclo: treino que não aparece em toda semana (ABCD 3×, ABC 2×, AB 1×)", () => {
+  const TARGETS = ["CHEST", "QUADRICEPS", "LATS", "HAMSTRINGS"];
+  const rotating = (labels: string[], spw: number, rules?: RuleSetRef) => baseInput({
+    ...(rules ? { rules } : {}), catalog: XINTUS_CATALOG,
+    structure: structure("2026-11-09", [{ weeks: 4, sessionsPerWeek: spw, stimulus: "HYPERTROPHY", workouts: labels.map((label) => ({ label, exerciseTarget: 4 })) }]),
+    parameters: parameters({ phaseCoverage: [{ phaseIndex: 1, muscles: TARGETS, basis: "PROFESSIONAL" }] }),
+  });
+  const cases: Array<[string, string[], number, number]> = [["ABCD 3×", ["A", "B", "C", "D"], 3, 0.75], ["ABC 2×", ["A", "B", "C"], 2, 0.75], ["AB 1×", ["A", "B"], 1, 0.5]];
+
+  it.each(cases)("%s: exposição pela média (não 0), treinos diferentes entre si e todos os alvos cobertos", (_name, labels, spw, xA) => {
+    const r = generate(rotating(labels, spw));
+    expect(r.status).toBe("SUCCEEDED");
+    // a auditoria segue contando a pior semana (0): é a fração que a seleção usa no lugar dela
+    expect(r.audit!.phases[0].workouts.find((w) => w.label === "A")!.exposuresPerWeek.min).toBe(0);
+    const sets = labels.map((l) => idsOf(firstOf(r, 1, l)) as string[]);
+    for (const [i, a] of sets.entries())
+      for (const b of sets.slice(i + 1)) expect(a.filter((id) => b.includes(id)).length, `${a} × ${b}`).toBeLessThanOrEqual(2);
+    const primary = new Set(labels.flatMap((l) => [...primaryIn(firstOf(r, 1, l))]));
+    for (const m of TARGETS) expect(primary.has(m), m).toBe(true);
+    expect(codes(r).filter((c) => c.endsWith("_NOT_COVERED"))).toEqual([]);
+    // o traço diz que a exposição é uma média
+    const deficit = firstOf(r, 1, "A").items.flatMap((i) => i.trace.selection).find((t) => t.code === "MICRO_TARGET_DEFICIT")!;
+    expect(deficit.detail).toContain(`aparece ${String(xA).replace(".", ",")}× por semana em média`);
+  });
+
+  it("mesmo exercício em outro treino pesa pela média de exposições; a oferta da sugestão também conta a média", () => {
+    const r = generate(rotating(["A", "B", "C", "D"], 3));
+    const same = r.occurrences.flatMap((o) => o.items).flatMap((i) => i.trace.selection).filter((t) => t.code === "MICRO_SAME_EXERCISE");
+    for (const t of same) expect(t.detail).toMatch(/em média/);
+    const phaseOf = (labels: string[], spw: number) => structure("2026-11-09", [{ weeks: 4, sessionsPerWeek: spw, stimulus: "HYPERTROPHY", workouts: labels.map((label) => ({ label })) }]).phases[0];
+    const abcd3 = targetSuggestion(MICRO, phaseOf(["A", "B", "C", "D"], 3), baseInput()).suggestion!;
+    expect(abcd3.supply).toBe(3);
+    expect(abcd3.weeklySets.every((w) => w.minDirectSessions === 2)).toBe(true);
+    expect(targetSuggestion(MICRO, phaseOf(["A", "B", "C"], 2), baseInput()).suggestion!.supply).toBe(2);
+    const ab1 = targetSuggestion(MICRO, phaseOf(["A", "B"], 1), baseInput()).suggestion!;
+    expect(ab1.supply).toBe(1);
+    expect(ab1.weeklySets.every((w) => w.minDirectSessions === undefined)).toBe(true);
+  });
+
+  it("treino mantido numa regeneração que não aparece em toda semana: conta pela pior sessão × a média", () => {
+    const input = rotating(["A", "B", "C", "D"], 3);
+    const before = generate(input);
+    const fixed = fixedWorkoutFrom(prepare(input)!, input.structure.phases[0], "A", before.occurrences);
+    expect(fixed.exposures).toBe(0.75);
+    for (const id of idsOf(firstOf(before, 1, "A"))) expect(fixed.exercises[id!]).toBe(0.75);
+    const rb = ok(regenerate(input, before, { kind: "WORKOUT", phaseIndex: 1, label: "D" }));
+    expect(canonicalJson(rb.occurrences.filter((o) => o.label !== "D"))).toBe(canonicalJson(before.occurrences.filter((o) => o.label !== "D")));
+    expect(canonicalJson(rb.occurrences.filter((o) => o.label === "D").map(idsOf))).toBe(canonicalJson(before.occurrences.filter((o) => o.label === "D").map(idsOf)));
+  });
+});
+
 describe("microciclo: cardio e mobilidade não recebem alvos de hipertrofia", () => {
   it("fase só de cardio e mobilidade: mesma seleção da 2026.11.3, sem termos de microciclo", () => {
     const seed: PhaseSeed = { weeks: 2, sessionsPerWeek: 3, workouts: [
@@ -276,6 +329,30 @@ describe("microciclo: cardio e mobilidade não recebem alvos de hipertrofia", ()
       for (const i of firstOf(r, 1, label).items) expect(i.trace.selection.some((t) => t.code.startsWith("MICRO_")), `${label} ${i.exerciseId}`).toBe(false);
     expect(firstOf(r, 1, "A").items.some((i) => i.trace.selection.some((t) => t.code === "MICRO_TARGET_DEFICIT"))).toBe(true);
     expect(r.audit!.phases[0].workouts.filter((w) => w.volumeWorkout).map((w) => w.label)).toEqual(["A"]);
+  });
+
+  it("treino só de cardio numa fase de hipertrofia, sem alvos: NO_TARGETS sem a sugestão de hipertrofia", () => {
+    const seed: PhaseSeed = { weeks: 2, sessionsPerWeek: 2, stimulus: "HYPERTROPHY", workouts: [
+      { label: "A", exerciseTarget: 4 }, { label: "C", exerciseTarget: 1, focus: { modalities: ["CARDIO"] } },
+    ] };
+    const r = generate(baseInput({ structure: structure("2026-11-09", [seed]) }));
+    const issues = r.issues.filter((i) => i.code === "NO_TARGETS");
+    expect(issues.find((i) => i.label === "A")!.suggestions).toEqual([expect.objectContaining({ ruleId: "MICROCYCLE_TARGET_SUGGESTIONS", value: "HYPERTROPHY" })]);
+    expect(issues.find((i) => i.label === "C")!.suggestions).toEqual([]);
+  });
+});
+
+describe("microciclo: doses e auditoria (§8.3.14)", () => {
+  it("a auditoria da proposta do microciclo não lê a origem (travar não a muda) e não muda a entrada", () => {
+    const r = generate(xintusInput());
+    const log = ruleLogFor(MICRO)!;
+    const locked = r.occurrences.map((o) => ({ ...o, items: o.items.map((i) => ({ ...i, origin: "LOCKED" as const })) }));
+    const copy = JSON.parse(JSON.stringify(locked));
+    const deepFreeze = (v: unknown): void => { if (v && typeof v === "object") { Object.values(v).forEach(deepFreeze); Object.freeze(v); } };
+    deepFreeze(locked);
+    const again = boundAudit(log, auditPlan({ log, phases: r.phases, structure: null, workouts: r.workouts, occurrences: locked, volume: r.volume, byId: new Map(XINTUS_CATALOG.map((e) => [e.id, e])) }));
+    expect(canonicalJson(again)).toBe(canonicalJson(r.audit));
+    expect(canonicalJson(locked)).toBe(canonicalJson(copy));
   });
 });
 
@@ -368,11 +445,26 @@ describe("microciclo: o que o profissional decidiu é soberano (preservados, tra
   it("item travado é mantido e contado; doseOverrides e doses manuais iguais depois de regenerar", () => {
     const input = make({ parameters: { ...make().parameters, doseOverrides: [{ exerciseId: "ex-legpress", patch: { values: { sets: 5 } } }] } });
     const before = generate(input);
-    const lock = firstOf(before, 1, "A").items[0];
+    // Trava o peito de A (3 séries × 2 sessões = 6 = o mínimo semanal do alvo).
+    const lock = firstOf(before, 1, "A").items.find((i) => i.exerciseId === "ex-bench")!;
+    expect(lock.trace.selection.find((t) => t.code === "MICRO_TARGET_DEFICIT")!.detail).toContain("faltavam 6 séries ponderadas; este exercício soma 6");
     const locked = { ...input, locked: [{ phaseIndex: 1, slotKey: lock.slotKey }] };
     const after = ok(regenerate(locked, before, { kind: "PHASE", phaseIndex: 1 }));
-    for (const o of after.occurrences.filter((x) => x.label === "A")) expect(o.items.some((i) => i.slotKey === lock.slotKey && i.origin === "LOCKED")).toBe(true);
-    for (const o of after.occurrences) for (const i of o.items) if (i.exerciseId === "ex-legpress" && i.dose?.metric === "REPS") expect(i.dose.sets).toBe(5);
+    const dosesOf = (r: EngineResult) => r.occurrences.filter((o) => o.label === "A").map((o) => o.items.find((i) => i.slotKey === lock.slotKey));
+    for (const [n, kept] of dosesOf(after).entries()) {
+      expect(kept).toMatchObject({ exerciseId: "ex-bench", origin: "LOCKED" });
+      expect(canonicalJson(kept!.dose)).toBe(canonicalJson(dosesOf(before)[n]!.dose));
+    }
+    // Contado no estado da semana: nenhuma escolha do motor é puxada pelo déficit de peito (já atendido pelo travado).
+    const picks = after.occurrences.flatMap((o) => o.items).filter((i) => i.origin === "ENGINE");
+    expect(picks.length).toBeGreaterThan(0);
+    expect(picks.some((i) => i.trace.selection.some((t) => t.code === "MICRO_TARGET_DEFICIT" && t.detail.startsWith("Peitoral")))).toBe(false);
+    // doseOverrides do profissional: o leg press continua com 5 séries em toda sessão (antes e depois).
+    for (const r of [before, after]) {
+      const legpress = r.occurrences.flatMap((o) => o.items).filter((i) => i.exerciseId === "ex-legpress");
+      expect(legpress.length).toBeGreaterThan(0);
+      for (const i of legpress) expect(i.dose).toMatchObject({ metric: "REPS", sets: 5 });
+    }
   });
 
   it("troca na fase inteira sobrevive a regenerar o treino (vaga reservada), sem SUBSTITUTION_DROPPED", () => {
@@ -404,8 +496,20 @@ describe("microciclo: o que o profissional decidiu é soberano (preservados, tra
       expect(o.items.length, `semana ${o.week}`).toBe(6);
       expect(o.items.some((i) => i.exerciseId === replacement && i.origin === "SUBSTITUTED"), `semana ${o.week}`).toBe(o.week >= 3);
     }
-    // Regenerar B com a troca parcial em A: A entra fixo pela pior semana (a troca, só nas semanas 3+, não conta).
+    // Regenerar B com a troca parcial em A: A entra fixo pela pior semana (a troca, só nas semanas 3+, não conta; o
+    // exercício trocado, só nas semanas 1–2, também não).
+    const fixed = fixedWorkoutFrom(prepare(input)!, input.structure.phases[0], "A", sub.occurrences);
+    expect(fixed.exposures).toBe(2);
+    expect(fixed.exercises[replacement]).toBe(0);
+    expect(fixed.exercises[target.exerciseId!]).toBe(0);
+    expect(fixed.weighted.CHEST).toBe(6);
     const rb = ok(regenerate(input, sub, { kind: "WORKOUT", phaseIndex: 1, label: "B" }));
+    const bItems = rb.occurrences.filter((o) => o.label === "B").flatMap((o) => o.items);
+    // Pelos números do traço: o peito de A na pior semana (6) já atende o mínimo, então nada em B é puxado pelo déficit de
+    // peito; e o exercício que A tem só nas semanas 1–2 não pesa como "mesmo exercício em outro treino".
+    expect(bItems.some((i) => i.trace.selection.some((t) => t.code === "MICRO_TARGET_DEFICIT" && t.detail.startsWith("Peitoral")))).toBe(false);
+    for (const i of bItems.filter((x) => x.exerciseId === target.exerciseId || x.exerciseId === replacement))
+      expect(i.trace.selection.some((t) => t.code === "MICRO_SAME_EXERCISE")).toBe(false);
     expect(canonicalJson(rb.occurrences.filter((o) => o.label === "A"))).toBe(canonicalJson(sub.occurrences.filter((o) => o.label === "A")));
     expect(rb.workouts.find((w) => w.label === "A")).toEqual(sub.workouts.find((w) => w.label === "A"));
   });
@@ -514,6 +618,6 @@ describe("microciclo: medição local (Node, indicativa) do caso grande", () => 
       }
     }
     console.log(`[motor-microcycle] medição local (Node ${process.version}, gc ${gc ? "exposto" : "não exposto"}):\n${rows.map((r) => `${r.version} ${r.op}: ${r.ms} ms, heap Δ ${r.heapDeltaMb} MB`).join("\n")}`);
-    for (const r of rows.filter((x) => x.version === "2026.11.4")) expect(r.ms as number, String(r.op)).toBeLessThan(15000);
+    for (const r of rows.filter((x) => x.version === "2026.11.4")) expect(r.ms as number, String(r.op)).toBeLessThan(5000);
   }, 180_000);
 });
