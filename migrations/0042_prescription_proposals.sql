@@ -87,6 +87,16 @@ CREATE TABLE prescription_generation_inputs (
   FOREIGN KEY (organization_id, generation_id) REFERENCES prescription_generations(organization_id, id)
 );
 CREATE INDEX prescription_generation_inputs_student_idx ON prescription_generation_inputs(organization_id, student_id);
+-- The student is the one of the plan the generation ran on, so deleting the student's data by student_id reaches every input.
+CREATE TRIGGER prescription_generation_inputs_student
+BEFORE INSERT ON prescription_generation_inputs
+WHEN NOT EXISTS (
+  SELECT 1 FROM prescription_generations g
+  JOIN training_plans tp ON tp.organization_id = g.organization_id AND tp.id = g.plan_id
+  WHERE g.id = NEW.generation_id AND g.organization_id = NEW.organization_id AND tp.student_id = NEW.student_id)
+BEGIN
+  SELECT RAISE(ABORT, 'GENERATION_INPUT_STUDENT_INVALID');
+END;
 -- Deletable (data of the student), never rewritten.
 CREATE TRIGGER prescription_generation_inputs_no_update
 BEFORE UPDATE ON prescription_generation_inputs

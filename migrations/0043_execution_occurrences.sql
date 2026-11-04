@@ -15,10 +15,12 @@ CREATE INDEX workout_sessions_occurrence_idx ON workout_sessions(occurrence_id) 
 
 CREATE TRIGGER workout_sessions_occurrence_valid
 BEFORE INSERT ON workout_sessions
-WHEN NEW.occurrence_id IS NOT NULL AND NOT EXISTS (
-  SELECT 1 FROM plan_session_occurrences o WHERE o.id = NEW.occurrence_id AND o.revision_id = NEW.revision_id
-    AND o.organization_id = NEW.organization_id AND o.phase_index = NEW.phase_index
-    AND o.workout_label = NEW.workout_label)
+WHEN NEW.occurrence_id IS NOT NULL AND (
+  (SELECT prescription_model FROM plan_revisions WHERE id = NEW.revision_id) IS NOT 'OCCURRENCE'
+  OR NOT EXISTS (
+    SELECT 1 FROM plan_session_occurrences o WHERE o.id = NEW.occurrence_id AND o.revision_id = NEW.revision_id
+      AND o.organization_id = NEW.organization_id AND o.phase_index = NEW.phase_index
+      AND o.workout_label = NEW.workout_label))
 BEGIN
   SELECT RAISE(ABORT, 'SESSION_OCCURRENCE_INVALID');
 END;

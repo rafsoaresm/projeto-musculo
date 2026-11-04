@@ -183,7 +183,7 @@ describe("migration files (design §3.1)", () => {
 
   it.each([
     ["0041_prescription_occurrences.sql", 34, { "ALTER TABLE": 8, "CREATE INDEX": 5, "CREATE TABLE": 2, "CREATE TRIGGER": 18 }],
-    ["0042_prescription_proposals.sql", 37, { "CREATE TABLE": 7, "CREATE INDEX": 5, "CREATE UNIQUE": 1, "CREATE TRIGGER": 23 }],
+    ["0042_prescription_proposals.sql", 38, { "CREATE TABLE": 7, "CREATE INDEX": 5, "CREATE UNIQUE": 1, "CREATE TRIGGER": 24 }],
     ["0043_execution_occurrences.sql", 11, { "ALTER TABLE": 5, "CREATE INDEX": 1, "CREATE TRIGGER": 4 }],
   ])("%s splits into exactly its statements", (file, count, kinds) => {
     const sql = text(file);
@@ -233,9 +233,19 @@ describe("content_version (0041)", () => {
     expect(await version(plan.revisionId)).toBe(3);
     await run("UPDATE prescribed_exercises SET updated_at = '2030-01-01T00:00:00.000Z' WHERE id = ?1", a);
     expect(await version(plan.revisionId)).toBe(3);
+    const edits = async () =>
+      (await all<{ action: string }>("SELECT action FROM training_plan_events WHERE revision_id = ?1 AND action = 'PRESCRIPTION_EDITED'", plan.revisionId)).length;
+    const editsBefore = await edits();
+    // The current order again is not a change: no bump, no event, still accepted.
+    expect(await rx.reorder(plan.planId, plan.revisionId, { phaseIndex: 1, workoutLabel: "A" }, [a, b])).toBe(true);
+    expect(await version(plan.revisionId)).toBe(3);
+    expect(await edits()).toBe(editsBefore);
     expect(await rx.reorder(plan.planId, plan.revisionId, { phaseIndex: 1, workoutLabel: "A" }, [b, a])).toBe(true);
     const afterReorder = await version(plan.revisionId);
     expect(afterReorder).toBeGreaterThan(3);
+    expect(await edits()).toBe(editsBefore + 1);
+    const order = await all<{ id: string }>("SELECT id FROM prescribed_exercises WHERE revision_id = ?1 ORDER BY position", plan.revisionId);
+    expect(order.map((row) => row.id)).toEqual([b, a]);
     expect(await rx.remove(plan.planId, plan.revisionId, b)).toBe(true);
     expect(await version(plan.revisionId)).toBe(afterReorder + 1);
   });
@@ -259,6 +269,10 @@ describe("content_version (0041)", () => {
     const a = await addRaw(plan.planId, plan.revisionId, 1, "A", "Agachamento");
     await refused(run("UPDATE prescribed_exercises SET application_id = 'app-x' WHERE id = ?1", a), "PRESCRIBED_EXERCISE_PROVENANCE_FROZEN");
     await refused(run("UPDATE prescribed_exercises SET copied_from_id = 'x' WHERE id = ?1", a), "PRESCRIBED_EXERCISE_PROVENANCE_FROZEN");
+    await refused(run("UPDATE prescribed_exercises SET source_slot_key = 'slot-x' WHERE id = ?1", a), "PRESCRIBED_EXERCISE_PROVENANCE_FROZEN");
+    await refused(run("UPDATE prescribed_exercises SET substitutes_prescribed_exercise_id = 'pe-x' WHERE id = ?1", a), "PRESCRIBED_EXERCISE_PROVENANCE_FROZEN");
+    // Writing the same (NULL) value is not a change.
+    await run("UPDATE prescribed_exercises SET source_slot_key = NULL, substitutes_prescribed_exercise_id = NULL WHERE id = ?1", a);
     await refused(run("UPDATE prescribed_exercises SET dose_json = 'not json' WHERE id = ?1", a), "CHECK constraint failed");
     await run("UPDATE prescribed_exercises SET dose_json = '{\"metric\":\"REPS\"}', dose_text = '3 × 10' WHERE id = ?1", a);
   });
@@ -353,6 +367,8 @@ describe("proposals (0042)", () => {
     await refused(run("UPDATE prescription_proposals SET version = version + 1, base_content_version = 3 WHERE id = ?1", p), "PROPOSAL_VERSION_INVALID");
     await refused(run("UPDATE prescription_proposals SET plan_id = ?2 WHERE id = ?1", p, other.planId), "PROPOSAL_IDENTITY_FROZEN");
     await refused(run("UPDATE prescription_proposals SET last_write_id = 'short' WHERE id = ?1", p), "CHECK constraint failed");
+    // state_forward on its own (an OPEN proposal, so closed_frozen does not apply): it runs before the CHECK.
+    await refused(run("UPDATE prescription_proposals SET state = 'REOPENED' WHERE id = ?1", p), "PROPOSAL_STATE_INVALID");
     await refused(run("DELETE FROM prescription_proposals WHERE id = ?1", p), "PROPOSAL_APPEND_ONLY");
     await run("UPDATE prescription_proposals SET state = 'APPLIED', version = version + 1, closed_at = ?2 WHERE id = ?1", p, stamp);
     await refused(run("UPDATE prescription_proposals SET state = 'OPEN' WHERE id = ?1", p), /PROPOSAL_(CLOSED|STATE_INVALID)/);
@@ -415,10 +431,16 @@ describe("proposals (0042)", () => {
     await refused(generation("two", p, other.planId), "PROPOSAL_ITEM_INVALID");
     await refused(run("UPDATE prescription_generations SET status = 'INFEASIBLE' WHERE id = 'gen-one'"), "GENERATION_APPEND_ONLY");
     await refused(run("DELETE FROM prescription_generations WHERE id = 'gen-one'"), "GENERATION_APPEND_ONLY");
-    await run(
-      "INSERT INTO prescription_generation_inputs (generation_id, organization_id, student_id, input_json, created_at) VALUES ('gen-one', 'org-a', 'st-1', '{}', ?1)",
-      stamp,
-    );
+    const input = (student: string, org = "org-a") =>
+      run(
+        "INSERT INTO prescription_generation_inputs (generation_id, organization_id, student_id, input_json, created_at) VALUES ('gen-one', ?1, ?2, '{}', ?3)",
+        org, student, stamp,
+      );
+    // The input belongs to the student of the plan, so the deletion by student_id reaches it.
+    await refused(input("st-b"), "GENERATION_INPUT_STUDENT_INVALID");
+    await refused(input("st-other"), "GENERATION_INPUT_STUDENT_INVALID");
+    await refused(input("st-b", "org-b"), "GENERATION_INPUT_STUDENT_INVALID");
+    await input("st-1");
     await refused(run("UPDATE prescription_generation_inputs SET input_json = '[]' WHERE generation_id = 'gen-one'"), "GENERATION_APPEND_ONLY");
     await run("DELETE FROM prescription_generation_inputs WHERE generation_id = 'gen-one'");
     expect(await first("SELECT id FROM prescription_generations WHERE id = 'gen-one'")).not.toBeNull();
@@ -491,9 +513,12 @@ describe("execution per occurrence (0043)", () => {
   it("leaves TEMPLATE logs as they were and refuses an occurrence on them", async () => {
     const plan = await newPlan(V2);
     await addRaw(plan.planId, plan.revisionId, 1, "A", "Agachamento");
+    // A real occurrence of the same workout on a TEMPLATE revision (written before the model moved, or without it) is still refused.
+    const occ = await occurrence(plan.revisionId, 1, 1, 1, "A");
     await deliver(plan.planId, plan.revisionId);
     await session(plan.revisionId, "A", null, "2026-11-02");
-    await refused(session(plan.revisionId, "A", "occ-none", "2026-11-03"), "SESSION_OCCURRENCE_INVALID");
+    await refused(session(plan.revisionId, "A", occ, "2026-11-03"), "SESSION_OCCURRENCE_INVALID");
+    await refused(session(plan.revisionId, "A", "occ-none", "2026-11-04"), "SESSION_OCCURRENCE_INVALID");
   });
 
   it("requires the occurrence of the same workout on OCCURRENCE revisions, and only its included exercises", async () => {

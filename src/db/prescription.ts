@@ -284,6 +284,8 @@ export function prescriptionFor(
         new Set(orderedIds).size === orderedIds.length &&
         current.every((item) => orderedIds.includes(item.id));
       if (!same || current.length === 0) return false;
+      // The same order is not a change: writing it would bump content_version (0041) and stale an open proposal's base for nothing.
+      if (current.every((item, index) => item.id === orderedIds[index])) return true;
       const stamp = now.toISOString();
       // Positions are unique, so move everything out of the way first, then settle.
       const statements = [
@@ -305,12 +307,14 @@ export function prescriptionFor(
               target.phaseIndex, target.workoutLabel, index + 1, id,
             ),
         ),
+        // The last settle statement always moves its row back from +100000, so changes() > 0 whenever the reorder wrote.
+        eventAfterChange(planId, revisionId, stamp),
       ];
       try {
         const results = await db.batch(statements);
         // Each statement targets one id. D1's meta.changes also counts rows written by triggers (the content_version bump of
         // 0041), so "changed" is > 0, never an exact count.
-        return results.slice(1).every((result) => result.meta.changes > 0);
+        return results.slice(1, -1).every((result) => result.meta.changes > 0);
       } catch (error) {
         if (isUnique(error)) return false;
         throw error;
