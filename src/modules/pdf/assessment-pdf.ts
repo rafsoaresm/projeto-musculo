@@ -88,7 +88,9 @@ function drawBlock(flow: Flow, block: ReportBlock, images: ReadonlyMap<PhotoView
         const value = wrap(bold, 10, printable(bold, item.value), VALUE_WIDTH);
         const detail = wrap(regular, 8.5, printable(regular, item.detail), VALUE_WIDTH);
         const flags = item.flags.length > 0 ? wrap(regular, 8.5, printable(regular, item.flags.join(" · ")), VALUE_WIDTH) : [];
-        const right = value.length * 13 + detail.length * 11 + flags.length * 11;
+        // Slice 0.92: the classification by the reference table (level, table, column, source, precision), in the ink of the text.
+        const classification = item.classification ? wrap(regular, 8.5, printable(regular, item.classification), VALUE_WIDTH) : [];
+        const right = value.length * 13 + detail.length * 11 + classification.length * 11 + flags.length * 11;
         const height = Math.max(label.length * 12, right) + 6;
         flow.need(height);
         const top = flow.y;
@@ -105,6 +107,11 @@ function drawBlock(flow: Flow, block: ReportBlock, images: ReadonlyMap<PhotoView
         for (const line of detail) {
           flow.y = y;
           flow.text(line, MARGIN + LABEL_WIDTH + GAP, 8.5, regular, MUTED);
+          y -= 11;
+        }
+        for (const line of classification) {
+          flow.y = y;
+          flow.text(line, MARGIN + LABEL_WIDTH + GAP, 8.5, regular, INK);
           y -= 11;
         }
         for (const line of flags) {

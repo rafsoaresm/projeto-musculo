@@ -4,7 +4,9 @@
  *
  * It prints what was recorded and nothing else: the raw measures, the results as they were computed at finalize (value, method, formula version,
  * flags; never recomputed with today's formulas), the professional's own texts. Something not measured reads "Sem aferição" or "Não realizado",
- * never 0; there is no classification (none is homologated, handoff 11), only the classification the professional typed, said to be theirs.
+ * never 0. Slice 0.92: the classification of the body fat, BMI, waist-hip ratio, Flexiteste total and Cooper distance by the reference tables
+ * the user sent, as written at finalize (a record made before the tables says so, never classified afterwards); the classification the
+ * professional typed stays apart, said to be theirs.
  * The handoff asks for an institutional disclaimer ("não equivale a exame médico") reviewed by whoever is responsible and does not give its text,
  * so the report carries the neutral line `REPORT_NOTICE` instead (it says what the report does not do, without contradicting what it prints: the
  * raw measures are not estimates and a classification the professional typed does appear, as theirs).
@@ -56,15 +58,16 @@ import {
 } from "./physical-tests";
 import { HEATH_CARTER_NOTE, findingsText, postureEmpty, regionsOf, somatotypeText, type PosturePayload } from "./posture";
 import { FLAG_LABEL, RESULT_LABEL, formatResult, isResultEstimate, methodLabel, resultNote } from "./review";
+import { BEFORE_TABLES, TABLES_NOTE, classificationHeading, classificationLine, isClassifiedCode, recordedTableReference } from "../classifications";
 import { ANAMNESIS_CODES, PARQ_CODES, parqAnswer, type ProfilePayload, type ScreeningPayload } from "./screening";
 import { photoViewLabel, type PhotoView } from "../photos";
 import { recordedPhotoGroups } from "./posture-photos";
 import { NOT_INCLUDED, PART_LABEL, excludedPartsOf, isPartEnabled, isStepEnabled, templateLine, type EnabledParts, type TemplatePart } from "./template";
 
 /** The line every report carries in place of the institutional disclaimer the handoff asks for but does not give (handoff 3.5). */
-export const REPORT_NOTICE = "Sem classificação automática; só os resultados marcados “estimativa” vêm de equações.";
+export const REPORT_NOTICE = `${TABLES_NOTE} A classificação é a registrada ao finalizar, com a tabela indicada em cada resultado. Só os resultados marcados “estimativa” vêm de equações.`;
 /** The short form of `REPORT_NOTICE`, for the footer of each page. */
-export const REPORT_FOOTER_NOTICE = "Sem classificação automática.";
+export const REPORT_FOOTER_NOTICE = "Classificação só pelas tabelas de referência indicadas.";
 /** How an empty field reads in the report, so a reader does not take a blank for a zero. */
 export const REPORT_EMPTY_NOTE =
   "Um campo vazio aparece escrito por extenso (como “Sem aferição”, “Sem registro”, “Sem resposta” ou “Não realizado”), nunca como zero nem em branco.";
@@ -73,7 +76,7 @@ export type ReportBlock =
   | { kind: "facts"; rows: { label: string; value: string }[] }
   | { kind: "subtitle"; text: string }
   | { kind: "text"; text: string; muted?: boolean }
-  | { kind: "results"; rows: { label: string; value: string; detail: string; flags: string[] }[] }
+  | { kind: "results"; rows: { label: string; value: string; detail: string; flags: string[]; classification: string | null }[] }
   /** The posture photos (slice 0.86): the PDF draws the image of each stored one; an erased one is a line that says when. */
   | { kind: "photos"; items: { view: PhotoView; label: string; erasedOn: string | null }[] };
 export interface ReportSection {
@@ -301,6 +304,12 @@ export function resultRows(results: readonly ResultRow[]) {
         .filter((part): part is string => part !== null)
         .join(" · "),
       flags: result.flags.map((flag) => FLAG_LABEL[flag] ?? flag),
+      // Slice 0.92: the classification as written at finalize; a result a table classifies, recorded before the tables, says so.
+      classification: !isClassifiedCode(result.code)
+        ? null
+        : result.classification
+          ? `${classificationHeading(result.classification)}: ${classificationLine(result.classification)}`
+          : `Classificação: ${BEFORE_TABLES}`,
     };
   });
 }
@@ -324,10 +333,14 @@ export function validationLines(results: readonly ResultRow[]): string[] {
 }
 
 function resultsSection(results: readonly ResultRow[]): ReportSection {
+  // Slice 0.92: the reference the tables used, as frozen in the classifications (absent on a record made before the tables).
+  const reference = recordedTableReference(results.map((result) => result.classification));
   return {
     title: "Resultados",
     blocks: [
-      notDone("Calculados ao finalizar, com o método e a versão da fórmula, sem classificação. Só os marcados como estimativa vêm da equação de um estudo."),
+      notDone("Calculados ao finalizar, com o método e a versão da fórmula. Só os marcados como estimativa vêm da equação de um estudo."),
+      notDone(TABLES_NOTE),
+      ...(reference ? facts([row("Referência das tabelas", reference)]) : []),
       results.length > 0 ? { kind: "results", rows: resultRows(results) } : { kind: "text", text: "Nenhum resultado foi calculado." },
       ...validationLines(results).map((text): ReportBlock => ({ kind: "text", text, muted: true })),
     ],
@@ -462,7 +475,7 @@ function testsSection(tests: TestsPayload | null, enabled: EnabledParts = null):
     });
   const classified = [...REPETITION_TESTS.map((key) => tests[key].classificationManual), cooper.classificationManual].some(filled);
   if (classified) blocks.push(notDone(TESTS_CLASSIFICATION_NOTE));
-  if (on("cooper")) blocks.push(notDone("A velocidade média e o VO₂máx estimado do Cooper estão em “Resultados”."));
+  if (on("cooper")) blocks.push(notDone("A velocidade média, o VO₂máx estimado e a classificação da distância (Cooper, 1982) estão em “Resultados”."));
   return { title: "Testes físicos", blocks };
 }
 

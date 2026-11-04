@@ -123,7 +123,7 @@ beforeAll(async () => {
   await recorded("early-1");
   await run("UPDATE organizations SET name = 'Studio A antes' WHERE id = 'org-a'");
   await run("UPDATE professionals SET display_name = 'Pro A antes' WHERE user_id = 'tech-a'");
-  await migrate(db, ["0039_delivery_names.sql"]);
+  await migrate(db, ALL_MIGRATIONS.slice(ALL_MIGRATIONS.indexOf("0039_delivery_names.sql")));
 });
 afterAll(async () => {
   await mf?.dispose();

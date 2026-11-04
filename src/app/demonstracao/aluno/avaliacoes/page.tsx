@@ -19,7 +19,7 @@ export default async function DemoStudentAssessments() {
         <p>
           Na demonstração o aluno fictício não tem avaliação registrada, e a ferramenta não inventa medidas nem resultados. Na área real, esta
           tela lista as avaliações físicas que o seu profissional finalizou, cada uma com o relatório em PDF: o que foi medido, os resultados
-          com o método de cada um e as considerações do profissional, sem classificação. O que não foi medido aparece como não realizado,
+          com o método de cada um, a classificação pelas tabelas de referência quando há e as considerações do profissional. O que não foi medido aparece como não realizado,
           nunca como zero.
         </p>
       </Notice>

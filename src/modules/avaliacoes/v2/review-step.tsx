@@ -3,6 +3,56 @@ import { useState, type ReactNode } from "react";
 import { CircleCheck, Info, TriangleAlert } from "lucide-react";
 import { ResultsList } from "./results-list";
 import type { DraftReview, ModuleSummary } from "./review";
+import { TABLES_NOTE } from "../classifications";
+import { EQUATION_LABEL } from "./composition";
+import { ReadOnlyField } from "./fields";
+
+/** The choice of "Referência das tabelas" (slice 0.92), shown when the model has a part a sex-dependent table classifies. */
+export interface TableReferenceChoice {
+  /** The skinfold equation's reference: when set, it is the tables' reference and nothing is chosen here. */
+  equation: "male" | "female" | "not_selected";
+  chosen: "male" | "female" | null;
+  onChange: (chosen: "male" | "female" | null) => void;
+}
+
+/**
+ * "Referência das tabelas": the equation's when it is set (read only here; it is changed in Medidas), otherwise chosen here and saved with the
+ * draft. Never the person's gender (user's decision 2); without one, the tables that depend on it say "sem referência escolhida".
+ */
+function TableReferenceField({ choice }: { choice: TableReferenceChoice }) {
+  if (choice.equation !== "not_selected")
+    return (
+      <div className="av2-grid av2-reference">
+        <ReadOnlyField
+          label="Referência das tabelas"
+          value={`${EQUATION_LABEL[choice.equation]}, a da equação das dobras`}
+          note="A mesma referência da equação escolhida em Medidas; para trocar, troque a equação."
+        />
+      </div>
+    );
+  return (
+    <div className="av2-grid av2-reference">
+      <div className="av2-field">
+        <label htmlFor="av2-referencia-tabelas" className="av2-label">
+          Referência das tabelas
+        </label>
+        <select
+          id="av2-referencia-tabelas"
+          value={choice.chosen ?? ""}
+          onChange={(event) => choice.onChange(event.target.value === "male" || event.target.value === "female" ? event.target.value : null)}
+          aria-describedby="av2-referencia-tabelas-nota"
+        >
+          <option value="">Não escolhida</option>
+          <option value="male">Masculina</option>
+          <option value="female">Feminina</option>
+        </select>
+        <span id="av2-referencia-tabelas-nota" className="av2-note">
+          É a referência das tabelas, não o gênero da pessoa. Gordura, RCQ e Cooper dependem dela; IMC e Flexiteste, não.
+        </span>
+      </div>
+    </div>
+  );
+}
 
 const STATE_LABEL: Record<ModuleSummary["state"], string> = {
   ready: "Completa",
@@ -28,6 +78,7 @@ export function ReviewStep({
   onFinalize,
   onOpenTriagem,
   conclusion = null,
+  reference = null,
 }: {
   review: DraftReview;
   /** A value on the screen that is not accepted (named), which would not be saved. */
@@ -40,6 +91,8 @@ export function ReviewStep({
   onOpenTriagem: () => void;
   /** The final considerations card (module "conclusion"), edited here before the finalize. */
   conclusion?: ReactNode;
+  /** Slice 0.92: "Referência das tabelas"; null when the model has no part a sex-dependent table classifies. */
+  reference?: TableReferenceChoice | null;
 }) {
   const [confirming, setConfirming] = useState(false);
   const blockers = [...problems, ...review.pending];
@@ -107,7 +160,11 @@ export function ReviewStep({
 
       <section className="panel av2-card" aria-labelledby="av2-resultados">
         <h3 id="av2-resultados">Resultados a registrar</h3>
-        <p className="muted small">Calculados com as fórmulas versionadas, sem classificação (nenhuma tabela está homologada). Só os marcados como estimativa vêm da equação de um estudo; os demais são conta direta das medidas.</p>
+        <p className="muted small">
+          Calculados com as fórmulas versionadas. Só os marcados como estimativa vêm da equação de um estudo; os demais são conta direta das medidas.
+        </p>
+        <p className="muted small">{TABLES_NOTE} A classificação é registrada ao finalizar, como aparece abaixo.</p>
+        {reference && <TableReferenceField choice={reference} />}
         {review.results.length > 0 ? <ResultsList results={review.results} labelledBy="av2-resultados" /> : <p>Nenhum resultado calculável com o que foi medido.</p>}
         {review.notComputed.length > 0 && (
           <>

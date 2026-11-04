@@ -102,6 +102,9 @@ test("the evolution compares a result only within the same method: a change of p
   await expect(rows.nth(2)).toContainText("Método diferente do valor anterior");
   await expect(rows.nth(1)).toContainText("conversão Siri (1961)");
   await expect(rows.nth(2)).not.toContainText("conversão");
+  // Slice 0.92: each value with the classification recorded with it (17,3% and 15,9% compared as 17% and 16%: men 26–35 "Acima da Média").
+  await expect(rows.nth(1).getByRole("cell").filter({ hasText: /^Acima da Média/ })).toContainText("Pollock & Wilmore, 1993 · 17,3% comparado como 17%");
+  await expect(rows.nth(2).getByRole("cell").filter({ hasText: /^Acima da Média/ })).toContainText("15,9% comparado como 16%");
   // The sum of skinfolds follows the protocol too: 122 mm and 66 mm are never one line.
   const sum = results.getByRole("group", { name: "Soma das dobras", exact: true });
   await expect(sum.getByText("Metodologias diferentes; comparação de “Soma das dobras” pode não ser equivalente", { exact: false })).toBeVisible();
@@ -110,7 +113,8 @@ test("the evolution compares a result only within the same method: a change of p
   await expect(jp7Sum).toContainText("fórmula av2-2026-11");
   await expect(jp7Sum).not.toContainText("estimativa");
   await expect(jp7Sum).not.toContainText("conversão");
-  // BMI: the same arithmetic both times, one series with its chart; no classification anywhere.
+  // BMI: the same arithmetic both times, one series with its chart; no word of the tool's own on a change (slice 0.92: the table's level is
+  // only in the table of values, as recorded).
   const bmi = results.getByRole("group", { name: "IMC", exact: true });
   await expect(bmi.getByText(/Metodologias diferentes/)).toHaveCount(0);
   await expect(bmi).toContainText("2 valores. Primeiro: 23,63 kg/m² em");
