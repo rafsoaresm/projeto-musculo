@@ -39,7 +39,7 @@ import type {
   WorkoutSummary,
 } from "./types";
 
-export const ENGINE_VERSION = "2.0.0";
+export const ENGINE_VERSION = "2.0.1";
 
 // ---------- contexto ----------
 
