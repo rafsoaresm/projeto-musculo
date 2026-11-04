@@ -1,4 +1,4 @@
-# Motor de prescrição v2 (`ENGINE_VERSION` 2.0.0)
+# Motor de prescrição v2 (`ENGINE_VERSION` 2.0.1)
 
 Núcleo puro e determinístico (sem banco, rede, IA, relógio ou acaso). Documentação completa e tabela de regras: [`docs/MOTOR-PRESCRICAO.md`](../../../../docs/MOTOR-PRESCRICAO.md).
 
