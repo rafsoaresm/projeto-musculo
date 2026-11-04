@@ -328,8 +328,9 @@ describe("session occurrences (0041)", () => {
     // Children first.
     await refused(run("DELETE FROM plan_session_occurrences WHERE id = ?1", occA), "OCCURRENCE_ITEMS_FIRST");
     await refused(run("DELETE FROM prescribed_exercises WHERE id = ?1", a), "OCCURRENCE_ITEMS_FIRST");
-    expect(await prescriptionFor(db, scope("tech-a")).remove(plan.planId, plan.revisionId, a).catch((e: unknown) => String(e))).toContain("OCCURRENCE_ITEMS_FIRST");
-    await run("DELETE FROM prescribed_exercise_occurrences WHERE prescribed_exercise_id = ?1", a);
+    // Since S7 the repository removes the doses first, in the same batch (it was refused by the database in S3).
+    expect(await prescriptionFor(db, scope("tech-a")).remove(plan.planId, plan.revisionId, a)).toBe(true);
+    expect((await db.prepare("SELECT COUNT(*) AS n FROM prescribed_exercise_occurrences WHERE prescribed_exercise_id = ?1").bind(a).first<{ n: number }>())!.n).toBe(0);
     await run("DELETE FROM plan_session_occurrences WHERE id = ?1", occA);
     // The occurrence tables have no bump triggers: the repository bumps once per batch (S7).
     const before = await version(plan.revisionId);

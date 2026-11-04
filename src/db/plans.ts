@@ -5,7 +5,9 @@ import {
   type PeriodizationSchedule,
 } from "@/modules/training/contracts";
 import { buildPeriodization } from "@/modules/training/periodization";
+import { occurrenceCounts, occurrenceKey, scheduleOccurrences } from "@/modules/prescricao/occurrences";
 import { isBelowTarget, workoutSlots } from "@/modules/prescricao/summary";
+import { chunkJson } from "./json-chunks";
 import { latestRecordedSql, screeningStanding, unreviewedAlertSql } from "./assessments";
 import {
   activeUser,
@@ -167,6 +169,100 @@ export function plansFor(
     schedule.totalSessions,
   ];
 
+  /**
+   * Statements that keep the sessions of an OCCURRENCE draft in step with a new saved structure (motor S7, design §4.7), run in
+   * `saveDraft`'s batch after its event and only when that save landed (the revision now holds exactly this input, stamped
+   * now). A session that disappears or changes workout is refused while it still includes any exercise
+   * (OCCURRENCE_PRESCRIPTION_WOULD_BE_LOST: leave them out of that session first); otherwise its left-out doses and the
+   * session go. Sessions that stay get the new dates; new sessions get every row of their workout, included, with the base dose.
+   */
+  async function occurrenceSync(
+    revisionId: string,
+    schedule: PeriodizationSchedule,
+    inputJson: string,
+    stamp: string,
+  ): Promise<D1PreparedStatement[]> {
+    const existing = await db
+      .prepare(
+        `SELECT o.id, o.phase_index AS phaseIndex, o.week_index AS week, o.slot_index AS slot, o.workout_label AS label,
+           o.week_start AS weekStart, o.planned_date AS plannedDate,
+           (SELECT COUNT(*) FROM prescribed_exercise_occurrences x
+             WHERE x.organization_id = o.organization_id AND x.occurrence_id = o.id AND x.included = 1) AS included
+         FROM plan_session_occurrences o WHERE o.organization_id = ?1 AND o.revision_id = ?2`,
+      )
+      .bind(organizationId, revisionId)
+      .all<{ id: string; phaseIndex: number; week: number; slot: number; label: string; weekStart: string; plannedDate: string | null; included: number }>();
+    const wanted = new Map(scheduleOccurrences(schedule).map((o) => [occurrenceKey(o), o]));
+    const have = new Map(existing.results.map((o) => [occurrenceKey(o), o]));
+    const gone = existing.results.filter((o) => wanted.get(occurrenceKey(o))?.label !== o.label);
+    if (gone.some((o) => o.included > 0)) throw new Error("OCCURRENCE_PRESCRIPTION_WOULD_BE_LOST");
+    const goneKeys = new Set(gone.map(occurrenceKey));
+    const moved = existing.results.flatMap((o) => {
+      const next = wanted.get(occurrenceKey(o));
+      return next && next.label === o.label && (next.weekStart !== o.weekStart || next.plannedDate !== o.plannedDate)
+        ? [{ id: o.id, ws: next.weekStart, pd: next.plannedDate }]
+        : [];
+    });
+    const added = [...wanted.values()]
+      .filter((o) => !have.has(occurrenceKey(o)) || goneKeys.has(occurrenceKey(o)))
+      .map((o) => ({ id: crypto.randomUUID(), p: o.phaseIndex, w: o.week, s: o.slot, label: o.label, ws: o.weekStart, pd: o.plannedDate }));
+    // Only when the save above landed: this revision is an OCCURRENCE draft holding exactly this input, stamped now.
+    const landed = `EXISTS (SELECT 1 FROM plan_revisions g WHERE g.organization_id = ?1 AND g.id = ?2 AND g.state = 'DRAFT'
+      AND g.prescription_model = 'OCCURRENCE' AND g.updated_at = ?3 AND g.input_json = ?4)`;
+    // D1 wants exactly as many values as the statement's highest placeholder: ?6 (the user) only where a row is created.
+    const s = (sql: string, chunk: string) =>
+      db.prepare(sql).bind(...[organizationId, revisionId, stamp, inputJson, chunk, userId].slice(0, sql.includes("?6") ? 6 : 5));
+    const out: D1PreparedStatement[] = [];
+    for (const chunk of chunkJson(gone.map((o) => o.id)))
+      out.push(
+        s(`DELETE FROM prescribed_exercise_occurrences WHERE organization_id = ?1 AND revision_id = ?2 AND included = 0
+             AND occurrence_id IN (SELECT value FROM json_each(?5)) AND ${landed}`, chunk),
+        s(`DELETE FROM plan_session_occurrences WHERE organization_id = ?1 AND revision_id = ?2
+             AND id IN (SELECT value FROM json_each(?5)) AND ${landed}`, chunk),
+      );
+    for (const chunk of chunkJson(moved))
+      out.push(
+        s(
+          `UPDATE plan_session_occurrences
+           SET week_start = (SELECT json_extract(j.value, '$.ws') FROM json_each(?5) j WHERE json_extract(j.value, '$.id') = plan_session_occurrences.id),
+             planned_date = (SELECT json_extract(j.value, '$.pd') FROM json_each(?5) j WHERE json_extract(j.value, '$.id') = plan_session_occurrences.id),
+             updated_at = ?3
+           WHERE organization_id = ?1 AND revision_id = ?2 AND id IN (SELECT json_extract(j.value, '$.id') FROM json_each(?5) j)
+             AND ${landed}`,
+          chunk,
+        ),
+      );
+    for (const chunk of chunkJson(added))
+      out.push(
+        s(
+          `INSERT INTO plan_session_occurrences (id, organization_id, revision_id, phase_index, week_index, slot_index, workout_label,
+             week_start, planned_date, stimulus, created_by_user_id, created_at, updated_at)
+           SELECT json_extract(j.value, '$.id'), ?1, ?2, json_extract(j.value, '$.p'), json_extract(j.value, '$.w'),
+             json_extract(j.value, '$.s'), json_extract(j.value, '$.label'), json_extract(j.value, '$.ws'),
+             json_extract(j.value, '$.pd'), NULL, ?6, ?3, ?3
+           FROM json_each(?5) j WHERE ${landed}`,
+          chunk,
+        ),
+        s(
+          `INSERT INTO prescribed_exercise_occurrences (id, organization_id, revision_id, prescribed_exercise_id, occurrence_id,
+             included, sets, reps, load_instruction, cadence, rest_seconds, rest_text, rir_min, rir_max, notes, dose_json, dose_text,
+             trace_json, origin, source_proposal_item_id, created_by_user_id, created_at, updated_at)
+           SELECT lower(hex(randomblob(16))), ?1, ?2, pe.id, o.id, 1, pe.sets, pe.reps, pe.load_instruction, pe.cadence,
+             pe.rest_seconds, pe.rest_text, pe.rir_min, pe.rir_max, pe.notes, pe.dose_json, pe.dose_text, NULL,
+             CASE WHEN pe.origin IN ('PROFESSIONAL', 'SYSTEM', 'SYSTEM_EDITED', 'AI') THEN pe.origin ELSE 'PROFESSIONAL' END,
+             NULL, ?6, ?3, ?3
+           FROM plan_session_occurrences o
+           JOIN prescribed_exercises pe ON pe.organization_id = o.organization_id AND pe.revision_id = o.revision_id
+             AND pe.phase_index = o.phase_index AND pe.workout_label = o.workout_label
+           WHERE o.organization_id = ?1 AND o.revision_id = ?2
+             AND o.id IN (SELECT json_extract(j.value, '$.id') FROM json_each(?5) j) AND ${landed}`,
+          chunk,
+        ),
+      );
+    // content_version already moved in this batch (the structure trigger of 0041), so no explicit bump is needed here.
+    return out;
+  }
+
   return {
     /** Plans of one student, newest first, each with its revisions. */
     async listForStudent(studentId: string): Promise<PlanSummary[]> {
@@ -229,7 +325,7 @@ export function plansFor(
           `SELECT p.id AS planId, p.title, s.id AS studentId, s.display_name AS studentName,
              r.id AS revisionId, r.revision_number AS revisionNumber, r.state,
              r.start_date AS startDate, r.end_date AS endDate, r.total_weeks AS totalWeeks,
-             r.updated_at AS updatedAt, r.schedule_json AS scheduleJson
+             r.updated_at AS updatedAt, r.schedule_json AS scheduleJson, r.prescription_model AS prescriptionModel
            FROM training_plans p
            JOIN students s ON s.organization_id = p.organization_id AND s.id = p.student_id
            JOIN plan_revisions r ON r.organization_id = p.organization_id AND r.plan_id = p.id
@@ -240,7 +336,7 @@ export function plansFor(
            LIMIT ?3`,
         )
         .bind(organizationId, userId, limit)
-        .all<Omit<PlanOverviewRow, "exercises" | "workouts" | "below"> & { scheduleJson: string }>();
+        .all<Omit<PlanOverviewRow, "exercises" | "workouts" | "below"> & { scheduleJson: string; prescriptionModel: PrescriptionModel }>();
       if (rows.results.length === 0) return [];
       // The ids come from the gated query above, so counting them needs no second gate.
       const counts = await db
@@ -256,15 +352,35 @@ export function plansFor(
       const byWorkout = new Map(
         counts.results.map((c) => [`${c.revisionId}|${c.p}|${c.w}`, c.n]),
       );
-      return rows.results.map(({ scheduleJson, ...row }) => {
+      // OCCURRENCE revisions (motor S7): a workout is below its target when any of its sessions includes fewer exercises.
+      const perOccurrence = new Map<string, Array<{ phaseIndex: number; label: string; included: number }>>();
+      const occurrenceIds = rows.results.filter((row) => row.prescriptionModel === "OCCURRENCE").map((row) => row.revisionId);
+      if (occurrenceIds.length) {
+        const sessions = await db
+          .prepare(
+            `SELECT o.revision_id AS revisionId, o.phase_index AS phaseIndex, o.workout_label AS label,
+               (SELECT COUNT(*) FROM prescribed_exercise_occurrences x
+                 WHERE x.organization_id = o.organization_id AND x.occurrence_id = o.id AND x.included = 1) AS included
+             FROM plan_session_occurrences o
+             WHERE o.organization_id = ?1 AND o.revision_id IN (SELECT value FROM json_each(?2))`,
+          )
+          .bind(organizationId, JSON.stringify(occurrenceIds))
+          .all<{ revisionId: string; phaseIndex: number; label: string; included: number }>();
+        for (const row of sessions.results) perOccurrence.set(row.revisionId, [...(perOccurrence.get(row.revisionId) ?? []), row]);
+      }
+      return rows.results.map(({ scheduleJson, prescriptionModel, ...row }) => {
         const slots = workoutSlots(JSON.parse(scheduleJson) as PeriodizationSchedule);
         const countOf = (slot: { phaseIndex: number; label: string }) =>
           byWorkout.get(`${row.revisionId}|${slot.phaseIndex}|${slot.label}`) ?? 0;
+        const below =
+          prescriptionModel === "OCCURRENCE"
+            ? occurrenceCounts(slots, perOccurrence.get(row.revisionId) ?? []).filter((slot) => isBelowTarget(slot, slot.count)).length
+            : slots.filter((slot) => isBelowTarget(slot, countOf(slot))).length;
         return {
           ...row,
           exercises: slots.reduce((total, slot) => total + countOf(slot), 0),
           workouts: slots.length,
-          below: slots.filter((slot) => isBelowTarget(slot, countOf(slot))).length,
+          below,
         };
       });
     },
@@ -434,6 +550,10 @@ export function plansFor(
       const valid = new Set(kept.map((slot) => `${slot.phaseIndex}|${slot.label}`));
       if (used.results.some((row) => !valid.has(`${row.p}|${row.w}`)))
         throw new Error("PRESCRIPTION_WOULD_BE_LOST");
+      const occurrenceStatements =
+        current.revision.prescriptionModel === "OCCURRENCE"
+          ? await occurrenceSync(revisionId, schedule, JSON.stringify(input), stamp)
+          : [];
       const results = await db.batch([
         db
           .prepare(
@@ -460,9 +580,15 @@ export function plansFor(
             JSON.stringify(kept.map((slot) => ({ p: slot.phaseIndex, w: slot.label }))),
           ),
         eventAfterChange("DRAFT_SAVED", revisionId, stamp),
-      ]);
+        ...occurrenceStatements,
+      ]).catch((error: unknown) => {
+        // A session that still includes exercises cannot go (0041 children first): someone included one meanwhile.
+        if (String(error).includes("OCCURRENCE_ITEMS_FIRST")) throw new Error("OCCURRENCE_PRESCRIPTION_WOULD_BE_LOST");
+        throw error;
+      });
       return results[0].meta.changes > 0;
     },
+
 
     /**
      * DRAFT to READY: the structure is validated. It is not approval or delivery. An automatic proposal still open on the draft is

@@ -8,7 +8,9 @@ import { plansFor } from "@/db/plans";
 import { prescriptionFor } from "@/db/prescription";
 import { proposalsFor } from "@/db/prescription-proposals";
 import { studentSessionsFor } from "@/db/workout-sessions";
-import { generate, workUnits, type EngineInput } from "@/modules/prescricao/motor";
+import { generate, workUnits, type EngineInput, type EngineResult } from "@/modules/prescricao/motor";
+import { structureFacts } from "@/modules/prescricao/automatica/facts";
+import { buildPeriodization } from "@/modules/training/periodization";
 import { baseInput, CATALOG, exercise, structure } from "./motor-fixtures";
 
 interface Env {
@@ -45,6 +47,28 @@ function inputOf(shape: Shape): EngineInput {
   });
 }
 
+/** The synthetic library's ids are not rows of `exercises` (foreign key): map each to one of the 64 system exercises. */
+function onSystemLibrary(generated: EngineResult): EngineResult {
+  const ids = [...new Set(generated.occurrences.flatMap((o) => o.items.map((i) => i.exerciseId ?? "")))].sort();
+  const sys = new Map(ids.map((id, n) => [id, `sys-${String((n % 64) + 1).padStart(3, "0")}`]));
+  return { ...generated, occurrences: generated.occurrences.map((o) => ({ ...o, items: o.items.map((i) => ({ ...i, exerciseId: i.exerciseId ? sys.get(i.exerciseId)! : null })) })) };
+}
+
+/** A real v2 periodization of the given shape (saved through plansFor, so the schedule is the app's own). */
+function v2Input(shape: Shape) {
+  const labels = Array.from({ length: shape.labels }, (_, n) => String.fromCharCode(65 + n));
+  return {
+    schemaVersion: 2,
+    startDate: "2026-11-23",
+    phases: Array.from({ length: shape.phases }, () => ({
+      weeks: shape.weeks,
+      sessionsPerWeek: shape.sessionsPerWeek,
+      // The saved target goes to 20 (0.93); a workout may still hold up to MAX_PER_WORKOUT = 30 rows (added by hand or by time).
+      workouts: labels.map((label) => ({ label, exerciseTarget: Math.min(shape.items, 20) })),
+    })),
+  };
+}
+
 async function body<T>(request: Request): Promise<T> {
   return (await request.json()) as T;
 }
@@ -68,11 +92,7 @@ const worker = {
     }
     if (path === "/write") {
       const { shape, planId, revisionId } = await body<{ shape: Shape; planId: string; revisionId: string }>(request);
-      const generated = generate(inputOf(shape));
-      // The synthetic library's ids are not rows of `exercises` (foreign key): map each to one of the 64 system exercises.
-      const ids = [...new Set(generated.occurrences.flatMap((o) => o.items.map((i) => i.exerciseId ?? "")))].sort();
-      const sys = new Map(ids.map((id, n) => [id, `sys-${String((n % 64) + 1).padStart(3, "0")}`]));
-      const result = { ...generated, occurrences: generated.occurrences.map((o) => ({ ...o, items: o.items.map((i) => ({ ...i, exerciseId: i.exerciseId ? sys.get(i.exerciseId)! : null })) })) };
+      const result = onSystemLibrary(generate(inputOf(shape)));
       const cv = await env.DB.prepare("SELECT content_version AS v FROM plan_revisions WHERE id = ?1").bind(revisionId).first<{ v: number }>();
       const out = await proposalsFor(env.DB, ctx).recordGeneration(planId, revisionId, {
         idempotencyKey: crypto.randomUUID(), requestHash: "0".repeat(64), scope: "FULL", scopeJson: {}, baseContentVersion: cv!.v,
@@ -80,6 +100,34 @@ const worker = {
       }, result);
       const items = result.occurrences.reduce((a, o) => a + o.items.length, 0);
       return Response.json({ out, occurrences: result.occurrences.length, items });
+    }
+    if (path === "/apply-setup") {
+      // A proposal generated over the revision's own saved schedule (so every session joins), recorded as S6 does.
+      const shape = await body<Shape>(request);
+      const input = v2Input(shape);
+      let created: { planId: string; revisionId: string };
+      try {
+        created = (await plansFor(env.DB, ctx).create("st-1", { title: "Aplicação", input: input as never }))!;
+      } catch (error) {
+        return new Response(JSON.stringify((error as { issues?: unknown }).issues ?? String(error)), { status: 500 });
+      }
+      const structure = structureFacts(buildPeriodization(input));
+      const engineInput = { ...inputOf(shape), structure: { ...structure, phases: structure.phases.map((ph, n) => ({ ...ph, workouts: ph.workouts.map((w) => ({ ...w, exerciseTarget: shape.items })), stimulus: { value: n % 2 ? "STRENGTH" : "HYPERTROPHY", source: "STRUCTURE" as const, basis: "PROFESSIONAL" as const } })) } };
+      const result = onSystemLibrary(generate(engineInput));
+      const out = await proposalsFor(env.DB, ctx).recordGeneration(created.planId, created.revisionId, {
+        idempotencyKey: crypto.randomUUID(), requestHash: "0".repeat(64), scope: "FULL", scopeJson: {}, baseContentVersion: 0,
+        catalogHash: "0".repeat(64), inputHash: "0".repeat(64), facts: {}, studentId: "st-1", inputJson: null, parameters: {},
+      }, result);
+      const items = result.occurrences.reduce((a, o) => a + o.items.length, 0);
+      return Response.json({ ...created, out, occurrences: result.occurrences.length, items });
+    }
+    if (path === "/apply") {
+      const { planId, revisionId, proposalId } = await body<{ planId: string; revisionId: string; proposalId: string }>(request);
+      const out = await proposalsFor(env.DB, ctx).apply(planId, revisionId, proposalId, {
+        idempotencyKey: crypto.randomUUID(), requestHash: "0".repeat(64), expectedVersion: 1, conflictMode: "PRESERVE", confirmedWorkouts: [], confirmInfeasible: true,
+      });
+      const doses = await env.DB.prepare("SELECT COUNT(*) AS n FROM prescribed_exercise_occurrences WHERE revision_id = ?1").bind(revisionId).first<{ n: number }>();
+      return Response.json({ out, doses: doses?.n ?? 0 });
     }
     if (path === "/execution-setup") {
       const plans = plansFor(env.DB, ctx);

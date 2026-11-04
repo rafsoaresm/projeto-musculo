@@ -136,6 +136,29 @@ describe.skipIf(!enabled)("motor under workerd (local measurement)", () => {
         rows.push({ what, ms: Math.round(median(times)), status: (last.out as { status: string }).status, occurrences: last.occurrences, items: last.items });
       }
 
+      // Apply to the draft (motor S7, design §4.6): one batch, set-based statements; the worst case is 504 sessions × 30 exercises.
+      const applies: Array<[string, Shape]> = [
+        ["aplicar: 96 sessões × 8 itens", { phases: 4, weeks: 6, sessionsPerWeek: 4, labels: 4, items: 8, catalog: 64 }],
+        ["aplicar: 504 sessões × 10 itens", { phases: 12, weeks: 6, sessionsPerWeek: 7, labels: 7, items: 10, catalog: 64 }],
+        ["aplicar: 504 sessões × 30 itens (teto)", { phases: 12, weeks: 6, sessionsPerWeek: 7, labels: 7, items: 30, catalog: 64 }],
+      ];
+      for (const [what, shape] of applies) {
+        const times: number[] = [];
+        let last: Record<string, unknown> = {};
+        let items = 0;
+        for (let n = 0; n < RUNS; n++) {
+          const setupApply = (await call("/apply-setup", shape)).json as { planId: string; revisionId: string; out: { status: string; proposalId: string }; items: number };
+          expect(setupApply.out.status).toBe("created");
+          items = setupApply.items;
+          const r = await call("/apply", { planId: setupApply.planId, revisionId: setupApply.revisionId, proposalId: setupApply.out.proposalId });
+          times.push(r.ms);
+          last = r.json;
+        }
+        const out = last.out as { status: string; counts?: Record<string, number> };
+        expect(out.status).toBe("applied");
+        rows.push({ what, ms: Math.round(median(times)), status: out.status, items, rows: out.counts?.rows, doses: last.doses });
+      }
+
       // Execution save at the caps: 30 exercises × MAX_SETS (12) sets, and 30 × 20 (the candidate cap, design §1.5).
       const setup = (await call("/execution-setup")).json as { planId: string; prescribed: string[] };
       expect(setup.prescribed).toHaveLength(30);

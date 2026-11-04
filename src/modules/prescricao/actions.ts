@@ -2,7 +2,8 @@
 import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
 import { requireWorkspace } from "@/modules/auth/server";
-import { prescriptionFor, type ItemOutcome, type Target } from "@/db/prescription";
+import { prescriptionFor, type ApplyTo, type ItemOutcome, type Target } from "@/db/prescription";
+import type { Dose } from "@/modules/prescricao/motor/types";
 
 /** What the browser gets back. A message is shown as is, so it holds no plan data. */
 export type PrescriptionResult = { error?: string; notice?: string } | void;
@@ -57,6 +58,7 @@ export async function updateItem(
   itemId: string,
   fields: unknown,
   customName?: string,
+  applyTo?: ApplyTo,
 ): Promise<PrescriptionResult> {
   const { db, context } = await requireWorkspace();
   try {
@@ -67,6 +69,8 @@ export async function updateItem(
         itemId,
         fields,
         customName,
+        new Date(),
+        applyTo === "NONE" ? { applyTo: "NONE" } : {},
       ))
     )
       return { error: NOT_OPEN };
@@ -170,7 +174,7 @@ export async function copyWorkout(
     );
     if (result.status === "saved") {
       refresh();
-      return;
+      return result.notice ? { notice: result.notice } : undefined;
     }
     if (result.status === "destination_not_empty")
       return { error: "O treino de destino já tem exercícios. Remova-os antes de copiar." };
@@ -200,11 +204,12 @@ export async function copyMesocycle(
     );
     if (result.status === "saved") {
       refresh();
+      const reshaped = result.notice ? ` ${result.notice}` : "";
       return result.skipped.length
         ? {
-            notice: `Copiado. Não há treino ${result.skipped.join(", ")} na fase de destino, então esses exercícios não foram copiados.`,
+            notice: `Copiado. Não há treino ${result.skipped.join(", ")} na fase de destino, então esses exercícios não foram copiados.${reshaped}`,
           }
-        : { notice: "Mesociclo copiado." };
+        : { notice: `Mesociclo copiado.${reshaped}` };
     }
     if (result.status === "destination_not_empty")
       return { error: "A fase de destino já tem exercícios. Remova-os antes de copiar." };
@@ -218,4 +223,53 @@ export async function copyMesocycle(
   } catch (error) {
     return { error: messageFor(error) };
   }
+}
+
+/*
+ * Edits per session of an OCCURRENCE revision (motor S7, design §4.5): the PrescriptionEditor's occurrence mode (screen in S9)
+ * calls these. Ids come from the page (`prescriptionFor(...).occurrences`); access, revision state and organization are checked
+ * in the repository on every call.
+ */
+const OCCURRENCE_INVALID =
+  "Confira a dose: texto curto nas séries, repetições, carga, cadência e descanso, RIR de 0 a 10 (mínimo até o máximo), sem vídeo por sessão.";
+
+export async function updateOccurrenceDose(
+  planId: string,
+  revisionId: string,
+  occurrenceItemIds: string[],
+  fields: unknown,
+  dose: Dose | null = null,
+): Promise<PrescriptionResult> {
+  const { db, context } = await requireWorkspace();
+  const result = await prescriptionFor(db, context).updateOccurrence(planId, revisionId, occurrenceItemIds, fields, dose);
+  if (result.status === "invalid") return { error: OCCURRENCE_INVALID };
+  if (result.status === "not_found") return { error: NOT_OPEN };
+  refresh();
+}
+
+export async function setOccurrenceIncluded(
+  planId: string,
+  revisionId: string,
+  occurrenceItemIds: string[],
+  included: boolean,
+): Promise<PrescriptionResult> {
+  const { db, context } = await requireWorkspace();
+  const result = await prescriptionFor(db, context).setIncluded(planId, revisionId, occurrenceItemIds, included);
+  if (result.status === "invalid") return { error: "Escolha de 1 a 600 sessões." };
+  if (result.status === "not_found") return { error: NOT_OPEN };
+  refresh();
+}
+
+export async function substituteInSessions(
+  planId: string,
+  revisionId: string,
+  prescribedExerciseId: string,
+  exerciseId: string,
+  occurrenceIds: string[],
+): Promise<PrescriptionResult> {
+  const { db, context } = await requireWorkspace();
+  const result = await prescriptionFor(db, context).substituteInOccurrences(planId, revisionId, prescribedExerciseId, exerciseId, occurrenceIds);
+  if (result.status === "invalid") return { error: "Escolha de 1 a 600 sessões." };
+  if (result.status !== "saved") return outcome(result);
+  refresh();
 }

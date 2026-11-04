@@ -1,9 +1,13 @@
 "use server";
+import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { plansFor } from "@/db/plans";
+import type { ManualWorkout } from "@/db/prescription-proposals";
 import { requireWorkspace } from "@/modules/auth/server";
 import type { GenerationQuestion } from "./contracts";
 import {
   proposalService,
+  type ApplyPayload,
   type CasPayload,
   type ContinuePayload,
   type FlagPayload,
@@ -20,7 +24,7 @@ import {
  * rest to `proposalService`, which parses it strictly and goes through repositories gated by the active technical assignment.
  * What comes back has no plan data: a message, a notice, and ids/versions the screen needs for the next compare-and-set.
  *
- * None of these applies a proposal to the draft (S7), approves or delivers anything.
+ * `applyProposal` (motor S7) writes the proposal into the same DRAFT revision; none of these approves or delivers anything.
  */
 export type ProposalActionResult = {
   error?: string;
@@ -92,4 +96,34 @@ export async function acceptFlagDecision(planId: string, revisionId: string, pay
 
 export async function discardProposal(planId: string, revisionId: string, payload: CasPayload): Promise<ProposalActionResult> {
   return run((s) => s.discard(planId, revisionId, payload));
+}
+
+export type ApplyActionResult = {
+  error?: string;
+  data?: {
+    reason?: string;
+    version?: number;
+    contentVersion?: number;
+    phasesMissing?: number[];
+    workouts?: ManualWorkout[];
+    exerciseIds?: string[];
+  };
+};
+
+/**
+ * "Aplicar ao rascunho". On success the professional is taken to the revision page (`?aplicada=1`), where the existing flow
+ * continues: review, edit, mark ready, approve, deliver. `redirect` throws by design, so it is called outside any try/catch.
+ */
+export async function applyProposal(planId: string, revisionId: string, payload: ApplyPayload): Promise<ApplyActionResult> {
+  const { db, context } = await requireWorkspace();
+  const outcome = await proposalService(db, context).apply(planId, revisionId, payload);
+  if (!outcome.ok) {
+    const { ok, message, reason, ...rest } = outcome;
+    void ok;
+    return { error: message, data: { reason, ...rest } };
+  }
+  const detail = await plansFor(db, context).findRevision(planId, revisionId);
+  if (!outcome.replayed) refresh();
+  if (!detail) return {};
+  redirect(`/profissional/alunos/${detail.plan.studentId}/planos/${planId}/${revisionId}?aplicada=1`);
 }

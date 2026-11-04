@@ -7,13 +7,16 @@ import type {
   ItemTarget,
   OccurrenceOut,
 } from "@/modules/prescricao/motor/types";
+import { occurrenceKey as scheduleKey, scheduleOccurrences } from "@/modules/prescricao/occurrences";
+import type { PeriodizationSchedule } from "@/modules/training/contracts";
+import { chunkJson } from "./json-chunks";
 import { revisionGate, type RevisionGateMode } from "./revision-gates";
 import { activeUser, assertContext, technicalAccessExists, type AuthenticatedContext } from "./students";
 
 /**
  * Automatic prescription proposals (motor S6, design §4.1–§4.2). A proposal is the engine's workspace on one DRAFT revision:
- * generate, continue, regenerate a scope, substitute, lock, decide a flag, rebase, discard. Nothing here writes a prescription,
- * approves or delivers anything; applying a proposal to the draft is S7.
+ * generate, continue, regenerate a scope, substitute, lock, decide a flag, rebase, discard, and apply (motor S7, design §4.6): the
+ * only write of a proposal into the prescription, into the same DRAFT revision, in one batch. Nothing here approves or delivers.
  *
  * Every statement binds ?1 organization, ?2 user, ?3 plan, ?4 revision (the shared gate, `revision-gates.ts`), from the verified
  * session. Every read is gated by organization + active user + active technical assignment + revocation.
@@ -81,6 +84,68 @@ interface WriteIntent {
   target: unknown;
   change?: unknown;
 }
+
+export type ApplyConflictMode = "PRESERVE" | "REPLACE_CONFIRMED";
+
+/** A workout of the draft that already has rows (typed by the professional, or written by an earlier application). */
+export interface ManualWorkout {
+  phaseIndex: number;
+  label: string;
+  /** Rows of the workout in the draft now. */
+  rows: number;
+  /** How many of them the proposal holds as PRESERVED (all of them, unless the draft changed after the generation). */
+  preserved: number;
+}
+
+export interface ApplyRequest {
+  idempotencyKey: string;
+  requestHash: string;
+  expectedVersion: number;
+  /** PRESERVE: every row already in the draft stays as it is. REPLACE_CONFIRMED: the rows of `confirmedWorkouts` are removed. */
+  conflictMode: ApplyConflictMode;
+  confirmedWorkouts: Array<{ phaseIndex: number; label: string }>;
+  /** Q8 (04/11/2026): an INFEASIBLE proposal is applied only with this explicit, recorded confirmation. */
+  confirmInfeasible: boolean;
+}
+
+export interface ApplyCounts {
+  /** Sessions of the saved schedule in the revision after the apply. */
+  occurrences: number;
+  /** New prescribed exercises (one per engine slot). */
+  rows: number;
+  /** Doses of the proposal written per session (engine items). */
+  doses: number;
+  /** Rows already in the draft that stay (preserved) and rows removed by a confirmed replacement. */
+  preserved: number;
+  replaced: number;
+}
+
+export type ApplyOutcome =
+  | { status: "applied" | "replayed"; applicationId: string; counts: ApplyCounts | null }
+  | { status: "revision_changed"; contentVersion: number }
+  | { status: "proposal_conflict"; version: number }
+  | { status: "incomplete"; phasesMissing: number[] }
+  | { status: "infeasible_confirmation_required" }
+  | { status: "confirmation_required"; workouts: ManualWorkout[] }
+  | { status: "catalog_changed"; exerciseIds: string[] }
+  | { status: "key_reused" }
+  | { status: "closed" }
+  | { status: "not_open" }
+  | { status: "too_large" }
+  | { status: "not_found" };
+
+/** What applying would write, read without writing: the apply panel shows it before the click (S9). */
+export interface ApplyPreview {
+  header: ProposalHeader;
+  counts: ApplyCounts;
+  manualWorkouts: ManualWorkout[];
+  phasesMissing: number[];
+  infeasible: boolean;
+  catalogChanged: string[];
+}
+
+/** Column limit of `prescription_applications.replaced_json` (0042). */
+export const REPLACED_SNAPSHOT_MAX = 500_000;
 
 export type ProposalState = "OPEN" | "APPLIED" | "DISCARDED" | "SUPERSEDED";
 
@@ -201,21 +266,7 @@ function issueCodes(result: EngineResult): string[] {
 
 /** Splits rows into JSON arrays of at most `max` bytes each (a single bigger row goes alone). */
 export function jsonChunks(rows: unknown[], max = PROPOSAL_WRITE_CHUNK_BYTES): string[] {
-  const out: string[] = [];
-  let current: string[] = [];
-  let size = 2;
-  for (const row of rows) {
-    const text = JSON.stringify(row);
-    if (current.length && size + text.length + 1 > max) {
-      out.push(`[${current.join(",")}]`);
-      current = [];
-      size = 2;
-    }
-    current.push(text);
-    size += text.length + 1;
-  }
-  if (current.length) out.push(`[${current.join(",")}]`);
-  return out;
+  return chunkJson(rows, max);
 }
 
 function occurrenceRow(o: OccurrenceOut) {
@@ -830,6 +881,431 @@ export function proposalsFor(db: D1Database, context: AuthenticatedContext | nul
     return classifyMutation(planId, revisionId, proposalId, cas, key, expectedContent, intent);
   }
 
+
+  // ---------------- apply (motor S7, design §4.6, §5.1) ----------------
+
+  /** A row of the draft as it is now (snapshotted in `replaced_json` when a confirmed replacement removes it). */
+  interface DraftRow {
+    id: string;
+    phaseIndex: number;
+    label: string;
+    position: number;
+    applicationId: string | null;
+    preserved: number;
+  }
+  interface ItemLite {
+    id: string;
+    p: number;
+    w: number;
+    s: number;
+    label: string;
+    k: string;
+    x: string | null;
+    pos: number;
+    origin: ItemOut["origin"];
+    exerciseId: string | null;
+  }
+
+  // Visible, not archived exercise of the library (system or this organization): what `add` accepts.
+  const usableExercise = (column: string) => `EXISTS (SELECT 1 FROM exercises e WHERE e.id = ${column} AND e.archived_at IS NULL
+      AND (e.organization_id IS NULL OR e.organization_id = ?1))`;
+
+  /** Everything the apply needs to read first, at one consistent version (one batch). Null when the proposal is not reachable. */
+  async function applyReads(planId: string, revisionId: string, proposalId: string) {
+    const [h, rows, items, missing, schedule, existingOcc] = await db.batch([
+      db.prepare(`${headerSql(draft)} AND p.id = ?5`).bind(organizationId, userId, planId, revisionId, proposalId),
+      db
+        .prepare(
+          `SELECT pe.id, pe.phase_index AS phaseIndex, pe.workout_label AS label, pe.position, pe.application_id AS applicationId,
+             EXISTS (SELECT 1 FROM proposal_items i WHERE i.organization_id = ?1 AND i.proposal_id = ?5
+               AND i.existing_prescribed_exercise_id = pe.id) AS preserved
+           FROM prescribed_exercises pe WHERE pe.organization_id = ?1 AND pe.revision_id = ?4 AND ${draft}
+           ORDER BY pe.phase_index, pe.workout_label, pe.position`,
+        )
+        .bind(organizationId, userId, planId, revisionId, proposalId),
+      db
+        .prepare(
+          `SELECT i.id, o.phase_index AS p, o.week_index AS w, o.slot_index AS s, o.workout_label AS label, i.slot_key AS k,
+             i.substitutes_slot_key AS x, i.position AS pos, i.origin, i.exercise_id AS exerciseId
+           FROM proposal_items i JOIN proposal_occurrences o ON o.organization_id = i.organization_id AND o.id = i.proposal_occurrence_id
+           WHERE i.organization_id = ?1 AND i.proposal_id = ?5 AND i.origin <> 'PRESERVED' AND ${draft}
+           ORDER BY o.phase_index, o.week_index, o.slot_index, i.position`,
+        )
+        .bind(organizationId, userId, planId, revisionId, proposalId),
+      db
+        .prepare(
+          `SELECT DISTINCT i.exercise_id AS id FROM proposal_items i
+           WHERE i.organization_id = ?1 AND i.proposal_id = ?5 AND i.origin <> 'PRESERVED'
+             AND (i.exercise_id IS NULL OR NOT ${usableExercise("i.exercise_id")}) AND ${draft}`,
+        )
+        .bind(organizationId, userId, planId, revisionId, proposalId),
+      db
+        .prepare(`SELECT r0.schedule_json AS scheduleJson FROM plan_revisions r0 WHERE r0.organization_id = ?1 AND r0.id = ?4 AND ${draft}`)
+        .bind(organizationId, userId, planId, revisionId),
+      db
+        .prepare(
+          `SELECT o.id, o.phase_index AS phaseIndex, o.week_index AS week, o.slot_index AS slot FROM plan_session_occurrences o
+           WHERE o.organization_id = ?1 AND o.revision_id = ?4 AND ${draft}`,
+        )
+        .bind(organizationId, userId, planId, revisionId),
+    ]);
+    const row = (h.results as HeaderRow[])[0];
+    const scheduleRow = (schedule.results as Array<{ scheduleJson: string }>)[0];
+    if (!row || !scheduleRow) return null;
+    return {
+      header: toHeader(row),
+      summary: JSON.parse(row.summaryJson) as ProposalSummary,
+      rows: rows.results as DraftRow[],
+      items: items.results as ItemLite[],
+      catalogChanged: (missing.results as Array<{ id: string | null }>).map((m) => m.id ?? "(sem exercício)"),
+      schedule: JSON.parse(scheduleRow.scheduleJson) as PeriodizationSchedule,
+      existingOccurrences: existingOcc.results as Array<{ id: string; phaseIndex: number; week: number; slot: number }>,
+    };
+  }
+
+  function manualWorkoutsOf(rows: DraftRow[]): ManualWorkout[] {
+    const out = new Map<string, ManualWorkout>();
+    for (const r of rows) {
+      const k = `${r.phaseIndex}|${r.label}`;
+      const w = out.get(k) ?? { phaseIndex: r.phaseIndex, label: r.label, rows: 0, preserved: 0 };
+      w.rows += 1;
+      w.preserved += r.preserved ? 1 : 0;
+      out.set(k, w);
+    }
+    return [...out.values()];
+  }
+
+  /** One prescribed exercise per engine slot (phase + slot key), positioned after the rows that stay in its workout. */
+  function slotGroups(items: ItemLite[], staying: DraftRow[]) {
+    const groups = new Map<string, { id: string; p: number; label: string; k: string; x: string | null; first: string; firstPos: number; pos: number }>();
+    for (const i of items) {
+      const key = `${i.p}|${i.k}`;
+      const g = groups.get(key);
+      if (!g) groups.set(key, { id: crypto.randomUUID(), p: i.p, label: i.label, k: i.k, x: i.x, first: i.id, firstPos: i.pos, pos: 0 });
+      else {
+        if (i.x && !g.x) g.x = i.x;
+        g.firstPos = Math.min(g.firstPos, i.pos);
+      }
+    }
+    const maxPos = new Map<string, number>();
+    for (const r of staying) maxPos.set(`${r.phaseIndex}|${r.label}`, Math.max(maxPos.get(`${r.phaseIndex}|${r.label}`) ?? 0, r.position));
+    const byWorkout = new Map<string, typeof groups extends Map<string, infer G> ? G[] : never>();
+    for (const g of groups.values()) byWorkout.set(`${g.p}|${g.label}`, [...(byWorkout.get(`${g.p}|${g.label}`) ?? []), g]);
+    for (const [workout, list] of byWorkout) {
+      list.sort((a, b) => a.firstPos - b.firstPos || (a.k < b.k ? -1 : a.k > b.k ? 1 : 0));
+      const base = maxPos.get(workout) ?? 0;
+      list.forEach((g, n) => (g.pos = base + n + 1));
+    }
+    const idOf = new Map([...groups.values()].map((g) => [`${g.p}|${g.k}`, g.id]));
+    return [...groups.values()].map((g) => ({
+      id: g.id,
+      p: g.p,
+      label: g.label,
+      k: g.k,
+      pos: g.pos,
+      first: g.first,
+      // A substitution points at the row of the slot it replaces, when that slot is still written by this application.
+      x: g.x ? (idOf.get(`${g.p}|${g.x}`) ?? null) : null,
+    }));
+  }
+
+  /** The application already recorded under this key on this revision (any state), to tell a replay from a reused key. */
+  async function applicationByKey(planId: string, revisionId: string, key: string) {
+    return db
+      .prepare(
+        `SELECT a.id, a.request_hash AS requestHash FROM prescription_applications a
+         WHERE a.organization_id = ?1 AND a.plan_id = ?3 AND a.revision_id = ?4 AND a.idempotency_key = ?5 AND ${any}`,
+      )
+      .bind(organizationId, userId, planId, revisionId, key)
+      .first<{ id: string; requestHash: string }>();
+  }
+
+  /** Why an apply did not land, read again (never guessed from an error text alone). */
+  async function classifyApply(planId: string, revisionId: string, proposalId: string, req: ApplyRequest): Promise<ApplyOutcome | null> {
+    const found = await applicationByKey(planId, revisionId, req.idempotencyKey);
+    if (found) return found.requestHash === req.requestHash ? { status: "replayed", applicationId: found.id, counts: null } : { status: "key_reused" };
+    const now = await header(planId, revisionId, proposalId, "ANY");
+    if (!now) return { status: "not_found" };
+    if (now.state !== "OPEN") return { status: "closed" };
+    if (now.revisionState !== "DRAFT") return { status: "not_open" };
+    if (now.version !== req.expectedVersion) return { status: "proposal_conflict", version: now.version };
+    if (now.contentVersion !== now.baseContentVersion) return { status: "revision_changed", contentVersion: now.contentVersion };
+    return null;
+  }
+
+  async function preview(planId: string, revisionId: string, proposalId: string): Promise<ApplyPreview | null> {
+    const read = await applyReads(planId, revisionId, proposalId);
+    if (!read) return null;
+    const occurrences = scheduleOccurrences(read.schedule);
+    const groups = slotGroups(read.items, read.rows);
+    const generated = new Set(read.header.phasesGenerated);
+    return {
+      header: read.header,
+      counts: { occurrences: occurrences.length, rows: groups.length, doses: read.items.length, preserved: read.rows.length, replaced: 0 },
+      manualWorkouts: manualWorkoutsOf(read.rows),
+      phasesMissing: read.summary.phases.map((ph) => ph.phaseIndex).filter((i) => !generated.has(i)),
+      infeasible: read.header.status === "INFEASIBLE",
+      catalogChanged: read.catalogChanged,
+    };
+  }
+
+  /**
+   * Applies an OPEN, complete proposal to its DRAFT revision (design §4.6), in ONE batch whose first statement records the
+   * application only if the proposal is still at `expectedVersion`, the revision is still a DRAFT at the proposal's
+   * `base_content_version` (never a number from the client), every engine exercise is still visible and not archived, and an
+   * INFEASIBLE proposal carries the confirmation. Every later statement runs only when that row exists.
+   *
+   * What is written: the revision becomes OCCURRENCE; every session of the saved schedule gets its occurrence row; each engine
+   * slot becomes one prescribed exercise (origin SYSTEM, with application, slot key and substitution); each engine item becomes
+   * its dose in its session (stored text, trace). Rows already in the draft are never overwritten: with PRESERVE they stay as
+   * they are and are included in every session of their workout (doses already per session are kept); only REPLACE_CONFIRMED,
+   * naming exactly the workouts listed to the professional, removes the rows of those workouts, snapshotted in `replaced_json`.
+   * The proposal becomes APPLIED with its decision and the plan event; nothing is approved or delivered.
+   */
+  async function apply(planId: string, revisionId: string, proposalId: string, req: ApplyRequest, now = new Date()): Promise<ApplyOutcome> {
+    const replay = await applicationByKey(planId, revisionId, req.idempotencyKey);
+    if (replay) return replay.requestHash === req.requestHash ? { status: "replayed", applicationId: replay.id, counts: null } : { status: "key_reused" };
+    const read = await applyReads(planId, revisionId, proposalId);
+    if (!read) return (await classifyApply(planId, revisionId, proposalId, req)) ?? { status: "not_found" };
+    const { header: h } = read;
+    if (h.state !== "OPEN") return { status: "closed" };
+    if (h.version !== req.expectedVersion) return { status: "proposal_conflict", version: h.version };
+    if (h.contentVersion !== h.baseContentVersion) return { status: "revision_changed", contentVersion: h.contentVersion };
+    if (!h.complete) {
+      const generated = new Set(h.phasesGenerated);
+      return { status: "incomplete", phasesMissing: read.summary.phases.map((ph) => ph.phaseIndex).filter((i) => !generated.has(i)) };
+    }
+    const infeasible = h.status === "INFEASIBLE";
+    if (infeasible && !req.confirmInfeasible) return { status: "infeasible_confirmation_required" };
+    if (read.catalogChanged.length) return { status: "catalog_changed", exerciseIds: read.catalogChanged };
+    const manual = manualWorkoutsOf(read.rows);
+    const wanted = new Set(req.confirmedWorkouts.map((w) => `${w.phaseIndex}|${w.label}`));
+    if (req.conflictMode === "REPLACE_CONFIRMED") {
+      const listed = new Set(manual.map((w) => `${w.phaseIndex}|${w.label}`));
+      // The confirmation names workouts the professional was shown, each with rows now; anything else is asked again.
+      if (!wanted.size || [...wanted].some((k) => !listed.has(k))) return { status: "confirmation_required", workouts: manual };
+    } else if (wanted.size) return { status: "confirmation_required", workouts: manual };
+    const replacedRows = req.conflictMode === "REPLACE_CONFIRMED" ? read.rows.filter((r) => wanted.has(`${r.phaseIndex}|${r.label}`)) : [];
+    const replacedIds = new Set(replacedRows.map((r) => r.id));
+    const staying = read.rows.filter((r) => !replacedIds.has(r.id));
+    let replacedJson: string | null = null;
+    if (replacedRows.length) {
+      const full = await db
+        .prepare(
+          `SELECT pe.*, (SELECT json_group_array(json_object('occurrenceId', x.occurrence_id, 'included', x.included, 'sets', x.sets,
+               'reps', x.reps, 'loadInstruction', x.load_instruction, 'cadence', x.cadence, 'restSeconds', x.rest_seconds,
+               'restText', x.rest_text, 'rirMin', x.rir_min, 'rirMax', x.rir_max, 'notes', x.notes, 'doseJson', x.dose_json,
+               'doseText', x.dose_text, 'origin', x.origin))
+             FROM prescribed_exercise_occurrences x WHERE x.prescribed_exercise_id = pe.id) AS occurrencesJson
+           FROM prescribed_exercises pe
+           WHERE pe.organization_id = ?1 AND pe.revision_id = ?4 AND pe.id IN (SELECT value FROM json_each(?5)) AND ${draft}
+           ORDER BY pe.phase_index, pe.workout_label, pe.position`,
+        )
+        .bind(organizationId, userId, planId, revisionId, JSON.stringify([...replacedIds]))
+        .all<Record<string, unknown>>();
+      const snapshotRows = full.results.map(({ occurrencesJson, ...rest }) => ({ ...rest, occurrences: JSON.parse(String(occurrencesJson ?? "[]")) as unknown[] }));
+      replacedJson = JSON.stringify({ rows: snapshotRows });
+      if (replacedJson.length > REPLACED_SNAPSHOT_MAX)
+        replacedJson = JSON.stringify({ rows: snapshotRows.map(({ occurrences, ...rest }) => ({ ...rest, occurrencesOmitted: occurrences.length })) });
+      if (replacedJson.length > REPLACED_SNAPSHOT_MAX) return { status: "too_large" };
+    }
+    const occurrences = scheduleOccurrences(read.schedule);
+    const known = new Map(read.existingOccurrences.map((o) => [scheduleKey(o), o.id]));
+    const occurrenceRows = occurrences.map((o) => ({
+      id: known.get(scheduleKey(o)) ?? crypto.randomUUID(),
+      p: o.phaseIndex,
+      w: o.week,
+      s: o.slot,
+      label: o.label,
+      weekStart: o.weekStart,
+      plannedDate: o.plannedDate,
+    }));
+    const groups = slotGroups(read.items, staying);
+    const applicationId = crypto.randomUUID();
+    const stamp = now.toISOString();
+    const counts: ApplyCounts = { occurrences: occurrences.length, rows: groups.length, doses: read.items.length, preserved: staying.length, replaced: replacedRows.length };
+    // ?1 organization, ?2 user, ?3 plan, ?4 revision, ?5 proposal, ?6 application id, ?7 stamp; extra values from ?8.
+    const tok = `EXISTS (SELECT 1 FROM prescription_applications tok WHERE tok.organization_id = ?1 AND tok.id = ?6 AND tok.revision_id = ?4)`;
+    const a = (sql: string, ...rest: unknown[]) => db.prepare(sql).bind(organizationId, userId, planId, revisionId, proposalId, applicationId, stamp, ...rest);
+    const occurrenceOrigin = (column: string) => `CASE WHEN ${column} IN ('PROFESSIONAL', 'SYSTEM', 'SYSTEM_EDITED', 'AI') THEN ${column} ELSE 'PROFESSIONAL' END`;
+    const doseColumns = `sets, reps, load_instruction, cadence, rest_seconds, rest_text, rir_min, rir_max, notes, dose_json, dose_text`;
+    const occurrenceInsert = `INSERT INTO prescribed_exercise_occurrences (id, organization_id, revision_id, prescribed_exercise_id, occurrence_id,
+        included, ${doseColumns}, trace_json, origin, source_proposal_item_id, created_by_user_id, created_at, updated_at)`;
+    const statements: D1PreparedStatement[] = [
+      // 1. The application row: the compare-and-set of the whole batch.
+      a(
+        `INSERT INTO prescription_applications (id, organization_id, plan_id, revision_id, proposal_id, proposal_version,
+           base_content_version, idempotency_key, request_hash, conflict_mode, infeasible_confirmed, replaced_json, applied_by_user_id,
+           created_at)
+         SELECT ?6, ?1, ?3, ?4, ?5, p.version, p.base_content_version, ?8, ?9, ?10, ?11, ?12, ?2, ?7
+         FROM prescription_proposals p
+         JOIN plan_revisions rv ON rv.organization_id = p.organization_id AND rv.id = p.revision_id
+         WHERE p.organization_id = ?1 AND p.id = ?5 AND p.plan_id = ?3 AND p.revision_id = ?4 AND p.state = 'OPEN' AND p.version = ?13
+           AND p.complete = 1 AND (p.status <> 'INFEASIBLE' OR ?11 = 1)
+           AND rv.state = 'DRAFT' AND rv.content_version = p.base_content_version AND ${draft}
+           AND NOT EXISTS (SELECT 1 FROM proposal_items i WHERE i.organization_id = ?1 AND i.proposal_id = ?5 AND i.origin <> 'PRESERVED'
+             AND (i.exercise_id IS NULL OR NOT ${usableExercise("i.exercise_id")}))`,
+        req.idempotencyKey,
+        req.requestHash,
+        req.conflictMode,
+        infeasible && req.confirmInfeasible ? 1 : 0,
+        replacedJson,
+        req.expectedVersion,
+      ),
+    ];
+    // 2. A confirmed replacement: doses first (0041 children-first), then the rows, exactly the ones snapshotted.
+    for (const chunk of jsonChunks([...replacedIds])) {
+      statements.push(
+        a(
+          `DELETE FROM prescribed_exercise_occurrences WHERE organization_id = ?1 AND revision_id = ?4
+             AND prescribed_exercise_id IN (SELECT value FROM json_each(?8)) AND ${tok}`,
+          chunk,
+        ),
+        a(`DELETE FROM prescribed_exercises WHERE organization_id = ?1 AND revision_id = ?4 AND id IN (SELECT value FROM json_each(?8)) AND ${tok}`, chunk),
+      );
+    }
+    // 3. The revision now holds one dose per session (one way: 0041).
+    statements.push(
+      a(`UPDATE plan_revisions SET prescription_model = 'OCCURRENCE', updated_at = ?7
+         WHERE organization_id = ?1 AND id = ?4 AND plan_id = ?3 AND state = 'DRAFT' AND ${tok}`),
+    );
+    // 4. Every session of the saved schedule (not only the generated ones), with the dates the student sees.
+    for (const chunk of jsonChunks(occurrenceRows))
+      statements.push(
+        a(
+          `INSERT INTO plan_session_occurrences (id, organization_id, revision_id, phase_index, week_index, slot_index, workout_label,
+             week_start, planned_date, stimulus, created_by_user_id, created_at, updated_at)
+           SELECT json_extract(j.value, '$.id'), ?1, ?4, json_extract(j.value, '$.p'), json_extract(j.value, '$.w'),
+             json_extract(j.value, '$.s'), json_extract(j.value, '$.label'), json_extract(j.value, '$.weekStart'),
+             json_extract(j.value, '$.plannedDate'),
+             (SELECT po.stimulus FROM proposal_occurrences po WHERE po.organization_id = ?1 AND po.proposal_id = ?5
+                AND po.phase_index = json_extract(j.value, '$.p') AND po.week_index = json_extract(j.value, '$.w')
+                AND po.slot_index = json_extract(j.value, '$.s')),
+             ?2, ?7, ?7
+           FROM json_each(?8) j WHERE ${tok}
+           ON CONFLICT (revision_id, phase_index, week_index, slot_index) DO NOTHING`,
+          chunk,
+        ),
+      );
+    // 5. One prescribed exercise per engine slot: base dose from the slot's first session; library snapshot (name, video).
+    for (const chunk of jsonChunks(groups))
+      statements.push(
+        a(
+          `INSERT INTO prescribed_exercises (id, organization_id, revision_id, phase_index, workout_label, position, exercise_id, name,
+             video_url, video_status, sets, reps, load_instruction, cadence, rest_seconds, rest_text, rir_min, rir_max, notes, origin,
+             dose_json, dose_text, application_id, source_slot_key, substitutes_prescribed_exercise_id, created_by_user_id, created_at,
+             updated_at)
+           SELECT json_extract(j.value, '$.id'), ?1, ?4, json_extract(j.value, '$.p'), json_extract(j.value, '$.label'),
+             json_extract(j.value, '$.pos'), e.id, e.name, e.video_url, e.video_status, f.sets, f.reps, f.load_instruction, f.cadence,
+             f.rest_seconds, f.rest_text, f.rir_min, f.rir_max, NULL, 'SYSTEM', f.dose_json, f.dose_text, ?6,
+             json_extract(j.value, '$.k'), json_extract(j.value, '$.x'), ?2, ?7, ?7
+           FROM json_each(?8) j
+           -- CROSS JOIN keeps json_each outside: each row then finds its item by primary key (a plain JOIN let SQLite scan
+           -- every item of the proposal once per row: 20 s for 2520 rows on local workerd).
+           CROSS JOIN proposal_items f ON f.id = json_extract(j.value, '$.first') AND f.organization_id = ?1 AND f.proposal_id = ?5
+           JOIN exercises e ON e.id = f.exercise_id AND e.archived_at IS NULL AND (e.organization_id IS NULL OR e.organization_id = ?1)
+           WHERE ${tok}`,
+          chunk,
+        ),
+      );
+    statements.push(
+      // 6a. Each engine item: its dose in its session, with the stored text and the trace (never shown to the student).
+      a(
+        `${occurrenceInsert}
+         SELECT lower(hex(randomblob(16))), ?1, ?4, pe.id, o.id, 1, i.sets, i.reps, i.load_instruction, i.cadence, i.rest_seconds,
+           i.rest_text, i.rir_min, i.rir_max, NULL, i.dose_json, i.dose_text, i.trace_json, 'SYSTEM', i.id, ?2, ?7, ?7
+         FROM proposal_items i
+         JOIN proposal_occurrences po ON po.organization_id = i.organization_id AND po.id = i.proposal_occurrence_id
+         JOIN plan_session_occurrences o ON o.organization_id = ?1 AND o.revision_id = ?4 AND o.phase_index = po.phase_index
+           AND o.week_index = po.week_index AND o.slot_index = po.slot_index
+         JOIN prescribed_exercises pe ON pe.organization_id = ?1 AND pe.revision_id = ?4 AND pe.application_id = ?6
+           AND pe.source_slot_key = i.slot_key AND pe.phase_index = po.phase_index
+         WHERE i.organization_id = ?1 AND i.proposal_id = ?5 AND i.origin <> 'PRESERVED' AND ${tok}`,
+      ),
+      // 6b. Preserved rows: the proposal holds them in its sessions; a dose already written per session is kept as it is.
+      a(
+        `${occurrenceInsert}
+         SELECT lower(hex(randomblob(16))), ?1, ?4, pe.id, o.id, 1, pe.sets, pe.reps, pe.load_instruction, pe.cadence, pe.rest_seconds,
+           pe.rest_text, pe.rir_min, pe.rir_max, pe.notes, pe.dose_json, pe.dose_text, NULL, ${occurrenceOrigin("pe.origin")}, i.id, ?2, ?7, ?7
+         FROM proposal_items i
+         JOIN proposal_occurrences po ON po.organization_id = i.organization_id AND po.id = i.proposal_occurrence_id
+         JOIN plan_session_occurrences o ON o.organization_id = ?1 AND o.revision_id = ?4 AND o.phase_index = po.phase_index
+           AND o.week_index = po.week_index AND o.slot_index = po.slot_index
+         JOIN prescribed_exercises pe ON pe.organization_id = ?1 AND pe.revision_id = ?4 AND pe.id = i.existing_prescribed_exercise_id
+         WHERE i.organization_id = ?1 AND i.proposal_id = ?5 AND i.origin = 'PRESERVED' AND ${tok}
+         ON CONFLICT (prescribed_exercise_id, occurrence_id) DO NOTHING`,
+      ),
+      // 7. Every other row that was already in the draft: included in every session of its workout, with its own dose. Runs
+      //    before 8, and never touches a dose already written per session.
+      a(
+        `${occurrenceInsert}
+         SELECT lower(hex(randomblob(16))), ?1, ?4, pe.id, o.id, 1, pe.sets, pe.reps, pe.load_instruction, pe.cadence, pe.rest_seconds,
+           pe.rest_text, pe.rir_min, pe.rir_max, pe.notes, pe.dose_json, pe.dose_text, NULL, ${occurrenceOrigin("pe.origin")}, NULL, ?2, ?7, ?7
+         FROM prescribed_exercises pe
+         JOIN plan_session_occurrences o ON o.organization_id = ?1 AND o.revision_id = ?4 AND o.phase_index = pe.phase_index
+           AND o.workout_label = pe.workout_label
+         WHERE pe.organization_id = ?1 AND pe.revision_id = ?4 AND (pe.application_id IS NULL OR pe.application_id <> ?6) AND ${tok}
+         ON CONFLICT (prescribed_exercise_id, occurrence_id) DO NOTHING`,
+      ),
+      // 8. A slot of this application absent from a session of its workout: written as not included there (base dose kept).
+      a(
+        `${occurrenceInsert}
+         SELECT lower(hex(randomblob(16))), ?1, ?4, pe.id, o.id, 0, pe.sets, pe.reps, pe.load_instruction, pe.cadence, pe.rest_seconds,
+           pe.rest_text, pe.rir_min, pe.rir_max, NULL, pe.dose_json, pe.dose_text, NULL, 'SYSTEM', NULL, ?2, ?7, ?7
+         FROM prescribed_exercises pe
+         JOIN plan_session_occurrences o ON o.organization_id = ?1 AND o.revision_id = ?4 AND o.phase_index = pe.phase_index
+           AND o.workout_label = pe.workout_label
+         WHERE pe.organization_id = ?1 AND pe.revision_id = ?4 AND pe.application_id = ?6 AND ${tok}
+         ON CONFLICT (prescribed_exercise_id, occurrence_id) DO NOTHING`,
+      ),
+      // 9. The proposal is closed as APPLIED, with the professional's decision and the plan event (no content in either).
+      a(
+        `UPDATE prescription_proposals SET state = 'APPLIED', version = version + 1, last_write_id = ?6, closed_at = ?7,
+           closed_by_user_id = ?2, updated_at = ?7
+         WHERE organization_id = ?1 AND id = ?5 AND revision_id = ?4 AND state = 'OPEN' AND version = ?8 AND ${tok}`,
+        req.expectedVersion,
+      ),
+      a(
+        `INSERT INTO proposal_decisions (id, organization_id, proposal_id, actor_user_id, action, write_id, target_json, change_json,
+           generation_id, proposal_version_after, created_at)
+         SELECT ?8, ?1, ?5, ?2, 'APPLY', ?6, ?9, ?10, NULL, ?11, ?7 WHERE ${tok}`,
+        crypto.randomUUID(),
+        canonicalJson({ conflictMode: req.conflictMode, confirmedWorkouts: [...wanted].sort(), confirmInfeasible: infeasible && req.confirmInfeasible }),
+        canonicalJson(counts),
+        req.expectedVersion + 1,
+      ),
+      a(
+        `INSERT INTO training_plan_events (id, organization_id, plan_id, revision_id, actor_user_id, action, created_at)
+         SELECT ?8, r.organization_id, r.plan_id, r.id, ?2, 'PROPOSAL_APPLIED', ?7 FROM plan_revisions r
+         WHERE r.organization_id = ?1 AND r.id = ?4 AND r.plan_id = ?3 AND ${tok}`,
+        crypto.randomUUID(),
+      ),
+      // The occurrence tables have no bump triggers (0041): one explicit bump for the batch.
+      a(`UPDATE plan_revisions SET content_version = content_version + 1, updated_at = ?7
+         WHERE organization_id = ?1 AND id = ?4 AND state = 'DRAFT' AND ${tok}`),
+    );
+    let failure: ReturnType<typeof knownFailure> = null;
+    try {
+      await db.batch(statements);
+    } catch (error) {
+      failure = knownFailure(error);
+      if (!failure) throw error;
+    }
+    if (!failure) {
+      const landed = await db
+        .prepare(`SELECT id FROM prescription_applications WHERE organization_id = ?1 AND id = ?2 AND revision_id = ?3`)
+        .bind(organizationId, applicationId, revisionId)
+        .first<{ id: string }>();
+      if (landed) return { status: "applied", applicationId, counts };
+    }
+    const why = await classifyApply(planId, revisionId, proposalId, req);
+    if (why) return why;
+    const again = await preview(planId, revisionId, proposalId);
+    if (again?.catalogChanged.length) return { status: "catalog_changed", exerciseIds: again.catalogChanged };
+    if (failure === "too_large") return { status: "too_large" };
+    throw new Error(`APPLY_WRITE_UNEXPLAINED${failure ? `:${failure}` : ""}`);
+  }
+
   return {
     /** The OPEN proposal of a DRAFT revision, or null. */
     open,
@@ -1247,6 +1723,12 @@ export function proposalsFor(db: D1Database, context: AuthenticatedContext | nul
         intent,
       );
     },
+
+    /** What applying would write and what it asks first (manual workouts, INFEASIBLE, missing phases), read without writing. */
+    applyPreview: preview,
+
+    /** Applies the proposal to its DRAFT revision (design §4.6). The only write of a proposal into the prescription. */
+    apply,
   };
 }
 

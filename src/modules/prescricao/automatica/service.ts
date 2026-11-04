@@ -1,7 +1,8 @@
 /**
  * The proposal workflow of the automatic prescription (motor S6, design §4.8): generate, continue, regenerate a scope, substitute,
- * rebase, lock, decide an alert, discard. Business rules live here, not in the server actions (which only add the session and
- * revalidate) nor in components. Applying a proposal to the draft is S7; nothing here approves or delivers.
+ * rebase, lock, decide an alert, discard, and apply to the draft (motor S7). Business rules live here, not in the server actions
+ * (which only add the session and revalidate) nor in components. Nothing here approves or delivers: after the apply the
+ * professional reviews, edits, marks ready, approves and delivers through the existing flow.
  *
  * Every call takes the verified session context (organization and user from `requireWorkspace`); ids come from the route and
  * every payload is parsed strictly. Each run reads the student's real data again through the gated repositories, so access
@@ -15,6 +16,10 @@ import {
   GENERATION_INPUT_MAX,
   MAX_LOCK_TARGETS,
   proposalsFor,
+  type ApplyCounts,
+  type ApplyOutcome,
+  type ApplyPreview,
+  type ManualWorkout,
   type GenerateOutcome,
   type GenerationRecord,
   type GenerationScopeKind,
@@ -87,7 +92,19 @@ const lockSchema = casSchema
   .strict();
 const flagSchema = casSchema.extend({ flagCode: z.string().trim().min(1).max(200), decision: flagDecisionSchema }).strict();
 
+const applySchema = z
+  .object({
+    proposalId: z.string().min(1).max(64),
+    idempotencyKey: intentId,
+    expectedVersion: version,
+    conflictMode: z.enum(["PRESERVE", "REPLACE_CONFIRMED"]),
+    confirmedWorkouts: z.array(z.object({ phaseIndex, label }).strict()).max(200),
+    confirmInfeasible: z.boolean(),
+  })
+  .strict();
+
 export type GeneratePayload = z.input<typeof generateSchema>;
+export type ApplyPayload = z.input<typeof applySchema>;
 export type ContinuePayload = z.input<typeof continueSchema>;
 export type RegeneratePayload = z.input<typeof regenerateSchema>;
 export type SubstitutePayload = z.input<typeof substituteSchema>;
@@ -127,6 +144,72 @@ export type ProposalOutcome =
       contentVersion?: number;
       proposalId?: string;
     };
+
+export type ApplyFailure =
+  | "invalid"
+  | "not_found"
+  | "not_open"
+  | "closed"
+  | "proposal_conflict"
+  | "revision_changed"
+  | "incomplete"
+  | "infeasible_confirmation_required"
+  | "confirmation_required"
+  | "catalog_changed"
+  | "key_reused"
+  | "too_large";
+
+export type ApplyServiceOutcome =
+  | { ok: true; applicationId: string; replayed: boolean; counts: ApplyCounts | null }
+  | {
+      ok: false;
+      reason: ApplyFailure;
+      /** pt-BR, shown as is: no plan data, no health text. */
+      message: string;
+      workouts?: ManualWorkout[];
+      exerciseIds?: string[];
+      phasesMissing?: number[];
+      version?: number;
+      contentVersion?: number;
+    };
+
+const APPLY_MESSAGES: Record<ApplyFailure, string> = {
+  invalid: "Pedido inválido. Recarregue a página e tente de novo.",
+  not_found: "Plano, revisão ou proposta não encontrados para você.",
+  not_open: "A revisão não está mais em rascunho: a proposta não pode ser aplicada. Revisões aprovadas e entregues não mudam.",
+  closed: "Esta proposta já foi fechada (aplicada, descartada ou substituída ao marcar a revisão como pronta).",
+  proposal_conflict: "A proposta mudou enquanto você revisava. Recarregue para ver a versão atual antes de aplicar.",
+  revision_changed:
+    "O rascunho mudou desde a geração (prescrição ou estrutura editadas). Atualize a proposta com o rascunho atual antes de aplicar.",
+  incomplete: "A proposta ainda não tem todas as fases. Continue a geração antes de aplicar.",
+  infeasible_confirmation_required:
+    "A proposta tem impedimentos (inviável). Para aplicar mesmo assim, confirme explicitamente: a confirmação fica registrada.",
+  confirmation_required:
+    "Há treinos com exercícios já prescritos no rascunho. Eles são mantidos; para substituí-los, confirme exatamente os treinos listados.",
+  catalog_changed: "Um exercício da proposta não está mais disponível na biblioteca: regenere as partes indicadas antes de aplicar.",
+  key_reused: "Esta ação já foi enviada com outros dados. Recarregue a página.",
+  too_large: "A cópia dos exercícios substituídos passa do limite técnico do registro. Substitua menos treinos por vez.",
+};
+
+function fromApply(out: ApplyOutcome): ApplyServiceOutcome {
+  switch (out.status) {
+    case "applied":
+    case "replayed":
+      return { ok: true, applicationId: out.applicationId, replayed: out.status === "replayed", counts: out.counts };
+    case "proposal_conflict":
+      return { ok: false, reason: out.status, message: APPLY_MESSAGES[out.status], version: out.version };
+    case "revision_changed":
+      return { ok: false, reason: out.status, message: APPLY_MESSAGES[out.status], contentVersion: out.contentVersion };
+    case "incomplete":
+      return { ok: false, reason: out.status, message: APPLY_MESSAGES[out.status], phasesMissing: out.phasesMissing };
+    case "confirmation_required":
+      return { ok: false, reason: out.status, message: APPLY_MESSAGES[out.status], workouts: out.workouts };
+    case "catalog_changed":
+      return { ok: false, reason: out.status, message: APPLY_MESSAGES[out.status], exerciseIds: out.exerciseIds };
+    default:
+      return { ok: false, reason: out.status, message: APPLY_MESSAGES[out.status] };
+  }
+}
 
 const MESSAGES: Record<ProposalFailure, string> = {
   invalid: "Pedido inválido. Recarregue a página e tente de novo.",
@@ -532,6 +615,33 @@ export function proposalService(
       const { proposalId, writeId, expectedVersion } = parsed.data;
       const out = await repo.discard(planId, revisionId, proposalId, { expectedVersion, writeId }, clock());
       return fromMutate(proposalId, out, (await repo.header(planId, revisionId, proposalId, "ANY"))?.complete ?? false);
+    },
+
+    /** What "Aplicar ao rascunho" would write and what it asks first. Null when the proposal is not reachable. */
+    async previewApply(planId: string, revisionId: string, proposalId: string): Promise<ApplyPreview | null> {
+      return repo.applyPreview(planId, revisionId, proposalId);
+    },
+
+    /**
+     * "Aplicar ao rascunho": writes the proposal into the same DRAFT revision (one batch), keeping every row already there unless
+     * the professional confirmed, workout by workout, that those rows are replaced. An INFEASIBLE proposal needs its explicit
+     * confirmation (Q8). Approval stays the professional's own act, afterwards, through the existing flow.
+     */
+    async apply(planId: string, revisionId: string, payload: ApplyPayload): Promise<ApplyServiceOutcome> {
+      const parsed = applySchema.safeParse(payload);
+      if (!parsed.success) return { ok: false, reason: "invalid", message: APPLY_MESSAGES.invalid };
+      const { proposalId, idempotencyKey, expectedVersion, conflictMode, confirmedWorkouts, confirmInfeasible } = parsed.data;
+      const workouts = [...new Set(confirmedWorkouts.map((w) => `${w.phaseIndex}|${w.label}`))].sort();
+      if (conflictMode === "PRESERVE" && workouts.length) return { ok: false, reason: "invalid", message: APPLY_MESSAGES.invalid };
+      const hash = await requestHash("APPLY", { planId, revisionId, proposalId, expectedVersion, conflictMode, workouts, confirmInfeasible });
+      const out = await repo.apply(
+        planId,
+        revisionId,
+        proposalId,
+        { idempotencyKey, requestHash: hash, expectedVersion, conflictMode, confirmedWorkouts, confirmInfeasible },
+        clock(),
+      );
+      return fromApply(out);
     },
   };
 }
