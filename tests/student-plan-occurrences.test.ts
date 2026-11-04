@@ -11,13 +11,14 @@ import { planDocumentsFor } from "@/db/plan-documents";
 import { executionFor, studentSessionsFor, distinctOccurrences } from "@/db/workout-sessions";
 import { studentExportFor } from "@/db/student-export";
 import { readableExport } from "@/modules/pedidos/export-readable";
+import { OCCURRENCE_WORKOUTS_NOTE } from "@/modules/pedidos/export";
 import { proposalService, type ProposalOutcome, type ApplyServiceOutcome } from "@/modules/prescricao/automatica/service";
 import type { GenerationAnswersInput } from "@/modules/prescricao/automatica/contracts";
 import { planFingerprint, renderPlanPdf } from "@/modules/pdf/plan-pdf";
 import { StudentTraining } from "@/modules/portal/student-training";
 import { findSession, progressionOf, selectedWeek } from "@/modules/portal/weeks";
 import { describeDose, storedDoseText } from "@/modules/prescricao/describe";
-import { extraSetFields } from "@/modules/execucao/contracts";
+import { basisWithoutValues, conflictMessage, extraSetFields } from "@/modules/execucao/contracts";
 import { ALL_MIGRATIONS, migrate } from "./helpers/migrate";
 
 // Motor S8 on a real local D1 (Miniflare/workerd, migrations 0001–0045): the readers of a delivered revision written session by
@@ -369,6 +370,8 @@ describe("topic 15: the student logs a session of the week", () => {
     const delivered = link.treinoEntregue.find((p) => p.plano === "Plano por sessão")!;
     const phase1 = delivered.fases[0] as { semanasDoTreino?: Array<{ semana: number; sessoes: Array<{ sessao: number; treino: string; exercicios: Array<{ nome: string; dose?: string | null; series: string | null }> }> }> };
     expect(phase1.semanasDoTreino).toHaveLength(3);
+    // `treinos` of a phase written session by session says its dose is one session's (design §5.2).
+    expect((delivered.fases[0] as { notaDosTreinos?: string }).notaDosTreinos).toBe(OCCURRENCE_WORKOUTS_NOTE);
     const week2A = phase1.semanasDoTreino![1].sessoes.find((s) => s.treino === "A")!;
     expect(week2A.exercicios.some((e) => e.series === "5" && e.dose === fx.edited.doseText)).toBe(true);
     const logged = link.treinosRegistrados.registros.filter((r) => r.plano === "Plano por sessão") as Array<{ semana?: number; sessao?: number; exercicios: Array<{ series: Array<Record<string, unknown>> }> }>;
@@ -452,5 +455,73 @@ describe("topic 16: revisions with one dose per phase read exactly as before", (
     const templateLog = outcome.document.vinculos[0].treinosRegistrados.registros.find((r) => r.plano === "Plano antigo")!;
     expect(Object.keys(templateLog)).not.toContain("semana");
     expect(templateLog.exercicios[0].series[0]).toEqual({ numero: 1, repeticoes: 10, cargaKg: 20 });
+  });
+});
+
+describe("topic 15: revocation closes every reader and the log of a revision written session by session", () => {
+  // Runs last: it revokes and restores links on the shared fixture.
+  const logPayload = () => {
+    const session = findSession(occurrencePlan, fx.edited.occurrenceId)!.session;
+    return {
+      planId: fx.occurrence.planId,
+      occurrenceId: fx.edited.occurrenceId,
+      phaseIndex: 1,
+      workoutLabel: session.label,
+      performedOn: "2026-12-03",
+      exercises: [{ prescribedExerciseId: session.exercises[0].id, done: true, sets: [{ reps: 6, loadKg: 50 }] }],
+    };
+  };
+  const logs = async () => (await one<{ n: number }>("SELECT COUNT(*) AS n FROM workout_sessions WHERE occurrence_id = ?1", fx.edited.occurrenceId)).n;
+  const loggedId = async () =>
+    (await one<{ id: string }>("SELECT id FROM workout_sessions WHERE occurrence_id = ?1 AND performed_on = '2026-12-01'", fx.edited.occurrenceId)).id;
+
+  for (const [what, revoke, restore] of [
+    ["revoked student access", "UPDATE student_access SET revoked_at = '2026-12-02T00:00:00.000Z' WHERE user_id = 'client-1'", "UPDATE student_access SET revoked_at = NULL WHERE user_id = 'client-1'"],
+    ["disabled student user", "UPDATE users SET disabled_at = '2026-12-02T00:00:00.000Z' WHERE id = 'client-1'", "UPDATE users SET disabled_at = NULL WHERE id = 'client-1'"],
+  ] as const)
+    it(`${what}: no weeks, no sessions, no log and no copy of the plan`, async () => {
+      const before = await logs();
+      await db.prepare(revoke).run();
+      try {
+        expect(await studentTrainingFor(db, "client-1", "st-1")).toEqual([]);
+        expect((await studentSessionsFor(db, "client-1").save("st-1", logPayload(), NOW)).status).not.toBe("saved");
+        expect(await logs()).toBe(before);
+        const outcome = await studentExportFor(db, "client-1").generate(new Date(NOW.getTime() + 6 * 3_600_000));
+        if (outcome.status === "generated") expect(JSON.stringify(outcome.document)).not.toContain("Plano por sessão");
+      } finally {
+        await db.prepare(restore).run();
+      }
+      expect((await studentTrainingFor(db, "client-1", "st-1")).some((p) => p.planId === fx.occurrence.planId)).toBe(true);
+    });
+
+  for (const [what, revoke, restore] of [
+    ["revoked care assignment", "UPDATE care_assignments SET revoked_at = '2026-12-02T00:00:00.000Z' WHERE student_id = 'st-1'", "UPDATE care_assignments SET revoked_at = NULL WHERE student_id = 'st-1'"],
+    ["disabled professional", "UPDATE users SET disabled_at = '2026-12-02T00:00:00.000Z' WHERE id = 'tech-a'", "UPDATE users SET disabled_at = NULL WHERE id = 'tech-a'"],
+  ] as const)
+    it(`${what}: the professional reads no PDF source, no log detail and no session's planned dose`, async () => {
+      const id = await loggedId();
+      await db.prepare(revoke).run();
+      try {
+        expect(await planDocumentsFor(db, scope("tech-a")).delivered(fx.occurrence.planId, fx.occurrence.revisionId)).toBeNull();
+        expect(await executionFor(db, scope("tech-a")).detail(id)).toBeNull();
+        expect(await executionFor(db, scope("tech-a")).list("st-1")).toEqual([]);
+      } finally {
+        await db.prepare(restore).run();
+      }
+      expect(await executionFor(db, scope("tech-a")).detail(id)).not.toBeNull();
+    });
+});
+
+describe("the student's form and messages for a session of the week", () => {
+  it("names the other session in a conflict, since reloading does not clear it", () => {
+    expect(conflictMessage("other_occurrence")).toBe("Já existe um registro deste treino nesta data para outra sessão.");
+    expect(conflictMessage()).toBe("Já existe um registro deste treino nesta data. Recarregue a página.");
+  });
+
+  it("a set with only how the load was counted is asked about, never dropped silently", () => {
+    const blank = { reps: null, loadKg: null, rir: null, durationSeconds: null, distanceMeters: null, loadBasis: null };
+    expect(basisWithoutValues({ ...blank, loadBasis: "BODYWEIGHT" })).toBe(true);
+    expect(basisWithoutValues({ ...blank, loadBasis: "BODYWEIGHT", reps: 12 })).toBe(false);
+    expect(basisWithoutValues(blank)).toBe(false);
   });
 });

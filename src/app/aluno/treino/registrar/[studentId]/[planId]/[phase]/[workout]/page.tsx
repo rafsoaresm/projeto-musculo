@@ -67,7 +67,11 @@ export default async function RegisterWorkoutPage({
   // A plan written session by session logs one session of one week (`?ocorrencia=`); a correction keeps its own session.
   const asked = initial?.occurrenceId ?? (typeof query.ocorrencia === "string" ? query.ocorrencia : null);
   const found = perSession ? findSession(plan, asked) : null;
-  const occurrence = found && found.phase.index === phaseIndex && found.session.label === label ? found.session : null;
+  // A session with nothing included has nothing to log: a stale or edited link falls back to the chooser.
+  const occurrence =
+    found && found.phase.index === phaseIndex && found.session.label === label && found.session.exercises.length > 0
+      ? found.session
+      : null;
   const choices = perSession
     ? (phase.weeksDetail ?? []).flatMap((week) => week.sessions.filter((item) => item.label === label && item.exercises.length > 0))
     : [];

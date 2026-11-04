@@ -138,9 +138,21 @@ export interface SessionInput {
   }>;
 }
 
+/**
+ * What the student reads when the workout already has a log that day. Another session of the week
+ * (`other_occurrence`) stays there after a reload, so it is named instead of "reload the page".
+ */
+export const conflictMessage = (reason?: "other_occurrence") =>
+  reason === "other_occurrence"
+    ? "Já existe um registro deste treino nesta data para outra sessão."
+    : "Já existe um registro deste treino nesta data. Recarregue a página.";
+
 /** A set row is kept when the student typed anything in it. */
 const typedSomething = (set: SetInput) =>
   set.reps !== null || set.loadKg !== null || set.rir !== null || set.durationSeconds !== null || set.distanceMeters !== null;
+
+/** Only "how the load was counted" was chosen: there is no set to keep, so the form asks before sending. */
+export const basisWithoutValues = (set: SetInput) => set.loadBasis !== null && !typedSomething(set);
 
 /**
  * `today` is the calendar day in the student's zone. A row only exists for an exercise the student

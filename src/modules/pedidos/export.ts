@@ -15,6 +15,10 @@ export const EXPORT_FORMAT = "meus-dados/1";
 
 /** A copy is generated this many times an hour per login; the rest wait. */
 export const EXPORTS_PER_HOUR = 6;
+
+/** Label of `treinos` in a phase written session by session: its dose is one session's, not the whole phase's. */
+export const OCCURRENCE_WORKOUTS_NOTE =
+  "Dose da primeira sessão em que cada exercício aparece; veja a progressão por semana em semanasDoTreino.";
 /** Most entries of each list that go into one student's copy; the file says when it was cut. */
 export const EXPORT_CHECKIN_LIMIT = 2000;
 export const EXPORT_SESSION_LIMIT = 2000;
@@ -285,6 +289,8 @@ export function buildExport(source: ExportSource) {
           divisao: phase.split,
           // v2 names only when there is one, so the file of a v1 plan keeps its keys.
           ...(phase.name ? { nome: phase.name } : {}),
+          // A plan written session by session: `treinos` carries the dose of the first session each exercise appears in (design §5.2).
+          ...(phase.weeksDetail ? { notaDosTreinos: OCCURRENCE_WORKOUTS_NOTE } : {}),
           treinos: phase.workouts.map((workout) => ({
             treino: workout.label,
             ...(workout.name ? { nome: workout.name } : {}),

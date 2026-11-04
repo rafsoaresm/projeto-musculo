@@ -8,6 +8,7 @@ import type { StudentSession } from "@/db/workout-sessions";
 import { deleteSession, saveSession } from "./actions";
 import {
   LOAD_BASES,
+  basisWithoutValues,
   LOAD_BASIS_LABEL,
   MAX_SETS,
   PAIN_ADVICE,
@@ -15,6 +16,7 @@ import {
   parseLoadText,
   type ExtraSetField,
   type LoadBasis,
+  type SetInput,
 } from "./contracts";
 
 export interface LoggableExercise {
@@ -161,17 +163,27 @@ export function SessionForm({
         if (duration === undefined || (duration !== null && duration > 86_400))
           return { ok: false, problem: `${exercise.name}, série ${index + 1}: use só segundos inteiros na duração.` };
         const distanceText = set.distance.trim().replace(",", ".");
-        const distance = distanceText === "" ? null : /^\d{1,7}(\.\d{1,2})?$/.test(distanceText) ? Number(distanceText) : null;
+        const distance = distanceText === "" ? null : /^\d{1,7}(\.\d)?$/.test(distanceText) ? Number(distanceText) : null;
         if ((distanceText !== "" && distance === null) || (distance !== null && distance > 1_000_000))
-          return { ok: false, problem: `${exercise.name}, série ${index + 1}: confira a distância em metros (por exemplo 400).` };
-        sets.push({
+          return {
+            ok: false,
+            problem: `${exercise.name}, série ${index + 1}: confira a distância em metros, com até uma casa decimal (por exemplo 400 ou 400,5).`,
+          };
+        const typed: SetInput = {
           reps,
           loadKg: load,
           rir: set.rir === "" ? null : Number(set.rir),
           durationSeconds: duration,
           distanceMeters: distance,
           loadBasis: set.loadBasis === "" ? null : (set.loadBasis as LoadBasis),
-        });
+        };
+        // How the load was counted means nothing alone, and the server would drop that set without a word.
+        if (basisWithoutValues(typed))
+          return {
+            ok: false,
+            problem: `${exercise.name}, série ${index + 1}: preencha a série (repetições, carga, duração ou distância) ou deixe "como a carga foi contada" em branco.`,
+          };
+        sets.push(typed);
       }
       built.push({
         prescribedExerciseId: exercise.id,

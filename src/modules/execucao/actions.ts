@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { ZodError } from "zod";
 import { requireStudent, requireWorkspace } from "@/modules/auth/server";
 import { executionFor, studentSessionsFor } from "@/db/workout-sessions";
+import { conflictMessage } from "./contracts";
 
 export type SessionResult = {
   error?: string;
@@ -47,7 +48,7 @@ export async function saveSession(studentId: string, payload: unknown): Promise<
             "Este registro não pode mais ser alterado: ele tem relato de dor, já foi lido pelo profissional ou passou de 24 horas.",
         };
       case "conflict":
-        return { error: "Já existe um registro deste treino nesta data. Recarregue a página." };
+        return { error: conflictMessage(outcome.reason) };
       case "invalid":
         return { error: "Há exercícios que não fazem parte deste treino. Recarregue a página." };
       default:
