@@ -1,4 +1,4 @@
-import type { Exercise, GenerationResult, Periodization, Template } from "./types.ts";
+import type { Exercise, GenerationResult, Periodization, Template } from "./types";
 
 /** Contract of Gymgital's existing src/modules/training/contracts.ts (0.91). */
 export interface ExistingSchedule {
