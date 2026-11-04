@@ -120,7 +120,8 @@ const METADATA_MESSAGES = {
   saved: "Salvo como revisado por você.",
   pending: "Campo marcado como pendente de curadoria. Ele não será usado na seleção automática até alguém revisá-lo.",
   conflict: "Este campo foi alterado por outra pessoa. Recarregue a página e confira antes de salvar.",
-  invalid: "Escolha um valor válido para este campo. Se não souber, marque como pendente.",
+  invalid:
+    "Escolha um valor válido para este campo (numa lista, marque ao menos um item ou a opção \"nenhum\"). Se não souber, marque como pendente.",
   not_found: NOT_FOUND,
   failed: "Não foi possível concluir. Tente novamente.",
 } as const;

@@ -176,9 +176,19 @@ export const SUMMARY_LABELS: Record<MetadataSummary, string> = {
 
 export const RELATION_KINDS = ["ALTERNATIVE"] as const;
 export type RelationKind = (typeof RELATION_KINDS)[number];
-/** Technical cap on curated alternatives per exercise and scope: keeps the detail page and the engine input small. */
+/**
+ * Technical cap on curated alternatives per exercise and scope (checked in the insert itself, so it
+ * also bounds the rows one `resolve()` chunk can return: 200 exercises × 12 × 2 scopes). It is not a
+ * training rule and was not measured: the engine also finds substitutes by muscle and pattern, so a
+ * curated list longer than this adds little. Raising it needs no migration (docs/MOTOR-PRESCRICAO.md).
+ */
 export const MAX_ALTERNATIVES = 12;
-/** Technical cap on alternative equipment sets: the editor shows one row per set. */
+/**
+ * Technical cap on alternative equipment sets ("halteres" or "kettlebell" or "elástico e barra fixa"),
+ * set by the editor, which shows one group of checkboxes per set, and by the stored value's
+ * 2000-character CHECK in 0044 (16 codes × 3 sets fits with room). Not measured; raising it is a code
+ * change only (the value is validated in code).
+ */
 export const MAX_EQUIPMENT_ALTERNATIVES = 3;
 
 export function labelFor(map: Record<string, string>, code: string): string {

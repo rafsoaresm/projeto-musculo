@@ -42,6 +42,20 @@ function Message({ text }: { text: string }) {
   );
 }
 
+/**
+ * "None" is its own explicit choice: saving with nothing checked is refused ("no value"), so an
+ * empty list is never stored by accident (for example "Sem equipamento" on a field nobody filled).
+ */
+function NoneChoice({ label, value }: { label: string | null; value: FieldValue | null }) {
+  if (!label) return null;
+  return (
+    <label className="check-row">
+      <input type="checkbox" name="none" value="true" defaultChecked={Array.isArray(value) && value.length === 0} />
+      {label}
+    </label>
+  );
+}
+
 function Control({ view }: { view: MetadataFieldView }) {
   const { control, value, label } = view;
   if (control.kind === "select")
@@ -84,13 +98,19 @@ function Control({ view }: { view: MetadataFieldView }) {
             {option.label}
           </label>
         ))}
-        {view.field === "equipment" && <p className="small muted">Nenhuma marcada: o exercício não precisa de equipamento.</p>}
+        <NoneChoice label={control.noneLabel} value={value} />
       </fieldset>
     );
   }
   const sets = Array.isArray(value) ? (value as string[][]) : [];
   return (
     <>
+      {control.noneLabel && (
+        <fieldset className="metadata-checks">
+          <legend>{label}</legend>
+          <NoneChoice label={control.noneLabel} value={value} />
+        </fieldset>
+      )}
       {Array.from({ length: control.sets }, (_, index) => {
         const chosen = new Set(sets[index] ?? []);
         return (

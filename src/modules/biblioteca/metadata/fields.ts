@@ -21,10 +21,11 @@ import {
  */
 export type FieldValue = string | number | boolean | string[] | string[][];
 
-const codeList = (map: Record<string, string>) => {
+const codeList = (map: Record<string, string>, min = 0) => {
   const order = Object.keys(map);
   return z
     .array(z.enum(order as [string, ...string[]]))
+    .min(min)
     .max(order.length)
     .transform((list) => order.filter((code) => list.includes(code)));
 };
@@ -49,7 +50,8 @@ export const FIELD_SCHEMAS: Record<MetadataField, z.ZodType<FieldValue, unknown>
   metric: oneOf(METRICS),
   primary_muscles: codeList(MUSCLES),
   secondary_muscles: codeList(MUSCLES),
-  movement_patterns: codeList(PATTERNS),
+  // An exercise always has at least one pattern: an empty list is never a reviewed value.
+  movement_patterns: codeList(PATTERNS, 1),
   equipment: codeList(EQUIPMENT),
   equipment_alternatives: equipmentSets,
   difficulty: z.number().int().min(1).max(5),
@@ -91,9 +93,23 @@ export function readStoredValue(field: MetadataField, json: string | null): Fiel
 }
 
 /**
+ * The list fields where "none" is a real answer ("Sem equipamento", no caution marker…). The form
+ * offers it as its own explicit choice; `movement_patterns` has none (see its schema).
+ */
+export const NONE_LABELS: Partial<Record<MetadataField, string>> = {
+  primary_muscles: "Nenhum músculo principal específico (por exemplo, cardiorrespiratório)",
+  secondary_muscles: "Nenhum músculo secundário",
+  equipment: "Sem equipamento",
+  equipment_alternatives: "Nenhum equipamento alternativo",
+  caution_tags: "Nenhum marcador de cuidado",
+};
+
+/**
  * The value a field form sent. Lists come as repeated `value` entries; alternative equipment as
  * `set0`..`set2`; the boolean as "true"/"false". An empty scalar is "no value", which the caller
- * refuses: to say "I do not know", mark the field as pending instead.
+ * refuses: to say "I do not know", mark the field as pending instead. The same holds for lists:
+ * nothing checked is "no value", never "none"; an empty list is only the explicit choice `none`
+ * (and `none` together with a checked item is contradictory, so also "no value").
  */
 export function valueFromForm(field: MetadataField, form: FormData): unknown {
   const all = (key: string) =>
@@ -102,16 +118,18 @@ export function valueFromForm(field: MetadataField, form: FormData): unknown {
     const value = form.get("value");
     return typeof value === "string" ? value.trim() : "";
   };
+  const none = NONE_LABELS[field] !== undefined && form.get("none") === "true";
+  const list = <T>(items: T[]): T[] | undefined => (none ? (items.length === 0 ? [] : undefined) : items.length > 0 ? items : undefined);
   switch (field) {
     case "primary_muscles":
     case "secondary_muscles":
     case "movement_patterns":
     case "equipment":
     case "caution_tags":
-      return all("value");
+      return list(all("value"));
     case "equipment_alternatives":
-      return Array.from({ length: MAX_EQUIPMENT_ALTERNATIVES }, (_, index) => all(`set${index}`)).filter(
-        (set) => set.length > 0,
+      return list(
+        Array.from({ length: MAX_EQUIPMENT_ALTERNATIVES }, (_, index) => all(`set${index}`)).filter((set) => set.length > 0),
       );
     case "difficulty":
     case "seconds_per_rep": {

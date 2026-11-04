@@ -1,6 +1,6 @@
 {
   "id": "gymgital-library-inference",
-  "version": "2026.11.1",
+  "version": "2026.11.2",
   "basis": "Heurística operacional (editável)",
   "comment": "Name-based inference of library metadata (motor S4, decision Q3 of 04/11/2026). Every value produced here is INFERRED, shown as 'Inferido (não revisado)', and loses to any value a person reviewed. A rule with value null means: recognised, but the name does not say enough; a person must fill the field in. Changing any rule requires a new version (the version is stored on every inferred row). See docs/MOTOR-PRESCRICAO.md.",
   "fieldOrder": [
@@ -128,6 +128,9 @@
       { "id": "SEC_CARRY", "when": { "field": "movement_patterns", "anyOf": ["CARRY"] }, "value": ["ABS", "OBLIQUES"] }
     ],
     "equipment": [
+      { "id": "EQ_UNLISTED_IMPLEMENT", "any": ["smith", "anilha", "disco", "caneleira", "trx", "suspens", "bola", "ball", "bosu", "fitball", "sandbag", "saco", "colete", "landmine", "mochila", "roda abdominal", "rollout"], "value": null },
+      { "id": "EQ_BAND", "any": ["elastic", "band", "superband", "miniband", "faixa elastica"], "value": ["RESISTANCE_BAND"] },
+      { "id": "EQ_SLED", "any": ["treno", "sled"], "value": ["SLED"] },
       { "id": "EQ_CALF_LEG_PRESS", "all": ["panturrilha", "leg press"], "value": ["MACHINE"] },
       { "id": "EQ_SEATED_CALF", "all": ["panturrilha", "sentad"], "value": ["MACHINE"] },
       { "id": "EQ_ROWER", "any": ["remo ergometr"], "value": ["ROWER"] },
@@ -147,7 +150,7 @@
       { "id": "EQ_BARBELL", "any": ["barra", "barbell"], "none": ["fixa"], "value": ["BARBELL"] },
       { "id": "EQ_BENCH", "any": ["banco", "bulgaro"], "value": ["BENCH"] },
       { "id": "EQ_STEP", "any": ["step"], "value": ["STEP_BOX"] },
-      { "id": "EQ_BODYWEIGHT", "any": ["prancha", "dead bug", "bird dog", "ponte", "afundo", "passada", "flexao de bracos", "elevacao de panturrilha"], "value": [] }
+      { "id": "EQ_BODYWEIGHT", "any": ["prancha", "dead bug", "bird dog", "ponte", "afundo", "passada", "flexao de bracos", "elevacao de panturrilha"], "noneWord": ["com", "no", "na", "nos", "nas", "em", "sobre", "with", "on"], "value": [] }
     ],
     "equipment_alternatives": [
       { "id": "ALT_GOBLET_KETTLEBELL", "any": ["goblet"], "value": [["KETTLEBELL"]] },
@@ -157,8 +160,9 @@
     ],
     "laterality": [
       { "id": "LAT_SIDE_PLANK", "all": ["prancha", "lateral"], "value": "UNILATERAL" },
-      { "id": "LAT_ONE_SIDE", "any": ["unilateral", "alternad", "afundo", "bulgaro", "passada", "step up", "coice", "pallof", "wood chop", "lenhador"], "value": "UNILATERAL" },
+      { "id": "LAT_ONE_SIDE", "any": ["unilateral", "alternad", "afundo", "bulgaro", "passada", "step up", "coice", "pallof", "wood chop", "lenhador", "serrote", "concentrad", "unipodal", "uma perna", "um braco", "uma mao", "single leg", "single arm", "one arm", "one leg", "pistol"], "value": "UNILATERAL" },
       { "id": "LAT_ALTERNATING_CORE", "any": ["bird dog", "dead bug"], "value": null },
+      { "id": "LAT_CATEGORY_UNILATERAL", "categoryAny": ["Unilateral"], "when": { "field": "movement_patterns", "present": true }, "value": null },
       { "id": "LAT_RESISTANCE_BILATERAL", "when": [{ "field": "movement_patterns", "present": true }, { "field": "modality", "anyOf": ["RESISTANCE"] }], "value": "BILATERAL" }
     ],
     "compound": [

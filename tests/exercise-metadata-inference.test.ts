@@ -18,6 +18,7 @@ import {
 } from "@/modules/biblioteca/metadata/inference-core";
 import { precedence, summarize, type ResolvedField } from "@/modules/biblioteca/metadata/status";
 import { METADATA_FIELDS, REQUIRED_FIELDS, type MetadataField } from "@/modules/biblioteca/metadata/vocabulary";
+import { historyText } from "@/modules/biblioteca/metadata/view";
 import { splitStatements } from "./helpers/migrate";
 
 // Motor S4 (decision Q3 of 04/11/2026): the deterministic, documented name-based inference, the field values and the precedence
@@ -137,14 +138,15 @@ describe("0045 seed (generated)", () => {
     expect(read(`migrations/${SEED_STEM}.sql`)).toBe(renderSeedSql(INFERENCE_RULES, seed, SEED_STEM, STAMP));
   });
 
-  it("splits into one INSERT per exercise plus the version row, with rows marked INFERRED and no comment after a ';'", () => {
+  it("splits into one INSERT per exercise, the events of the seed and the version row, with rows marked INFERRED and no comment after a ';'", () => {
     const sql = read(`migrations/${SEED_STEM}.sql`);
     const statements = splitStatements(sql);
     const withValues = seed.filter((exercise) => inferFromName(INFERENCE_RULES, exercise.name, exercise.category).length > 0);
-    expect(statements).toHaveLength(withValues.length + 1);
-    expect(sql.split("\n").filter((line) => /^(CREATE|ALTER|INSERT|UPDATE|DROP) /.test(line))).toHaveLength(withValues.length + 1);
+    expect(statements).toHaveLength(withValues.length + 2);
+    expect(sql.split("\n").filter((line) => /^(CREATE|ALTER|INSERT|UPDATE|DROP) /.test(line))).toHaveLength(withValues.length + 2);
     expect(statements.at(-1)).toBe(`INSERT INTO app_schema_versions(version) VALUES ('${SEED_STEM}')`);
-    for (const statement of statements.slice(0, -1)) {
+    expect(statements.at(-2)).toMatch(/^INSERT INTO exercise_attribute_events [\s\S]* NULL, a\.last_write_id, a\.created_at[\s\S]*ON CONFLICT\(id\) DO NOTHING$/);
+    for (const statement of statements.slice(0, -2)) {
       expect(statement).toMatch(/^INSERT INTO exercise_attributes /);
       expect(statement).toMatch(/ON CONFLICT\(exercise_id, scope_organization_id, field\) DO NOTHING$/);
     }
@@ -194,7 +196,19 @@ describe("field values", () => {
       return data;
     };
     expect(valueFromForm("equipment", form([["value", "CABLE"], ["value", "BARBELL"]]))).toEqual(["CABLE", "BARBELL"]);
-    expect(valueFromForm("equipment", form([]))).toEqual([]);
+    // Nothing checked is "no value" (refused); "none" is its own explicit choice, never implied.
+    expect(valueFromForm("equipment", form([]))).toBeUndefined();
+    expect(parseFieldValue("equipment", valueFromForm("equipment", form([])))).toBeNull();
+    expect(valueFromForm("equipment", form([["none", "true"]]))).toEqual([]);
+    expect(valueFromForm("equipment", form([["none", "true"], ["value", "CABLE"]]))).toBeUndefined();
+    expect(valueFromForm("primary_muscles", form([]))).toBeUndefined();
+    expect(valueFromForm("caution_tags", form([]))).toBeUndefined();
+    expect(valueFromForm("caution_tags", form([["none", "true"]]))).toEqual([]);
+    expect(valueFromForm("equipment_alternatives", form([]))).toBeUndefined();
+    expect(valueFromForm("equipment_alternatives", form([["none", "true"]]))).toEqual([]);
+    // Movement patterns have no "none": an exercise always has one.
+    expect(valueFromForm("movement_patterns", form([["none", "true"]]))).toBeUndefined();
+    expect(parseFieldValue("movement_patterns", [])).toBeNull();
     expect(valueFromForm("equipment_alternatives", form([["set0", "KETTLEBELL"], ["set2", "CABLE"]]))).toEqual([["KETTLEBELL"], ["CABLE"]]);
     expect(valueFromForm("difficulty", form([["value", "3"]]))).toBe(3);
     expect(valueFromForm("seconds_per_rep", form([["value", "2,5"]]))).toBe(2.5);
@@ -249,5 +263,44 @@ describe("precedence and per-exercise summary", () => {
     // An optional field marked pending is just not used.
     expect(summarize({ ...complete, difficulty: field("PENDING") })).toBe("REVIEWED");
     expect(summarize({})).toBe("PENDING");
+  });
+});
+
+describe("review findings on the rules (2026.11.2)", () => {
+  const byField = (name: string, category: string | null = "Agachar") =>
+    Object.fromEntries(inferExercise(name, category).map((item) => [item.field, JSON.parse(item.valueJson)]));
+
+  it("never infers 'Sem equipamento' when the name mentions an implement the rules do not know, or a preposition", () => {
+    expect(byField("Afundo no Smith").equipment).toBeUndefined();
+    expect(byField("Afundo com mochila").equipment).toBeUndefined();
+    expect(byField("Prancha com apoio").equipment).toBeUndefined();
+    expect(byField("Ponte de glúteos com anilha").equipment).toBeUndefined();
+    expect(byField("Prancha com elástico").equipment).toEqual(["RESISTANCE_BAND"]);
+    expect(byField("Pallof press com elástico").equipment).toEqual(["RESISTANCE_BAND"]);
+    // Bodyweight still holds when the name says nothing else.
+    expect(byField("Afundo reverso").equipment).toEqual([]);
+    expect(byField("Ponte de glúteos").equipment).toEqual([]);
+  });
+
+  it("reads one-side words, and holds laterality for a person when the category says Unilateral but the name does not", () => {
+    for (const name of ["Remada serrote", "Rosca concentrada", "Agachamento unipodal", "Stiff uma perna", "Remada single arm"])
+      expect(byField(name).laterality, name).toBe("UNILATERAL");
+    expect(byField("Elevação de panturrilhas", "Unilateral").laterality).toBeUndefined();
+    expect(byField("Panturrilha no leg press", "Unilateral").laterality).toBeUndefined();
+    expect(byField("Afundo reverso", "Unilateral").laterality).toBe("UNILATERAL");
+    // The category alone still produces nothing but the modality.
+    expect(Object.keys(byField("Movimento sem regra", "Unilateral"))).toEqual(["modality"]);
+  });
+
+  it("credits inference events to the rule, not to the person who started the run", () => {
+    const base = { field: "metric", ruleId: null, scope: "ORGANIZATION", createdAt: "2026-11-04T10:00:00.000Z" };
+    const cleared = historyText({ ...base, action: "PENDING", rulesVersion: INFERENCE_RULES.version, actor: "Maria" });
+    expect(cleared).toContain("valor inferido retirado");
+    expect(cleared).toContain("execução iniciada por Maria");
+    expect(cleared).not.toMatch(/marcado como pendente · Maria$/);
+    const person = historyText({ ...base, action: "PENDING", rulesVersion: null, actor: "Maria" });
+    expect(person).toMatch(/marcado como pendente · Maria$/);
+    const seed = historyText({ ...base, scope: "SYSTEM", action: "INFERRED", ruleId: "PAT_SQUAT", rulesVersion: INFERENCE_RULES.version, actor: null });
+    expect(seed).toContain("semente da biblioteca do sistema");
   });
 });

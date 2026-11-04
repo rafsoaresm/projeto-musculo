@@ -1,5 +1,5 @@
 import type { Tone } from "@/components/ui";
-import { formatFieldValue, type FieldValue } from "./fields";
+import { NONE_LABELS, formatFieldValue, isMetadataField, type FieldValue } from "./fields";
 import { INFERENCE_RULES } from "./inference";
 import type { ResolvedField } from "./status";
 import {
@@ -7,6 +7,7 @@ import {
   EQUIPMENT,
   FIELD_LABELS,
   LATERALITY,
+  MAX_EQUIPMENT_ALTERNATIVES,
   METRICS,
   MODALITIES,
   MUSCLES,
@@ -22,12 +23,13 @@ import {
 export type FieldControl =
   | { kind: "select"; options: Array<{ value: string; label: string }> }
   | { kind: "number"; min: number; max: number; step: number }
-  | { kind: "checks"; options: Array<{ value: string; label: string }> }
-  | { kind: "sets"; options: Array<{ value: string; label: string }>; sets: number };
+  | { kind: "checks"; options: Array<{ value: string; label: string }>; noneLabel: string | null }
+  | { kind: "sets"; options: Array<{ value: string; label: string }>; sets: number; noneLabel: string | null };
 
 const options = (map: Record<string, string>) => Object.entries(map).map(([value, label]) => ({ value, label }));
 
 export function controlFor(field: MetadataField): FieldControl {
+  const noneLabel = NONE_LABELS[field] ?? null;
   switch (field) {
     case "modality":
       return { kind: "select", options: options(MODALITIES) };
@@ -43,15 +45,15 @@ export function controlFor(field: MetadataField): FieldControl {
       return { kind: "number", min: 0.5, max: 60, step: 0.5 };
     case "primary_muscles":
     case "secondary_muscles":
-      return { kind: "checks", options: options(MUSCLES) };
+      return { kind: "checks", options: options(MUSCLES), noneLabel };
     case "movement_patterns":
-      return { kind: "checks", options: options(PATTERNS) };
+      return { kind: "checks", options: options(PATTERNS), noneLabel };
     case "equipment":
-      return { kind: "checks", options: options(EQUIPMENT) };
+      return { kind: "checks", options: options(EQUIPMENT), noneLabel };
     case "caution_tags":
-      return { kind: "checks", options: options(CAUTION_TAGS) };
+      return { kind: "checks", options: options(CAUTION_TAGS), noneLabel };
     case "equipment_alternatives":
-      return { kind: "sets", options: options(EQUIPMENT), sets: 3 };
+      return { kind: "sets", options: options(EQUIPMENT), sets: MAX_EQUIPMENT_ALTERNATIVES, noneLabel };
   }
 }
 
@@ -95,3 +97,43 @@ export const SUMMARY_FILTERS: Array<{ param: string; summary: MetadataSummary; l
   { param: "inferidos", summary: "INFERRED", label: "Inferidos (não revisados)" },
   { param: "pendentes", summary: "PENDING", label: "Pendentes de curadoria" },
 ];
+
+const HISTORY_ACTIONS: Record<string, string> = {
+  SET: "valor salvo como revisado",
+  REVIEWED: "valor confirmado como revisado",
+  PENDING: "marcado como pendente",
+  INFERRED: "valor inferido pela regra",
+  RELATION_ADDED: "alternativa adicionada",
+  RELATION_REMOVED: "alternativa removida",
+};
+const historyDate = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" });
+
+export interface HistoryEventView {
+  field: string;
+  action: string;
+  ruleId: string | null;
+  /** Non-null only on events the inference wrote. */
+  rulesVersion: string | null;
+  scope: string;
+  actor: string | null;
+  createdAt: string;
+}
+
+/**
+ * One line of the metadata history. An inference event is credited to the rule, never to the person
+ * who clicked "Inferir" (or renamed the exercise): that person only started the run.
+ */
+export function historyText(event: HistoryEventView): string {
+  const field = isMetadataField(event.field) ? fieldTitle(event.field) : "Alternativas";
+  const automatic = event.rulesVersion !== null;
+  const action = automatic && event.action === "PENDING"
+    ? "valor inferido retirado (a regra não o produz mais), pendente de curadoria"
+    : (HISTORY_ACTIONS[event.action] ?? event.action);
+  const rule = event.ruleId ? ` (${event.ruleId})` : "";
+  const who = automatic
+    ? event.actor
+      ? `regra de inferência ${INFERENCE_RULES.id}@${event.rulesVersion}, execução iniciada por ${event.actor}`
+      : `regra de inferência ${INFERENCE_RULES.id}@${event.rulesVersion} (semente da biblioteca do sistema)`
+    : (event.actor ?? (event.scope === "SYSTEM" ? "biblioteca do sistema" : "pessoa sem nome de exibição"));
+  return `${historyDate.format(new Date(event.createdAt))} · ${field}: ${action}${rule} · ${who}`;
+}

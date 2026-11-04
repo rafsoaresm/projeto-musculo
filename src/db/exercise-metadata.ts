@@ -70,7 +70,10 @@ export interface MetadataEvent {
   status: Provenance | null;
   valueJson: string | null;
   ruleId: string | null;
+  /** Set only on events written by the inference (a person's write stores null): tells "the rule did it" apart. */
+  rulesVersion: string | null;
   scope: "SYSTEM" | "ORGANIZATION";
+  /** Who triggered it; for an inference event this is the person who started the run, not its author. */
   actor: string | null;
   createdAt: string;
 }
@@ -108,7 +111,18 @@ const RANK = `CASE
   WHEN a.scope_organization_id = '' AND a.status = 'PENDING' THEN 5
   ELSE 6 END`;
 
-/** Rows per json_each chunk in one statement (bound parameter, not SQL text). Not measured under workerd. */
+/**
+ * Events shown on the exercise page, newest first. A display choice, not a retention rule: every
+ * event stays in the table (append-only) and the page says when older ones exist. 20 keeps the
+ * folded list readable on a phone; not measured, revisable without a migration.
+ */
+export const HISTORY_LIMIT = 20;
+
+/**
+ * Items per json_each chunk in one statement. The list travels as ONE bound value (never SQL text);
+ * 200 items of ~150 bytes is a few tens of KB, which keeps each statement and its result small. A
+ * technical choice, not measured under workerd (docs/PENDENCIAS.md, B56); changing it is code only.
+ */
 const CHUNK = 200;
 const chunks = <T>(list: T[]) =>
   Array.from({ length: Math.ceil(list.length / CHUNK) }, (_, index) => list.slice(index * CHUNK, (index + 1) * CHUNK));
@@ -261,7 +275,15 @@ export function exerciseMetadataFor(db: D1Database, context: AuthenticatedContex
       )
       .bind(organizationId, userId, JSON.stringify(ids))
       .all<{ relationId: string; fromId: string; exerciseId: string; name: string; status: Provenance; scopeId: string }>();
-    return result.results;
+    // The same pair may exist in both scopes (the organization added it before the system curated it):
+    // list each target once, the organization's relation first (it is the one the organization can remove).
+    const kept = new Map<string, (typeof result.results)[number]>();
+    for (const row of result.results) {
+      const key = `${row.fromId}\u0000${row.exerciseId}`;
+      const seen = kept.get(key);
+      if (!seen || (seen.scopeId === "" && row.scopeId !== "")) kept.set(key, row);
+    }
+    return result.results.filter((row) => kept.get(`${row.fromId}\u0000${row.exerciseId}`) === row);
   }
 
   return {
@@ -328,14 +350,15 @@ export function exerciseMetadataFor(db: D1Database, context: AuthenticatedContex
         db
           .prepare(
             `SELECT ev.field, ev.action, ev.status, ev.value_json AS valueJson, ev.rule_id AS ruleId,
+               ev.rules_version AS rulesVersion,
                CASE WHEN ev.scope_organization_id = '' THEN 'SYSTEM' ELSE 'ORGANIZATION' END AS scope,
                p.display_name AS actor, ev.created_at AS createdAt
              FROM exercise_attribute_events ev
              LEFT JOIN professionals p ON p.organization_id = ?1 AND p.user_id = ev.actor_user_id
              WHERE ev.exercise_id = ?3 AND ev.scope_organization_id IN ('', ?1)
-             ORDER BY ev.created_at DESC, ev.id DESC LIMIT 20`,
+             ORDER BY ev.created_at DESC, ev.id DESC LIMIT ?4`,
           )
-          .bind(organizationId, userId, exerciseId)
+          .bind(organizationId, userId, exerciseId, HISTORY_LIMIT)
           .all<MetadataEvent>(),
       ]);
       const toStored = (row: AttributeRow | undefined): StoredField | null =>
@@ -439,6 +462,8 @@ export function exerciseMetadataFor(db: D1Database, context: AuthenticatedContex
                  created_by_user_id, created_at, last_write_id)
                SELECT ?5, ?3, ?4, ?1, 'ALTERNATIVE', 'REVIEWED', 'PROFESSIONAL', ?2, ?6, ?7
                WHERE ${usable("?3")} AND ${usable("?4")} AND ${technical}
+                 AND NOT EXISTS (SELECT 1 FROM exercise_relations s WHERE s.scope_organization_id = ''
+                   AND s.from_exercise_id = ?3 AND s.to_exercise_id = ?4 AND s.kind = 'ALTERNATIVE' AND s.removed_at IS NULL)
                  AND (SELECT count(*) FROM exercise_relations WHERE from_exercise_id = ?3 AND scope_organization_id = ?1
                    AND kind = 'ALTERNATIVE' AND removed_at IS NULL) < ?8`,
             )
@@ -460,6 +485,8 @@ export function exerciseMetadataFor(db: D1Database, context: AuthenticatedContex
       }
       const both = await this.resolve([fromId, toId]);
       if (!both.has(fromId) || !both.has(toId)) return { status: "not_found" };
+      // Already curated by the system library: adding it again would list the same alternative twice.
+      if (both.get(fromId)!.alternatives.some((item) => item.exerciseId === toId)) return { status: "duplicate" };
       return { status: "too_many" };
     },
 
@@ -502,97 +529,12 @@ export function exerciseMetadataFor(db: D1Database, context: AuthenticatedContex
            ORDER BY e.name_key, e.id`,
         )
         .bind(organizationId, userId)
-        .all<{ id: string; name: string; category: string }>();
-      const existing = await db
-        .prepare(
-          `SELECT a.exercise_id, a.field, a.value_json, a.status, a.rule_id, a.rules_version, a.source
-           FROM exercise_attributes a JOIN exercises e ON e.id = a.exercise_id
-           WHERE a.scope_organization_id = ?1 AND e.organization_id = ?1 AND e.archived_at IS NULL AND ${technical}`,
-        )
-        .bind(organizationId, userId)
-        .all<Pick<AttributeRow, "exercise_id" | "field" | "value_json" | "status" | "rule_id" | "rules_version" | "source">>();
-      const byKey = new Map(existing.results.map((row) => [`${row.exercise_id}\u0000${row.field}`, row]));
-      const upserts: Array<{ id: string; e: string; f: string; v: string; r: string }> = [];
-      const clears: Array<{ e: string; f: string }> = [];
-      let unchanged = 0;
-      let keptByPerson = 0;
-      for (const exercise of own.results) {
-        const inferred = inferExercise(exercise.name, exercise.category);
-        const produced = new Set(inferred.map((item) => item.field));
-        for (const item of inferred) {
-          const row = byKey.get(`${exercise.id}\u0000${item.field}`);
-          if (row && row.source !== "INFERENCE") {
-            keptByPerson += 1;
-            continue;
-          }
-          if (
-            row &&
-            row.status === "INFERRED" &&
-            row.value_json === item.valueJson &&
-            row.rule_id === item.ruleId &&
-            row.rules_version === INFERENCE_RULES.version
-          ) {
-            unchanged += 1;
-            continue;
-          }
-          upserts.push({ id: crypto.randomUUID(), e: exercise.id, f: item.field, v: item.valueJson, r: item.ruleId });
-        }
-        for (const field of METADATA_FIELDS) {
-          const row = byKey.get(`${exercise.id}\u0000${field}`);
-          if (row && row.source === "INFERENCE" && row.status === "INFERRED" && !produced.has(field))
-            clears.push({ e: exercise.id, f: field });
-        }
-      }
-      const stamp = now.toISOString();
+        .all<InferenceTarget>();
+      const existing = await inferenceRows(null);
+      const plan = planInference(own.results, existing);
       const writeId = crypto.randomUUID();
-      const statements: D1PreparedStatement[] = [];
-      for (const part of chunks(upserts))
-        statements.push(
-          db
-            .prepare(
-              `INSERT INTO exercise_attributes (id, exercise_id, scope_organization_id, field, value_json, status, source, rule_id,
-                 rules_version, updated_by_user_id, version, last_write_id, created_at, updated_at)
-               SELECT json_extract(j.value, '$.id'), e.id, ?1, json_extract(j.value, '$.f'), json_extract(j.value, '$.v'),
-                 'INFERRED', 'INFERENCE', json_extract(j.value, '$.r'), ?4, ?2, 1, ?3, ?5, ?5
-               FROM json_each(?6) j
-               JOIN exercises e ON e.id = json_extract(j.value, '$.e') AND e.organization_id = ?1 AND e.archived_at IS NULL
-               WHERE ${technical}
-               ON CONFLICT(exercise_id, scope_organization_id, field) DO UPDATE SET
-                 value_json = excluded.value_json, status = 'INFERRED', rule_id = excluded.rule_id,
-                 rules_version = excluded.rules_version, updated_by_user_id = excluded.updated_by_user_id,
-                 version = exercise_attributes.version + 1, last_write_id = excluded.last_write_id, updated_at = excluded.updated_at
-               WHERE exercise_attributes.source = 'INFERENCE'`,
-            )
-            .bind(organizationId, userId, writeId, INFERENCE_RULES.version, stamp, JSON.stringify(part)),
-        );
-      for (const part of chunks(clears))
-        statements.push(
-          db
-            .prepare(
-              `UPDATE exercise_attributes SET status = 'PENDING', value_json = NULL, rule_id = NULL, rules_version = ?4,
-                 updated_by_user_id = ?2, version = version + 1, last_write_id = ?3, updated_at = ?5
-               WHERE scope_organization_id = ?1 AND source = 'INFERENCE' AND status = 'INFERRED'
-                 AND EXISTS (SELECT 1 FROM json_each(?6) j WHERE json_extract(j.value, '$.e') = exercise_attributes.exercise_id
-                   AND json_extract(j.value, '$.f') = exercise_attributes.field)
-                 AND ${technical}`,
-            )
-            .bind(organizationId, userId, writeId, INFERENCE_RULES.version, stamp, JSON.stringify(part)),
-        );
-      if (statements.length > 0) {
-        statements.push(
-          db
-            .prepare(
-              `INSERT INTO exercise_attribute_events (id, scope_organization_id, exercise_id, field, action, status, value_json,
-                 rule_id, rules_version, actor_user_id, write_id, created_at)
-               SELECT lower(hex(randomblob(16))), a.scope_organization_id, a.exercise_id, a.field,
-                 CASE a.status WHEN 'INFERRED' THEN 'INFERRED' ELSE 'PENDING' END, a.status, a.value_json, a.rule_id,
-                 a.rules_version, ?2, ?3, ?4
-               FROM exercise_attributes a WHERE a.scope_organization_id = ?1 AND a.last_write_id = ?3`,
-            )
-            .bind(organizationId, userId, writeId, stamp),
-        );
-        await db.batch(statements);
-      }
+      const statements = inferenceStatements(plan, writeId, now.toISOString());
+      if (statements.length > 0) await db.batch(statements);
       const counts = await db
         .prepare(
           `SELECT status, count(*) AS n FROM exercise_attributes WHERE scope_organization_id = ?1 AND last_write_id = ?2
@@ -605,12 +547,142 @@ export function exerciseMetadataFor(db: D1Database, context: AuthenticatedContex
         status: "done",
         exercises: own.results.length,
         inferred: count("INFERRED"),
-        unchanged,
-        keptByPerson,
+        unchanged: plan.unchanged,
+        keptByPerson: plan.keptByPerson,
         cleared: count("PENDING"),
       };
     },
+
+    /**
+     * Statements that bring the inferred values of one own exercise up to date with a new name or
+     * category, for `exercisesFor().update` to run in the same batch as the rename. Only for an
+     * exercise that already has inferred values (inference ran on it before); a person's values are
+     * never touched. Each statement only applies while the exercise holds exactly that name and
+     * category, so a rename that did not happen (conflict) changes nothing here.
+     */
+    async inferenceAfterRename(target: InferenceTarget, now = new Date()): Promise<D1PreparedStatement[]> {
+      const existing = await inferenceRows(target.id);
+      if (!existing.some((row) => row.source === "INFERENCE")) return [];
+      return inferenceStatements(planInference([target], existing), crypto.randomUUID(), now.toISOString());
+    },
   };
+
+  /** The organization-scope rows of its own non-archived exercises (all of them, or one). */
+  async function inferenceRows(exerciseId: string | null): Promise<ExistingRow[]> {
+    const result = await db
+      .prepare(
+        `SELECT a.exercise_id, a.field, a.value_json, a.status, a.rule_id, a.rules_version, a.source
+         FROM exercise_attributes a JOIN exercises e ON e.id = a.exercise_id
+         WHERE a.scope_organization_id = ?1 AND e.organization_id = ?1 AND e.archived_at IS NULL
+           AND (?3 IS NULL OR e.id = ?3) AND ${technical}`,
+      )
+      .bind(organizationId, userId, exerciseId)
+      .all<ExistingRow>();
+    return result.results;
+  }
+
+  function inferenceStatements(plan: InferencePlan, writeId: string, stamp: string): D1PreparedStatement[] {
+    const statements: D1PreparedStatement[] = [];
+    for (const part of chunks(plan.upserts))
+      statements.push(
+        db
+          .prepare(
+            `INSERT INTO exercise_attributes (id, exercise_id, scope_organization_id, field, value_json, status, source, rule_id,
+               rules_version, updated_by_user_id, version, last_write_id, created_at, updated_at)
+             SELECT json_extract(j.value, '$.id'), e.id, ?1, json_extract(j.value, '$.f'), json_extract(j.value, '$.v'),
+               'INFERRED', 'INFERENCE', json_extract(j.value, '$.r'), ?4, ?2, 1, ?3, ?5, ?5
+             FROM json_each(?6) j
+             JOIN exercises e ON e.id = json_extract(j.value, '$.e') AND e.organization_id = ?1 AND e.archived_at IS NULL
+               AND e.name = json_extract(j.value, '$.n') AND e.category = json_extract(j.value, '$.c')
+             WHERE ${technical}
+             ON CONFLICT(exercise_id, scope_organization_id, field) DO UPDATE SET
+               value_json = excluded.value_json, status = 'INFERRED', rule_id = excluded.rule_id,
+               rules_version = excluded.rules_version, updated_by_user_id = excluded.updated_by_user_id,
+               version = exercise_attributes.version + 1, last_write_id = excluded.last_write_id, updated_at = excluded.updated_at
+             WHERE exercise_attributes.source = 'INFERENCE'`,
+          )
+          .bind(organizationId, userId, writeId, INFERENCE_RULES.version, stamp, JSON.stringify(part)),
+      );
+    for (const part of chunks(plan.clears))
+      statements.push(
+        db
+          .prepare(
+            `UPDATE exercise_attributes SET status = 'PENDING', value_json = NULL, rule_id = NULL, rules_version = ?4,
+               updated_by_user_id = ?2, version = version + 1, last_write_id = ?3, updated_at = ?5
+             WHERE scope_organization_id = ?1 AND source = 'INFERENCE' AND status = 'INFERRED'
+               AND EXISTS (SELECT 1 FROM json_each(?6) j
+                 JOIN exercises e ON e.id = json_extract(j.value, '$.e') AND e.organization_id = ?1 AND e.archived_at IS NULL
+                   AND e.name = json_extract(j.value, '$.n') AND e.category = json_extract(j.value, '$.c')
+                 WHERE e.id = exercise_attributes.exercise_id AND json_extract(j.value, '$.f') = exercise_attributes.field)
+               AND ${technical}`,
+          )
+          .bind(organizationId, userId, writeId, INFERENCE_RULES.version, stamp, JSON.stringify(part)),
+      );
+    if (statements.length > 0)
+      statements.push(
+        db
+          .prepare(
+            `INSERT INTO exercise_attribute_events (id, scope_organization_id, exercise_id, field, action, status, value_json,
+               rule_id, rules_version, actor_user_id, write_id, created_at)
+             SELECT lower(hex(randomblob(16))), a.scope_organization_id, a.exercise_id, a.field,
+               CASE a.status WHEN 'INFERRED' THEN 'INFERRED' ELSE 'PENDING' END, a.status, a.value_json, a.rule_id,
+               a.rules_version, ?2, ?3, ?4
+             FROM exercise_attributes a WHERE a.scope_organization_id = ?1 AND a.last_write_id = ?3`,
+          )
+          .bind(organizationId, userId, writeId, stamp),
+      );
+    return statements;
+  }
+}
+
+export interface InferenceTarget {
+  id: string;
+  name: string;
+  category: string;
+}
+
+type ExistingRow = Pick<AttributeRow, "exercise_id" | "field" | "value_json" | "status" | "rule_id" | "rules_version" | "source">;
+
+interface InferencePlan {
+  upserts: Array<{ id: string; e: string; n: string; c: string; f: string; v: string; r: string }>;
+  clears: Array<{ e: string; n: string; c: string; f: string }>;
+  unchanged: number;
+  keptByPerson: number;
+}
+
+/** Pure: what the rules change for these exercises, given the organization-scope rows they already have. */
+function planInference(targets: InferenceTarget[], existing: ExistingRow[]): InferencePlan {
+  const byKey = new Map(existing.map((row) => [`${row.exercise_id}\u0000${row.field}`, row]));
+  const plan: InferencePlan = { upserts: [], clears: [], unchanged: 0, keptByPerson: 0 };
+  for (const exercise of targets) {
+    const inferred = inferExercise(exercise.name, exercise.category);
+    const produced = new Set(inferred.map((item) => item.field));
+    const gate = { e: exercise.id, n: exercise.name, c: exercise.category };
+    for (const item of inferred) {
+      const row = byKey.get(`${exercise.id}\u0000${item.field}`);
+      if (row && row.source !== "INFERENCE") {
+        plan.keptByPerson += 1;
+        continue;
+      }
+      if (
+        row &&
+        row.status === "INFERRED" &&
+        row.value_json === item.valueJson &&
+        row.rule_id === item.ruleId &&
+        row.rules_version === INFERENCE_RULES.version
+      ) {
+        plan.unchanged += 1;
+        continue;
+      }
+      plan.upserts.push({ id: crypto.randomUUID(), ...gate, f: item.field, v: item.valueJson, r: item.ruleId });
+    }
+    for (const field of METADATA_FIELDS) {
+      const row = byKey.get(`${exercise.id}\u0000${field}`);
+      if (row && row.source === "INFERENCE" && row.status === "INFERRED" && !produced.has(field))
+        plan.clears.push({ ...gate, f: field });
+    }
+  }
+  return plan;
 }
 
 /**

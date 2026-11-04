@@ -38,6 +38,11 @@ test("library metadata: provenance, curation filter, review, pending, alternativ
   await expect(field(page, "modality")).toContainText("Regra MOD_RESISTANCE");
   await expect(field(page, "equipment")).toContainText("Pendente de curadoria");
   await field(page, "equipment").locator("summary").click();
+  // Saving with nothing checked is refused: "Sem equipamento" is its own explicit choice, never implied.
+  await field(page, "equipment").getByRole("button", { name: "Criar ajuste da minha organização (revisado por mim)" }).click();
+  await expect(field(page, "equipment").getByRole("alert")).toContainText("Escolha um valor válido");
+  await expect(field(page, "equipment").locator("summary")).toContainText("Pendente de curadoria");
+  await expect(field(page, "equipment").getByLabel("Sem equipamento")).not.toBeChecked();
   await field(page, "equipment").getByLabel("Halteres").check();
   await field(page, "equipment").getByRole("button", { name: "Criar ajuste da minha organização (revisado por mim)" }).click();
   await expect(field(page, "equipment")).toContainText("Revisado pela sua organização");
@@ -86,6 +91,18 @@ test("library metadata: provenance, curation filter, review, pending, alternativ
   await expect(field(page, "movement_patterns")).toContainText("Puxar horizontal");
   await expect(field(page, "movement_patterns")).toContainText("Inferido (não revisado)");
   await expect(field(page, "equipment")).toContainText("Polia / cabo");
+
+  // Renaming the exercise refreshes its inferred values in the same save; the history credits the rule.
+  const renamed = `Prancha frontal da casa ${crypto.randomUUID().slice(0, 6)}`;
+  await page.getByLabel("Nome do exercício").fill(renamed);
+  await page.getByLabel("Categoria").selectOption("Core");
+  await page.getByRole("button", { name: "Salvar alterações" }).click();
+  await expect(page.getByText("Alterações salvas.")).toBeVisible();
+  await page.reload();
+  await expect(field(page, "movement_patterns").locator("summary")).toContainText("Antiextensão");
+  await expect(field(page, "metric").locator("summary")).toContainText("Tempo");
+  await page.getByText("Histórico dos metadados").click();
+  await expect(page.getByText(/execução iniciada por/).first()).toBeVisible();
 
   // Another organization: same system exercise, still the system's values (the adjustment is not theirs).
   const other = await newActor(browser, baseURL);

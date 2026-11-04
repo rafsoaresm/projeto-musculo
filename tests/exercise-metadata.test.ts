@@ -146,6 +146,16 @@ describe("migration files", () => {
       expect(row.exercise_id).toMatch(/^sys-\d{3}$/);
     }
     expect(seedText).toContain(`'${INFERENCE_RULES.version}'`);
+    // The seed starts the trail: one INFERRED event per row, credited to no person.
+    const events = await all<{ exercise_id: string; field: string; action: string; actor: string | null; rule_id: string; rules_version: string }>(
+      `SELECT exercise_id, field, action, actor_user_id AS actor, rule_id, rules_version FROM exercise_attribute_events
+       WHERE scope_organization_id = '' AND write_id = '0045_exercise_metadata_inferred_seed' ORDER BY exercise_id, rowid`,
+    );
+    expect(events).toHaveLength(expected.length);
+    for (const event of events) expect(event).toMatchObject({ action: "INFERRED", actor: null, rules_version: INFERENCE_RULES.version });
+    const history = (await metaA().detail("sys-001"))!.history.filter((event) => event.scope === "SYSTEM");
+    expect(history.length).toBeGreaterThan(0);
+    expect(history[0]).toMatchObject({ action: "INFERRED", actor: null, rulesVersion: INFERENCE_RULES.version });
   });
 });
 
@@ -199,12 +209,12 @@ describe("writing a field (organization scope)", () => {
     expect(row).toEqual({ scope: "org-a", source: "PROFESSIONAL", reviewer: "tech-a" });
     // Confirming the same value is a REVIEWED event; a different one is SET.
     const events = await all<{ action: string; actor: string }>(
-      `SELECT action, actor_user_id AS actor FROM exercise_attribute_events WHERE exercise_id = 'sys-002' AND field = 'equipment'`,
+      `SELECT action, actor_user_id AS actor FROM exercise_attribute_events WHERE exercise_id = 'sys-002' AND field = 'equipment' AND scope_organization_id = 'org-a'`,
     );
     expect(events).toEqual([{ action: "REVIEWED", actor: "tech-a" }]);
     expect(await metaA().setField("sys-002", "equipment", ["MACHINE", "BENCH"], 1)).toEqual({ status: "saved", version: 2 });
     const later = await all<{ action: string }>(
-      `SELECT action FROM exercise_attribute_events WHERE exercise_id = 'sys-002' AND field = 'equipment' ORDER BY rowid`,
+      `SELECT action FROM exercise_attribute_events WHERE exercise_id = 'sys-002' AND field = 'equipment' AND scope_organization_id = 'org-a' ORDER BY rowid`,
     );
     expect(later.map((event) => event.action)).toEqual(["REVIEWED", "SET"]);
   });
@@ -452,3 +462,104 @@ describe("'Inferir metadados das minhas fichas' (enrichOrganization)", () => {
   });
 });
 
+describe("review fixes (S4)", () => {
+  it("renaming an own exercise refreshes its inferred values in the same save, never a person's, and only once inference ran", async () => {
+    const library = exercisesFor(db, scope("tech-a"));
+    const plank = await ownExercise("Prancha da revisão", "tech-a", "org-a", "Core");
+    const untouched = await ownExercise("Prancha só com nota nova", "tech-a", "org-a", "Core");
+    await exerciseMetadataFor(db, scope("tech-a")).enrichOrganization();
+    // Created after the run: inference never ran on it.
+    const fresh = await ownExercise("Prancha criada depois", "tech-a", "org-a", "Core");
+    expect((await metaA().resolve([plank])).get(plank)!.fields.metric).toMatchObject({ value: "TIME", ruleId: "MET_PLANK_TIME" });
+    // A person reviewed the primary muscles.
+    expect(await metaA().setField(plank, "primary_muscles", ["ABS", "OBLIQUES"], (await metaA().detail(plank))!.fields.find((f) => f.field === "primary_muscles")!.organization!.version)).toMatchObject({ status: "saved" });
+
+    expect(await library.update(plank, { name: "Remada com halteres da revisão", category: "Puxar" })).toMatchObject({ status: "saved" });
+    const after = (await metaA().resolve([plank])).get(plank)!;
+    expect(after.fields.movement_patterns).toMatchObject({ provenance: "INFERRED", value: ["HORIZONTAL_PULL"], ruleId: "PAT_HORIZONTAL_PULL" });
+    expect(after.fields.metric).toMatchObject({ provenance: "INFERRED", value: "REPS" });
+    expect(after.fields.equipment).toMatchObject({ provenance: "INFERRED", value: ["DUMBBELL"] });
+    expect(after.fields.primary_muscles).toMatchObject({ provenance: "REVIEWED", value: ["ABS", "OBLIQUES"] });
+    // The trail credits the rule (rules version set), with the person who saved as the one who started it.
+    const trail = await all<{ action: string; rules_version: string | null }>(
+      "SELECT action, rules_version FROM exercise_attribute_events WHERE exercise_id = ?1 AND field = 'movement_patterns' ORDER BY rowid",
+      plank,
+    );
+    expect(trail).toEqual([
+      { action: "INFERRED", rules_version: INFERENCE_RULES.version },
+      { action: "INFERRED", rules_version: INFERENCE_RULES.version },
+    ]);
+
+    // A name the rules do not read: the old inferred values become pending instead of lingering.
+    expect(await library.update(plank, { name: "Movimento sem regra da revisão", category: "Puxar" })).toMatchObject({ status: "saved" });
+    const cleared = (await metaA().resolve([plank])).get(plank)!;
+    expect(cleared.fields.movement_patterns).toMatchObject({ provenance: "PENDING", value: null });
+    expect(cleared.fields.metric).toMatchObject({ provenance: "PENDING", value: null });
+    expect(cleared.summary).toBe("PENDING");
+
+    // Never inferred: a rename writes no metadata (the professional did not ask for inference).
+    expect(await library.update(fresh, { name: "Remada criada depois", category: "Puxar" })).toMatchObject({ status: "saved" });
+    expect(await all("SELECT 1 FROM exercise_attributes WHERE exercise_id = ?1", fresh)).toEqual([]);
+    // Editing anything but the name and category leaves the inferred rows alone.
+    const before = await all("SELECT field, version FROM exercise_attributes WHERE exercise_id = ?1 ORDER BY field", untouched);
+    expect(await library.update(untouched, { name: "Prancha só com nota nova", category: "Core", notes: "só a nota" })).toMatchObject({ status: "saved" });
+    expect(await all("SELECT field, version FROM exercise_attributes WHERE exercise_id = ?1 ORDER BY field", untouched)).toEqual(before);
+  });
+
+  it("a rename that loses the compare-and-set changes no metadata", async () => {
+    const id = await ownExercise("Prancha concorrente", "tech-a", "org-a", "Core");
+    await exerciseMetadataFor(db, scope("tech-a")).enrichOrganization();
+    const before = await all("SELECT field, value_json, version FROM exercise_attributes WHERE exercise_id = ?1 ORDER BY field", id);
+    const library = exercisesFor(db, scope("tech-a"));
+    // Another save lands between the read and the write: same exercise, updated_at moves.
+    const original = library.find.bind(library);
+    library.find = async (target: string) => {
+      const row = await original(target);
+      await run("UPDATE exercises SET updated_at = '2026-11-04T23:59:59.000Z' WHERE id = ?1", id);
+      return row;
+    };
+    expect(await library.update(id, { name: "Remada concorrente", category: "Puxar" })).toEqual({ status: "conflict" });
+    expect(await all("SELECT field, value_json, version FROM exercise_attributes WHERE exercise_id = ?1 ORDER BY field", id)).toEqual(before);
+  });
+
+  it("an empty list is never a reviewed movement pattern", async () => {
+    const id = await ownExercise("Exercício para lista vazia", "tech-a", "org-a", "Core");
+    expect(await metaA().setField(id, "movement_patterns", [], null)).toEqual({ status: "invalid" });
+    expect(await metaA().setField(id, "equipment", [], null)).toMatchObject({ status: "saved" });
+  });
+
+  it("an alternative the system already curated is a duplicate, and a pair in both scopes is listed once", async () => {
+    await run(
+      `INSERT INTO exercise_relations (id, from_exercise_id, to_exercise_id, scope_organization_id, kind, status, source,
+         created_by_user_id, created_at, last_write_id)
+       VALUES ('rel-sys-1', 'sys-022', 'sys-031', '', 'ALTERNATIVE', 'REVIEWED', 'PLATFORM', 'mgr-1', ?1, 'raw')`,
+      stamp,
+    );
+    expect(await metaA().addAlternative("sys-022", "sys-031")).toEqual({ status: "duplicate" });
+    // An organization relation from before the system curated the pair.
+    await run(
+      `INSERT INTO exercise_relations (id, from_exercise_id, to_exercise_id, scope_organization_id, kind, status, source,
+         created_by_user_id, created_at, last_write_id)
+       VALUES ('rel-org-1', 'sys-022', 'sys-027', 'org-a', 'ALTERNATIVE', 'REVIEWED', 'PROFESSIONAL', 'tech-a', ?1, 'raw')`,
+      stamp,
+    );
+    await run(
+      `INSERT INTO exercise_relations (id, from_exercise_id, to_exercise_id, scope_organization_id, kind, status, source,
+         created_by_user_id, created_at, last_write_id)
+       VALUES ('rel-sys-2', 'sys-022', 'sys-027', '', 'ALTERNATIVE', 'REVIEWED', 'PLATFORM', 'mgr-1', ?1, 'raw')`,
+      stamp,
+    );
+    const listed = (await metaA().resolve(["sys-022"])).get("sys-022")!.alternatives;
+    expect(listed).toHaveLength(2);
+    expect(new Map(listed.map((item) => [item.exerciseId, item.scope]))).toEqual(
+      new Map([
+        ["sys-031", "SYSTEM"],
+        ["sys-027", "ORGANIZATION"],
+      ]),
+    );
+    const detail = (await metaA().detail("sys-022"))!;
+    expect(detail.alternatives.find((item) => item.exerciseId === "sys-027")).toMatchObject({ relationId: "rel-org-1", removable: true });
+    // Another organization sees only the system's.
+    expect((await metaB().resolve(["sys-022"])).get("sys-022")!.alternatives.map((item) => item.scope)).toEqual(["SYSTEM", "SYSTEM"]);
+  });
+});

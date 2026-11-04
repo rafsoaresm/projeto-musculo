@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { requireWorkspace } from "@/modules/auth/server";
 import { exercisesFor } from "@/db/exercises";
-import { exerciseMetadataFor } from "@/db/exercise-metadata";
+import { HISTORY_LIMIT, exerciseMetadataFor } from "@/db/exercise-metadata";
 import { PageHeading, Pill } from "@/components/ui";
 import { ExerciseForm } from "@/modules/biblioteca/exercise-form";
 import { ExerciseAction } from "@/modules/biblioteca/exercise-actions";
@@ -15,10 +15,10 @@ import {
   type MetadataFieldView,
 } from "@/modules/biblioteca/exercise-metadata-form";
 import { REQUIRED_FIELDS } from "@/modules/biblioteca/metadata/vocabulary";
-import { isMetadataField } from "@/modules/biblioteca/metadata/fields";
 import {
   controlFor,
   fieldTitle,
+  historyText,
   provenancePill,
   ruleText,
   summaryPill,
@@ -172,10 +172,15 @@ export default async function Exercise({
             <ul>
               {metadata.history.map((event, index) => (
                 <li key={index} className="small">
-                  {historyLine(event)}
+                  {historyText(event)}
                 </li>
               ))}
             </ul>
+            {metadata.history.length >= HISTORY_LIMIT && (
+              <p className="small muted">
+                Mostrando as {HISTORY_LIMIT} alterações mais recentes. As anteriores continuam guardadas.
+              </p>
+            )}
           </details>
         )}
       </section>
@@ -184,21 +189,4 @@ export default async function Exercise({
       </Link>
     </>
   );
-}
-
-const ACTIONS: Record<string, string> = {
-  SET: "valor salvo como revisado",
-  REVIEWED: "valor confirmado como revisado",
-  PENDING: "marcado como pendente",
-  INFERRED: "valor inferido pela regra",
-  RELATION_ADDED: "alternativa adicionada",
-  RELATION_REMOVED: "alternativa removida",
-};
-const dateTime = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" });
-
-function historyLine(event: { field: string; action: string; ruleId: string | null; scope: string; actor: string | null; createdAt: string }) {
-  const field = isMetadataField(event.field) ? fieldTitle(event.field) : "Alternativas";
-  const who = event.actor ?? (event.scope === "SYSTEM" ? "biblioteca do sistema" : "regra de inferência");
-  const rule = event.ruleId ? ` (${event.ruleId})` : "";
-  return `${dateTime.format(new Date(event.createdAt))} · ${field}: ${ACTIONS[event.action] ?? event.action}${rule} · ${who}`;
 }
