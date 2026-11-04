@@ -1426,8 +1426,12 @@ button.account-link {
   border-radius: var(--radius-card);
   margin-bottom: 14px;
 }
-.planner-form .button.primary {
+.planner-form .calculate-button,
+.planner-form .prescribe-button {
   width: 100%;
+}
+.planner-form .calculate-button {
+  margin-bottom: 24px;
 }
 .planner-summary {
   position: sticky;
@@ -7121,7 +7125,7 @@ fieldset.yes-no legend {
     grid-template-columns: minmax(0, 1fr);
   }
 }
-/* A result per line: the name, the value, then the method and its flags (never a classification). */
+/* A result per line: the name, the value, then the method, its classification by a reference table (0.92) and its flags. */
 .av2-result-rows {
   display: grid;
   margin: 0;
@@ -7144,6 +7148,25 @@ fieldset.yes-no legend {
 }
 .av2-result-value {
   font-variant-numeric: tabular-nums;
+}
+/* "Referência das tabelas" (0.92) over the results it decides, with room before the first row. One field in half of the card (two columns, not
+   the four of a form line), so its value and its note keep their own width; one column when the card is narrow. */
+.av2-reference {
+  --av2-columns: 2;
+  margin-bottom: 12px;
+}
+@container (max-width: 420px) {
+  .av2-reference {
+    --av2-columns: 1;
+  }
+}
+/* Under the value and the method, aligned with the value: the level, then the table, column, source and precision in a muted line. */
+.av2-result-class {
+  grid-column: 2 / -1;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .av2-result-flags {
   grid-column: 1 / -1;
@@ -7203,7 +7226,8 @@ fieldset.yes-no legend {
   .av2-result-row {
     grid-template-columns: minmax(0, 1fr) auto;
   }
-  .av2-result-method {
+  .av2-result-method,
+  .av2-result-class {
     grid-column: 1 / -1;
   }
 }
@@ -7501,4 +7525,202 @@ fieldset.yes-no legend {
 .name-history table.stack th[scope="row"]::before {
   white-space: nowrap;
   flex: none;
+}
+
+/* ---------- 0.93 Novo plano: steps, student picker, prescription first ---------- */
+.heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.page-heading .heading-actions {
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+.plan-cell {
+  display: inline-grid;
+  justify-items: start;
+  gap: 2px;
+}
+@media (max-width: 700px) {
+  table.stack .plan-cell {
+    justify-items: end;
+    text-align: right;
+  }
+}
+.picker-list {
+  margin: 0 0 24px;
+}
+.step-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--color-primary-strong);
+  font-weight: 700;
+  text-decoration: underline;
+  overflow-wrap: anywhere;
+}
+.plan-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  margin: 0 0 20px;
+  padding: 0;
+  list-style: none;
+  font-weight: 700;
+  color: var(--color-ink);
+}
+.plan-steps li {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.prescribe-step p {
+  margin-bottom: 16px;
+}
+.picker-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: end;
+}
+.picker-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 22px;
+  background: #fff;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  overflow-wrap: anywhere;
+}
+.picker-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.picker-main h2 {
+  font-size: var(--font-size-base);
+  color: var(--color-primary-strong);
+}
+.picker-plans {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.picker-plans li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+.picker-row > .button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.prescription-start {
+  display: flex;
+  gap: 12px;
+  margin: 0 0 20px;
+  padding: 16px;
+  background: var(--color-primary-soft);
+  border: 1px solid var(--color-primary-line);
+  border-radius: var(--radius-card);
+}
+.prescription-start > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--color-primary-strong);
+}
+.prescription-start p {
+  margin: 4px 0 0;
+}
+.add-exercise > h4 {
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+.structure-details {
+  margin-bottom: 24px;
+  background: #fff;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+}
+.structure-details > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  min-height: 56px;
+  padding: 12px 22px;
+  cursor: pointer;
+  list-style: none;
+}
+.structure-details > summary::-webkit-details-marker {
+  display: none;
+}
+.structure-summary-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.structure-summary-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  color: var(--color-primary-strong);
+  font-weight: 700;
+}
+.structure-details[open] .structure-summary-action svg {
+  transform: rotate(180deg);
+}
+.structure-body {
+  padding: 0 22px 22px;
+}
+@media (max-width: 640px) {
+  .page-heading .heading-actions {
+    justify-content: flex-start;
+    flex-shrink: 1;
+  }
+  .picker-search {
+    grid-template-columns: 1fr;
+  }
+  .picker-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .structure-details > summary,
+  .structure-body {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}
+/* 0.93b: the picker's button reaches the 44px touch target on a phone or a touch screen. */
+@media (pointer: coarse), (max-width: 640px) {
+  .picker-row > .picker-action {
+    min-height: 44px;
+  }
+}
+/* 0.93b: the overview of plans wraps its long cells so every column fits at 768 and 1024 without scrolling inside. */
+table.plan-overview th,
+table.plan-overview td,
+table.plan-overview .pill {
+  white-space: normal;
+}
+table.plan-overview td[data-label="Plano"] {
+  min-width: 8rem;
+}
+.revision-cell {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.empty-actions {
+  margin-top: 16px;
 }

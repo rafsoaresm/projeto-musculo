@@ -1,6 +1,7 @@
 "use client";
 import { useState, useTransition } from "react";
-import { ArrowDown, ArrowUp, Copy, Pencil, Plus, Trash2 } from "lucide-react";
+import { flushSync } from "react-dom";
+import { ArrowDown, ArrowUp, Copy, ListChecks, Pencil, Plus, Trash2 } from "lucide-react";
 import { Pill } from "@/components/ui";
 import type { PrescribedItem, Target } from "@/db/prescription";
 import type { PeriodizationSchedule } from "@/modules/training/contracts";
@@ -61,6 +62,11 @@ export function PrescriptionEditor({
   const progress = progressOf(schedule, items);
   const below = progress.filter((slot) => slot.status === "BELOW").length;
   const current = schedule.phases[phase];
+  // 0.93: a draft with no exercise yet says where to start, with the real names of the first phase and workout.
+  const firstPhase = schedule.phases[0];
+  const firstWorkout = workoutLabels(firstPhase.split)[0];
+  const firstStep = !readOnly && items.length === 0;
+  const firstTarget = `adicionar-${firstPhase.index}-${firstWorkout.replace(/\s+/g, "-")}`;
 
   function run(task: () => Promise<PrescriptionResult>, done?: () => void) {
     startTransition(async () => {
@@ -72,9 +78,9 @@ export function PrescriptionEditor({
   }
 
   return (
-    <section className="panel prescription" aria-labelledby="prescricao-titulo">
+    <section id="prescricao" className="panel prescription" aria-labelledby="prescricao-titulo">
       <p className="eyebrow">PRESCRIÇÃO</p>
-      <h2 id="prescricao-titulo">Exercícios por mesociclo</h2>
+      <h2 id="prescricao-titulo">Prescrição dos exercícios</h2>
       <p className="muted">
         {readOnly
           ? "Esta revisão está fechada: os exercícios abaixo não mudam. Para alterar, crie uma nova revisão."
@@ -87,6 +93,35 @@ export function PrescriptionEditor({
             : "Todos os treinos atingiram o alvo"}
         </Pill>
       </p>
+      {firstStep && (
+        <div className="prescription-start" role="note">
+          <ListChecks size={20} aria-hidden="true" />
+          <div>
+            <strong>
+              Primeiro passo: escolha os exercícios do Treino {firstWorkout} da Fase{" "}
+              {String(firstPhase.index).padStart(2, "0")}.
+            </strong>
+            <p className="small">
+              Em cada treino, adicione da biblioteca ou com um nome próprio. Depois, siga para os outros treinos e
+              fases (dá para copiar um treino ou uma fase inteira).
+            </p>
+            <a
+              className="step-link"
+              href={`#${firstTarget}`}
+              onClick={(event) => {
+                // The target is drawn only while Fase 1 is open: open it first, then go to it.
+                if (phase === 0) return;
+                event.preventDefault();
+                flushSync(() => setPhase(0));
+                document.getElementById(firstTarget)?.scrollIntoView();
+                history.replaceState(null, "", `#${firstTarget}`);
+              }}
+            >
+              Adicionar exercício ao Treino {firstWorkout}
+            </a>
+          </div>
+        </div>
+      )}
       <div className="phase-tabs" role="group" aria-label="Selecionar mesociclo">
         {schedule.phases.map((item, index) => (
           <button
@@ -113,47 +148,43 @@ export function PrescriptionEditor({
           {notice}
         </p>
       )}
-      {!readOnly && !items.some((item) => item.phaseIndex === current.index) && (
+      {!readOnly &&
+        !items.some((item) => item.phaseIndex === current.index) &&
+        schedule.phases.some((other) => items.some((item) => item.phaseIndex === other.index)) && (
         <div className="copy-phase">
-          {schedule.phases
-            .filter((other) => items.some((item) => item.phaseIndex === other.index))
-            .length > 0 && (
-            <>
-              <label>
-                Copiar o mesociclo de outra fase
-                <select
-                  value={copyFromPhase}
-                  onChange={(event) => setCopyFromPhase(event.target.value)}
-                >
-                  <option value="">Escolha…</option>
-                  {schedule.phases
-                    .filter((other) => other.index !== current.index)
-                    .filter((other) => items.some((item) => item.phaseIndex === other.index))
-                    .map((other) => (
-                      <option key={other.index} value={other.index}>
-                        Fase {String(other.index).padStart(2, "0")} (
-                        {items.filter((item) => item.phaseIndex === other.index).length}{" "}
-                        exercícios)
-                      </option>
-                    ))}
-                </select>
-              </label>
-              <button
-                type="button"
-                className="button secondary small"
-                disabled={pending || !copyFromPhase}
-                onClick={() =>
-                  run(
-                    () =>
-                      copyMesocycle(planId, revisionId, Number(copyFromPhase), current.index),
-                    () => setCopyFromPhase(""),
-                  )
-                }
-              >
-                Copiar mesociclo
+          <label>
+            Copiar o mesociclo de outra fase
+            <select
+              value={copyFromPhase}
+              onChange={(event) => setCopyFromPhase(event.target.value)}
+            >
+              <option value="">Escolha…</option>
+              {schedule.phases
+                .filter((other) => other.index !== current.index)
+                .filter((other) => items.some((item) => item.phaseIndex === other.index))
+                .map((other) => (
+                  <option key={other.index} value={other.index}>
+                    Fase {String(other.index).padStart(2, "0")} (
+                    {items.filter((item) => item.phaseIndex === other.index).length}{" "}
+                    exercícios)
+                  </option>
+                ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            className="button secondary small"
+            disabled={pending || !copyFromPhase}
+            onClick={() =>
+              run(
+                () =>
+                  copyMesocycle(planId, revisionId, Number(copyFromPhase), current.index),
+                () => setCopyFromPhase(""),
+              )
+            }
+          >
+            Copiar mesociclo
               </button>
-            </>
-          )}
         </div>
       )}
       <div className="workout-grid">
@@ -345,7 +376,13 @@ function WorkoutCard({
         </ol>
       )}
       {!readOnly && (
-        <div className="add-exercise">
+        <div
+          className="add-exercise"
+          id={`adicionar-${target.phaseIndex}-${target.workoutLabel.replace(/\s+/g, "-")}`}
+          role="group"
+          aria-label={`Adicionar exercício ao Treino ${target.workoutLabel}`}
+        >
+          <h4>Adicionar exercício</h4>
           <div className="field-grid">
             <label>
               Categoria

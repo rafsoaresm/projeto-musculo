@@ -67,6 +67,12 @@ export const compositionSchema = z
     protocol: z.enum(PROTOCOL_IDS).nullable().default(null),
     /** The physiological reference of the equation, not the person's gender (decision of the user, 02/11/2026). */
     equation: z.enum(EQUATIONS).default("not_selected"),
+    /**
+     * Slice 0.92: the reference (masculina/feminina) of the classification tables when the equation above is not set (e.g. no skinfolds), chosen
+     * by the professional in "Revisão"; never inferred from the gender (user's decision 2). Absent: not chosen (absent, not a default, so what
+     * was stored before reads exactly as it was).
+     */
+    tableReference: z.enum(["male", "female"]).optional(),
     aggregation: z.enum(AGGREGATIONS).default("mean"),
     conversion: z.literal("siri_1961").default("siri_1961"),
     skinfolds: z.partialRecord(z.enum(SKINFOLD_SITE_CODES), readings).default({}),
@@ -120,6 +126,8 @@ export interface CompositionForm {
   heartRate: string;
   protocol: ProtocolId | null;
   equation: EquationSelection;
+  /** Slice 0.92: "Referência das tabelas" chosen in Revisão (used only when the equation is not set); null: not chosen. */
+  tableReference: "male" | "female" | null;
   aggregation: AggregationRule;
   /** Up to three readings per site, as typed; a site with no entry was not measured. */
   skinfolds: Partial<Record<SkinfoldSite, string[]>>;
@@ -140,6 +148,7 @@ export function formFromPayload(payload: CompositionPayload): CompositionForm {
     heartRate: decimalText(payload.restingHeartRateBpm),
     protocol: payload.protocol,
     equation: payload.equation,
+    tableReference: payload.tableReference ?? null,
     aggregation: payload.aggregation,
     skinfolds: Object.fromEntries(Object.entries(payload.skinfolds).map(([site, values]) => [site, values.map((value) => decimalText(value))])),
     perimeters: Object.fromEntries(Object.entries(payload.perimetersCm).map(([code, value]) => [code, decimalText(value)])),
@@ -237,6 +246,7 @@ export function payloadFromForm(form: CompositionForm): FormReading {
     restingHeartRateBpm: read("restingHeartRateBpm", numberFromText(form.heartRate)),
     protocol: form.protocol,
     equation: form.equation,
+    ...(form.tableReference ? { tableReference: form.tableReference } : {}),
     aggregation: form.aggregation,
     conversion: "siri_1961" as const,
     skinfolds,

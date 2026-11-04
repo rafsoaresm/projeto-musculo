@@ -37,6 +37,7 @@ import { ScreeningPill } from "../screening-pill";
 import { AGGREGATION_LABEL, CONVERSION_LABEL, EQUATION_LABEL, PROTOCOL_CHIP, SITE_LABEL, requiredSites, type CompositionPayload } from "./composition";
 import { ANAMNESIS_CODES, PARQ_CODES, parqAnswer, type ProfilePayload, type ScreeningPayload } from "./screening";
 import { ResultsList } from "./results-list";
+import { TABLES_NOTE, recordedTableReference } from "../classifications";
 import { HEATH_CARTER_NOTE, findingsText, postureEmpty, regionsOf, somatotypeText, type PosturePayload } from "./posture";
 import { AmendForm } from "./amend-form";
 import { FLEXITEST_CLASSIFICATION_NOTE, FLEXITEST_CODES, FLEXITEST_VARIANT_LABEL, FLEXITEST_LABEL, filledText, flexitestTally, movementEmpty, totalText, type MovementPayload } from "./flexitest";
@@ -124,7 +125,7 @@ export function RecordedAssessmentView({
           <Link className="button secondary small" href={`${base}/${detail.id}/pdf`} download prefetch={false}>
             <Download size={16} /> Baixar relatório em PDF
           </Link>
-          <span className="small muted">O mesmo relatório que o aluno baixa na área dele, quando tem acesso ao portal. Sem classificação automática.</span>
+          <span className="small muted">O mesmo relatório que o aluno baixa na área dele, quando tem acesso ao portal, com a classificação registrada ao finalizar.</span>
         </div>
         {detail.amendsAssessmentId && (
           <p>
@@ -325,7 +326,13 @@ export function RecordedAssessmentView({
 
       <section className="panel av2-card" aria-labelledby="av2-r-resultados">
         <h3 id="av2-r-resultados">Resultados</h3>
-        <p className="muted small">Calculados ao finalizar, com o método e a versão da fórmula, sem classificação. Só os marcados como estimativa vêm da equação de um estudo.</p>
+        <p className="muted small">Calculados ao finalizar, com o método e a versão da fórmula. Só os marcados como estimativa vêm da equação de um estudo.</p>
+        <p className="muted small">{TABLES_NOTE} A classificação é a registrada ao finalizar; uma avaliação registrada antes das tabelas não é classificada depois.</p>
+        {recordedTableReference(detail.results.map((result) => result.classification)) && (
+          <p className="small">
+            Referência das tabelas: <strong>{recordedTableReference(detail.results.map((result) => result.classification))}</strong>
+          </p>
+        )}
         {detail.results.length > 0 ? <ResultsList results={detail.results} labelledBy="av2-r-resultados" /> : <p>Nenhum resultado foi calculado.</p>}
       </section>
 

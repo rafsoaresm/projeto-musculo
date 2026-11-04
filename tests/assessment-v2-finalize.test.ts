@@ -501,3 +501,88 @@ describe("the Flexiteste, the physical tests and the final considerations (0.80)
     expect(copy.find((section) => section.module === "conclusion")).toMatchObject({ payload: CONCLUSION });
   });
 });
+
+// Slice 0.92: the classification by the reference tables is written with each result at finalize and freezes with it; a result recorded
+// before the tables keeps no classification (never recomputed); the reference is the equation's, or the one chosen in Revisão.
+describe("the classifications by the reference tables (0.92)", () => {
+  beforeAll(async () => {
+    await db.batch([
+      db.prepare("INSERT INTO students(id,organization_id,display_name) VALUES ('st-7','org-a','Seven'),('st-8','org-a','Eight')"),
+      db.prepare("INSERT INTO care_assignments(organization_id,student_id,professional_id) VALUES ('org-a','st-7','pro-a'),('org-a','st-8','pro-a')"),
+      db.prepare("INSERT INTO student_profiles(student_id,organization_id,birth_date,gender,updated_by_user_id) VALUES ('st-7','org-a','1999-03-04','Feminino','tech-a')"),
+    ]);
+  });
+
+  it("writes the classification of the handoff's man with each result a table covers, frozen, and reads it back only for who reaches it", async () => {
+    const draft = await started("st-7", day(12));
+    const revision = await fill(draft, { screening: parq(), composition: { ...JP7, perimetersCm: { waist: 69.5, hip: 108 } } });
+    expect(await a().finalize(draft, revision, day(12, 10))).toEqual({ status: "recorded" });
+    const rows = (
+      await db.prepare("SELECT code, classification FROM assessment_results WHERE assessment_id = ?1 ORDER BY rowid").bind(draft).all<{ code: string; classification: string | null }>()
+    ).results;
+    const stored = Object.fromEntries(rows.map((row) => [row.code, row.classification === null ? null : JSON.parse(row.classification)]));
+    // The equation is "male" (JP7), so the tables use the masculine reference: the profile's gender ("Feminino") is never read.
+    expect(stored.body_fat_percent).toMatchObject({
+      table: "body_fat",
+      version: "ref-2026-11-03",
+      status: "in_range",
+      levels: ["Acima da Média"],
+      comparedValue: 17,
+      column: "homens, 26 a 35 anos",
+      source: "Pollock & Wilmore, 1993",
+      sex: "male",
+      referenceFrom: "equation",
+      ageYears: 27,
+    });
+    expect(stored.bmi).toMatchObject({ table: "bmi", levels: ["Peso ideal (parabéns)"], comparedValue: 23.6, sex: null });
+    expect(stored.waist_hip_ratio).toMatchObject({ table: "waist_hip", levels: ["Baixo"], comparedValue: 0.64, column: "homens, 20 a 29 anos" });
+    for (const code of ["sum_skinfolds", "body_density", "fat_mass_kg", "lean_mass_kg"]) expect(stored[code], code).toBeNull();
+    expect(await fails("UPDATE assessment_results SET classification = NULL WHERE assessment_id = ?1", draft)).toContain("ASSESSMENT_FROZEN");
+    const read = await a().results(draft);
+    expect(read.find((row) => row.code === "body_fat_percent")?.classification).toMatchObject({ levels: ["Acima da Média"] });
+    expect("classification" in read.find((row) => row.code === "body_density")!).toBe(false);
+    expect(await assessmentsFor(db, scope("tech-b", "org-b")).results(draft)).toEqual([]);
+  });
+
+  it("without the equation, uses the reference chosen in Revisão; without one, says so; without a birth date, says so", async () => {
+    const chosen = await started("st-7", day(13));
+    const composition = { weightKg: 53.5, heightCm: 170, perimetersCm: { waist: 70, hip: 95 }, tableReference: "female" };
+    const tests = { cooper: { distanceM: 1800 } };
+    let revision = await fill(chosen, { screening: parq(), composition, tests });
+    expect(await a().finalize(chosen, revision, day(13, 10))).toEqual({ status: "recorded" });
+    const of = async (id: string, code: string) => (await a().results(id)).find((row) => row.code === code)?.classification;
+    expect(await of(chosen, "waist_hip_ratio")).toMatchObject({ levels: ["Moderado"], sex: "female", referenceFrom: "chosen", column: "mulheres, 20 a 29 anos" });
+    expect(await of(chosen, "cooper_speed_kmh")).toMatchObject({ table: "cooper_12min", value: 1800, levels: ["Média"], column: "mulheres, 20 a 29 anos" });
+    // 53,5 ÷ 1,70² = 18,51, compared as 18,5: in the table's gap, said so.
+    expect(await of(chosen, "bmi")).toMatchObject({ status: "gap", levels: ["abaixo do peso", "Peso ideal (parabéns)"], comparedValue: 18.5 });
+
+    const none = await started("st-8", day(13));
+    revision = await fill(none, { screening: parq(), composition: { ...composition, tableReference: undefined }, tests });
+    expect(await a().finalize(none, revision, day(13, 11))).toEqual({ status: "recorded" });
+    // st-8 has no birth date: the BMI needs neither; the ratio has no reference (checked before the age).
+    expect(await of(none, "waist_hip_ratio")).toMatchObject({ status: "no_reference", levels: [] });
+    expect(await of(none, "bmi")).toMatchObject({ status: "gap" });
+    const noAge = await started("st-8", day(14));
+    revision = await fill(noAge, { screening: parq(), composition, tests });
+    expect(await a().finalize(noAge, revision, day(14, 10))).toEqual({ status: "recorded" });
+    expect(await of(noAge, "waist_hip_ratio")).toMatchObject({ status: "no_age", sex: "female" });
+    expect(await of(noAge, "cooper_speed_kmh")).toMatchObject({ status: "no_age" });
+  });
+
+  it("a result recorded before the tables keeps no classification: nothing recomputes it", async () => {
+    const old = await started("st-8", day(15));
+    // As recorded before 0.92: a result written without the column, then the assessment recorded.
+    await db
+      .prepare(
+        `INSERT INTO assessment_results (id, assessment_id, organization_id, code, value, unit, method, formula_version, inputs, flags, created_at)
+         VALUES ('old-bmi', ?1, 'org-a', 'bmi', 23.63, 'kg/m²', 'weight_over_height_squared', 'av2-2026-11', '{}', '[]', ?2)`,
+      )
+      .bind(old, day(15).toISOString())
+      .run();
+    await db.prepare("UPDATE assessments SET state = 'RECORDED', recorded_at = ?2, recorded_by_user_id = 'tech-a' WHERE id = ?1").bind(old, day(15).toISOString()).run();
+    const [bmi] = await a().results(old);
+    expect(bmi).toMatchObject({ code: "bmi", value: 23.63 });
+    expect("classification" in bmi).toBe(false);
+    expect(await fails("UPDATE assessment_results SET classification = '{}' WHERE id = 'old-bmi'")).toContain("ASSESSMENT_FROZEN");
+  });
+});

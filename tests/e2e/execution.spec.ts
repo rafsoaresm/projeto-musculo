@@ -30,7 +30,7 @@ async function deliveredPlanWithClient(page: Page, browser: Browser, baseURL: st
     await page.getByLabel("Divisão de treinos").selectOption("Full Body");
     await page.getByLabel("Alvo de exercícios por treino").selectOption("3");
   }
-  await page.getByRole("button", { name: "Salvar rascunho" }).click();
+  await page.getByRole("button", { name: "Salvar e prescrever exercícios" }).click();
   await expect(page.getByRole("heading", { name: "Plano da execução" })).toBeVisible();
   const fullBody = workout(page, "Full Body");
   for (const name of ["Agachamento da Execução", "Remada da Execução", "Prancha da Execução"]) {

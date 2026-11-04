@@ -4,7 +4,8 @@
  * will record, because both call `reviewDraft` with the same payloads.
  *
  * Nothing is invented: a result that cannot be computed (no protocol, a missing site, no birth date...) is not recorded and the reason is said; a
- * value is never a 0 for "not measured"; there is no classification (none is homologated). The PAR-Q never decides: a "Sim" asks for the
+ * value is never a 0 for "not measured". Slice 0.92: the body fat, BMI, waist-hip ratio, Flexiteste total and Cooper distance are classified by the
+ * reference tables the user sent (classifications/), literally, and the classification is recorded with the result. The PAR-Q never decides: a "Sim" asks for the
  * professional's decision, recorded with who and when at finalize.
  */
 import {
@@ -36,6 +37,7 @@ import {
   type SiteValues,
   type SkinfoldSite,
 } from "../formulas";
+import { classifyResult, tableReference, type Classification, type ReferenceOrigin, type TableSex } from "../classifications";
 import { AGGREGATION_LABEL, EQUATION_LABEL, PROTOCOL_CHIP, SITE_LABEL, bilateralObservation, bilateralSigned, requiredSites, type CompositionPayload } from "./composition";
 import { heathCarterTyped, observedIn, postureEmpty, regionsOf, somatotypeText, type PosturePayload } from "./posture";
 import { FLEXITEST_CODES, FLEXITEST_VARIANT, filledText, flexitestTally, movementEmpty, type MovementPayload } from "./flexitest";
@@ -63,6 +65,8 @@ export interface ResultDraft {
   formulaVersion: string;
   inputs: Record<string, unknown>;
   flags: string[];
+  /** Slice 0.92: the classification by a reference table, frozen at finalize; null for a result no table classifies. */
+  classification: Classification | null;
 }
 /** The code of the bilateral difference of a sided perimeter (handoff 5: right − left). */
 export const bilateralCode = (code: PerimeterSided) => `bilateral_difference_${code}` as const;
@@ -197,6 +201,8 @@ export interface DraftReview {
   /** Any PAR-Q "Sim" (handoff 6: parq.riskFlag). */
   riskFlag: boolean;
   modules: ModuleSummary[];
+  /** Slice 0.92: the reference of the classification tables (the equation's, or the one chosen in Revisão), or none. */
+  reference: { sex: TableSex | null; from: ReferenceOrigin | null };
 }
 
 export interface ReviewInput {
@@ -266,6 +272,7 @@ function compositionResults(composition: CompositionPayload, ageYears: number | 
       formulaVersion: FORMULA_VERSION,
       inputs: { weightKg: composition.weightKg, heightCm: composition.heightCm },
       flags: [],
+      classification: null,
     });
   else if (composition.weightKg !== null || composition.heightCm !== null)
     notComputed.push(`IMC: falta ${composition.weightKg === null ? "o peso" : "a altura"}`);
@@ -307,7 +314,16 @@ function compositionResults(composition: CompositionPayload, ageYears: number | 
     sitesMm: sites,
     readingsMm: siteReadings,
   };
-  const row = (code: ResultCode, value: number, unit: string): ResultDraft => ({ code, value, unit, method: outcome.variant, formulaVersion: outcome.formulaVersion, inputs, flags: [...outcome.flags] });
+  const row = (code: ResultCode, value: number, unit: string): ResultDraft => ({
+    code,
+    value,
+    unit,
+    method: outcome.variant,
+    formulaVersion: outcome.formulaVersion,
+    inputs,
+    flags: [...outcome.flags],
+    classification: null,
+  });
   results.push(row("sum_skinfolds", outcome.sumMm, "mm"));
   if (outcome.density !== null) results.push(row("body_density", outcome.density, "g/cm³"));
   results.push(row("body_fat_percent", outcome.bodyFatPercent, "%"));
@@ -323,8 +339,8 @@ function compositionResults(composition: CompositionPayload, ageYears: number | 
 
 /**
  * What the perimeters give (handoff 3.2 and 5): the waist-hip ratio when both are measured, and the bilateral difference (right − left) of each
- * sided perimeter with both sides. Plain arithmetic on the measures, versioned like every result; no classification and no "significant" (none
- * is homologated: handoff 11). The bone breadths give no result in this version: they are kept as measured.
+ * sided perimeter with both sides. Plain arithmetic on the measures, versioned like every result; the waist-hip ratio is classified by the
+ * user's table (slice 0.92) in `reviewDraft`; the bilateral difference has no table and no "significant". The bone breadths give no result in this version: they are kept as measured.
  */
 function perimeterResults(composition: CompositionPayload): { results: ResultDraft[]; notComputed: string[] } {
   const results: ResultDraft[] = [];
@@ -333,7 +349,7 @@ function perimeterResults(composition: CompositionPayload): { results: ResultDra
   const hip = composition.perimetersCm.hip ?? null;
   const index = waistHipRatio(waist, hip);
   if (index !== null)
-    results.push({ code: "waist_hip_ratio", value: index, unit: null, method: EXACT_METHODS.waistHip, formulaVersion: FORMULA_VERSION, inputs: { waistCm: waist, hipCm: hip }, flags: [] });
+    results.push({ code: "waist_hip_ratio", value: index, unit: null, method: EXACT_METHODS.waistHip, formulaVersion: FORMULA_VERSION, inputs: { waistCm: waist, hipCm: hip }, flags: [], classification: null });
   else if (waist !== null || hip !== null) notComputed.push(`RCQ: falta ${waist === null ? "a cintura" : "o quadril"}`);
   for (const code of PERIMETER_SIDED_CODES) {
     const pair = composition.sidedPerimetersCm[code];
@@ -348,6 +364,7 @@ function perimeterResults(composition: CompositionPayload): { results: ResultDra
         formulaVersion: FORMULA_VERSION,
         inputs: { rightCm: pair.right, leftCm: pair.left, convention: "right_minus_left" },
         flags: [],
+        classification: null,
       });
     else notComputed.push(`Diferença bilateral ${PERIMETERS_SIDED_OF[code]}: falta o lado ${pair.right === null ? "direito" : "esquerdo"}`);
   }
@@ -356,7 +373,7 @@ function perimeterResults(composition: CompositionPayload): { results: ResultDra
 
 /**
  * What the Flexiteste gives (handoff 3.4 and 5): the sum of the 15 levels, only when all 15 are filled — a partial sum is never a total. Plain
- * arithmetic, versioned; no classification (the PDF gives no table: handoff 3.4).
+ * arithmetic, versioned; classified by the user's Flexiteste table (slice 0.92) in `reviewDraft`.
  */
 function flexitestResults(movement: MovementPayload): { results: ResultDraft[]; notComputed: string[] } {
   const tally = flexitestTally(movement);
@@ -371,6 +388,7 @@ function flexitestResults(movement: MovementPayload): { results: ResultDraft[]; 
           formulaVersion: FORMULA_VERSION,
           inputs: { variant: FLEXITEST_VARIANT, levels: Object.fromEntries(FLEXITEST_CODES.map((code) => [code, movement.flexitest.levels[code]])) },
           flags: [],
+          classification: null,
         },
       ],
       notComputed: [],
@@ -389,11 +407,11 @@ function cooperResults(tests: TestsPayload): { results: ResultDraft[]; notComput
   if (outcome === null || distanceM === null) return { results: [], notComputed: [] };
   const inputs = { distanceM, durationMin: COOPER_MINUTES, testedOn: tests.cooper.testedOn };
   const results: ResultDraft[] = [
-    { code: "cooper_speed_kmh", value: outcome.speedKmh, unit: "km/h", method: EXACT_METHODS.cooperSpeed, formulaVersion: outcome.formulaVersion, inputs, flags: [] },
+    { code: "cooper_speed_kmh", value: outcome.speedKmh, unit: "km/h", method: EXACT_METHODS.cooperSpeed, formulaVersion: outcome.formulaVersion, inputs, flags: [], classification: null },
   ];
   const notComputed: string[] = [];
   if (outcome.vo2Estimate > 0)
-    results.push({ code: "cooper_vo2_estimate", value: outcome.vo2Estimate, unit: "ml/kg/min", method: COOPER_VO2_METHOD, formulaVersion: outcome.formulaVersion, inputs, flags: [] });
+    results.push({ code: "cooper_vo2_estimate", value: outcome.vo2Estimate, unit: "ml/kg/min", method: COOPER_VO2_METHOD, formulaVersion: outcome.formulaVersion, inputs, flags: [], classification: null });
   else notComputed.push("Cooper, VO₂máx estimado: com esta distância a equação não dá um valor positivo");
   return { results, notComputed };
 }
@@ -522,7 +540,7 @@ function somatotypeLines(posture: PosturePayload): string[] {
   return lines;
 }
 
-/** The "Testes físicos" step in words (slice 0.80): what each test has, as typed; a test not done says so, never 0. No classification by the system. */
+/** The "Testes físicos" step in words (slice 0.80): what each test has, as typed; a test not done says so, never 0. The Cooper classification is in the results. */
 function testesSummary(tests: TestsPayload | null, enabled: EnabledParts = null): ModuleSummary {
   if (!isStepEnabled(enabled, "testes")) return { key: "testes", title: "Testes físicos", state: "not_included", lines: [NOT_INCLUDED] };
   const testOn = (key: RepetitionTestKey | "cooper") => isPartEnabled(enabled, key === "upperLimb" ? "upper_limb" : key);
@@ -547,7 +565,7 @@ function testesSummary(tests: TestsPayload | null, enabled: EnabledParts = null)
       : `Cooper: ${cooperTest.distanceM === null ? "distância sem registro" : `${decimal(cooperTest.distanceM, 1)} m em ${COOPER_MINUTES} min`}`,
   );
   const classified = [...REPETITION_TESTS.map((key) => tests[key].classificationManual), cooperTest.classificationManual].some((value) => value.trim() !== "");
-  if (classified) lines.push("Classificação: escrita pelo profissional (nenhuma tabela homologada)");
+  if (classified) lines.push("Classificação manual: escrita pelo profissional");
   return { key: "testes", title: "Testes físicos", state: "observed", lines };
 }
 
@@ -573,9 +591,16 @@ export function reviewDraft(input: ReviewInput): DraftReview {
   const flexibility = input.movement ? flexitestResults(input.movement) : { results: [], notComputed: [] };
   const cooperTest = input.tests ? cooperResults(input.tests) : { results: [], notComputed: [] };
   const parts = [skinfold, perimeter, flexibility, cooperTest];
-  const computed = { results: parts.flatMap((part) => part.results), notComputed: parts.flatMap((part) => part.notComputed) };
+  // Slice 0.92: each result a table classifies gets its classification, as finalize records it (the same rule on the screen and the server).
+  const reference = tableReference(input.composition?.equation, input.composition?.tableReference);
+  const context = { ageYears, sex: reference.sex, referenceFrom: reference.from };
+  const results = parts
+    .flatMap((part) => part.results)
+    .map((result) => ({ ...result, classification: classifyResult(result.code, result.value, result.inputs, context) }));
+  const computed = { results, notComputed: parts.flatMap((part) => part.notComputed) };
   return {
     pending,
+    reference,
     results: computed.results,
     notComputed: computed.notComputed,
     riskFlag: input.screening ? parqHasYes(input.screening) : false,

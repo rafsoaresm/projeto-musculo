@@ -10,6 +10,7 @@ import { MOVEMENT_MODULE, readMovement } from "@/modules/avaliacoes/v2/flexitest
 import { TESTS_MODULE, readTests } from "@/modules/avaliacoes/v2/physical-tests";
 import { POSTURE_MODULE, readPosture } from "@/modules/avaliacoes/v2/posture";
 import { PROFILE_MODULE, SCREENING_MODULE, readProfile, readScreening } from "@/modules/avaliacoes/v2/screening";
+import { readClassification } from "@/modules/avaliacoes/classifications";
 import { reviewedSql, riskSql, type ResultRow } from "./assessments";
 import { activeUser, assertContext, technicalAccessExists, type AuthenticatedContext } from "./students";
 
@@ -81,6 +82,11 @@ const flagsOf = (raw: string | null) => {
   const parsed = parseJson(raw);
   return Array.isArray(parsed) ? parsed.filter((flag): flag is string => typeof flag === "string") : [];
 };
+/** Slice 0.92: the classification written at finalize, only when there is one (absent, not null, so an older record's fingerprint stays). */
+const classificationOf = (raw: string | null) => {
+  const classification = readClassification(parseJson(raw));
+  return classification ? { classification } : {};
+};
 
 /**
  * The report with, when the private photo storage is given, the bytes of the stored posture photos for the PDF (slice 0.86). The storage keys
@@ -118,11 +124,20 @@ async function assemble(db: D1Database, head: HeadRow, bucket: R2Bucket | null =
       .all<{ module: string; payload: string }>(),
     db
       .prepare(
-        `SELECT r.code, r.value, r.unit, r.method, r.formula_version AS formulaVersion, r.inputs, r.flags
+        `SELECT r.code, r.value, r.unit, r.method, r.formula_version AS formulaVersion, r.inputs, r.flags, r.classification
          FROM assessment_results r WHERE r.organization_id = ?1 AND r.assessment_id = ?2 ORDER BY r.rowid`,
       )
       .bind(head.organizationId, head.id)
-      .all<{ code: string; value: number | null; unit: string | null; method: string; formulaVersion: string | null; inputs: string | null; flags: string | null }>(),
+      .all<{
+        code: string;
+        value: number | null;
+        unit: string | null;
+        method: string;
+        formulaVersion: string | null;
+        inputs: string | null;
+        flags: string | null;
+        classification: string | null;
+      }>(),
     db
       .prepare(
         `SELECT p.view, p.created_at AS createdAt, e.erased_at AS erasedAt, p.object_key AS key
@@ -172,6 +187,7 @@ async function assemble(db: D1Database, head: HeadRow, bucket: R2Bucket | null =
         formulaVersion: row.formulaVersion,
         inputs: (parseJson(row.inputs) as Record<string, unknown> | null) ?? null,
         flags: flagsOf(row.flags),
+        ...classificationOf(row.classification),
       }),
     ),
     profile: section(PROFILE_MODULE, readProfile),
@@ -299,14 +315,15 @@ export function studentAssessmentsFor(db: D1Database, userId: string, studentId:
       if (heads.length === 0) return [];
       const rows = await db
         .prepare(
-          `SELECT r.assessment_id AS assessmentId, r.code, r.value, r.unit, r.method, r.formula_version AS formulaVersion, r.inputs, r.flags
+          `SELECT r.assessment_id AS assessmentId, r.code, r.value, r.unit, r.method, r.formula_version AS formulaVersion, r.inputs, r.flags,
+             r.classification
            FROM assessment_results r
            JOIN assessments a ON a.organization_id = r.organization_id AND a.id = r.assessment_id
            ${studentGate} AND a.id IN (SELECT value FROM json_each(?3))
            ORDER BY r.rowid`,
         )
         .bind(userId, studentId, JSON.stringify(heads.map((head) => head.id)))
-        .all<{ assessmentId: string; code: string; value: number | null; unit: string | null; method: string; formulaVersion: string | null; inputs: string | null; flags: string | null }>();
+        .all<{ assessmentId: string; code: string; value: number | null; unit: string | null; method: string; formulaVersion: string | null; inputs: string | null; flags: string | null; classification: string | null }>();
       return heads.map((head) => ({
         id: head.id,
         assessedOn: head.assessedOn,
@@ -323,6 +340,7 @@ export function studentAssessmentsFor(db: D1Database, userId: string, studentId:
               formulaVersion: row.formulaVersion,
               inputs: (parseJson(row.inputs) as Record<string, unknown> | null) ?? null,
               flags: flagsOf(row.flags),
+              ...classificationOf(row.classification),
             }),
           ),
       }));

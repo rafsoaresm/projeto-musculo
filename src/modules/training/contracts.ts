@@ -13,6 +13,14 @@ const calendarDate = z
     );
   }, "Informe uma data válida entre 2000 e 2100.");
 
+/** "Alvo de exercícios por treino": a target the professional picks, 3 to 20 (user, 03/11/2026; it was 3 to 8 before 0.93). */
+export const EXERCISES_PER_SESSION_MIN = 3;
+export const EXERCISES_PER_SESSION_MAX = 20;
+export const EXERCISES_PER_SESSION_OPTIONS = Array.from(
+  { length: EXERCISES_PER_SESSION_MAX - EXERCISES_PER_SESSION_MIN + 1 },
+  (_, i) => EXERCISES_PER_SESSION_MIN + i,
+);
+
 export const phaseSchema = z
   .object({
     weeks: z.number().int().min(3).max(6),
@@ -26,7 +34,7 @@ export const phaseSchema = z
       "ABCDEF",
       "ABCDEFG",
     ]),
-    exercisesPerSession: z.number().int().min(3).max(8),
+    exercisesPerSession: z.number().int().min(EXERCISES_PER_SESSION_MIN).max(EXERCISES_PER_SESSION_MAX),
   })
   .strict();
 

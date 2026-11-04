@@ -11,6 +11,7 @@ import { readScreening } from "@/modules/avaliacoes/v2/screening";
 import { readMovement } from "@/modules/avaliacoes/v2/flexitest";
 import { readTests } from "@/modules/avaliacoes/v2/physical-tests";
 import { readConclusion } from "@/modules/avaliacoes/v2/conclusion";
+import { classify } from "@/modules/avaliacoes/classifications";
 import { ALL_MIGRATIONS, migrate } from "./helpers/migrate";
 
 // Slice 0.81: the report (PDF) of a recorded Avaliação Física, for the professional and for the student. It prints what was recorded and the
@@ -96,7 +97,7 @@ describe("the report of a recorded Avaliação Física (pure)", () => {
     expect(text).toContain('"label":"Altura","value":"Sem aferição"');
     expect(text).toContain("D 40 cm / E Sem aferição");
     expect(text).toContain('"label":"Classificação (manual)","value":"Médio"');
-    expect(text).toContain("Escrita pelo profissional. O sistema não classifica");
+    expect(text).toContain("Escrita pelo profissional, à parte da classificação automática do total");
     expect(text).toContain("2.200 m em 12 min");
     expect(text).toContain("1 de 15 preenchido");
   });
@@ -172,7 +173,21 @@ describe("the report as a PDF", () => {
         screening: readScreening({ ...noParq, anamnesis: { injuries: { answer: "yes", details: "Entorse em 2024" } } }),
         composition: readComposition(JP7),
         conclusion: readConclusion({ recommendations: "Treinar 3 vezes por semana." }),
-        results: [{ code: "cooper_vo2_estimate", value: 37.9, unit: "ml/kg/min", method: "cooper_12min_vo2_504_9_44_73", formulaVersion: "av2-2026-11", inputs: null, flags: [] }],
+        results: [
+          { code: "cooper_vo2_estimate", value: 37.9, unit: "ml/kg/min", method: "cooper_12min_vo2_504_9_44_73", formulaVersion: "av2-2026-11", inputs: null, flags: [] },
+          // Slice 0.92: one classified at finalize, one recorded before the tables (no classification, said so).
+          {
+            code: "body_fat_percent",
+            value: 17.27,
+            unit: "%",
+            method: "jackson_pollock_7_1978_male",
+            formulaVersion: "av2-2026-11",
+            inputs: null,
+            flags: [],
+            classification: classify({ table: "body_fat", value: 17.27, sex: "male", ageYears: 27, referenceFrom: "equation" }),
+          },
+          { code: "bmi", value: 23.63, unit: "kg/m²", method: "weight_over_height_squared", formulaVersion: "av2-2026-11", inputs: null, flags: [] },
+        ],
       }),
       generatedAt: new Date("2026-11-04T12:00:00Z"),
     };
@@ -182,8 +197,9 @@ describe("the report as a PDF", () => {
     const text = textOf(doc);
     for (const expected of [
       "AVALIAÇÃO FÍSICA · RELATÓRIO", "Avaliação física de 03/11/2026", "Aluno Exemplo", "Pro A", "Studio A", "PAR-Q sem", // the curly quotes are WinAnsi 0x93/0x94, not latin1
-      "Sem classificação automática;", "Um campo vazio aparece escrito por extenso", "Triagem", "Entorse em 2024", "69,1 kg", "1,71 m", "Jackson & Pollock · 7", "Cintura", "69,5 cm",
-      "Cooper, VO2máx estimado", "37,90 ml/kg/min", "Recomendações", "Treinar 3 vezes por semana.", "Não realizado.", "Gerado em 04/11/2026",
+      "são classificados pelas tabelas de referência da ferramenta", "Um campo vazio aparece escrito por extenso", "Triagem", "Entorse em 2024", "69,1 kg", "1,71 m", "Jackson & Pollock · 7", "Cintura", "69,5 cm",
+      "Cooper, VO2máx estimado", "37,90 ml/kg/min", "Classificação: Acima da Média", "Pollock & Wilmore, 1993",
+      "Classificação: registrada antes das tabelas de referência", "Recomendações", "Treinar 3 vezes por semana.", "Não realizado.", "Gerado em 04/11/2026",
     ])
       expect(text, expected).toContain(expected);
     expect(doc.getTitle()).toBe("Avaliação física de 03/11/2026");

@@ -124,6 +124,15 @@ test("the Revisão step finalizes the Avaliação Física, the record shows the 
   await expect(checklist.getByText("Diâmetros ósseos: 1 de 3 com medida")).toBeVisible();
   await expect(checklist.getByText("Postura: 2 de 19 regiões observadas (lateral 1 de 8, posterior 0 de 7, anterior 1 de 4)")).toBeVisible();
   await expect(checklist.getByText("Somatotipo (registro do profissional): Mesomorfo")).toBeVisible();
+  // Slice 0.92: the classifications finalize will record, by the reference tables (the reference is the equation's: masculina).
+  await expect(page.getByLabel("Referência das tabelas", { exact: true })).toHaveText("Masculina, a da equação das dobras");
+  const fatRow = toRecord.getByRole("listitem").filter({ hasText: "Gordura estimada" });
+  await expect(fatRow).toContainText("Classificação: Acima da Média");
+  await expect(fatRow).toContainText("Percentual de gordura, homens, 26 a 35 anos · Pollock & Wilmore, 1993 · 17,3% comparado como 17% · referência masculina (da equação das dobras)");
+  await expect(toRecord.getByRole("listitem").filter({ hasText: "IMC" })).toContainText("Classificação: Peso ideal (parabéns)");
+  await expect(ratioRow).toContainText("Classificação: Baixo");
+  await expect(toRecord.getByRole("listitem").filter({ hasText: "Soma das dobras" })).not.toContainText("Classificação");
+  await expect(thighRow).not.toContainText("Classificação");
   await noHorizontalOverflow(page);
   await shots(page, "revisao", testInfo.project.name);
 
@@ -141,6 +150,8 @@ test("the Revisão step finalizes the Avaliação Física, the record shows the 
   await expect(results.getByRole("listitem").filter({ hasText: "Massa gorda" })).toContainText("11,9 kg");
   await expect(results.getByRole("listitem").filter({ hasText: "RCQ" })).toContainText("0,644");
   await expect(results.getByRole("listitem").filter({ hasText: "Diferença bilateral da coxa" })).toContainText("−0,6 cm");
+  await expect(results.getByRole("listitem").filter({ hasText: "Gordura estimada" })).toContainText("Classificação: Acima da Média");
+  await expect(results.getByRole("listitem").filter({ hasText: "IMC" })).toContainText("Classificação: Peso ideal (parabéns)");
   const recordedPerimeters = page.getByRole("definition").filter({ hasText: /^D 40 cm \/ E Sem aferição$/ });
   await expect(recordedPerimeters).toBeVisible();
   await expect(page.getByText("Biestiloide", { exact: true })).toBeVisible();

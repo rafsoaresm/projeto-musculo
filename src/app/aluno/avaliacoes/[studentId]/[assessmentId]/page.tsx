@@ -20,6 +20,7 @@ import {
   REPORT_PHOTOS_NOTE,
   reportDateTime,
 } from "@/modules/avaliacoes/v2/report";
+import { recordedTableReference } from "@/modules/avaliacoes/classifications";
 import { ResultsList } from "@/modules/avaliacoes/v2/results-list";
 
 export const dynamic = "force-dynamic";
@@ -120,6 +121,11 @@ export default async function StudentAssessmentPage({ params }: Params) {
         <section className="panel av2-card" aria-labelledby="aluno-resultados">
           <h2 id="aluno-resultados">Resultados</h2>
           <p className="muted small">{REPORT_NOTICE}</p>
+          {recordedTableReference(source.results.map((result) => result.classification)) && (
+            <p className="small">
+              Referência das tabelas: <strong>{recordedTableReference(source.results.map((result) => result.classification))}</strong>
+            </p>
+          )}
           {source.results.length === 0 ? (
             <p className="muted">Nenhum resultado calculado nesta avaliação.</p>
           ) : (

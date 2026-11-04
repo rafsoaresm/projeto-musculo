@@ -8,8 +8,10 @@ import { stateLabel } from "./labels";
 export function PlanTable({ rows }: { rows: PlanOverviewRow[] }) {
   return (
     <div className="table-wrap">
-      <table className="data-table stack">
-        <caption className="sr-only">Planos e prescrição dos seus alunos</caption>
+      <table className="data-table stack plan-overview">
+        <caption className="sr-only">
+          Planos e prescrição dos seus alunos
+        </caption>
         <thead>
           <tr>
             <th scope="col">Aluno</th>
@@ -28,23 +30,44 @@ export function PlanTable({ rows }: { rows: PlanOverviewRow[] }) {
             return (
               <tr key={row.revisionId}>
                 <th scope="row" data-label="Aluno">
-                  <Link className="row-link" href={`/profissional/alunos/${row.studentId}`}>
+                  <Link
+                    className="row-link"
+                    href={`/profissional/alunos/${row.studentId}`}
+                  >
                     {row.studentName}
                   </Link>
                 </th>
                 <td data-label="Plano">
-                  <Link
-                    className="row-link"
-                    href={`/profissional/alunos/${row.studentId}/planos/${row.planId}/${row.revisionId}`}
-                  >
-                    {row.title}
-                  </Link>
+                  <span className="plan-cell">
+                    <Link
+                      className="row-link"
+                      href={`/profissional/alunos/${row.studentId}/planos/${row.planId}/${row.revisionId}`}
+                    >
+                      {row.title}
+                    </Link>
+                    {row.state === "DRAFT" && (
+                      // 0.93: a draft goes straight to its prescription.
+                      <Link
+                        className="step-link"
+                        href={`/profissional/alunos/${row.studentId}/planos/${row.planId}/${row.revisionId}#prescricao`}
+                      >
+                        Continuar prescrição
+                        <span className="sr-only">
+                          {" "}
+                          de {row.title}, {row.studentName}
+                        </span>
+                      </Link>
+                    )}
+                  </span>
                 </td>
                 <td data-label="Revisão">
-                  {row.revisionNumber} <Pill tone={label.tone}>{label.text}</Pill>
+                  <span className="revision-cell">
+                    {row.revisionNumber} <Pill tone={label.tone}>{label.text}</Pill>
+                  </span>
                 </td>
                 <td data-label="Período">
-                  {formatCalendarDate(row.startDate)} a {formatCalendarDate(row.endDate)}
+                  {formatCalendarDate(row.startDate)} a{" "}
+                  {formatCalendarDate(row.endDate)}
                 </td>
                 <td className="num" data-label="Exercícios">
                   {row.exercises}
@@ -55,7 +78,9 @@ export function PlanTable({ rows }: { rows: PlanOverviewRow[] }) {
                       {row.below} de {row.workouts} treinos abaixo do alvo
                     </Pill>
                   ) : (
-                    <Pill tone="success">Alvo atendido em todos os treinos</Pill>
+                    <Pill tone="success">
+                      Alvo atendido em todos os treinos
+                    </Pill>
                   )}
                 </td>
               </tr>

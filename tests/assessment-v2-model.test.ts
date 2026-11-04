@@ -198,3 +198,16 @@ describe("what the database refuses by itself", () => {
     expect(await one("SELECT state FROM assessments WHERE id = ?1", recorded!.id)).toEqual({ state: "RECORDED" });
   });
 });
+
+describe("the date of a new assessment", () => {
+  it("is the day in Brazil, not in UTC: started at 21:30 in São Paulo (00:30 UTC of the next day), it is still that evening's date", async () => {
+    await db.batch([
+      db.prepare("INSERT INTO students(id,organization_id,display_name) VALUES ('st-3','org-a','Three')"),
+      db.prepare("INSERT INTO care_assignments(organization_id,student_id,professional_id) VALUES ('org-a','st-3','pro-a')"),
+    ]);
+    const started = await a().startDraft("st-3", new Date("2026-11-04T00:30:00Z"));
+    expect(started.status).toBe("started");
+    if (started.status !== "started") return;
+    expect(await one("SELECT assessed_on AS d FROM assessments WHERE id = ?1", started.id)).toEqual({ d: "2026-11-03" });
+  });
+});

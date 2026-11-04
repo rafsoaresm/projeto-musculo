@@ -84,6 +84,16 @@ export interface PlanOverviewRow {
   /** Workouts with fewer exercises than the target. A pending item, never filled in. */
   below: number;
 }
+/** A plan whose newest revision is not delivered yet (0.93, the student picker of "Novo plano"). */
+export interface PlanInProgress {
+  studentId: string;
+  planId: string;
+  title: string;
+  revisionId: string;
+  revisionNumber: number;
+  state: PlanState;
+  updatedAt: string;
+}
 export type ApproveOutcome =
   | { status: "approved" }
   | { status: "screening_acknowledgement_required" }
@@ -249,6 +259,31 @@ export function plansFor(
           below: slots.filter((slot) => countOf(slot) < slot.target).length,
         };
       });
+    },
+
+    /**
+     * Plans still in progress (newest revision not delivered nor archived) of the students this user reaches through an
+     * active technical assignment, newest change first. Used by the student picker of "Novo plano" (0.93), which only
+     * informs: a student may have more than one plan, so nothing here blocks a new one.
+     */
+    async inProgress(): Promise<PlanInProgress[]> {
+      const rows = await db
+        .prepare(
+          `SELECT s.id AS studentId, p.id AS planId, p.title, r.id AS revisionId,
+             r.revision_number AS revisionNumber, r.state, r.updated_at AS updatedAt
+           FROM training_plans p
+           JOIN students s ON s.organization_id = p.organization_id AND s.id = p.student_id
+           JOIN plan_revisions r ON r.organization_id = p.organization_id AND r.plan_id = p.id
+           WHERE p.organization_id = ?1 AND ${activeUser("?2")} AND ${technicalAccessExists("s", "?2")}
+             AND r.revision_number =
+               (SELECT MAX(x.revision_number) FROM plan_revisions x
+                WHERE x.organization_id = p.organization_id AND x.plan_id = p.id)
+             AND r.state IN ('DRAFT','REVIEW_REQUIRED','READY','APPROVED')
+           ORDER BY r.updated_at DESC, p.id`,
+        )
+        .bind(organizationId, userId)
+        .all<PlanInProgress>();
+      return rows.results;
     },
 
     async findRevision(
