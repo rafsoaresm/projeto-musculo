@@ -78,3 +78,58 @@ export function structureIssueMessage(error: ZodError): string {
   if (worded) return `${where}${issue.message}`;
   return where ? `${where}confira os valores desta fase.` : "Confira a estrutura antes de continuar.";
 }
+
+/**
+ * Which workout (its index in the list) each position of a custom rotation belongs to. The saved rotation
+ * holds labels, so while a label is being typed it can briefly equal another workout's label; the editor
+ * keeps the owners it last knew (`known`) and uses them while they still describe the rotation, instead of
+ * guessing from the text. Without a usable memory, each position belongs to the first workout with its label.
+ */
+export function rotationOwners(rotation: string[], labels: string[], known: number[] | null): number[] {
+  if (known && known.length === rotation.length && known.every((owner, k) => owner >= 0 && labels[owner] === rotation[k]))
+    return known;
+  return rotation.map((label) => labels.indexOf(label));
+}
+
+export interface RotationEdit {
+  phase: PhaseInputV2;
+  /** The owners of the new rotation's positions (null when the phase follows the list order). */
+  owners: number[] | null;
+}
+
+/** Changes a workout; a renamed one keeps exactly its own places in a custom rotation, and no other's. */
+export function updateWorkout(
+  phase: PhaseInputV2,
+  index: number,
+  update: Partial<WorkoutInputV2>,
+  known: number[] | null,
+): RotationEdit {
+  const workouts = phase.workouts.map((workout, i) => (i === index ? { ...workout, ...update } : workout));
+  if (!phase.rotation) return { phase: { ...phase, workouts }, owners: null };
+  const owners = rotationOwners(phase.rotation, phase.workouts.map((workout) => workout.label), known);
+  const rotation =
+    update.label === undefined ? phase.rotation : phase.rotation.map((label, k) => (owners[k] === index ? update.label! : label));
+  return { phase: { ...phase, workouts, rotation }, owners };
+}
+
+/** Removes a workout and its places in a custom rotation (the rotation goes back to the list order when empty). */
+export function removeWorkoutAt(phase: PhaseInputV2, index: number, known: number[] | null): RotationEdit {
+  const workouts = phase.workouts.filter((_, i) => i !== index);
+  if (!phase.rotation) return { phase: { ...phase, workouts }, owners: null };
+  const owners = rotationOwners(phase.rotation, phase.workouts.map((workout) => workout.label), known);
+  const kept = phase.rotation.flatMap((label, k) => (owners[k] === index ? [] : [{ label, owner: owners[k] > index ? owners[k] - 1 : owners[k] }]));
+  return kept.length
+    ? { phase: { ...phase, workouts, rotation: kept.map((entry) => entry.label) }, owners: kept.map((entry) => entry.owner) }
+    : { phase: { ...phase, workouts, rotation: null }, owners: null };
+}
+
+/** Points one rotation position at a workout (by index, so two workouts that briefly share a label stay apart). */
+export function setRotationPosition(phase: PhaseInputV2, position: number, workout: number, known: number[] | null): RotationEdit {
+  const labels = phase.workouts.map((item) => item.label);
+  const rotation = phase.rotation ?? labels;
+  const owners = rotationOwners(rotation, labels, phase.rotation ? known : labels.map((_, i) => i));
+  return {
+    phase: { ...phase, rotation: rotation.map((label, k) => (k === position ? labels[workout] : label)) },
+    owners: owners.map((owner, k) => (k === position ? workout : owner)),
+  };
+}

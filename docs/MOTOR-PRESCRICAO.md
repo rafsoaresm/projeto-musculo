@@ -104,10 +104,11 @@ Em `src/modules/training/contracts.ts` (`STRUCTURE_LIMITS`), todos técnicos e n
 | Semanas por fase | a partir de 1 | sem teto próprio; o total de sessões e o fim do calendário (2100) limitam |
 | Sessões por semana | 1 a 14 | duas por dia em todos os dias |
 | Sessões no ciclo (Σ semanas × sessões) | até 504 | **provisório**: o maior total que a v1 já permitia (12 × 6 × 7). A S6 mede a aplicação no pior caso sob `workerd` e pode subir; nunca baixar, senão estruturas salvas deixam de ser lidas |
-| Rótulo do treino | 1 a 20 caracteres, sem `\|`, `/`, `\` nem controle | CHECK de `workout_label` (0006/0012); `\|` separava "fase\|rótulo" no editor; `/` e `\` vão no endereço de registro do aluno |
+| Rótulo do treino | 1 a 20 caracteres, sem `\|`, `/`, `\`, caracteres de controle, de formatação nem separadores de linha; pelo menos uma letra, número ou símbolo visível; não só pontos | CHECK de `workout_label` (0006/0012); `\|` separava "fase\|rótulo" no editor; `/` e `\` vão no endereço de registro do aluno, onde `.` e `..` são removidos pelo navegador; um rótulo só de caracteres invisíveis aparece vazio na tela |
 | Alvo por treino | 1 a 20 ou "sem alvo" | 20 é a decisão do usuário na 0.93; 1 porque uma sessão de outra modalidade pode ter um só exercício |
 | Rotação | 1 a 504 posições, só rótulos da fase | posições além das sessões não são usadas; o teto só limita o que é gravado |
 | Dias de treino | um por sessão, 0 a 6, em ordem | dia 0 = primeiro dia de cada semana da fase; sem dias, a data prevista fica vazia (nunca presumida) |
+| Mesmo treino no mesmo dia | recusado: com dias, o mesmo rótulo duas vezes numa data prevista; sem dias, o mesmo rótulo mais de 7 vezes numa semana | o registro do aluno guarda um treino por dia (UNIQUE de `workout_sessions`, 0012; Q5); a rotação continua entre as semanas, e cada semana é conferida |
 | Nome da fase / do treino / foco | 60 / 60 / 160 caracteres; minutos 1 a 600 | textos de exibição; o foco é anotação do profissional, nunca interpretado nem entregue ao aluno |
 
 A v1 (divisão por letras, 3–6 semanas, 3/6/12 fases, alvo 3–20) continua sendo lida e gravada como antes. A conversão v1 → v2 (`convertV1ToV2`) não move sessão, rótulo nem alvo; a volta (`convertV2ToV1`) só existe quando a estrutura cabe na v1.

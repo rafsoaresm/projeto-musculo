@@ -19,7 +19,16 @@ import {
   phaseWorkoutLabels,
   phaseWorkouts,
 } from "@/modules/training/periodization";
-import { dayLabel, nextLabel, spreadDays, structureIssueMessage, workoutsFromSplit } from "@/modules/training/structure-draft";
+import {
+  dayLabel,
+  nextLabel,
+  removeWorkoutAt,
+  setRotationPosition,
+  spreadDays,
+  structureIssueMessage,
+  updateWorkout,
+  workoutsFromSplit,
+} from "@/modules/training/structure-draft";
 import { isBelowTarget, progressOf, workoutSlots } from "@/modules/prescricao/summary";
 import { scheduleOccurrences } from "@/modules/prescricao/motor/calendar";
 import { planFingerprint } from "@/modules/pdf/plan-pdf";
@@ -275,6 +284,32 @@ describe("free structures (topic 3)", () => {
     expect(issues({ ...ok, phases: [{ ...phase(), split: "ABC" }] }).length).toBeGreaterThan(0);
   });
 
+  it("refuses labels the student's log address cannot carry or the screen cannot show", () => {
+    // "." and ".." are dropped from a URL path; zero-width and line separators render as nothing.
+    for (const label of [".", "..", "...", "\u200b", "A\u200bB", "\u2028", "A\u2028B", "\u2029", "\u00ad", "\ufeff"])
+      expect(issues(v2([phase({ workouts: [w(label), w("B")], sessionsPerWeek: 2 })])).length, JSON.stringify(label)).toBeGreaterThan(0);
+    for (const label of ["A.1", ".A", "Treino 1", "Ação", "💪", "1º", "A-B"])
+      expect(issues(v2([phase({ workouts: [w(label), w("B")], sessionsPerWeek: 2 })])), label).toEqual([]);
+  });
+
+  it("refuses a phase whose student could not log every session (one log per workout a day, Q5)", () => {
+    // Same workout twice on one planned date.
+    expect(issues(v2([phase({ sessionsPerWeek: 2, workouts: [w("A")], trainingDays: [0, 0] })]))[0]).toMatch(/semana 1, o treino "A" cai duas vezes no mesmo dia/);
+    // The rotation continues across weeks: week 2 of [A, B, B, B] over 2 sessions is B, B.
+    expect(issues(v2([phase({ weeks: 2, sessionsPerWeek: 2, workouts: [w("A"), w("B")], rotation: ["A", "B", "B", "B"], trainingDays: [3, 3] })]))[0]).toMatch(/semana 2, o treino "B"/);
+    expect(issues(v2([phase({ weeks: 1, sessionsPerWeek: 2, workouts: [w("A"), w("B")], rotation: ["A", "B", "B", "B"], trainingDays: [3, 3] })]))).toEqual([]);
+    // Without dates, one workout more than 7 times a week.
+    expect(issues(v2([phase({ sessionsPerWeek: 8, workouts: [w("A")] })]))[0]).toMatch(/"A" aparece mais de 7 vezes numa semana/);
+    expect(issues(v2([phase({ sessionsPerWeek: 7, workouts: [w("A")] })]))).toEqual([]);
+    expect(issues(v2([phase({ sessionsPerWeek: 14, workouts: [w("A"), w("B")], rotation: ["A", "A", "B"] })]))[0]).toMatch(/"A" aparece mais de 7/);
+    // Two different workouts on one day stay allowed, as do 14 sessions of two alternating workouts.
+    expect(issues(v2([phase({ sessionsPerWeek: 2, workouts: [w("A"), w("B")], trainingDays: [0, 0] })]))).toEqual([]);
+    expect(issues(v2([phase({ sessionsPerWeek: 14, workouts: [w("A"), w("B")], trainingDays: spreadDays(14) })]))).toEqual([]);
+    // Every v1 split converts to v2 without tripping it (v1 has at most 7 sessions a week).
+    for (const split of SPLITS)
+      expect(issues(convertV1ToV2(v1([{ weeks: 6, sessionsPerWeek: 7, split, exercisesPerSession: 5 }]))), split).toEqual([]);
+  });
+
   it("caps the total of sessions at the technical limit, and never past 2100", () => {
     const max = STRUCTURE_LIMITS.MAX_OCCURRENCES;
     expect(max).toBe(504);
@@ -307,7 +342,7 @@ describe("planner helpers (free structure editor)", () => {
   it("tells the first problem with its phase, in Portuguese", () => {
     const bad = periodizationInputSchemaV2.safeParse(v2([phase(), phase({ workouts: [w("A|B"), w("B"), w("C")] })]));
     expect(bad.success).toBe(false);
-    if (!bad.success) expect(structureIssueMessage(bad.error)).toBe("Fase 2: O rótulo do treino não pode ter |, / ou \\.");
+    if (!bad.success) expect(structureIssueMessage(bad.error)).toBe("Fase 2: O rótulo do treino não pode ter |, / ou \\ nem caracteres invisíveis.");
     const date = periodizationInputSchemaV2.safeParse({ ...v2([phase()]), startDate: "" });
     if (!date.success) expect(structureIssueMessage(date.error)).toMatch(/data de início/);
     const typed = periodizationInputSchemaV2.safeParse(v2([phase({ weeks: Number.NaN })]));
@@ -341,6 +376,36 @@ describe("readers' wording and the PDF fingerprint", () => {
     expect(await planFingerprint(p)).toBe(expected);
     expect(await planFingerprint({ ...p, phases: p.phases.map((ph) => ({ ...ph, name: null, workouts: ph.workouts.map((wk) => ({ ...wk, name: null })) })) })).toBe(expected);
     expect(await planFingerprint(plan(true))).not.toBe(expected);
+  });
+
+  it("renaming a workout letter by letter keeps exactly its own places in a custom rotation", () => {
+    // Workouts A and B, rotation [A, B, B]; the professional retypes B as "Ab": "", "A", "Ab".
+    let current = phase({ workouts: [w("A"), w("B")], rotation: ["A", "B", "B"] });
+    let owners: number[] | null = null;
+    for (const typed of ["", "A", "Ab"]) {
+      const edit = updateWorkout(current, 1, { label: typed }, owners);
+      current = edit.phase;
+      owners = edit.owners;
+    }
+    expect(current.workouts.map((x) => x.label)).toEqual(["A", "Ab"]);
+    expect(current.rotation).toEqual(["A", "Ab", "Ab"]);
+    expect(issues(v2([current]))).toEqual([]);
+    // Without a memory (a fresh editor), positions belong to the first workout with their label.
+    expect(updateWorkout(phase({ workouts: [w("A"), w("B")], rotation: ["B", "A"] }), 0, { label: "C" }, null).phase.rotation).toEqual(["B", "C"]);
+    // Other fields never touch the rotation.
+    expect(updateWorkout(current, 0, { name: "Superior" }, owners).phase.rotation).toEqual(["A", "Ab", "Ab"]);
+    expect(updateWorkout(phase(), 0, { label: "X" }, null)).toMatchObject({ owners: null, phase: { rotation: null } });
+
+    // While two workouts briefly share a label, choosing a position and removing a workout follow the index.
+    let shared = updateWorkout(phase({ workouts: [w("A"), w("B"), w("C")], rotation: ["A", "B", "C"] }), 1, { label: "A" }, null);
+    shared = setRotationPosition(shared.phase, 2, 1, shared.owners);
+    expect(shared.owners).toEqual([0, 1, 1]);
+    const removed = removeWorkoutAt(shared.phase, 0, shared.owners);
+    expect(removed.phase.workouts.map((x) => x.label)).toEqual(["A", "C"]);
+    expect(removed).toMatchObject({ owners: [0, 0], phase: { rotation: ["A", "A"] } });
+    expect(removeWorkoutAt(phase({ workouts: [w("A"), w("B")], rotation: ["B"] }), 1, null).phase.rotation).toBeNull();
+    // Choosing a position of a phase that follows the list order starts a custom rotation from it.
+    expect(setRotationPosition(phase(), 0, 2, null)).toMatchObject({ owners: [2, 1, 2], phase: { rotation: ["C", "B", "C"] } });
   });
 
   it("titles phases and workouts with their v2 names only when they have one", () => {

@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import { Plus, RotateCw, Trash2 } from "lucide-react";
 import {
   STRUCTURE_LIMITS,
@@ -13,7 +14,11 @@ import {
   dayLabel,
   newWorkout,
   nextLabel,
+  removeWorkoutAt,
+  rotationOwners,
+  setRotationPosition,
   spreadDays,
+  updateWorkout,
   workoutsFromSplit,
 } from "../structure-draft";
 
@@ -35,23 +40,20 @@ export function PhaseEditorV2({
 }) {
   const labels = phase.workouts.map((workout) => workout.label);
   const rotation = phase.rotation ?? labels;
-  const set = (update: Partial<PhaseInputV2>) => onChange({ ...phase, ...update });
-  const setWorkout = (index: number, update: Partial<WorkoutInputV2>) => {
-    const before = phase.workouts[index];
-    const workouts = phase.workouts.map((workout, i) => (i === index ? { ...workout, ...update } : workout));
-    // A renamed workout keeps its places in a custom rotation.
-    const renamed = update.label !== undefined && update.label !== before.label;
-    set({
-      workouts,
-      rotation: renamed && phase.rotation ? phase.rotation.map((label) => (label === before.label ? update.label! : label)) : phase.rotation,
-    });
+  // Which workout each rotation position belongs to, kept across keystrokes: while a label is being typed it
+  // can briefly equal another workout's label, and the text alone would merge their places (structure-draft.ts).
+  const owners = useRef<number[] | null>(null);
+  const apply = (edit: { phase: PhaseInputV2; owners: number[] | null }) => {
+    owners.current = edit.owners;
+    onChange(edit.phase);
   };
-  const removeWorkout = (index: number) => {
-    const gone = phase.workouts[index].label;
-    const rest = phase.workouts.filter((_, i) => i !== index);
-    const kept = phase.rotation?.filter((label) => label !== gone) ?? null;
-    set({ workouts: rest, rotation: kept && kept.length ? kept : null });
+  const set = (update: Partial<PhaseInputV2>) => {
+    if ("rotation" in update) owners.current = update.rotation ? rotationOwners(update.rotation, labels, null) : null;
+    onChange({ ...phase, ...update });
   };
+  const setWorkout = (index: number, update: Partial<WorkoutInputV2>) =>
+    apply(updateWorkout(phase, index, update, owners.current));
+  const removeWorkout = (index: number) => apply(removeWorkoutAt(phase, index, owners.current));
   const setSessions = (sessionsPerWeek: number) =>
     set({ sessionsPerWeek, trainingDays: phase.trainingDays ? spreadDays(sessionsPerWeek) : null });
   const focusOf = (workout: WorkoutInputV2) => workout.focus ?? { note: null, minutes: null };
@@ -214,7 +216,9 @@ export function PhaseEditorV2({
           <input
             type="checkbox"
             checked={phase.rotation !== null}
-            onChange={(event) => set({ rotation: event.target.checked ? [...labels] : null })}
+            onChange={(event) =>
+              apply({ phase: { ...phase, rotation: event.target.checked ? [...labels] : null }, owners: event.target.checked ? labels.map((_, i) => i) : null })
+            }
           />
           Rotação personalizada
         </label>
@@ -229,7 +233,7 @@ export function PhaseEditorV2({
                     aria-label={`Posição ${index + 1} da rotação`}
                     value={label}
                     onChange={(event) =>
-                      set({ rotation: rotation.map((value, i) => (i === index ? event.target.value : value)) })
+                      apply(setRotationPosition(phase, index, event.target.selectedIndex, owners.current))
                     }
                   >
                     {labels.map((option, i) => (
@@ -245,7 +249,10 @@ export function PhaseEditorV2({
               <button
                 type="button"
                 className="button secondary small"
-                onClick={() => set({ rotation: [...rotation, labels[0]] })}
+                onClick={() => {
+                  const known = rotationOwners(rotation, labels, owners.current);
+                  apply({ phase: { ...phase, rotation: [...rotation, labels[0]] }, owners: [...known, 0] });
+                }}
               >
                 <Plus size={15} /> Adicionar posição
               </button>
@@ -253,7 +260,10 @@ export function PhaseEditorV2({
                 type="button"
                 className="button secondary small"
                 disabled={rotation.length === 1}
-                onClick={() => set({ rotation: rotation.slice(0, -1) })}
+                onClick={() => {
+                  const known = rotationOwners(rotation, labels, owners.current);
+                  apply({ phase: { ...phase, rotation: rotation.slice(0, -1) }, owners: known.slice(0, -1) });
+                }}
               >
                 Remover a última posição
               </button>
@@ -307,7 +317,8 @@ export function PhaseEditorV2({
         )}
         {phase.trainingDays !== null && (
           <p className="field-hint">
-            O dia 1 é o primeiro dia de cada semana da fase. As sessões seguem em ordem; duas sessões podem cair no mesmo dia.
+            O dia 1 é o primeiro dia de cada semana da fase. As sessões seguem em ordem; duas sessões de treinos diferentes podem cair
+            no mesmo dia (o aluno registra cada treino uma vez por dia).
           </p>
         )}
       </fieldset>

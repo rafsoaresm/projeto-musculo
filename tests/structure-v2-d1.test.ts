@@ -238,7 +238,20 @@ describe("free structures in a saved plan (topic 3)", () => {
     expect(saved).toMatchObject({ status: "saved" });
     expect(await sessions.save("st-1", { planId: plan.planId, phaseIndex: 1, workoutLabel: "Corrida", performedOn: TODAY, exercises: [] }, NOW)).not.toMatchObject({ status: "saved" });
     const progress = await sessions.progress("st-1", TODAY);
-    expect(progress.cycles.some((cycle) => cycle.planId === plan.planId)).toBe(true);
+    const cycle = progress.cycles.find((item) => item.planId === plan.planId)!;
+    // Delivered on 10/11: the week in progress is the second of phase 1, with its v2 sessions; the log counts in it.
+    expect(cycle.weeks.map((week) => [week.phaseIndex, week.startDate, week.workouts, week.planned, week.recorded, week.recordedWorkouts])).toEqual([
+      [1, "2026-11-09", ["Superior", "Inferior"], 2, 1, ["Corrida"]],
+    ]);
+    // Later on, the weeks of phase 2 foresee its 5 sessions, in the rotation that runs across its weeks.
+    const later = (await sessions.progress("st-1", "2026-11-30")).cycles.find((item) => item.planId === plan.planId)!;
+    expect(later.weeks.map((week) => [week.phaseIndex, week.startDate, week.workouts.join(","), week.planned])).toEqual([
+      [1, "2026-11-09", "Superior,Inferior", 2],
+      [2, "2026-11-16", "Superior,Corrida,Corrida,Superior,Corrida", 5],
+      [2, "2026-11-23", "Corrida,Superior,Corrida,Corrida,Superior", 5],
+      [2, "2026-11-30", "Corrida,Corrida,Superior,Corrida,Corrida", 5],
+    ]);
+    expect(later.closed).toEqual({ weeks: 3, planned: 12, recorded: 1, covered: 1 });
 
     // The student's copy (file and readable) carries the names.
     const copy = await studentExportFor(db, "client-1").generate(NOW);

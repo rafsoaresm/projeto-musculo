@@ -85,14 +85,18 @@ export const STRUCTURE_LIMITS = {
 
 /**
  * Rótulo livre de um treino. Sem `|` (o editor de prescrição separa "fase|rótulo"), sem `/` nem `\` (o rótulo
- * vai num segmento do endereço de registro do aluno) e sem caracteres de controle.
+ * vai num segmento do endereço de registro do aluno), sem caracteres de controle, de formatação ou
+ * separadores de linha (invisíveis na tela). Também não pode ser só pontos: `.` e `..` num segmento do
+ * endereço são removidos pelo navegador, e o aluno nunca chegaria ao registro desse treino.
  */
 export const workoutLabelSchema = z
   .string()
   .trim()
   .min(1, "Dê um rótulo a cada treino.")
   .max(STRUCTURE_LIMITS.MAX_LABEL, `O rótulo do treino tem até ${STRUCTURE_LIMITS.MAX_LABEL} caracteres.`)
-  .regex(/^[^|/\\\u0000-\u001f\u007f]+$/, "O rótulo do treino não pode ter |, / ou \\.");
+  .regex(/^[^|/\\\p{Cc}\p{Cf}\p{Zl}\p{Zp}]+$/u, "O rótulo do treino não pode ter |, / ou \\ nem caracteres invisíveis.")
+  .refine((label) => /[\p{L}\p{N}\p{S}\p{P}]/u.test(label), "O rótulo do treino precisa de pelo menos uma letra, número ou símbolo visível.")
+  .refine((label) => !/^\.+$/.test(label), "O rótulo do treino não pode ser só pontos.");
 
 const optionalText = (max: number, message: string) =>
   z
@@ -175,7 +179,45 @@ export const phaseSchemaV2 = z
       if (phase.trainingDays.some((day, i) => i > 0 && day < phase.trainingDays![i - 1]))
         context.addIssue({ code: "custom", path: ["trainingDays"], message: "Os dias de treino seguem a ordem das sessões da semana." });
     }
+    const clash = sameDayClash(phase);
+    if (clash) context.addIssue({ code: "custom", path: [clash.path], message: clash.message });
   });
+
+/**
+ * O registro do aluno guarda um treino por dia (`workout_sessions` tem UNIQUE por fase, rótulo e dia, 0012;
+ * decisão Q5). Uma fase que põe o mesmo treino duas vezes numa data prevista, ou que pede o mesmo treino mais
+ * de 7 vezes numa semana, prevê sessões que o aluno não consegue registrar. A rotação continua entre as
+ * semanas, então cada semana pode ter outra sequência; a sequência se repete depois de `rotation.length`
+ * semanas, e só essas são conferidas (o total de sessões já é limitado pelo ciclo).
+ */
+function sameDayClash(
+  phase: Pick<PhaseInputV2, "weeks" | "sessionsPerWeek" | "workouts" | "rotation" | "trainingDays">,
+): { path: "trainingDays" | "rotation" | "sessionsPerWeek"; message: string } | null {
+  const rotation = phase.rotation ?? phase.workouts.map((workout) => workout.label);
+  if (!rotation.length || !Number.isInteger(phase.weeks) || phase.weeks < 1) return null;
+  const days = phase.trainingDays?.length === phase.sessionsPerWeek ? phase.trainingDays : null;
+  const weeks = Math.min(phase.weeks, rotation.length);
+  for (let week = 0; week < weeks; week += 1) {
+    const seen = new Map<string, number>();
+    for (let session = 0; session < phase.sessionsPerWeek; session += 1) {
+      const label = rotation[(week * phase.sessionsPerWeek + session) % rotation.length];
+      const key = days ? `${days[session]}|${label}` : label;
+      const count = (seen.get(key) ?? 0) + 1;
+      seen.set(key, count);
+      if (days && count > 1)
+        return {
+          path: "trainingDays",
+          message: `Na semana ${week + 1}, o treino "${label}" cai duas vezes no mesmo dia; o aluno registra cada treino uma vez por dia.`,
+        };
+      if (!days && count > 7)
+        return {
+          path: phase.rotation ? "rotation" : "sessionsPerWeek",
+          message: `O treino "${label}" aparece mais de 7 vezes numa semana; o aluno registra cada treino uma vez por dia.`,
+        };
+    }
+  }
+  return null;
+}
 
 /** Último dia aceito pelo calendário (o mesmo da data inicial). */
 const LAST_DAY = "2100-12-31";

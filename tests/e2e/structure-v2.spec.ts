@@ -37,8 +37,23 @@ test("free structure: build, check limits, save and prescribe on free labels", a
   // A label with "|" is refused with the reason and the phase.
   await page.getByLabel("Rótulo do treino 2").fill("Inferior|2");
   await page.getByRole("button", { name: "Calcular planejamento" }).click();
-  await expect(page.locator(".error-message")).toHaveText("Fase 1: O rótulo do treino não pode ter |, / ou \\.");
+  await expect(page.locator(".error-message")).toHaveText("Fase 1: O rótulo do treino não pode ter |, / ou \\ nem caracteres invisíveis.");
   await page.getByLabel("Rótulo do treino 2").fill("Inferior");
+  // A custom rotation follows each workout while its label is typed key by key, even when the text passes
+  // through another workout's label ("Superior" on the way to "Superior2").
+  await page.getByLabel("Rotação personalizada").check();
+  await page.getByRole("button", { name: "Adicionar posição" }).click();
+  await page.getByLabel("Posição 3 da rotação").selectOption("Inferior");
+  await page.getByLabel("Rótulo do treino 2").clear();
+  await page.getByLabel("Rótulo do treino 2").pressSequentially("Superior2");
+  await expect(page.getByLabel("Posição 1 da rotação")).toHaveValue("Superior");
+  await expect(page.getByLabel("Posição 2 da rotação")).toHaveValue("Superior2");
+  await expect(page.getByLabel("Posição 3 da rotação")).toHaveValue("Superior2");
+  await page.getByLabel("Rótulo do treino 2").clear();
+  await page.getByLabel("Rótulo do treino 2").pressSequentially("Inferior");
+  await expect(page.getByLabel("Posição 1 da rotação")).toHaveValue("Superior");
+  await expect(page.getByLabel("Posição 3 da rotação")).toHaveValue("Inferior");
+  await page.getByLabel("Rotação personalizada").uncheck();
   // Going back to the standard split is refused: this structure does not fit in it.
   await page.getByRole("radio", { name: /Divisão padrão/ }).click();
   await expect(page.locator(".error-message")).toContainText("não cabe na divisão padrão");
