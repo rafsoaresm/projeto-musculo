@@ -646,6 +646,8 @@ describe("microciclo: medição local (Node, indicativa) do caso grande", () => 
       }
     }
     console.log(`[motor-microcycle] medição local (Node ${process.version}, gc ${gc ? "exposto" : "não exposto"}):\n${rows.map((r) => `${r.version} ${r.op}: ${r.ms} ms, heap Δ ${r.heapDeltaMb} MB`).join("\n")}`);
-    for (const r of rows.filter((x) => x.version === "2026.11.4")) expect(r.ms as number, String(r.op)).toBeLessThan(5000);
+    // Teto contra regressão de ordem de grandeza (a continuação por treino levava ≈ 33 s), não um orçamento de CPU:
+    // no CI a suíte roda arquivos em paralelo e o mesmo caso já mediu 5,2 s. O custo determinístico é o teto de passos acima.
+    for (const r of rows.filter((x) => x.version === "2026.11.4")) expect(r.ms as number, String(r.op)).toBeLessThan(15000);
   }, 180_000);
 });
