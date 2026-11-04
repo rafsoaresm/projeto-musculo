@@ -71,15 +71,18 @@ test("Planos e treinos → Novo plano → choose the student → structure → p
   // Straight to the prescription, with an explicit first step using the real names.
   await expect(page.getByRole("heading", { name: "Ciclo da Bruna", level: 1 })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Prescrição dos exercícios" })).toBeVisible();
-  await expect(page.getByRole("note")).toContainText("Primeiro passo: escolha os exercícios do Treino A da Fase 1.");
+  await expect(page.getByRole("note")).toContainText("Primeiro passo: escolha os exercícios do Treino A da Fase 01.");
   await expect(workout(page, "A").getByText("0 de 20", { exact: true })).toBeVisible();
   await expect(page.locator("details.structure-details summary")).toContainText("3 fases · 12 semanas");
   await noHorizontalOverflow(page);
   const revisionURL = page.url();
 
-  // Add an exercise from the library to Treino A of Fase 1.
+  // Add an exercise from the library to Treino A of Fase 1, even when another phase is open: the link opens Fase 01 and goes there.
+  await page.getByRole("group", { name: "Selecionar mesociclo" }).getByRole("button", { name: "Fase 02" }).click();
   await page.getByRole("link", { name: "Adicionar exercício ao Treino A" }).click();
+  await expect(page.getByRole("group", { name: "Selecionar mesociclo" }).getByRole("button", { name: "Fase 01" })).toHaveAttribute("aria-pressed", "true");
   const a = workout(page, "A");
+  await expect(a.getByLabel("Exercício da biblioteca")).toBeInViewport();
   await a.getByLabel("Exercício da biblioteca").selectOption({ label: "Agachamento goblet" });
   await a.getByRole("button", { name: "Adicionar da biblioteca" }).click();
   await expect(a.locator(".exercise-list").getByText("Agachamento goblet")).toBeVisible();
@@ -134,7 +137,7 @@ test("the student's Novo plano form saves a target of 20 and the prescription co
   }
   await page.getByRole("button", { name: "Salvar e prescrever exercícios" }).click();
   await expect(page.getByRole("heading", { name: "Ciclo de vinte", level: 1 })).toBeVisible();
-  await expect(page.getByRole("note")).toContainText("Primeiro passo: escolha os exercícios do Treino Full Body da Fase 1.");
+  await expect(page.getByRole("note")).toContainText("Primeiro passo: escolha os exercícios do Treino Full Body da Fase 01.");
   await expect(workout(page, "Full Body").getByText("0 de 20", { exact: true })).toBeVisible();
   await page.locator("details.structure-details summary").click();
   await expect(page.getByLabel("Alvo de exercícios por treino")).toHaveValue("20");

@@ -64,6 +64,17 @@ export function studentsFor(
         .all<StudentSummary>();
       return result.results;
     },
+    /**
+     * The students this user can prescribe a plan for: the reach of `list()` narrowed to an active technical
+     * assignment, the same rule `plansFor().create` checks (0.93, the Novo plano picker).
+     */
+    async prescribable(): Promise<StudentSummary[]> {
+      const result = await db
+        .prepare(`${authorizedStudents} AND ${technicalAccessExists("s", "?2")} ORDER BY s.id`)
+        .bind(organizationId, userId)
+        .all<StudentSummary>();
+      return result.results;
+    },
     async findById(studentId: string): Promise<StudentSummary | null> {
       return db
         .prepare(`${authorizedStudents} AND s.id = ?3`)

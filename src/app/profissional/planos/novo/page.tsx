@@ -16,8 +16,9 @@ const first = (value: string | string[] | undefined) => (Array.isArray(value) ? 
 
 /**
  * "Novo plano" from Planos e treinos (0.93, user's request of 03/11/2026): choose the student, then the student's own
- * Novo plano form. The list is the same repository the student list and that form use, so only the students this
- * professional reaches appear. The search is a plain GET form, so it works without JavaScript.
+ * Novo plano form. The list comes from the students repository, narrowed to the students with an active technical
+ * assignment (the rule `plansFor().create` checks), so a student reached only by another kind of access never appears
+ * here to fail on save. The search is a plain GET form, so it works without JavaScript.
  */
 export default async function NewPlanPicker({
   searchParams,
@@ -37,13 +38,13 @@ export default async function NewPlanPicker({
         <PageHeading eyebrow="PLANOS E TREINOS" title="Novo plano: escolha o aluno" />
         <section className="panel">
           <h2>Novo plano é feito pela equipe técnica.</h2>
-          <p>Quem prescreve é o dono, o gestor ou o técnico com o aluno atribuído.</p>
+          <p>O plano é prescrito por quem tem o aluno atribuído, seja dono, gestor ou técnico.</p>
         </section>
         {back}
       </>
     );
   const [students, open] = await Promise.all([
-    studentsFor(db, context).list(),
+    studentsFor(db, context).prescribable(),
     plansFor(db, context).inProgress(),
   ]);
   const byStudent = new Map<string, PlanInProgress[]>();
@@ -126,7 +127,7 @@ export default async function NewPlanPicker({
                       )}
                     </div>
                     <Link
-                      className="button primary small"
+                      className="button primary small picker-action"
                       href={`/profissional/alunos/${student.id}/planos/novo`}
                     >
                       <ListChecks size={16} /> Novo plano

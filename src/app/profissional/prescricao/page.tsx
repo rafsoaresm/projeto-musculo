@@ -44,7 +44,7 @@ export default async function Prescription() {
               ? "Escolha Novo plano, selecione o aluno, defina o ciclo e prescreva os exercícios."
               : "Os planos são feitos pela equipe técnica, no cadastro de cada aluno."}
           </p>
-          <div className="heading-actions">
+          <div className="heading-actions empty-actions">
             {newPlan}
             <Link className="button secondary" href="/profissional/alunos">
               Ver alunos

@@ -1,5 +1,6 @@
 "use client";
 import { useState, useTransition } from "react";
+import { flushSync } from "react-dom";
 import { ArrowDown, ArrowUp, Copy, ListChecks, Pencil, Plus, Trash2 } from "lucide-react";
 import { Pill } from "@/components/ui";
 import type { PrescribedItem, Target } from "@/db/prescription";
@@ -65,6 +66,7 @@ export function PrescriptionEditor({
   const firstPhase = schedule.phases[0];
   const firstWorkout = workoutLabels(firstPhase.split)[0];
   const firstStep = !readOnly && items.length === 0;
+  const firstTarget = `adicionar-${firstPhase.index}-${firstWorkout.replace(/\s+/g, "-")}`;
 
   function run(task: () => Promise<PrescriptionResult>, done?: () => void) {
     startTransition(async () => {
@@ -96,7 +98,8 @@ export function PrescriptionEditor({
           <ListChecks size={20} aria-hidden="true" />
           <div>
             <strong>
-              Primeiro passo: escolha os exercícios do Treino {firstWorkout} da Fase {firstPhase.index}.
+              Primeiro passo: escolha os exercícios do Treino {firstWorkout} da Fase{" "}
+              {String(firstPhase.index).padStart(2, "0")}.
             </strong>
             <p className="small">
               Em cada treino, adicione da biblioteca ou com um nome próprio. Depois, siga para os outros treinos e
@@ -104,8 +107,15 @@ export function PrescriptionEditor({
             </p>
             <a
               className="step-link"
-              href={`#adicionar-${firstPhase.index}-${firstWorkout.replace(/\s+/g, "-")}`}
-              onClick={() => setPhase(0)}
+              href={`#${firstTarget}`}
+              onClick={(event) => {
+                // The target is drawn only while Fase 1 is open: open it first, then go to it.
+                if (phase === 0) return;
+                event.preventDefault();
+                flushSync(() => setPhase(0));
+                document.getElementById(firstTarget)?.scrollIntoView();
+                history.replaceState(null, "", `#${firstTarget}`);
+              }}
             >
               Adicionar exercício ao Treino {firstWorkout}
             </a>

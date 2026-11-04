@@ -8,7 +8,7 @@ import { stateLabel } from "./labels";
 export function PlanTable({ rows }: { rows: PlanOverviewRow[] }) {
   return (
     <div className="table-wrap">
-      <table className="data-table stack">
+      <table className="data-table stack plan-overview">
         <caption className="sr-only">
           Planos e prescrição dos seus alunos
         </caption>
@@ -61,8 +61,9 @@ export function PlanTable({ rows }: { rows: PlanOverviewRow[] }) {
                   </span>
                 </td>
                 <td data-label="Revisão">
-                  {row.revisionNumber}{" "}
-                  <Pill tone={label.tone}>{label.text}</Pill>
+                  <span className="revision-cell">
+                    {row.revisionNumber} <Pill tone={label.tone}>{label.text}</Pill>
+                  </span>
                 </td>
                 <td data-label="Período">
                   {formatCalendarDate(row.startDate)} a{" "}
