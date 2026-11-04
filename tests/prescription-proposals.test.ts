@@ -304,6 +304,62 @@ describe("topic 12: concurrency and idempotency", () => {
     expect(failure(await service().lock(d.planId, d.revisionId, { proposalId: out.proposalId, ...cas(5), targets: [{ phaseIndex: 1, slotKey: preserved.slotKey }], locked: true }))).toBe("invalid_target");
   });
 
+  it("a write id reused for another intent is refused as key_reused, never a silent success; the same intent is replayed", async () => {
+    const d = await newDraft();
+    const genKey = id("gen");
+    const out = ok(await service().generate(d.planId, d.revisionId, { idempotencyKey: genKey, baseContentVersion: await contentVersion(d), answers: ANSWERS }));
+    const snap = await snapshot(d, out.proposalId);
+    const targets = [{ phaseIndex: 1, slotKey: snap.result.occurrences[0].items[0].slotKey }];
+    const w = id("write");
+    expect(ok(await service().lock(d.planId, d.revisionId, { proposalId: out.proposalId, writeId: w, expectedVersion: 1, targets, locked: true }))).toMatchObject({ version: 2, replayed: false });
+    // The same intent again (lost answer): replayed.
+    expect(ok(await service().lock(d.planId, d.revisionId, { proposalId: out.proposalId, writeId: w, expectedVersion: 1, targets, locked: true }))).toMatchObject({ version: 2, replayed: true });
+    // The same write id for other intents: refused, nothing written.
+    expect(failure(await service().lock(d.planId, d.revisionId, { proposalId: out.proposalId, writeId: w, expectedVersion: 1, targets, locked: false }))).toBe("key_reused");
+    expect(failure(await service().discard(d.planId, d.revisionId, { proposalId: out.proposalId, writeId: w, expectedVersion: 2 }))).toBe("key_reused");
+    expect(failure(await service().acceptFlagDecision(d.planId, d.revisionId, { proposalId: out.proposalId, writeId: w, expectedVersion: 2, flagCode: "SCREENING_NOT_DONE", decision: { kind: "ACKNOWLEDGE" } }))).toBe("key_reused");
+    expect(failure(await service().regenerate(d.planId, d.revisionId, { proposalId: out.proposalId, idempotencyKey: id("key"), writeId: w, expectedVersion: 2, scope: { kind: "PHASE", phaseIndex: 3 } }))).toBe("key_reused");
+    // The generation's key used as a write id is another intent too.
+    expect(failure(await service().discard(d.planId, d.revisionId, { proposalId: out.proposalId, writeId: genKey, expectedVersion: 1 }))).toBe("key_reused");
+    const h = (await repo().header(d.planId, d.revisionId, out.proposalId))!;
+    expect(h).toMatchObject({ state: "OPEN", version: 2 });
+    expect(await count("SELECT COUNT(*) AS n FROM proposal_decisions WHERE proposal_id = ?1", out.proposalId)).toBe(2);
+    // A flag decision retried with its own write id is replayed; with another decision, refused.
+    const wf = id("write");
+    const flag = { proposalId: out.proposalId, writeId: wf, expectedVersion: 2, flagCode: "SCREENING_NOT_DONE" };
+    expect(ok(await service().acceptFlagDecision(d.planId, d.revisionId, { ...flag, decision: { kind: "ACKNOWLEDGE" } })).replayed).toBe(false);
+    expect(ok(await service().acceptFlagDecision(d.planId, d.revisionId, { ...flag, decision: { kind: "ACKNOWLEDGE" } })).replayed).toBe(true);
+    expect(failure(await service().acceptFlagDecision(d.planId, d.revisionId, { ...flag, decision: { kind: "EXCLUDE_CAUTION_TAG", tag: "AXIAL_LOAD" } }))).toBe("key_reused");
+    const wd = id("write");
+    expect(ok(await service().discard(d.planId, d.revisionId, { proposalId: out.proposalId, writeId: wd, expectedVersion: 3 })).replayed).toBe(false);
+    expect(ok(await service().discard(d.planId, d.revisionId, { proposalId: out.proposalId, writeId: wd, expectedVersion: 3 })).replayed).toBe(true);
+  });
+
+  it("rebase is refused when the saved periodization changed shape (weeks added, dates moved); same shape is rebased", async () => {
+    const d = await newDraft();
+    const base = await contentVersion(d);
+    const out = await generated(d);
+    const plans = plansFor(db, scope("tech-a"));
+    const rebaseAt = async (version: number) => service().rebase(d.planId, d.revisionId, { proposalId: out.proposalId, idempotencyKey: id("key"), ...cas(version) });
+    // One more week in phase 1: the proposal has no sessions for it.
+    const longer = { ...V2, phases: [{ ...V2.phases[0], weeks: 4 }, V2.phases[1], V2.phases[2]] };
+    expect(await plans.saveDraft(d.planId, d.revisionId, longer, NOW)).toBe(true);
+    expect(failure(await rebaseAt(1))).toBe("structure_changed");
+    // Same weeks again, but the plan starts two weeks later: every session date moved.
+    expect(await plans.saveDraft(d.planId, d.revisionId, { ...V2, startDate: "2026-12-07" }, NOW)).toBe(true);
+    expect(failure(await rebaseAt(1))).toBe("structure_changed");
+    // A renamed phase is a structure change too.
+    expect(await plans.saveDraft(d.planId, d.revisionId, { ...V2, phases: [{ ...V2.phases[0], name: "Outra" }, V2.phases[1], V2.phases[2]] }, NOW)).toBe(true);
+    expect(failure(await rebaseAt(1))).toBe("structure_changed");
+    const h = (await repo().header(d.planId, d.revisionId, out.proposalId))!;
+    expect(h).toMatchObject({ version: 1, baseContentVersion: base });
+    // Back to the generated shape: the rebase goes through and moves the base forward.
+    expect(await plans.saveDraft(d.planId, d.revisionId, V2, NOW)).toBe(true);
+    const rebased = ok(await rebaseAt(1));
+    expect(rebased.version).toBe(2);
+    expect((await repo().header(d.planId, d.revisionId, out.proposalId))!.baseContentVersion).toBe(await contentVersion(d));
+  });
+
   it("a closed proposal refuses every change, and the database keeps its rows frozen", async () => {
     const d = await newDraft();
     const out = await generated(d);
@@ -375,8 +431,8 @@ describe("topic 9: partial regeneration", () => {
     }
     now = next;
 
-    // WORKOUT A from week 2 (the professional moves the exclusion back off): weeks ≥ 2 of A redone, B and week 1 untouched.
-    ok(await service().regenerate(d.planId, d.revisionId, { proposalId: out.proposalId, idempotencyKey: id("key"), ...cas(4), scope: { kind: "WORKOUT", phaseIndex: 1, label: "A", fromWeek: 2 }, answers: ANSWERS }));
+    // WORKOUT A from week 2 (the professional moves the exclusion back off; answers are a patch, so the list is sent empty): weeks ≥ 2 of A redone, B and week 1 untouched.
+    ok(await service().regenerate(d.planId, d.revisionId, { proposalId: out.proposalId, idempotencyKey: id("key"), ...cas(4), scope: { kind: "WORKOUT", phaseIndex: 1, label: "A", fromWeek: 2 }, answers: { excludedExerciseIds: [] } }));
     next = await picks(out.proposalId);
     const label = new Map((await snapshot(d, out.proposalId)).result.occurrences.map((o) => [`${o.phaseIndex}/${o.week}/${o.slot}`, o.label]));
     for (const k of next.keys()) {
@@ -396,8 +452,8 @@ describe("topic 9: partial regeneration", () => {
     }
     now = next;
 
-    // FROM_PHASE 2 back to the original answers: phase 1 untouched, phases 2 and 3 equal the first generation's exercises.
-    ok(await service().regenerate(d.planId, d.revisionId, { proposalId: out.proposalId, idempotencyKey: id("key"), ...cas(6), scope: { kind: "FROM_PHASE", phaseIndex: 2 }, answers: ANSWERS }));
+    // FROM_PHASE 2 back to the original answers (the patch empties the exclusion list): phase 1 untouched, phases 2 and 3 equal the first generation's exercises.
+    ok(await service().regenerate(d.planId, d.revisionId, { proposalId: out.proposalId, idempotencyKey: id("key"), ...cas(6), scope: { kind: "FROM_PHASE", phaseIndex: 2 }, answers: { ...ANSWERS, excludedExerciseIds: [] } }));
     next = await picks(out.proposalId);
     for (const k of next.keys()) {
       if (k.startsWith("1/")) expect(next.get(k)!.ids).toEqual(now.get(k)!.ids);
@@ -451,8 +507,23 @@ describe("topic 9: partial regeneration", () => {
     // The next regeneration keeps the decision (it is in the answers now).
     ok(await service().regenerate(d.planId, d.revisionId, { proposalId: out.proposalId, idempotencyKey: id("key"), ...cas(2), scope: { kind: "PHASE", phaseIndex: 3 } }));
     expect((await snapshot(d, out.proposalId)).result.flags.find((f) => f.code === "SCREENING_NOT_DONE")!.decided).toEqual({ kind: "ACKNOWLEDGE" });
-    expect(failure(await service().acceptFlagDecision(d.planId, d.revisionId, { proposalId: out.proposalId, ...cas(3), flagCode: "NAO_EXISTE", decision: { kind: "ACKNOWLEDGE" } }))).toBe("invalid_target");
-    expect(failure(await service().acceptFlagDecision(d.planId, d.revisionId, { proposalId: out.proposalId, ...cas(3), flagCode: "SCREENING_NOT_DONE", decision: { kind: "EXCLUDE_EXERCISE", exerciseId: "ex-org-b" } }))).toBe("unknown_exercise");
+    // Answers sent with a regeneration are a patch: they change what they name and keep the recorded decisions.
+    ok(await service().regenerate(d.planId, d.revisionId, { proposalId: out.proposalId, idempotencyKey: id("key"), ...cas(3), scope: { kind: "PHASE", phaseIndex: 3 }, answers: ANSWERS }));
+    const s2 = await snapshot(d, out.proposalId);
+    expect(s2.result.flags.find((f) => f.code === "SCREENING_NOT_DONE")!.decided).toEqual({ kind: "ACKNOWLEDGE" });
+    expect(s2.header.parameters).toMatchObject({ acceptedFlagDecisions: [{ flagCode: "SCREENING_NOT_DONE", decision: { kind: "ACKNOWLEDGE" } }] });
+    ok(await service().regenerate(d.planId, d.revisionId, { proposalId: out.proposalId, idempotencyKey: id("key"), ...cas(4), scope: { kind: "PHASE", phaseIndex: 3 }, answers: { metadataTrust: "REVIEWED_ONLY" } }));
+    const s3 = await snapshot(d, out.proposalId);
+    expect(s3.header.parameters).toMatchObject({ metadataTrust: "REVIEWED_ONLY", equipmentCodes: ANSWERS.equipmentCodes, acceptedFlagDecisions: [{ flagCode: "SCREENING_NOT_DONE" }] });
+    expect(failure(await service().acceptFlagDecision(d.planId, d.revisionId, { proposalId: out.proposalId, ...cas(5), flagCode: "NAO_EXISTE", decision: { kind: "ACKNOWLEDGE" } }))).toBe("invalid_target");
+    expect(failure(await service().acceptFlagDecision(d.planId, d.revisionId, { proposalId: out.proposalId, ...cas(5), flagCode: "SCREENING_NOT_DONE", decision: { kind: "EXCLUDE_EXERCISE", exerciseId: "ex-org-b" } }))).toBe("unknown_exercise");
+    // After the draft is marked ready, the proposal's summary (alerts, decisions) is still readable; its pages are not.
+    expect(await plansFor(db, scope("tech-a")).markReady(d.planId, d.revisionId, NOW)).toBe(true);
+    const past = await repo().summary(d.planId, d.revisionId, out.proposalId);
+    expect(past!.header.state).toBe("SUPERSEDED");
+    expect(past!.summary.flags.find((f) => f.code === "SCREENING_NOT_DONE")!.decided).toEqual({ kind: "ACKNOWLEDGE" });
+    expect(await repo().view(d.planId, d.revisionId, out.proposalId, { phaseIndex: 1 })).toBeNull();
+    expect(await repo("tech-b", "org-b").summary(d.planId, d.revisionId, out.proposalId)).toBeNull();
   });
 });
 

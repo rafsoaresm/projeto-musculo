@@ -26,6 +26,7 @@ describe.skipIf(!enabled)("motor under workerd (local measurement)", () => {
   it("measures engine CPU, proposal writes and the execution save at the technical caps", async () => {
     // esbuild comes with the Cloudflare/OpenNext toolchain; imported here so a normal run (skipped) never loads it.
     const { build } = await import("esbuild");
+    let patchedMaxSets = false;
     const bundled = await build({
       entryPoints: [fileURLToPath(new URL("./helpers/measure-worker.ts", import.meta.url))],
       bundle: true,
@@ -37,7 +38,24 @@ describe.skipIf(!enabled)("motor under workerd (local measurement)", () => {
       conditions: ["workerd", "worker", "browser"],
       tsconfig: fileURLToPath(new URL("../tsconfig.json", import.meta.url)),
       logLevel: "silent",
+      plugins: [
+        {
+          // Design §1.5: execution MAX_SETS may go from 12 to 20 (0012 CHECK allows 1..20) only if `save` with 30 × 20 sets is
+          // measured. The measurement bundle alone raises the constant; the app keeps 12.
+          name: "measure-max-sets",
+          setup(b) {
+            b.onLoad({ filter: /src[\\/]modules[\\/]execucao[\\/]contracts\.ts$/ }, async (args) => {
+              const source = await readFile(args.path, "utf8");
+              const patched = source.replace("export const MAX_SETS = 12;", "export const MAX_SETS = 20;");
+              if (patched === source) throw new Error("MAX_SETS not found in execucao/contracts.ts");
+              patchedMaxSets = true;
+              return { contents: patched, loader: "ts" };
+            });
+          },
+        },
+      ],
     });
+    expect(patchedMaxSets).toBe(true);
     const mf = new Miniflare(
       convertV4MiniflareOptions({
         modules: true,
@@ -118,17 +136,20 @@ describe.skipIf(!enabled)("motor under workerd (local measurement)", () => {
         rows.push({ what, ms: Math.round(median(times)), status: (last.out as { status: string }).status, occurrences: last.occurrences, items: last.items });
       }
 
-      // Execution save at the caps: 30 exercises × MAX_SETS (12) sets.
+      // Execution save at the caps: 30 exercises × MAX_SETS (12) sets, and 30 × 20 (the candidate cap, design §1.5).
       const setup = (await call("/execution-setup")).json as { planId: string; prescribed: string[] };
       expect(setup.prescribed).toHaveLength(30);
-      const saves: number[] = [];
-      let saved: unknown = null;
-      for (const performedOn of ["2026-11-02", "2026-11-03", "2026-11-04"]) {
-        const r = await call("/execution-save", { planId: setup.planId, prescribed: setup.prescribed, sets: 12, performedOn });
-        saves.push(r.ms);
-        saved = r.json.out;
+      const days = [["2026-11-02", "2026-11-03", "2026-11-04"], ["2026-10-30", "2026-10-31", "2026-11-01"]];
+      for (const [n, sets] of [12, 20].entries()) {
+        const saves: number[] = [];
+        let saved: unknown = null;
+        for (const performedOn of days[n]) {
+          const r = await call("/execution-save", { planId: setup.planId, prescribed: setup.prescribed, sets, performedOn });
+          saves.push(r.ms);
+          saved = r.json.out;
+        }
+        rows.push({ what: `execução: salvar 30 exercícios × ${sets} séries (${1 + 30 * (1 + sets)} comandos)`, ms: Math.round(median(saves)), status: (saved as { status: string }).status });
       }
-      rows.push({ what: "execução: salvar 30 exercícios × 12 séries", ms: Math.round(median(saves)), status: (saved as { status: string }).status });
 
       // Rows per statement: the same 5040 rows (≈ 10 MB of JSON) inserted through json_each in chunks of different sizes.
       await db.prepare("CREATE TABLE measure_rows (id TEXT PRIMARY KEY, a TEXT, b TEXT, c INTEGER, d TEXT)").run();

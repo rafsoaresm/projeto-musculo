@@ -22,7 +22,7 @@ import {
   type ProposalHeader,
 } from "@/db/prescription-proposals";
 import type { AuthenticatedContext } from "@/db/students";
-import { generate, workUnits } from "@/modules/prescricao/motor/generate";
+import { generate, phaseSummaries, workUnits } from "@/modules/prescricao/motor/generate";
 import { canonicalInput, canonicalJson, canonicalRequest, sha256Hex } from "@/modules/prescricao/motor/hash";
 import { rebase, regenerate, substitute } from "@/modules/prescricao/motor/regenerate";
 import { uniqueIssues } from "@/modules/prescricao/motor/trace";
@@ -294,6 +294,40 @@ async function prepare(
   return { ok: true, ctx: loaded.context, built };
 }
 
+/**
+ * `answersPatch` of a regeneration: the fields it sends replace the stored ones, the others stay. The alert decisions the
+ * professional already recorded ("acceptFlagDecision") are merged by alert code, never dropped by a patch that omits them.
+ * A patch that is not an object is passed on as is, so the strict parse refuses it.
+ */
+function patchAnswers(stored: unknown, patch: unknown): unknown {
+  if (!patch || typeof patch !== "object" || Array.isArray(patch)) return patch;
+  const base = stored && typeof stored === "object" && !Array.isArray(stored) ? (stored as Record<string, unknown>) : {};
+  const next = patch as Record<string, unknown>;
+  const decisions = (v: unknown) => (Array.isArray(v) ? (v as Array<{ flagCode?: unknown }>) : []);
+  const incoming = decisions(next.acceptedFlagDecisions);
+  const codes = new Set(incoming.map((d) => d?.flagCode));
+  const kept = decisions(base.acceptedFlagDecisions).filter((d) => !codes.has(d?.flagCode));
+  return { ...base, ...next, acceptedFlagDecisions: [...kept, ...incoming] };
+}
+
+/**
+ * Rebase only brings the draft's current rows in; it never re-plans sessions. So it is refused unless the saved periodization
+ * still has exactly the same phases (order, index, name, weeks, sessions per week) and, in every generated phase, exactly the same sessions (week, slot,
+ * label, week start and planned date), in both directions: no session gone, moved or renamed, and none added.
+ */
+function sameShape(input: EngineInput, previous: EngineResult, phasesGenerated: number[]): boolean {
+  const phase = (p: { phaseIndex: number; name: string | null; weeks: number; sessionsPerWeek: number }) => `${p.phaseIndex}|${p.name ?? ""}|${p.weeks}|${p.sessionsPerWeek}`;
+  const now = phaseSummaries(input).map(phase);
+  const before = previous.phases.map(phase);
+  if (now.length !== before.length || now.some((k, n) => before[n] !== k)) return false;
+  const generated = new Set(phasesGenerated);
+  const sig = (phaseIndex: number, o: { week: number; slot: number; label: string; weekStart: string; plannedDate: string | null }) =>
+    `${phaseIndex}|${o.week}|${o.slot}|${o.label}|${o.weekStart}|${o.plannedDate ?? ""}`;
+  const want = input.structure.phases.filter((ph) => generated.has(ph.index)).flatMap((ph) => ph.occurrences.map((o) => sig(ph.index, o))).sort();
+  const have = previous.occurrences.map((o) => sig(o.phaseIndex, o)).sort();
+  return want.length === have.length && want.every((k, n) => have[n] === k);
+}
+
 function engineOk(out: EngineOutcome): { ok: true; result: EngineResult } | { ok: false; outcome: ProposalOutcome } {
   if (out.ok) return { ok: true, result: out.result };
   if (out.code === "TARGET_NOT_FOUND" || out.code === "SCOPE_NOT_FOUND") return { ok: false, outcome: fail("invalid_target", { message: out.message }) };
@@ -325,7 +359,7 @@ export function proposalService(
       built: Built;
       answers: GenerationAnswers;
     }) => { ok: true; scope: GenerationScopeKind; scopeJson: unknown; input: EngineInput; result: EngineResult; target: unknown } | { ok: false; outcome: ProposalOutcome },
-    opts: { answersOverride?: unknown; rebase?: boolean } = {},
+    opts: { answersPatch?: unknown; rebase?: boolean } = {},
   ): Promise<ProposalOutcome> {
     const now = clock();
     const key = { idempotencyKey: p.idempotencyKey, requestHash: await requestHash(kind, { planId, revisionId, ...(hashPayload as object) }) };
@@ -336,7 +370,7 @@ export function proposalService(
     const { header, result: previous } = snap;
     if (header.state !== "OPEN") return fail("closed");
     if (header.version !== p.expectedVersion) return fail("conflict", { version: header.version });
-    const answers = parseAnswers(opts.answersOverride ?? header.parameters);
+    const answers = parseAnswers(opts.answersPatch === undefined ? header.parameters : patchAnswers(header.parameters, opts.answersPatch));
     if (!answers) return fail("invalid", { message: "As respostas desta proposta não são mais aceitas pelas regras atuais. Descarte e gere de novo." });
     const prepared = await prepare(db, context, planId, revisionId, answers, lockedOf(previous), now);
     if (!prepared.ok) return prepared.outcome;
@@ -428,7 +462,7 @@ export function proposalService(
           if (!out.ok) return out;
           return { ok: true, scope: typed.kind, scopeJson: typed, input: built.input, result: out.result, target: typed };
         },
-        { answersOverride: answers },
+        { answersPatch: answers },
       );
     },
 
@@ -460,9 +494,8 @@ export function proposalService(
         parsed.data,
         "REBASE",
         { proposalId, expectedVersion },
-        ({ previous, built, ctx }) => {
-          const shape = new Map(built.input.structure.phases.flatMap((ph) => ph.occurrences.map((o) => [`${ph.index}|${o.week}|${o.slot}`, o.label] as const)));
-          if (previous.occurrences.some((o) => shape.get(`${o.phaseIndex}|${o.week}|${o.slot}`) !== o.label)) return { ok: false, outcome: fail("structure_changed") };
+        ({ header, previous, built, ctx }) => {
+          if (!sameShape(built.input, previous, header.phasesGenerated)) return { ok: false, outcome: fail("structure_changed") };
           const out = engineOk(rebase(built.input, previous));
           if (!out.ok) return out;
           return { ok: true, scope: "REBASE", scopeJson: { contentVersion: ctx.revision.contentVersion }, input: built.input, result: out.result, target: { contentVersion: ctx.revision.contentVersion } };

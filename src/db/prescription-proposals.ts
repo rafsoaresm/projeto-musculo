@@ -75,6 +75,13 @@ export type MutateOutcome =
   | { status: "too_large" }
   | { status: "not_found" };
 
+/** What a non-engine write means (lock, unlock, flag decision, discard): compared with the decision recorded under a write id. */
+interface WriteIntent {
+  action: string;
+  target: unknown;
+  change?: unknown;
+}
+
 export type ProposalState = "OPEN" | "APPLIED" | "DISCARDED" | "SUPERSEDED";
 
 export interface ProposalHeader {
@@ -504,12 +511,40 @@ export function proposalsFor(db: D1Database, context: AuthenticatedContext | nul
   async function decisionByWrite(planId: string, revisionId: string, proposalId: string, writeId: string) {
     return db
       .prepare(
-        `SELECT d.proposal_version_after AS versionAfter FROM proposal_decisions d
+        `SELECT d.proposal_version_after AS versionAfter, d.action, d.target_json AS targetJson, d.change_json AS changeJson
+         FROM proposal_decisions d
          JOIN prescription_proposals p ON p.organization_id = d.organization_id AND p.id = d.proposal_id
          WHERE d.organization_id = ?1 AND d.proposal_id = ?5 AND d.write_id = ?6 AND p.plan_id = ?3 AND p.revision_id = ?4 AND ${any}`,
       )
       .bind(organizationId, userId, planId, revisionId, proposalId, writeId)
-      .first<{ versionAfter: number }>();
+      .first<{ versionAfter: number; action: string; targetJson: string; changeJson: string | null }>();
+  }
+
+  /**
+   * A write id already used on this proposal. It is a replay ("saved") only when the recorded decision is this very intent: same
+   * action, same target (and same change when the intent names one) and the version it was sent against. Anything else is the
+   * same write id reused for another intent: `key_reused`, never a silent success. Keyed engine runs (`intent` null) are
+   * replayed by their idempotency key, which is recorded in the same batch, so their write id alone never proves a replay.
+   */
+  async function replayByWrite(
+    planId: string,
+    revisionId: string,
+    proposalId: string,
+    cas: { expectedVersion: number; writeId: string },
+    intent: WriteIntent | null,
+  ): Promise<MutateOutcome | null> {
+    const decided = await decisionByWrite(planId, revisionId, proposalId, cas.writeId);
+    if (!decided) return null;
+    const same = (stored: string | null, wanted: unknown) => stored !== null && canonicalJson(JSON.parse(stored)) === canonicalJson(wanted);
+    if (
+      intent &&
+      decided.action === intent.action &&
+      decided.versionAfter === cas.expectedVersion + 1 &&
+      same(decided.targetJson, intent.target ?? {}) &&
+      (intent.change === undefined || same(decided.changeJson, intent.change))
+    )
+      return { status: "saved", version: decided.versionAfter, replayed: true };
+    return { status: "key_reused" };
   }
 
   /** After a write that did not land: read again and say why (never guessed from the error text alone). */
@@ -520,6 +555,7 @@ export function proposalsFor(db: D1Database, context: AuthenticatedContext | nul
     cas: { expectedVersion: number; writeId: string },
     key: { idempotencyKey: string; requestHash: string } | null,
     expectedContent: number | null,
+    intent: WriteIntent | null,
   ): Promise<MutateOutcome> {
     if (key) {
       const found = await byKey(planId, revisionId, key.idempotencyKey);
@@ -529,8 +565,8 @@ export function proposalsFor(db: D1Database, context: AuthenticatedContext | nul
         return now ? { status: "saved", version: now.version, replayed: true } : { status: "not_found" };
       }
     }
-    const decided = await decisionByWrite(planId, revisionId, proposalId, cas.writeId);
-    if (decided) return { status: "saved", version: decided.versionAfter, replayed: true };
+    const replayed = await replayByWrite(planId, revisionId, proposalId, cas, key ? null : intent);
+    if (replayed) return replayed;
     const now = await header(planId, revisionId, proposalId, "ANY");
     if (!now) return { status: "not_found" };
     if (now.state !== "OPEN") return { status: "closed" };
@@ -771,6 +807,7 @@ export function proposalsFor(db: D1Database, context: AuthenticatedContext | nul
     statements: D1PreparedStatement[],
     key: { idempotencyKey: string; requestHash: string } | null,
     expectedContent: number | null,
+    intent: WriteIntent | null = null,
   ): Promise<MutateOutcome> {
     let failure: ReturnType<typeof knownFailure> = null;
     try {
@@ -790,7 +827,7 @@ export function proposalsFor(db: D1Database, context: AuthenticatedContext | nul
       if (landed && decided) return { status: "saved", version: landed.version, replayed: false };
     }
     if (failure === "too_large" || failure === "invalid_target") return { status: failure };
-    return classifyMutation(planId, revisionId, proposalId, cas, key, expectedContent);
+    return classifyMutation(planId, revisionId, proposalId, cas, key, expectedContent, intent);
   }
 
   return {
@@ -799,6 +836,18 @@ export function proposalsFor(db: D1Database, context: AuthenticatedContext | nul
 
     /** One proposal's header (DRAFT gate by default; "ANY" for history). */
     header,
+
+    /**
+     * A proposal's header and summary (issues, flags, assumptions, workouts; no sessions) on a revision in ANY state: what the
+     * revision page shows of the applied proposal after the draft was marked ready, and of past proposals in the history.
+     */
+    async summary(planId: string, revisionId: string, proposalId: string): Promise<{ header: ProposalHeader; summary: ProposalSummary } | null> {
+      const row = await db
+        .prepare(`${headerSql(any)} AND p.id = ?5`)
+        .bind(organizationId, userId, planId, revisionId, proposalId)
+        .first<HeaderRow>();
+      return row ? { header: toHeader(row), summary: JSON.parse(row.summaryJson) as ProposalSummary } : null;
+    },
 
     /** One page of a proposal (a phase, optionally one week) with its summary. DRAFT revisions only. */
     async view(planId: string, revisionId: string, proposalId: string, page: { phaseIndex: number; week?: number }): Promise<ProposalPage | null> {
@@ -897,8 +946,8 @@ export function proposalsFor(db: D1Database, context: AuthenticatedContext | nul
         const now = await header(planId, revisionId, proposalId, "ANY");
         return now ? { status: "saved", version: now.version, replayed: true } : { status: "not_found" };
       }
-      const decided = await decisionByWrite(planId, revisionId, proposalId, writeId);
-      return decided ? { status: "saved", version: decided.versionAfter, replayed: true } : null;
+      // The key was never recorded, so this write id (if used) belongs to another intent.
+      return replayByWrite(planId, revisionId, proposalId, { expectedVersion: -1, writeId }, null);
     },
 
     /**
@@ -1059,8 +1108,9 @@ export function proposalsFor(db: D1Database, context: AuthenticatedContext | nul
       now = new Date(),
     ): Promise<MutateOutcome> {
       if (!targets.length || targets.length > MAX_LOCK_TARGETS) return { status: "invalid_target" };
-      const replay = await decisionByWrite(planId, revisionId, proposalId, cas.writeId);
-      if (replay) return { status: "saved", version: replay.versionAfter, replayed: true };
+      const intent: WriteIntent = { action: locked ? "LOCK" : "UNLOCK", target: { targets } };
+      const replay = await replayByWrite(planId, revisionId, proposalId, cas, intent);
+      if (replay) return replay;
       const snap = await asEngineResult(planId, revisionId, proposalId);
       if (!snap) return { status: "not_found" };
       if (snap.header.state !== "OPEN") return { status: "closed" };
@@ -1112,7 +1162,7 @@ export function proposalsFor(db: D1Database, context: AuthenticatedContext | nul
         ),
         eventStatement(planId, revisionId, proposalId, cas.writeId, versionAfter, locked ? "PROPOSAL_LOCKED" : "PROPOSAL_UNLOCKED", stamp),
       ];
-      return runMutation(planId, revisionId, proposalId, cas, statements, null, null);
+      return runMutation(planId, revisionId, proposalId, cas, statements, null, null, intent);
     },
 
     /**
@@ -1128,8 +1178,9 @@ export function proposalsFor(db: D1Database, context: AuthenticatedContext | nul
       decision: FlagDecision,
       now = new Date(),
     ): Promise<MutateOutcome> {
-      const replay = await decisionByWrite(planId, revisionId, proposalId, cas.writeId);
-      if (replay) return { status: "saved", version: replay.versionAfter, replayed: true };
+      const intent: WriteIntent = { action: "ACCEPT_FLAG_DECISION", target: { flagCode }, change: { decision } };
+      const replay = await replayByWrite(planId, revisionId, proposalId, cas, intent);
+      if (replay) return replay;
       const snap = await asEngineResult(planId, revisionId, proposalId);
       if (!snap) return { status: "not_found" };
       if (snap.header.state !== "OPEN") return { status: "closed" };
@@ -1164,13 +1215,15 @@ export function proposalsFor(db: D1Database, context: AuthenticatedContext | nul
         ],
         null,
         null,
+        intent,
       );
     },
 
     /** Closes an OPEN proposal as DISCARDED: nothing of it is applied; its ledger, decisions and rows stay. */
     async discard(planId: string, revisionId: string, proposalId: string, cas: { expectedVersion: number; writeId: string }, now = new Date()): Promise<MutateOutcome> {
-      const replay = await decisionByWrite(planId, revisionId, proposalId, cas.writeId);
-      if (replay) return { status: "saved", version: replay.versionAfter, replayed: true };
+      const intent: WriteIntent = { action: "DISCARD", target: {} };
+      const replay = await replayByWrite(planId, revisionId, proposalId, cas, intent);
+      if (replay) return replay;
       const stamp = now.toISOString();
       const versionAfter = cas.expectedVersion + 1;
       return runMutation(
@@ -1191,6 +1244,7 @@ export function proposalsFor(db: D1Database, context: AuthenticatedContext | nul
         ],
         null,
         null,
+        intent,
       );
     },
   };
