@@ -31,11 +31,27 @@ async function delivered(student = "st-1", owner = "tech-a", minute = 0, raw = f
       phases: Array.from({ length: 3 }, () => ({ weeks: 4, sessionsPerWeek: 3, split: FB, exercisesPerSession: 3 })),
     },
   }))!;
-  for (let i = 0; i < 3; i++)
-    await rx.add(created.planId, created.revisionId, { phaseIndex: 1, workoutLabel: FB }, { customName: `Exercício ${i + 1}` }, { sets: "3", reps: "10" });
-  await rx.copyPhase(created.planId, created.revisionId, 1, 2);
-  await rx.copyPhase(created.planId, created.revisionId, 1, 3);
-  expect(await plans.markReady(created.planId, created.revisionId)).toBe(true);
+  if (raw) {
+    // Before 0041 the prescription of now also writes per-session doses (tables not there yet): rows as the application of then
+    // wrote them, three per phase.
+    for (let phase = 1; phase <= 3; phase++)
+      for (let i = 0; i < 3; i++)
+        await run(
+          `INSERT INTO prescribed_exercises (id, organization_id, revision_id, phase_index, workout_label, position, name, sets, reps,
+             origin, created_by_user_id, created_at, updated_at)
+           VALUES (?1, 'org-a', ?2, ?3, ?4, ?5, ?6, '3', '10', 'PROFESSIONAL', ?7, 'x', 'x')`,
+          crypto.randomUUID(), created.revisionId, phase, FB, i + 1, `Exercício ${i + 1}`, owner,
+        );
+  } else {
+    for (let i = 0; i < 3; i++)
+      await rx.add(created.planId, created.revisionId, { phaseIndex: 1, workoutLabel: FB }, { customName: `Exercício ${i + 1}` }, { sets: "3", reps: "10" });
+    await rx.copyPhase(created.planId, created.revisionId, 1, 2);
+    await rx.copyPhase(created.planId, created.revisionId, 1, 3);
+  }
+  if (raw) {
+    // markReady of now also closes automatic proposals (0042, not there yet before 0039): READY as the application of then wrote it.
+    await run("UPDATE plan_revisions SET state = 'READY', ready_at = ?2 WHERE id = ?1", created.revisionId, at(minute).toISOString());
+  } else expect(await plans.markReady(created.planId, created.revisionId)).toBe(true);
   if (raw) {
     // Before 0039 the application of now cannot read the revision (its columns do not exist yet): approved and delivered as the
     // application of then wrote it.

@@ -2,8 +2,17 @@ import Link from "next/link";
 import { Pill } from "@/components/ui";
 import type { ExerciseRecord } from "@/db/exercises";
 import { videoLabel } from "./labels";
+import type { MetadataSummary } from "./metadata/vocabulary";
+import { summaryPill } from "./metadata/view";
 
-export function ExerciseTable({ rows }: { rows: ExerciseRecord[] }) {
+export function ExerciseTable({
+  rows,
+  metadata,
+}: {
+  rows: ExerciseRecord[];
+  /** Per exercise, the provenance of its metadata (absent for archived rows). */
+  metadata?: Record<string, MetadataSummary>;
+}) {
   return (
     <div className="table-wrap">
       <table className="data-table stack">
@@ -15,6 +24,7 @@ export function ExerciseTable({ rows }: { rows: ExerciseRecord[] }) {
             <th scope="col">Nível</th>
             <th scope="col">Vídeo</th>
             <th scope="col">Origem</th>
+            {metadata && <th scope="col">Metadados</th>}
           </tr>
         </thead>
         <tbody>
@@ -43,6 +53,15 @@ export function ExerciseTable({ rows }: { rows: ExerciseRecord[] }) {
                     <Pill tone="brand">Minha biblioteca</Pill>
                   )}
                 </td>
+                {metadata && (
+                  <td data-label="Metadados">
+                    {metadata[row.id] ? (
+                      <Pill tone={summaryPill(metadata[row.id]).tone}>{summaryPill(metadata[row.id]).text}</Pill>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                )}
               </tr>
             );
           })}

@@ -6,7 +6,8 @@ import { requireWorkspace } from "@/modules/auth/server";
 import { studentsFor } from "@/db/students";
 import { executionFor } from "@/db/workout-sessions";
 import { Notice, PageHeading, Pill, formatDateTime } from "@/components/ui";
-import { describeDose } from "@/modules/prescricao/describe";
+import { storedDoseText } from "@/modules/prescricao/describe";
+import { setExtrasText } from "@/modules/execucao/contracts";
 import { formatCalendarDate } from "@/modules/training/format";
 import { AcknowledgeForm } from "@/modules/execucao/acknowledge-form";
 
@@ -32,7 +33,9 @@ export default async function SessionDetail({
       <PageHeading
         eyebrow={workspace.name}
         title={`Treino ${detail.workoutLabel} de ${formatCalendarDate(detail.performedOn)}`}
-        description={`${student.displayName} · ${detail.planTitle}, revisão ${detail.revisionNumber}, fase ${detail.phaseIndex}`}
+        description={`${student.displayName} · ${detail.planTitle}, revisão ${detail.revisionNumber}, fase ${detail.phaseIndex}${
+          detail.occurrence ? `, semana ${detail.occurrence.week}, sessão ${detail.occurrence.slot}` : ""
+        }`}
       />
       {detail.painReported && (
         <Notice tone="warning">
@@ -81,7 +84,7 @@ export default async function SessionDetail({
                         </>
                       )}
                     </td>
-                    <td>{describeDose(exercise.planned) || "Sem parâmetros"}</td>
+                    <td>{storedDoseText(exercise.planned) || "Sem parâmetros"}</td>
                     <td>
                       {!exercise.done ? (
                         "Não feito"
@@ -93,6 +96,7 @@ export default async function SessionDetail({
                             <li key={set.setNumber}>
                               Série {set.setNumber}: {set.reps === null ? "—" : `${set.reps} rep.`}
                               {set.loadKg === null ? "" : ` × ${kg(set.loadKg)} kg`}
+                              {setExtrasText(set) && <span className="small muted"> · {setExtrasText(set)}</span>}
                             </li>
                           ))}
                         </ol>

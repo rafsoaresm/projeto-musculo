@@ -415,7 +415,9 @@ describe("changing the structure under a prescription", () => {
     expect((await mine(plan)).length).toBe(1);
     // A change that keeps every used workout is fine, including a new target.
     expect(await plans.saveDraft(plan.planId, plan.revisionId, input(6, "ABCD", 5))).toBe(true);
-    expect((await plans.findRevision(plan.planId, plan.revisionId))?.revision.input.phases[0].exercisesPerSession).toBe(5);
+    // v2 input (S2): the saved v1 input is still read as v1, so the target is where it was.
+    const saved = (await plans.findRevision(plan.planId, plan.revisionId))?.revision.input;
+    expect(saved && !("schemaVersion" in saved) ? saved.phases[0].exercisesPerSession : null).toBe(5);
     expect((await mine(plan)).length).toBe(1);
     // Once the exercise is removed, the structure can shrink.
     expect(await api.remove(plan.planId, plan.revisionId, inSix)).toBe(true);

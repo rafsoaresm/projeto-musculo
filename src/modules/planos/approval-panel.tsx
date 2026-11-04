@@ -39,6 +39,7 @@ export function ApprovalPanel({
   studentHref,
   screening,
   pdfHref,
+  automatic = null,
 }: {
   planId: string;
   revisionId: string;
@@ -55,6 +56,8 @@ export function ApprovalPanel({
   screening: ScreeningInfo;
   /** The PDF of the delivered revision. Only offered once it was delivered. */
   pdfHref: string;
+  /** Rows written by an automatic proposal (motor S9): how many, and how many the professional edited since. */
+  automatic?: { total: number; edited: number } | null;
 }) {
   const [ack, setAck] = useState(false);
   const blocked = screening.kind === "BLOCKED";
@@ -87,6 +90,13 @@ export function ApprovalPanel({
             Aprovar é um ato seu: você confirma que revisou este plano. O aluno
             só recebe depois da entrega, que é um passo separado.
           </p>
+          {automatic && automatic.total > 0 && (
+            <p className="small" role="note">
+              <Pill tone="warning">Prescrição automática</Pill> Inclui {automatic.total}{" "}
+              {automatic.total === 1 ? "exercício proposto" : "exercícios propostos"} automaticamente ({automatic.edited}{" "}
+              {automatic.edited === 1 ? "editado" : "editados"} por você). A aprovação é sua.
+            </p>
+          )}
           {/* Below the target is a warning, never an impediment (handoff V4, A12 and AC13.9). */}
           {below > 0 ? (
             <p role="status">

@@ -1,0 +1,17 @@
+{
+  "comment": "Referências citadas na versão anterior do motor. Nenhuma foi conferida no repositório: enquanto status for UNVERIFIED, não aparecem em traços nem na interface, e nenhuma regra que as cite pode ter base EVIDENCE.",
+  "references": [
+    {
+      "id": "CURRIER_2026",
+      "citation": "Currier et al. (2026), posicionamento ACSM sobre treinamento resistido",
+      "pmid": "41843416",
+      "status": "UNVERIFIED"
+    },
+    {
+      "id": "PELLAND_2026",
+      "citation": "Pelland et al. (2026), volume direto e indireto",
+      "pmid": "41343037",
+      "status": "UNVERIFIED"
+    }
+  ]
+}

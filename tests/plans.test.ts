@@ -374,7 +374,11 @@ describe("access that ends", () => {
       .all<{ name: string }>();
     expect(tables.results.map((t) => t.name)).toEqual([
       "plan_revisions",
+      "plan_session_occurrences",
+      "prescribed_exercise_occurrences",
       "prescribed_exercises",
+      "prescription_applications",
+      "prescription_proposals",
       "training_plan_events",
       "workout_sessions",
     ]);

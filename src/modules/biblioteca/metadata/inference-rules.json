@@ -1,0 +1,182 @@
+{
+  "id": "gymgital-library-inference",
+  "version": "2026.11.2",
+  "basis": "Heurística operacional (editável)",
+  "comment": "Name-based inference of library metadata (motor S4, decision Q3 of 04/11/2026). Every value produced here is INFERRED, shown as 'Inferido (não revisado)', and loses to any value a person reviewed. A rule with value null means: recognised, but the name does not say enough; a person must fill the field in. Changing any rule requires a new version (the version is stored on every inferred row). See docs/MOTOR-PRESCRICAO.md.",
+  "fieldOrder": [
+    "movement_patterns",
+    "modality",
+    "metric",
+    "primary_muscles",
+    "secondary_muscles",
+    "equipment",
+    "equipment_alternatives",
+    "laterality",
+    "compound"
+  ],
+  "categoryFallback": {
+    "modality": {
+      "ruleId": "MOD_BY_CATEGORY",
+      "values": {
+        "Agachar": "RESISTANCE",
+        "Empurrar": "RESISTANCE",
+        "Puxar": "RESISTANCE",
+        "Quadril": "RESISTANCE",
+        "Unilateral": "RESISTANCE",
+        "Core": "RESISTANCE",
+        "Cardio": "CARDIO"
+      }
+    }
+  },
+  "fields": {
+    "movement_patterns": [
+      { "id": "PAT_CARRY", "any": ["farmer", "fazendeiro", "suitcase", "carregada"], "value": ["CARRY"] },
+      { "id": "PAT_CYCLICAL", "any": ["ergometr", "bike", "bicicleta", "caminhada", "corrida", "esteira", "eliptic", "trote"], "value": ["CYCLICAL"] },
+      { "id": "PAT_MOBILITY", "any": ["mobilidade", "alongamento"], "value": ["MOBILITY"] },
+      { "id": "PAT_LUNGE", "any": ["afundo", "bulgaro", "passada", "step up", "avanco", "lunge", "split squat"], "value": ["LUNGE"] },
+      { "id": "PAT_CALF", "any": ["panturrilha", "gemeos", "calf"], "value": ["PLANTAR_FLEXION"] },
+      { "id": "PAT_KNEE_EXTENSION", "any": ["extensora", "leg extension"], "value": ["KNEE_EXTENSION"] },
+      { "id": "PAT_KNEE_FLEXION", "any": ["flexora", "leg curl"], "value": ["KNEE_FLEXION"] },
+      { "id": "PAT_SQUAT", "any": ["agachamento", "leg press", "hack", "squat"], "value": ["SQUAT"] },
+      { "id": "PAT_HIP_EXTENSION", "any": ["hip thrust", "ponte", "elevacao pelvica", "coice", "kickback"], "value": ["HIP_EXTENSION"] },
+      { "id": "PAT_HINGE", "any": ["terra", "stiff", "good morning", "pull through", "romeno", "deadlift"], "value": ["HINGE"] },
+      { "id": "PAT_HIP_ABDUCTION", "any": ["abducao", "abdutora"], "value": ["HIP_ABDUCTION"] },
+      { "id": "PAT_REAR_FLY", "all": ["crucifixo", "inverso"], "value": ["HORIZONTAL_ABDUCTION"] },
+      { "id": "PAT_REAR_FLY_EN", "any": ["reverse fly", "voador inverso"], "value": ["HORIZONTAL_ABDUCTION"] },
+      { "id": "PAT_FLY", "any": ["crucifixo", "peck deck", "voador", "crossover"], "value": ["HORIZONTAL_ADDUCTION"] },
+      { "id": "PAT_FACE_PULL", "any": ["face pull"], "value": ["HORIZONTAL_PULL"] },
+      { "id": "PAT_STRAIGHT_ARM", "any": ["bracos estendidos", "pullover", "straight arm"], "value": ["SHOULDER_EXTENSION"] },
+      { "id": "PAT_VERTICAL_PULL", "any": ["puxada", "pulldown", "barra fixa", "pull up", "chin up", "graviton"], "value": ["VERTICAL_PULL"] },
+      { "id": "PAT_HORIZONTAL_PULL", "any": ["remada", "row"], "value": ["HORIZONTAL_PULL"] },
+      { "id": "PAT_ELBOW_FLEXION", "any": ["rosca", "curl"], "value": ["ELBOW_FLEXION"] },
+      { "id": "PAT_ELBOW_EXTENSION", "any": ["triceps", "mergulho", "paralelas"], "value": ["ELBOW_EXTENSION"] },
+      { "id": "PAT_VERTICAL_PUSH", "any": ["desenvolvimento", "overhead press", "militar", "arnold"], "value": ["VERTICAL_PUSH"] },
+      { "id": "PAT_SHOULDER_ABDUCTION", "all": ["elevacao", "lateral"], "value": ["SHOULDER_ABDUCTION"] },
+      { "id": "PAT_SHOULDER_FLEXION", "all": ["elevacao", "frontal"], "value": ["SHOULDER_FLEXION"] },
+      { "id": "PAT_HORIZONTAL_PUSH", "any": ["supino", "flexao de bracos", "chest press", "bench press", "push up"], "value": ["HORIZONTAL_PUSH"] },
+      { "id": "PAT_SIDE_PLANK", "all": ["prancha", "lateral"], "value": ["ANTI_LATERAL_FLEXION"] },
+      { "id": "PAT_ANTI_EXTENSION", "any": ["prancha", "dead bug", "rollout", "roda abdominal"], "value": ["ANTI_EXTENSION"] },
+      { "id": "PAT_BIRD_DOG", "any": ["bird dog", "perdigueiro"], "value": ["ANTI_EXTENSION", "ANTI_ROTATION"] },
+      { "id": "PAT_ANTI_ROTATION", "any": ["pallof"], "value": ["ANTI_ROTATION"] },
+      { "id": "PAT_ROTATION", "any": ["wood chop", "lenhador", "russian twist"], "value": ["ROTATION"] },
+      { "id": "PAT_TRUNK_FLEXION", "any": ["abdominal", "crunch"], "value": ["TRUNK_FLEXION"] }
+    ],
+    "modality": [
+      { "id": "MOD_CARDIO", "when": { "field": "movement_patterns", "anyOf": ["CYCLICAL"] }, "value": "CARDIO" },
+      { "id": "MOD_MOBILITY", "when": { "field": "movement_patterns", "anyOf": ["MOBILITY"] }, "value": "MOBILITY" },
+      {
+        "id": "MOD_RESISTANCE",
+        "when": {
+          "field": "movement_patterns",
+          "anyOf": ["SQUAT", "HINGE", "LUNGE", "HORIZONTAL_PUSH", "HORIZONTAL_PULL", "VERTICAL_PUSH", "VERTICAL_PULL", "KNEE_EXTENSION", "KNEE_FLEXION", "HIP_EXTENSION", "HIP_ABDUCTION", "PLANTAR_FLEXION", "ELBOW_FLEXION", "ELBOW_EXTENSION", "SHOULDER_ABDUCTION", "SHOULDER_FLEXION", "SHOULDER_EXTENSION", "HORIZONTAL_ADDUCTION", "HORIZONTAL_ABDUCTION", "ANTI_EXTENSION", "ANTI_ROTATION", "ANTI_LATERAL_FLEXION", "TRUNK_FLEXION", "ROTATION", "CARRY"]
+        },
+        "value": "RESISTANCE"
+      }
+    ],
+    "metric": [
+      { "id": "MET_PLANK_TIME", "any": ["prancha"], "value": "TIME" },
+      { "id": "MET_CARRY_UNDECIDED", "when": { "field": "movement_patterns", "anyOf": ["CARRY"] }, "value": null },
+      { "id": "MET_CARDIO_CONTINUOUS", "when": [{ "field": "movement_patterns", "present": true }, { "field": "modality", "anyOf": ["CARDIO"] }], "value": "CONTINUOUS" },
+      { "id": "MET_MOBILITY_UNDECIDED", "when": { "field": "modality", "anyOf": ["MOBILITY"] }, "value": null },
+      { "id": "MET_RESISTANCE_REPS", "when": [{ "field": "movement_patterns", "present": true }, { "field": "modality", "anyOf": ["RESISTANCE"] }], "value": "REPS" }
+    ],
+    "primary_muscles": [
+      { "id": "PRI_CARDIO_NONE", "when": [{ "field": "movement_patterns", "present": true }, { "field": "modality", "anyOf": ["CARDIO"] }], "value": [] },
+      { "id": "PRI_CALVES", "when": { "field": "movement_patterns", "anyOf": ["PLANTAR_FLEXION"] }, "value": ["CALVES"] },
+      { "id": "PRI_KNEE_EXTENSION", "when": { "field": "movement_patterns", "anyOf": ["KNEE_EXTENSION"] }, "value": ["QUADRICEPS"] },
+      { "id": "PRI_KNEE_FLEXION", "when": { "field": "movement_patterns", "anyOf": ["KNEE_FLEXION"] }, "value": ["HAMSTRINGS"] },
+      { "id": "PRI_SQUAT_LUNGE", "when": { "field": "movement_patterns", "anyOf": ["SQUAT", "LUNGE"] }, "value": ["QUADRICEPS", "GLUTEUS"] },
+      { "id": "PRI_HIP_EXTENSION", "when": { "field": "movement_patterns", "anyOf": ["HIP_EXTENSION"] }, "value": ["GLUTEUS"] },
+      { "id": "PRI_HINGE", "when": { "field": "movement_patterns", "anyOf": ["HINGE"] }, "value": ["HAMSTRINGS", "GLUTEUS"] },
+      { "id": "PRI_HIP_ABDUCTION", "when": { "field": "movement_patterns", "anyOf": ["HIP_ABDUCTION"] }, "value": ["ABDUCTORS"] },
+      { "id": "PRI_REAR_FLY", "when": { "field": "movement_patterns", "anyOf": ["HORIZONTAL_ABDUCTION"] }, "value": ["REAR_DELTOID"] },
+      { "id": "PRI_FLY", "when": { "field": "movement_patterns", "anyOf": ["HORIZONTAL_ADDUCTION"] }, "value": ["CHEST"] },
+      { "id": "PRI_FACE_PULL", "any": ["face pull"], "value": ["UPPER_BACK", "REAR_DELTOID"] },
+      { "id": "PRI_STRAIGHT_ARM", "when": { "field": "movement_patterns", "anyOf": ["SHOULDER_EXTENSION"] }, "value": ["LATS"] },
+      { "id": "PRI_VERTICAL_PULL", "when": { "field": "movement_patterns", "anyOf": ["VERTICAL_PULL"] }, "value": ["LATS"] },
+      { "id": "PRI_HORIZONTAL_PULL", "when": { "field": "movement_patterns", "anyOf": ["HORIZONTAL_PULL"] }, "value": ["LATS", "UPPER_BACK"] },
+      { "id": "PRI_ELBOW_FLEXION", "when": { "field": "movement_patterns", "anyOf": ["ELBOW_FLEXION"] }, "value": ["BICEPS"] },
+      { "id": "PRI_ELBOW_EXTENSION", "when": { "field": "movement_patterns", "anyOf": ["ELBOW_EXTENSION"] }, "value": ["TRICEPS"] },
+      { "id": "PRI_VERTICAL_PUSH", "when": { "field": "movement_patterns", "anyOf": ["VERTICAL_PUSH", "SHOULDER_FLEXION"] }, "value": ["FRONT_DELTOID"] },
+      { "id": "PRI_SHOULDER_ABDUCTION", "when": { "field": "movement_patterns", "anyOf": ["SHOULDER_ABDUCTION"] }, "value": ["SIDE_DELTOID"] },
+      { "id": "PRI_HORIZONTAL_PUSH", "when": { "field": "movement_patterns", "anyOf": ["HORIZONTAL_PUSH"] }, "value": ["CHEST"] },
+      { "id": "PRI_SIDE_PLANK", "when": { "field": "movement_patterns", "anyOf": ["ANTI_LATERAL_FLEXION"] }, "value": ["OBLIQUES"] },
+      { "id": "PRI_ANTI_ROTATION", "any": ["pallof"], "value": ["ABS", "OBLIQUES"] },
+      { "id": "PRI_ANTI_EXTENSION", "when": { "field": "movement_patterns", "anyOf": ["ANTI_EXTENSION", "TRUNK_FLEXION"] }, "value": ["ABS"] },
+      { "id": "PRI_ROTATION", "when": { "field": "movement_patterns", "anyOf": ["ROTATION"] }, "value": ["OBLIQUES"] },
+      { "id": "PRI_CARRY", "when": { "field": "movement_patterns", "anyOf": ["CARRY"] }, "value": ["TRAPEZIUS", "FOREARMS"] }
+    ],
+    "secondary_muscles": [
+      { "id": "SEC_LUNGE", "when": { "field": "movement_patterns", "anyOf": ["LUNGE"] }, "value": ["HAMSTRINGS", "ADDUCTORS"] },
+      { "id": "SEC_SQUAT", "when": { "field": "movement_patterns", "anyOf": ["SQUAT"] }, "value": ["ADDUCTORS"] },
+      { "id": "SEC_HIP_EXTENSION", "when": { "field": "movement_patterns", "anyOf": ["HIP_EXTENSION"] }, "value": ["HAMSTRINGS"] },
+      { "id": "SEC_HINGE", "when": { "field": "movement_patterns", "anyOf": ["HINGE"] }, "value": ["ERECTORS"] },
+      { "id": "SEC_REAR_FLY", "when": { "field": "movement_patterns", "anyOf": ["HORIZONTAL_ABDUCTION"] }, "value": ["UPPER_BACK"] },
+      { "id": "SEC_FLY", "when": { "field": "movement_patterns", "anyOf": ["HORIZONTAL_ADDUCTION"] }, "value": ["FRONT_DELTOID"] },
+      { "id": "SEC_FACE_PULL", "any": ["face pull"], "value": ["TRAPEZIUS"] },
+      { "id": "SEC_VERTICAL_PULL", "when": { "field": "movement_patterns", "anyOf": ["VERTICAL_PULL"] }, "value": ["UPPER_BACK", "BICEPS"] },
+      { "id": "SEC_BENT_ROW", "all": ["remada", "curvada"], "value": ["REAR_DELTOID", "BICEPS", "ERECTORS"] },
+      { "id": "SEC_HORIZONTAL_PULL", "when": { "field": "movement_patterns", "anyOf": ["HORIZONTAL_PULL"] }, "value": ["REAR_DELTOID", "BICEPS"] },
+      { "id": "SEC_ELBOW_FLEXION", "when": { "field": "movement_patterns", "anyOf": ["ELBOW_FLEXION"] }, "value": ["FOREARMS"] },
+      { "id": "SEC_DIP", "any": ["mergulho", "paralelas"], "value": ["CHEST", "FRONT_DELTOID"] },
+      { "id": "SEC_VERTICAL_PUSH", "when": { "field": "movement_patterns", "anyOf": ["VERTICAL_PUSH"] }, "value": ["SIDE_DELTOID", "TRICEPS"] },
+      { "id": "SEC_PUSH_UP", "any": ["flexao de bracos", "push up"], "value": ["FRONT_DELTOID", "TRICEPS", "ABS"] },
+      { "id": "SEC_HORIZONTAL_PUSH", "when": { "field": "movement_patterns", "anyOf": ["HORIZONTAL_PUSH"] }, "value": ["FRONT_DELTOID", "TRICEPS"] },
+      { "id": "SEC_SIDE_PLANK", "when": { "field": "movement_patterns", "anyOf": ["ANTI_LATERAL_FLEXION"] }, "value": ["ABS"] },
+      { "id": "SEC_BIRD_DOG", "any": ["bird dog", "perdigueiro"], "value": ["GLUTEUS", "ERECTORS"] },
+      { "id": "SEC_ROTATION", "when": { "field": "movement_patterns", "anyOf": ["ROTATION"] }, "value": ["ABS"] },
+      { "id": "SEC_CARRY", "when": { "field": "movement_patterns", "anyOf": ["CARRY"] }, "value": ["ABS", "OBLIQUES"] }
+    ],
+    "equipment": [
+      { "id": "EQ_UNLISTED_IMPLEMENT", "any": ["smith", "anilha", "disco", "caneleira", "trx", "suspens", "bola", "ball", "bosu", "fitball", "sandbag", "saco", "colete", "landmine", "mochila", "roda abdominal", "rollout"], "value": null },
+      { "id": "EQ_BAND", "any": ["elastic", "band", "superband", "miniband", "faixa elastica"], "value": ["RESISTANCE_BAND"] },
+      { "id": "EQ_SLED", "any": ["treno", "sled"], "value": ["SLED"] },
+      { "id": "EQ_CALF_LEG_PRESS", "all": ["panturrilha", "leg press"], "value": ["MACHINE"] },
+      { "id": "EQ_SEATED_CALF", "all": ["panturrilha", "sentad"], "value": ["MACHINE"] },
+      { "id": "EQ_ROWER", "any": ["remo ergometr"], "value": ["ROWER"] },
+      { "id": "EQ_STAIR_CLIMBER", "all": ["escada", "ergometr"], "value": ["STAIR_CLIMBER"] },
+      { "id": "EQ_BIKE", "any": ["bike", "bicicleta"], "value": ["BIKE"] },
+      { "id": "EQ_TREADMILL", "any": ["esteira", "caminhada inclinada"], "value": ["TREADMILL"] },
+      { "id": "EQ_ASSISTED_PULL_UP", "all": ["barra fixa", "assistid"], "value": ["MACHINE"] },
+      { "id": "EQ_PULL_UP_BAR", "any": ["barra fixa", "pull up", "chin up"], "value": ["PULL_UP_BAR"] },
+      { "id": "EQ_CABLE", "any": ["cabo", "polia", "corda", "crossover", "face pull", "pulldown", "pallof", "puxada"], "value": ["CABLE"] },
+      { "id": "EQ_MACHINE", "any": ["maquina", "cadeira", "mesa", "leg press", "hack", "peck deck", "chest press", "articulad", "graviton"], "value": ["MACHINE"] },
+      { "id": "EQ_GOBLET", "any": ["goblet"], "value": ["DUMBBELL"] },
+      { "id": "EQ_KETTLEBELL", "any": ["kettlebell"], "value": ["KETTLEBELL"] },
+      { "id": "EQ_FARMER", "any": ["farmer", "fazendeiro"], "value": ["DUMBBELL"] },
+      { "id": "EQ_DUMBBELL_BENCH", "all": ["halter"], "any": ["supino", "crucifixo", "remada unilateral"], "value": ["DUMBBELL", "BENCH"] },
+      { "id": "EQ_DUMBBELL", "any": ["halter", "dumbbell", "rosca alternada", "rosca martelo"], "value": ["DUMBBELL"] },
+      { "id": "EQ_BARBELL_BENCH", "all": ["barra", "supino"], "value": ["BARBELL", "BENCH"] },
+      { "id": "EQ_BARBELL", "any": ["barra", "barbell"], "none": ["fixa"], "value": ["BARBELL"] },
+      { "id": "EQ_BENCH", "any": ["banco", "bulgaro"], "value": ["BENCH"] },
+      { "id": "EQ_STEP", "any": ["step"], "value": ["STEP_BOX"] },
+      { "id": "EQ_BODYWEIGHT", "any": ["prancha", "dead bug", "bird dog", "ponte", "afundo", "passada", "flexao de bracos", "elevacao de panturrilha"], "noneWord": ["com", "no", "na", "nos", "nas", "em", "sobre", "with", "on"], "value": [] }
+    ],
+    "equipment_alternatives": [
+      { "id": "ALT_GOBLET_KETTLEBELL", "any": ["goblet"], "value": [["KETTLEBELL"]] },
+      { "id": "ALT_FARMER_KETTLEBELL", "any": ["farmer", "fazendeiro"], "value": [["KETTLEBELL"]] },
+      { "id": "ALT_PALLOF_BAND", "any": ["pallof"], "value": [["RESISTANCE_BAND"]] },
+      { "id": "ALT_ASSISTED_PULL_UP_BAND", "all": ["barra fixa", "assistid"], "value": [["PULL_UP_BAR", "RESISTANCE_BAND"]] }
+    ],
+    "laterality": [
+      { "id": "LAT_SIDE_PLANK", "all": ["prancha", "lateral"], "value": "UNILATERAL" },
+      { "id": "LAT_ONE_SIDE", "any": ["unilateral", "alternad", "afundo", "bulgaro", "passada", "step up", "coice", "pallof", "wood chop", "lenhador", "serrote", "concentrad", "unipodal", "uma perna", "um braco", "uma mao", "single leg", "single arm", "one arm", "one leg", "pistol"], "value": "UNILATERAL" },
+      { "id": "LAT_ALTERNATING_CORE", "any": ["bird dog", "dead bug"], "value": null },
+      { "id": "LAT_CATEGORY_UNILATERAL", "categoryAny": ["Unilateral"], "when": { "field": "movement_patterns", "present": true }, "value": null },
+      { "id": "LAT_RESISTANCE_BILATERAL", "when": [{ "field": "movement_patterns", "present": true }, { "field": "modality", "anyOf": ["RESISTANCE"] }], "value": "BILATERAL" }
+    ],
+    "compound": [
+      { "id": "CMP_DIP", "any": ["mergulho", "paralelas"], "value": true },
+      {
+        "id": "CMP_MULTI_JOINT",
+        "when": { "field": "movement_patterns", "anyOf": ["SQUAT", "HINGE", "LUNGE", "HORIZONTAL_PUSH", "HORIZONTAL_PULL", "VERTICAL_PUSH", "VERTICAL_PULL", "CARRY"] },
+        "value": true
+      },
+      {
+        "id": "CMP_SINGLE_JOINT",
+        "when": { "field": "movement_patterns", "anyOf": ["KNEE_EXTENSION", "KNEE_FLEXION", "HIP_EXTENSION", "HIP_ABDUCTION", "PLANTAR_FLEXION", "ELBOW_FLEXION", "ELBOW_EXTENSION", "SHOULDER_ABDUCTION", "SHOULDER_FLEXION", "SHOULDER_EXTENSION", "HORIZONTAL_ADDUCTION", "HORIZONTAL_ABDUCTION"] },
+        "value": false
+      }
+    ]
+  }
+}

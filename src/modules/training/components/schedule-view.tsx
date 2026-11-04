@@ -3,6 +3,7 @@
 import { CalendarDays } from "lucide-react";
 import type { PeriodizationSchedule } from "../contracts";
 import { formatCalendarDate as formatDate } from "../format";
+import { phaseDivisionText, phaseName, phaseTargetText } from "../periodization";
 
 /** Real duration of a calculated cycle. Shared by the planner and saved plans. */
 export function ScheduleSummary({ schedule }: { schedule: PeriodizationSchedule }) {
@@ -74,16 +75,19 @@ export function ScheduleResult({
           <tbody>
             {schedule.phases.map((item) => (
               <tr key={item.index}>
-                <th scope="row">{String(item.index).padStart(2, "0")}</th>
+                <th scope="row">
+                  {String(item.index).padStart(2, "0")}
+                  {phaseName(item) && <span className="small muted"> · {phaseName(item)}</span>}
+                </th>
                 <td>
                   {formatDate(item.startDate)} — {formatDate(item.endDate)}
                 </td>
                 <td>{item.weeks}</td>
                 <td>{item.sessionsPerWeek}</td>
                 <td>
-                  <span className="pill neutral">{item.split}</span>
+                  <span className="pill neutral">{phaseDivisionText(item)}</span>
                 </td>
-                <td>{item.exercisesPerSession}</td>
+                <td>{phaseTargetText(item)}</td>
               </tr>
             ))}
           </tbody>
@@ -91,13 +95,20 @@ export function ScheduleResult({
       </div>
       <h3 className="microcycle-title">Rotação da fase {selected + 1}</h3>
       <div className="microcycles">
-        {schedule.phases[selected].microcycles.map((week) => (
-          <div key={week.index}>
-            <span>Semana {week.index}</span>
-            <strong>{week.sessions.join(" / ")}</strong>
-            <small>{formatDate(week.startDate)}</small>
-          </div>
-        ))}
+        {(schedule.phases[selected] ?? schedule.phases[0]).microcycles.map((week) => {
+          const dated = "slots" in week ? week.slots.filter((slot) => slot.plannedDate) : [];
+          return (
+            <div key={week.index}>
+              <span>Semana {week.index}</span>
+              <strong>{week.sessions.join(" / ")}</strong>
+              <small>
+                {dated.length
+                  ? dated.map((slot) => `${slot.label} ${formatDate(slot.plannedDate as string).slice(0, 5)}`).join(" · ")
+                  : formatDate(week.startDate)}
+              </small>
+            </div>
+          );
+        })}
       </div>
     </section>
   );

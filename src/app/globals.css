@@ -1378,7 +1378,7 @@ button.account-link {
   margin-bottom: 20px;
 }
 .phase-tab {
-  min-height: 40px;
+  min-height: 44px;
   padding: 8px 16px;
   border-radius: var(--radius-button);
   background: #fff;
@@ -1417,6 +1417,59 @@ button.account-link {
 .rotation-note svg {
   color: var(--color-primary-strong);
   margin-top: 2px;
+}
+/* Free structure (v2) of the planner. */
+.structure-mode,
+.workouts-v2 {
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  padding: 14px 16px;
+  margin: 18px 0 0;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.structure-mode legend,
+.workouts-v2 legend {
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  padding: 0 6px;
+}
+.workouts-v2 ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.workout-row-v2 {
+  display: grid;
+  grid-template-columns: minmax(70px, 0.7fr) minmax(110px, 1.2fr) minmax(110px, 1fr) minmax(120px, 1.3fr) minmax(80px, 0.7fr) auto;
+  gap: 10px;
+  align-items: end;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--color-line);
+}
+.workout-row-v2 > * {
+  min-width: 0;
+}
+.workout-row-v2 input,
+.workout-row-v2 select {
+  width: 100%;
+}
+.rotation-list {
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+}
+.workouts-v2 .rotation-note {
+  margin-top: 0;
+}
+@media (max-width: 1100px) {
+  .workout-row-v2 {
+    grid-template-columns: 1fr 1fr;
+  }
+  .workout-row-v2 > button {
+    justify-self: start;
+  }
 }
 .error-message {
   background: var(--color-error-soft);
@@ -2069,7 +2122,7 @@ label.check input {
 /* ---------- Exercise library ---------- */
 .filter-form {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr)) auto auto;
+  grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr)) auto auto;
   gap: 16px;
   align-items: end;
 }
@@ -2091,9 +2144,85 @@ label.check input {
 .detail-list dd {
   margin: 4px 0 0;
 }
-@media (max-width: 900px) {
+@media (max-width: 1100px) {
+  .filter-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 600px) {
   .filter-form {
     grid-template-columns: 1fr;
+  }
+}
+
+/* ---------- Library metadata (motor S4) ---------- */
+.metadata-fields {
+  display: grid;
+  gap: 0;
+  margin: 16px 0 24px;
+  border-top: 1px solid var(--color-line);
+}
+.metadata-field {
+  border-bottom: 1px solid var(--color-line);
+}
+.metadata-field > summary {
+  display: grid;
+  grid-template-columns: minmax(0, 14rem) minmax(0, 1fr) auto;
+  gap: 8px 16px;
+  align-items: center;
+  padding: 12px 0;
+  cursor: pointer;
+  list-style-position: outside;
+}
+.metadata-field-name {
+  font-weight: 700;
+}
+.metadata-field-value {
+  overflow-wrap: anywhere;
+}
+.metadata-field-body {
+  display: grid;
+  gap: 12px;
+  padding: 0 0 16px;
+}
+.metadata-checks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 13rem), 1fr));
+  gap: 8px 16px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  min-width: 0;
+}
+.metadata-checks legend {
+  padding: 0 4px;
+  font-weight: 600;
+}
+.metadata-checks > p {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.metadata-alternatives {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 16px;
+  padding-left: 1.2rem;
+}
+.metadata-alternatives li {
+  overflow-wrap: anywhere;
+}
+.metadata-history {
+  margin-top: 16px;
+}
+.metadata-history ul {
+  display: grid;
+  gap: 4px;
+  padding-left: 1.2rem;
+}
+@media (max-width: 640px) {
+  .metadata-field > summary {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -7723,4 +7852,430 @@ table.plan-overview td[data-label="Plano"] {
 }
 .empty-actions {
   margin-top: 16px;
+}
+
+/* ---------- Delivered plan written session by session (motor S8) ---------- */
+.occurrence-phase {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+.week-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+/* Same family as the phase tabs (pill, bold, small), lighter when selected so phase and week read as two levels. */
+.week-nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid var(--color-line-strong);
+  border-radius: var(--radius-button);
+  background: #fff;
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  text-decoration: none;
+}
+.week-nav a:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary-strong);
+}
+.week-nav a[aria-current="page"] {
+  background: var(--color-primary-soft);
+  border-color: var(--color-primary-strong);
+  color: var(--color-primary-strong);
+  font-weight: 700;
+}
+.progression-details > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.progression-details caption {
+  text-align: left;
+  padding: 6px 0;
+}
+.set-extras {
+  display: grid;
+  gap: 8px;
+  grid-column: 1 / -1;
+}
+.set-extras > summary {
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+
+/* ---------- Automatic prescription: generation, proposal, apply (motor S9) ---------- */
+.auto-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.auto-card-body {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  flex: 1 1 320px;
+  min-width: 0;
+}
+.auto-card-body > svg {
+  flex: none;
+  margin-top: 4px;
+  color: var(--color-primary);
+}
+.auto-card h2 {
+  font-size: var(--font-size-lg);
+  margin-bottom: 4px;
+}
+.auto-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+}
+.auto-form > h2 {
+  margin-bottom: 0;
+}
+.auto-section,
+.auto-subsection {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.auto-section > legend,
+.auto-subsection > legend {
+  font-weight: 700;
+  padding: 0;
+  margin-bottom: 8px;
+}
+.auto-section > legend {
+  font-size: var(--font-size-lg);
+  font-family: var(--font-family-heading);
+  color: var(--color-ink);
+}
+.auto-question {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  background: #fff;
+  min-width: 0;
+}
+.auto-question .field-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.chip {
+  min-height: 44px;
+  padding: 6px 12px;
+  border: 1px dashed var(--color-line-strong);
+  border-radius: var(--radius-xs);
+  background: #fff;
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.chip[aria-pressed="true"] {
+  border-style: solid;
+  border-color: var(--color-primary-strong);
+  background: var(--color-primary-soft);
+  color: var(--color-primary-strong);
+  font-weight: 700;
+}
+.check-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 6px 16px;
+}
+.policy-table th[scope="row"] {
+  white-space: nowrap;
+}
+.policy-values {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 8px;
+  min-width: 260px;
+}
+.policy-values label {
+  font-size: var(--font-size-xs);
+}
+.policy-values input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 6px 10px;
+}
+.auto-details > summary {
+  cursor: pointer;
+  font-weight: 700;
+  padding: 4px 0;
+}
+.auto-details[open] > summary {
+  margin-bottom: 10px;
+}
+.auto-list {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.auto-list .auto-list {
+  margin-top: 6px;
+  padding-left: 12px;
+}
+.considered-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px 20px;
+  margin: 12px 0;
+}
+.considered-list dt {
+  font-size: var(--font-size-sm);
+  color: var(--color-muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.considered-list dd {
+  margin: 2px 0 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.considered-list dd.free-text {
+  font-weight: 400;
+  white-space: pre-wrap;
+}
+.auto-progress {
+  min-height: 1.5em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-size-sm);
+}
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--color-primary-line);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: auto-spin 0.8s linear infinite;
+  vertical-align: middle;
+}
+@keyframes auto-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}
+.small-heading {
+  font-size: var(--font-size-sm);
+  margin: 12px 0 6px;
+}
+.picker-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+.picker-row > label {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.picker-row select {
+  width: 100%;
+}
+.auto-submit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.proposal-pills,
+.pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pill-row .pill {
+  white-space: normal;
+}
+.flag-row {
+  display: grid;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--color-line);
+}
+a.phase-tab {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+a.phase-tab.selected,
+a.phase-tab[aria-current="page"] {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+.phase-tab.disabled {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-muted);
+  border-style: dashed;
+}
+.proposal-session > .button {
+  justify-self: start;
+}
+.why-details > summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  gap: 6px;
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  color: var(--color-primary-strong);
+}
+.why-details[open] {
+  display: grid;
+  gap: 8px;
+}
+.auto-dialog {
+  width: min(640px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  padding: 24px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+.auto-dialog::backdrop {
+  background: rgb(15 23 32 / 0.45);
+}
+.auto-dialog form {
+  display: grid;
+  gap: 14px;
+}
+.auto-dialog h2 {
+  font-size: var(--font-size-lg);
+}
+.occurrence-editor {
+  display: grid;
+  gap: 12px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--color-line);
+}
+.occurrence-editor > .phase-tabs {
+  margin-bottom: 0;
+}
+.occurrence-editor .workout-card > header h4 {
+  margin: 0;
+  margin-right: auto;
+}
+.session-item-out .exercise-main strong {
+  color: var(--color-muted);
+  text-decoration: line-through;
+}
+.applied-notes > summary {
+  font-size: var(--font-size-base);
+}
+.applied-notes .auto-list {
+  margin-bottom: 8px;
+}
+.proposal-session,
+.occurrence-editor .workout-card,
+.why-details,
+.exercise-list > li {
+  min-width: 0;
+}
+.auto-details {
+  min-width: 0;
+  max-width: 100%;
+}
+.auto-list,
+.why-details[open] {
+  grid-template-columns: minmax(0, 1fr);
+}
+.auto-list > li {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.proposal-session,
+.occurrence-editor .workout-card {
+  align-content: start;
+}
+.proposal-session .exercise-list > li,
+.occurrence-editor .exercise-list > li {
+  grid-template-columns: minmax(0, 1fr);
+}
+.occurrence-phase {
+  grid-template-columns: minmax(0, 1fr);
+}
+.occurrence-phase > * {
+  min-width: 0;
+}
+.policy-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  gap: 10px;
+}
+.policy-row {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  background: #fff;
+}
+.policy-row .policy-values {
+  min-width: 0;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+}
+.proposal-controls {
+  margin: 4px 0 12px;
+}
+.proposal-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+  margin-top: 12px;
+}
+
+/* Motor S9 review: who backs what on an item, the history suggestion, and the hint that a wide table scrolls sideways. */
+.basis-row {
+  align-items: center;
+}
+.history-suggestion {
+  margin: 0;
+}
+.scroll-hint {
+  display: none;
+}
+@media (max-width: 767px) {
+  .scroll-hint {
+    display: inline;
+  }
 }

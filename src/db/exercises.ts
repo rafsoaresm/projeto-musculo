@@ -5,6 +5,7 @@ import {
   videoStatusFor,
   type VideoStatus,
 } from "@/modules/biblioteca/contracts";
+import { exerciseMetadataFor } from "./exercise-metadata";
 import { activeUser, assertContext, type AuthenticatedContext } from "./students";
 
 /**
@@ -143,7 +144,11 @@ export function exercisesFor(
       }
     },
 
-    /** Own exercises only. A changed link clears the verification. */
+    /**
+     * Own exercises only. A changed link clears the verification. A new name or category also
+     * refreshes, in the same batch, the values inferred from the old one (library metadata, S4):
+     * otherwise "Prancha" renamed to "Remada" would keep "Antiextensão" as its pattern.
+     */
     async update(
       id: string,
       raw: unknown,
@@ -162,8 +167,15 @@ export function exercisesFor(
       const stamp = now.toISOString();
       const keepsVerification =
         status === "VERIFIED" && current.videoStatus === "VERIFIED";
+      const renamed = input.name !== current.name || input.category !== current.category;
+      const inference = renamed
+        ? await exerciseMetadataFor(db, context).inferenceAfterRename(
+            { id, name: input.name, category: input.category },
+            now,
+          )
+        : [];
       try {
-        const result = await db
+        const update = db
           .prepare(
             `UPDATE exercises
              SET name = ?4, name_key = ?14, category = ?5, level = ?6, video_url = ?7,
@@ -191,8 +203,8 @@ export function exercisesFor(
             stamp,
             current.updatedAt,
             nameKey(input.name),
-          )
-          .run();
+          );
+        const [result] = await db.batch([update, ...inference]);
         // Nothing changed although the exercise was visible: someone saved it first.
         return result.meta.changes > 0
           ? { status: "saved", id }

@@ -4,10 +4,15 @@ import {
   itemFieldsSchema,
   MAX_PER_WORKOUT,
 } from "@/modules/prescricao/contracts";
+import { validateDose, toDisplayFields } from "@/modules/prescricao/motor/dose";
+import type { Dose } from "@/modules/prescricao/motor/types";
+import { pairOccurrences } from "@/modules/prescricao/occurrences";
 import { workoutSlots } from "@/modules/prescricao/summary";
 import { parseVideoUrl, videoStatusFor, type VideoStatus } from "@/modules/biblioteca/contracts";
 import type { PeriodizationSchedule } from "@/modules/training/contracts";
-import { activeUser, assertContext, technicalAccessExists, type AuthenticatedContext } from "./students";
+import { chunkJson as jsonChunks } from "./json-chunks";
+import { revisionGate } from "./revision-gates";
+import { assertContext, type AuthenticatedContext } from "./students";
 
 /**
  * Exercises prescribed inside a plan revision, by hand. Every operation needs an
@@ -16,7 +21,16 @@ import { activeUser, assertContext, technicalAccessExists, type AuthenticatedCon
  * of a revision gets its own rows. Name and video are a snapshot of the library
  * at the time, so editing the library never rewrites a prescription.
  *
- * Nothing here proposes a dose: every value is typed by the professional.
+ * Nothing here proposes a dose: every value is typed by the professional. Rows written by the
+ * application of an automatic proposal (motor S7) arrive through `proposalsFor(...).apply`; here
+ * they are edited like any other row.
+ *
+ * OCCURRENCE revisions (motor S7, design §4.5) also hold one dose per session of each week
+ * (`prescribed_exercise_occurrences`). Every write here keeps them consistent in the same batch:
+ * a new row is included in every session of its workout, a removed row loses its doses first,
+ * copies carry their doses session by session, and edits per session go through
+ * `updateOccurrence`, `setIncluded` and `substituteInOccurrences`. TEMPLATE revisions (every
+ * revision before 0041) are written exactly as before: the extra statements write nothing there.
  */
 export interface PrescribedItem {
   id: string;
@@ -38,13 +52,56 @@ export interface PrescribedItem {
   notes: string | null;
   origin: string;
 }
+/** A row as the automatic prescription's adapter reads it (motor S5): the 0041 columns too. */
+export interface PrescribedItemWithDose extends PrescribedItem {
+  /** Structured dose (motor v2, 0041) as written by an apply; null for every row typed by hand. Never rendered to the student. */
+  doseJson: string | null;
+  /** The dose text materialised when the row was written (0041); null for rows typed by hand before. */
+  doseText: string | null;
+  /** The proposal application that wrote the row (0041); null for rows typed by hand. */
+  applicationId: string | null;
+}
 export type Target = { phaseIndex: number; workoutLabel: string };
+/** One dose of one exercise in one session of an OCCURRENCE revision. `doseText` is the stored text (null: shown from the fields). */
+export interface OccurrenceItem {
+  id: string;
+  prescribedExerciseId: string;
+  included: boolean;
+  sets: string | null;
+  reps: string | null;
+  loadInstruction: string | null;
+  cadence: string | null;
+  restSeconds: number | null;
+  restText: string | null;
+  rirMin: number | null;
+  rirMax: number | null;
+  notes: string | null;
+  doseText: string | null;
+  /** Structured dose of an engine row (never shown to the student as JSON); null once the professional typed the dose. */
+  doseJson: string | null;
+  origin: string;
+}
+export interface SessionOccurrence {
+  id: string;
+  phaseIndex: number;
+  week: number;
+  slot: number;
+  label: string;
+  weekStart: string;
+  plannedDate: string | null;
+  items: OccurrenceItem[];
+}
+/** "Só nesta sessão" edits a session; "Todas as sessões" (default) rewrites every session's dose of the row with the base dose. */
+export type ApplyTo = "ALL_OCCURRENCES" | "NONE";
 export type ItemOutcome =
   | { status: "saved"; id: string }
   | { status: "not_found" }
   | { status: "invalid_target" }
   | { status: "full" }
   | { status: "conflict" };
+
+/** Session doses one edit may name at once: 504 sessions (the structure's technical cap) plus margin; a technical limit. */
+export const MAX_OCCURRENCE_EDIT = 600;
 
 const columns = `pe.id, pe.phase_index AS phaseIndex, pe.workout_label AS workoutLabel,
   pe.position, pe.exercise_id AS exerciseId, pe.name, pe.video_url AS videoUrl,
@@ -57,14 +114,9 @@ export function prescriptionFor(
   context: AuthenticatedContext | null,
 ) {
   const { userId, organizationId } = assertContext(context);
-  // Every statement binds ?1 organization, ?2 user, ?3 plan, ?4 revision, in that order.
-  const reach = (state: string) => `EXISTS (SELECT 1 FROM plan_revisions r
-    JOIN training_plans tp ON tp.organization_id = r.organization_id AND tp.id = r.plan_id
-    JOIN students s ON s.organization_id = tp.organization_id AND s.id = tp.student_id
-    WHERE r.organization_id = ?1 AND r.id = ?4 AND r.plan_id = ?3 ${state}
-      AND ${activeUser("?2")} AND ${technicalAccessExists("s", "?2")})`;
-  const seen = reach("");
-  const open = reach("AND r.state = 'DRAFT'");
+  // Every statement binds ?1 organization, ?2 user, ?3 plan, ?4 revision, in that order (the shared gate, revision-gates.ts).
+  const seen = revisionGate("ANY");
+  const open = revisionGate("DRAFT");
   const inWorkout = (alias: string, phase: string, label: string) =>
     `${alias}.revision_id = ?4 AND ${alias}.phase_index = ${phase} AND ${alias}.workout_label = ${label}`;
   const eventAfterChange = (
@@ -83,6 +135,140 @@ export function prescriptionFor(
       )
       .bind(organizationId, userId, planId, revisionId, crypto.randomUUID(), stamp);
   const isUnique = (error: unknown) => String(error).includes("UNIQUE");
+  // How many rows the statement right before wrote itself. D1's meta.changes adds the rows written by triggers (since 0041 every
+  // prescribed_exercises write bumps plan_revisions.content_version), so it is no longer a count; SQL changes() is.
+  const directChanges = (): D1PreparedStatement => db.prepare("SELECT changes() AS n");
+  const isOccurrence = `(SELECT r9.prescription_model FROM plan_revisions r9 WHERE r9.organization_id = ?1 AND r9.id = ?4) = 'OCCURRENCE'`;
+  // The occurrence tables have no bump triggers (0041): a batch that wrote only there bumps once, when the statement before wrote.
+  const bumpAfterChange = (planId: string, revisionId: string): D1PreparedStatement =>
+    db
+      .prepare(
+        `UPDATE plan_revisions SET content_version = content_version + 1
+         WHERE organization_id = ?1 AND id = ?4 AND plan_id = ?3 AND state = 'DRAFT' AND (SELECT changes()) > 0`,
+      )
+      .bind(organizationId, userId, planId, revisionId);
+  const occurrenceInsert = `INSERT INTO prescribed_exercise_occurrences (id, organization_id, revision_id, prescribed_exercise_id,
+      occurrence_id, included, sets, reps, load_instruction, cadence, rest_seconds, rest_text, rir_min, rir_max, notes, dose_json,
+      dose_text, trace_json, origin, source_proposal_item_id, created_by_user_id, created_at, updated_at)`;
+  const occurrenceOrigin = (column: string) =>
+    `CASE WHEN ${column} IN ('PROFESSIONAL', 'SYSTEM', 'SYSTEM_EDITED', 'AI') THEN ${column} ELSE 'PROFESSIONAL' END`;
+  /**
+   * On an OCCURRENCE revision, a new row (?5) is included in every session of its workout with its base dose. Writes nothing on
+   * TEMPLATE. Binds ?1..?4, ?5 row id, ?6 stamp.
+   */
+  const includeEverywhere = (planId: string, revisionId: string, rowId: string, stamp: string): D1PreparedStatement =>
+    db
+      .prepare(
+        `${occurrenceInsert}
+         SELECT lower(hex(randomblob(16))), ?1, ?4, pe.id, o.id, 1, pe.sets, pe.reps, pe.load_instruction, pe.cadence,
+           pe.rest_seconds, pe.rest_text, pe.rir_min, pe.rir_max, pe.notes, pe.dose_json, pe.dose_text, NULL,
+           ${occurrenceOrigin("pe.origin")}, NULL, ?2, ?6, ?6
+         FROM prescribed_exercises pe
+         JOIN plan_session_occurrences o ON o.organization_id = pe.organization_id AND o.revision_id = pe.revision_id
+           AND o.phase_index = pe.phase_index AND o.workout_label = pe.workout_label
+         WHERE pe.organization_id = ?1 AND pe.revision_id = ?4 AND pe.id = ?5 AND ${isOccurrence} AND ${open}`,
+      )
+      .bind(organizationId, userId, planId, revisionId, rowId, stamp);
+  /**
+   * Copies of rows (duplicate, copy a workout or a phase) on an OCCURRENCE revision: each new row gets a dose in every session
+   * of its destination workout, from the paired session of its source (`x`), or from the source's first included session when
+   * the two workouts do not have the same weeks and sessions (`x` of that session for all, included). Nothing on TEMPLATE.
+   */
+  async function copyDoses(
+    planId: string,
+    revisionId: string,
+    copies: Array<{ newId: string; sourceId: string; to: Target; from: Target }>,
+    stamp: string,
+  ): Promise<{ statements: D1PreparedStatement[]; reshaped: boolean }> {
+    if (!copies.length) return { statements: [], reshaped: false };
+    const model = await db
+      .prepare(`SELECT r.prescription_model AS m FROM plan_revisions r WHERE r.organization_id = ?1 AND r.id = ?4 AND ${open}`)
+      .bind(organizationId, userId, planId, revisionId)
+      .first<{ m: string }>();
+    // TEMPLATE when read: nothing per session, unless an apply turns the revision OCCURRENCE before the copy's batch runs (the
+    // model is checked again inside the batch); then each copy is included in every session of its workout, as `add` does.
+    if (model?.m !== "OCCURRENCE")
+      return {
+        statements: jsonChunks(copies.map((c) => c.newId)).map((chunk) =>
+          db
+            .prepare(
+              `${occurrenceInsert}
+               SELECT lower(hex(randomblob(16))), ?1, ?4, pe.id, o.id, 1, pe.sets, pe.reps, pe.load_instruction, pe.cadence,
+                 pe.rest_seconds, pe.rest_text, pe.rir_min, pe.rir_max, pe.notes, pe.dose_json, pe.dose_text, NULL,
+                 ${occurrenceOrigin("pe.origin")}, NULL, ?2, ?5, ?5
+               FROM json_each(?6) j
+               CROSS JOIN prescribed_exercises pe ON pe.id = j.value AND pe.organization_id = ?1 AND pe.revision_id = ?4
+               JOIN plan_session_occurrences o ON o.organization_id = pe.organization_id AND o.revision_id = pe.revision_id
+                 AND o.phase_index = pe.phase_index AND o.workout_label = pe.workout_label
+               WHERE ${isOccurrence} AND ${open}
+               ON CONFLICT (prescribed_exercise_id, occurrence_id) DO NOTHING`,
+            )
+            .bind(organizationId, userId, planId, revisionId, stamp, chunk),
+        ),
+        reshaped: false,
+      };
+    const [occ, doses] = await db.batch([
+      db
+        .prepare(
+          `SELECT o.id, o.phase_index AS phaseIndex, o.workout_label AS label, o.week_index AS week, o.slot_index AS slot
+           FROM plan_session_occurrences o WHERE o.organization_id = ?1 AND o.revision_id = ?4 AND ${open}`,
+        )
+        .bind(organizationId, userId, planId, revisionId),
+      db
+        .prepare(
+          `SELECT x.id, x.prescribed_exercise_id AS rowId, x.occurrence_id AS occurrenceId, x.included,
+             o.week_index AS week, o.slot_index AS slot
+           FROM prescribed_exercise_occurrences x
+           JOIN plan_session_occurrences o ON o.organization_id = x.organization_id AND o.id = x.occurrence_id
+           WHERE x.organization_id = ?1 AND x.revision_id = ?4 AND x.prescribed_exercise_id IN (SELECT value FROM json_each(?5))
+             AND ${open}`,
+        )
+        .bind(organizationId, userId, planId, revisionId, JSON.stringify([...new Set(copies.map((c) => c.sourceId))])),
+    ]);
+    const sessions = occ.results as Array<{ id: string; phaseIndex: number; label: string; week: number; slot: number }>;
+    const rows = doses.results as Array<{ id: string; rowId: string; occurrenceId: string; included: number; week: number; slot: number }>;
+    const of = (t: Target) => sessions.filter((o) => o.phaseIndex === t.phaseIndex && o.label === t.workoutLabel);
+    let reshaped = false;
+    const out: Array<{ pe: string; o: string; x: string | null; i: number }> = [];
+    for (const c of copies) {
+      const { sameShape, pairs } = pairOccurrences(of(c.from), of(c.to));
+      const mine = rows.filter((r) => r.rowId === c.sourceId);
+      const byOccurrence = new Map(mine.map((r) => [r.occurrenceId, r]));
+      const first = [...mine].filter((r) => r.included === 1).sort((a, b) => a.week - b.week || a.slot - b.slot)[0] ?? null;
+      if (!sameShape && mine.length) reshaped = true;
+      for (const dest of of(c.to)) {
+        const source = sameShape ? byOccurrence.get(pairs.get(dest.id) ?? "") : first;
+        out.push({ pe: c.newId, o: dest.id, x: source?.id ?? null, i: sameShape ? (source?.included ?? 1) : 1 });
+      }
+    }
+    // Row and session come from this batch's own inserts (JOIN): nothing is written when the copy itself was refused.
+    const statements = jsonChunks(out).map((chunk) =>
+      db
+        .prepare(
+          `${occurrenceInsert}
+           SELECT lower(hex(randomblob(16))), ?1, ?4, pe.id, o.id, json_extract(j.value, '$.i'),
+             CASE WHEN x.id IS NULL THEN pe.sets ELSE x.sets END, CASE WHEN x.id IS NULL THEN pe.reps ELSE x.reps END,
+             CASE WHEN x.id IS NULL THEN pe.load_instruction ELSE x.load_instruction END,
+             CASE WHEN x.id IS NULL THEN pe.cadence ELSE x.cadence END, CASE WHEN x.id IS NULL THEN pe.rest_seconds ELSE x.rest_seconds END,
+             CASE WHEN x.id IS NULL THEN pe.rest_text ELSE x.rest_text END, CASE WHEN x.id IS NULL THEN pe.rir_min ELSE x.rir_min END,
+             CASE WHEN x.id IS NULL THEN pe.rir_max ELSE x.rir_max END, CASE WHEN x.id IS NULL THEN pe.notes ELSE x.notes END,
+             CASE WHEN x.id IS NULL THEN pe.dose_json ELSE x.dose_json END, CASE WHEN x.id IS NULL THEN pe.dose_text ELSE x.dose_text END,
+             NULL, ${occurrenceOrigin("CASE WHEN x.id IS NULL THEN pe.origin ELSE x.origin END")}, NULL, ?2, ?5, ?5
+           FROM json_each(?6) j
+           -- CROSS JOIN keeps json_each outside, so every row finds its row and session by primary key (a plain JOIN may let
+           -- SQLite scan the revision's rows once per JSON row).
+           CROSS JOIN prescribed_exercises pe ON pe.id = json_extract(j.value, '$.pe') AND pe.organization_id = ?1 AND pe.revision_id = ?4
+           CROSS JOIN plan_session_occurrences o ON o.id = json_extract(j.value, '$.o') AND o.organization_id = ?1 AND o.revision_id = ?4
+           LEFT JOIN prescribed_exercise_occurrences x ON x.organization_id = ?1 AND x.revision_id = ?4
+             AND x.id = json_extract(j.value, '$.x')
+           WHERE ${open}`,
+        )
+        .bind(organizationId, userId, planId, revisionId, stamp, chunk),
+    );
+    return { statements, reshaped };
+  }
+  const RESHAPED_NOTICE = "Fases com semanas diferentes: a dose foi copiada igual para todas as sessões.";
+  const changesOf = (result: { results?: unknown[] }) => Number((result.results?.[0] as { n?: number } | undefined)?.n ?? 0);
 
   const api = {
     async list(planId: string, revisionId: string): Promise<PrescribedItem[]> {
@@ -94,6 +280,44 @@ export function prescriptionFor(
         )
         .bind(organizationId, userId, planId, revisionId)
         .all<PrescribedItem>();
+      return result.results;
+    },
+
+    /**
+     * The approval line "Inclui N exercícios propostos automaticamente (M editados por você)" (motor S9): rows the engine wrote,
+     * and those the professional changed, on the row (any session) or in a session only (a dose, a take-out, a substitution mark
+     * the session doses). Same gate as `list`.
+     */
+    async automaticCounts(planId: string, revisionId: string): Promise<{ total: number; edited: number }> {
+      const row = await db
+        .prepare(
+          `SELECT COUNT(*) AS total,
+             COALESCE(SUM(CASE WHEN pe.origin = 'SYSTEM_EDITED' OR EXISTS (
+               SELECT 1 FROM prescribed_exercise_occurrences x
+               WHERE x.organization_id = ?1 AND x.revision_id = ?4 AND x.prescribed_exercise_id = pe.id AND x.origin = 'SYSTEM_EDITED'
+             ) THEN 1 ELSE 0 END), 0) AS edited
+           FROM prescribed_exercises pe
+           WHERE pe.organization_id = ?1 AND pe.revision_id = ?4 AND pe.origin IN ('SYSTEM', 'SYSTEM_EDITED') AND ${seen}`,
+        )
+        .bind(organizationId, userId, planId, revisionId)
+        .first<{ total: number; edited: number }>();
+      return { total: Number(row?.total ?? 0), edited: Number(row?.edited ?? 0) };
+    },
+
+    /**
+     * The same rows as `list`, with the structured dose, its stored text and the application that wrote them (0041), for the
+     * input adapter of the automatic prescription. Same gate as `list`.
+     */
+    async listWithDose(planId: string, revisionId: string): Promise<PrescribedItemWithDose[]> {
+      const result = await db
+        .prepare(
+          `SELECT ${columns}, pe.dose_json AS doseJson, pe.dose_text AS doseText, pe.application_id AS applicationId
+           FROM prescribed_exercises pe
+           WHERE pe.organization_id = ?1 AND pe.revision_id = ?4 AND ${seen}
+           ORDER BY pe.phase_index, pe.workout_label, pe.position`,
+        )
+        .bind(organizationId, userId, planId, revisionId)
+        .all<PrescribedItemWithDose>();
       return result.results;
     },
 
@@ -179,7 +403,12 @@ export function prescriptionFor(
               MAX_PER_WORKOUT, (source as { exerciseId: string }).exerciseId,
             );
       try {
-        const results = await db.batch([statement, eventAfterChange(planId, revisionId, stamp)]);
+        const results = await db.batch([
+          statement,
+          eventAfterChange(planId, revisionId, stamp),
+          // OCCURRENCE: the new row is in every session of its workout (the insert above already bumped content_version).
+          includeEverywhere(planId, revisionId, id, stamp),
+        ]);
         if (results[0].meta.changes > 0) return { status: "saved", id };
       } catch (error) {
         if (isUnique(error)) return { status: "conflict" };
@@ -205,6 +434,7 @@ export function prescriptionFor(
       rawFields: unknown,
       customName?: string,
       now = new Date(),
+      options: { applyTo?: ApplyTo } = {},
     ): Promise<boolean> {
       const name = customName === undefined ? undefined : customNameSchema.parse(customName);
       const current = (await api.list(planId, revisionId)).find((item) => item.id === itemId);
@@ -226,6 +456,14 @@ export function prescriptionFor(
       const status: VideoStatus =
         link === current.videoUrl ? current.videoStatus : videoStatusFor(link, false, false);
       const stamp = now.toISOString();
+      // A typed dose replaces a structured one (it no longer describes what is written) and an engine row becomes "edited by
+      // you". A row typed by hand has neither, so TEMPLATE revisions are written exactly as before.
+      const doseKeys = ["sets", "reps", "loadInstruction", "cadence", "restSeconds", "restText", "rirMin", "rirMax"] as const;
+      const doseChanged = doseKeys.some((key) => fields[key] !== current[key]);
+      const changed =
+        doseChanged || fields.notes !== current.notes || link !== current.videoUrl || (name !== undefined && name !== current.name);
+      const notesChanged = fields.notes !== current.notes;
+      const applyAll = (options.applyTo ?? "ALL_OCCURRENCES") === "ALL_OCCURRENCES";
       const results = await db.batch([
         db
           .prepare(
@@ -233,31 +471,69 @@ export function prescriptionFor(
              SET sets = ?7, reps = ?8, load_instruction = ?9, cadence = ?10, rest_seconds = ?11,
                rest_text = ?12, rir_min = ?13, rir_max = ?14, notes = ?15, video_url = ?16,
                video_status = ?17, updated_at = ?6,
-               name = CASE WHEN exercise_id IS NULL THEN ?18 ELSE name END
+               name = CASE WHEN exercise_id IS NULL THEN ?18 ELSE name END,
+               dose_json = CASE WHEN ?20 = 1 THEN NULL ELSE dose_json END,
+               dose_text = CASE WHEN ?20 = 1 THEN NULL ELSE dose_text END,
+               origin = CASE WHEN ?21 = 1 AND origin = 'SYSTEM' THEN 'SYSTEM_EDITED' ELSE origin END
              WHERE id = ?19 AND organization_id = ?1 AND revision_id = ?4 AND ${open}`,
           )
           .bind(
             organizationId, userId, planId, revisionId, crypto.randomUUID(), stamp,
             fields.sets, fields.reps, fields.loadInstruction, fields.cadence,
             fields.restSeconds, fields.restText, fields.rirMin, fields.rirMax, fields.notes,
-            link, status, name ?? current.name, itemId,
+            link, status, name ?? current.name, itemId, doseChanged ? 1 : 0, changed ? 1 : 0,
           ),
         eventAfterChange(planId, revisionId, stamp),
+        // OCCURRENCE, "todas as sessões": only what changed reaches the sessions. A typed dose replaces every session's dose
+        // (progression replaced, structured dose and its text cleared); new notes replace the sessions' notes; a change of name or
+        // video only (base row columns) leaves every session dose as it is.
+        db
+          .prepare(
+            `UPDATE prescribed_exercise_occurrences
+             SET sets = CASE WHEN ?16 = 1 THEN ?7 ELSE sets END, reps = CASE WHEN ?16 = 1 THEN ?8 ELSE reps END,
+               load_instruction = CASE WHEN ?16 = 1 THEN ?9 ELSE load_instruction END,
+               cadence = CASE WHEN ?16 = 1 THEN ?10 ELSE cadence END, rest_seconds = CASE WHEN ?16 = 1 THEN ?11 ELSE rest_seconds END,
+               rest_text = CASE WHEN ?16 = 1 THEN ?12 ELSE rest_text END, rir_min = CASE WHEN ?16 = 1 THEN ?13 ELSE rir_min END,
+               rir_max = CASE WHEN ?16 = 1 THEN ?14 ELSE rir_max END, notes = CASE WHEN ?17 = 1 THEN ?15 ELSE notes END,
+               dose_json = CASE WHEN ?16 = 1 THEN NULL ELSE dose_json END, dose_text = CASE WHEN ?16 = 1 THEN NULL ELSE dose_text END,
+               updated_at = ?6, origin = CASE WHEN origin = 'SYSTEM' THEN 'SYSTEM_EDITED' ELSE origin END
+             WHERE organization_id = ?1 AND revision_id = ?4 AND prescribed_exercise_id = ?5 AND ?18 = 1 AND ${isOccurrence}
+               AND ${open}
+               AND ((?16 = 1 AND (sets IS NOT ?7 OR reps IS NOT ?8 OR load_instruction IS NOT ?9 OR cadence IS NOT ?10
+                   OR rest_seconds IS NOT ?11 OR rest_text IS NOT ?12 OR rir_min IS NOT ?13 OR rir_max IS NOT ?14
+                   OR dose_json IS NOT NULL OR dose_text IS NOT NULL))
+                 OR (?17 = 1 AND notes IS NOT ?15))`,
+          )
+          .bind(
+            organizationId, userId, planId, revisionId, itemId, stamp,
+            fields.sets, fields.reps, fields.loadInstruction, fields.cadence,
+            fields.restSeconds, fields.restText, fields.rirMin, fields.rirMax, fields.notes,
+            doseChanged ? 1 : 0, notesChanged ? 1 : 0, applyAll && (doseChanged || notesChanged) ? 1 : 0,
+          ),
+        bumpAfterChange(planId, revisionId),
       ]);
       return results[0].meta.changes > 0;
     },
 
+    /** Removes a row; on OCCURRENCE its doses per session go first (0041: children first), in the same batch. */
     async remove(planId: string, revisionId: string, itemId: string, now = new Date()): Promise<boolean> {
       const results = await db.batch([
+        db
+          .prepare(
+            `DELETE FROM prescribed_exercise_occurrences
+             WHERE prescribed_exercise_id = ?7 AND organization_id = ?1 AND revision_id = ?4 AND ${open}`,
+          )
+          .bind(organizationId, userId, planId, revisionId, "", now.toISOString(), itemId),
         db
           .prepare(
             `DELETE FROM prescribed_exercises
              WHERE id = ?7 AND organization_id = ?1 AND revision_id = ?4 AND ${open}`,
           )
           .bind(organizationId, userId, planId, revisionId, crypto.randomUUID(), now.toISOString(), itemId),
+        // Right after the content delete, so its changes() is the row's.
         eventAfterChange(planId, revisionId, now.toISOString()),
       ]);
-      return results[0].meta.changes > 0;
+      return results[1].meta.changes > 0;
     },
 
     /** Gives the workout exactly this order. The ids must be the workout's current ones. */
@@ -280,6 +556,8 @@ export function prescriptionFor(
         new Set(orderedIds).size === orderedIds.length &&
         current.every((item) => orderedIds.includes(item.id));
       if (!same || current.length === 0) return false;
+      // The same order is not a change: writing it would bump content_version (0041) and stale an open proposal's base for nothing.
+      if (current.every((item, index) => item.id === orderedIds[index])) return true;
       const stamp = now.toISOString();
       // Positions are unique, so move everything out of the way first, then settle.
       const statements = [
@@ -301,10 +579,14 @@ export function prescriptionFor(
               target.phaseIndex, target.workoutLabel, index + 1, id,
             ),
         ),
+        // The last settle statement always moves its row back from +100000, so changes() > 0 whenever the reorder wrote.
+        eventAfterChange(planId, revisionId, stamp),
       ];
       try {
         const results = await db.batch(statements);
-        return results.slice(1).every((result) => result.meta.changes === 1);
+        // Each statement targets one id. D1's meta.changes also counts rows written by triggers (the content_version bump of
+        // 0041), so "changed" is > 0, never an exact count.
+        return results.slice(1, -1).every((result) => result.meta.changes > 0);
       } catch (error) {
         if (isUnique(error)) return false;
         throw error;
@@ -322,21 +604,24 @@ export function prescriptionFor(
       if (!source) return { status: "not_found" };
       const id = crypto.randomUUID();
       const stamp = now.toISOString();
+      const here = { phaseIndex: source.phaseIndex, workoutLabel: source.workoutLabel };
+      const doses = await copyDoses(planId, revisionId, [{ newId: id, sourceId: itemId, from: here, to: here }], stamp);
       try {
         const results = await db.batch([
+          // The id is made here (not in SQL), with where the copy came from and the source's origin and dose.
           db
             .prepare(
               `INSERT INTO prescribed_exercises
                  (id, organization_id, revision_id, phase_index, workout_label, position,
                   exercise_id, name, video_url, video_status, sets, reps, load_instruction,
                   cadence, rest_seconds, rest_text, rir_min, rir_max, notes, origin,
-                  created_by_user_id, created_at, updated_at)
+                  dose_json, dose_text, copied_from_id, created_by_user_id, created_at, updated_at)
                SELECT ?5, src.organization_id, src.revision_id, src.phase_index, src.workout_label,
                  (SELECT COALESCE(MAX(x.position), 0) + 1 FROM prescribed_exercises x
                     WHERE ${inWorkout("x", "src.phase_index", "src.workout_label")}),
                  src.exercise_id, src.name, src.video_url, src.video_status, src.sets, src.reps,
                  src.load_instruction, src.cadence, src.rest_seconds, src.rest_text, src.rir_min,
-                 src.rir_max, src.notes, 'PROFESSIONAL', ?2, ?6, ?6
+                 src.rir_max, src.notes, src.origin, src.dose_json, src.dose_text, src.id, ?2, ?6, ?6
                FROM prescribed_exercises src
                WHERE src.id = ?7 AND src.organization_id = ?1 AND src.revision_id = ?4
                  AND (SELECT COUNT(*) FROM prescribed_exercises c
@@ -345,6 +630,7 @@ export function prescriptionFor(
             )
             .bind(organizationId, userId, planId, revisionId, id, stamp, itemId, MAX_PER_WORKOUT),
           eventAfterChange(planId, revisionId, stamp),
+          ...doses.statements,
         ]);
         if (results[0].meta.changes > 0) return { status: "saved", id };
       } catch (error) {
@@ -376,11 +662,23 @@ export function prescriptionFor(
           .prepare(
             `UPDATE prescribed_exercises
              SET exercise_id = ?8, name = ${pick("name")}, video_url = ${pick("video_url")},
-               video_status = ${pick("video_status")}, updated_at = ?6
+               video_status = ${pick("video_status")}, updated_at = ?6,
+               dose_json = NULL, origin = CASE WHEN origin = 'SYSTEM' THEN 'SYSTEM_EDITED' ELSE origin END
              WHERE id = ?7 AND organization_id = ?1 AND revision_id = ?4 AND ${usable} AND ${open}`,
           )
           .bind(organizationId, userId, planId, revisionId, "", stamp, itemId, exerciseId),
         eventAfterChange(planId, revisionId, stamp),
+        // OCCURRENCE: the structured dose was the old exercise's; the text stays until the professional revises it.
+        db
+          .prepare(
+            `UPDATE prescribed_exercise_occurrences
+             SET dose_json = NULL, updated_at = ?6, origin = CASE WHEN origin = 'SYSTEM' THEN 'SYSTEM_EDITED' ELSE origin END
+             WHERE organization_id = ?1 AND revision_id = ?4 AND prescribed_exercise_id = ?7 AND ${isOccurrence} AND ${open}
+               AND EXISTS (SELECT 1 FROM prescribed_exercises pe WHERE pe.id = ?7 AND pe.exercise_id = ?8)
+               AND (dose_json IS NOT NULL OR origin = 'SYSTEM')`,
+          )
+          .bind(organizationId, userId, planId, revisionId, "", stamp, itemId, exerciseId),
+        bumpAfterChange(planId, revisionId),
       ]);
       return results[0].meta.changes > 0;
     },
@@ -397,7 +695,7 @@ export function prescriptionFor(
       toPhase: number,
       now = new Date(),
     ): Promise<
-      | { status: "saved"; copied: number; skipped: string[] }
+      | { status: "saved"; copied: number; skipped: string[]; notice?: string }
       | {
           status:
             | "not_found"
@@ -424,6 +722,16 @@ export function prescriptionFor(
       const common = usedLabels.filter((label) => destinationLabels.includes(label));
       if (common.length === 0) return { status: "no_common_workouts" };
       const stamp = now.toISOString();
+      // Ids made here (not in SQL), so each copy keeps where it came from and its doses per session can follow it.
+      const copies = fromItems
+        .filter((item) => common.includes(item.workoutLabel))
+        .map((item) => ({
+          newId: crypto.randomUUID(),
+          sourceId: item.id,
+          from: { phaseIndex: fromPhase, workoutLabel: item.workoutLabel },
+          to: { phaseIndex: toPhase, workoutLabel: item.workoutLabel },
+        }));
+      const doses = await copyDoses(planId, revisionId, copies, stamp);
       try {
         const results = await db.batch([
           db
@@ -432,30 +740,35 @@ export function prescriptionFor(
                  (id, organization_id, revision_id, phase_index, workout_label, position,
                   exercise_id, name, video_url, video_status, sets, reps, load_instruction,
                   cadence, rest_seconds, rest_text, rir_min, rir_max, notes, origin,
-                  created_by_user_id, created_at, updated_at)
-               SELECT lower(hex(randomblob(16))), src.organization_id, src.revision_id, ?6,
+                  dose_json, dose_text, copied_from_id, created_by_user_id, created_at, updated_at)
+               SELECT json_extract(j.value, '$.n'), src.organization_id, src.revision_id, ?6,
                  src.workout_label, src.position, src.exercise_id, src.name, src.video_url,
                  src.video_status, src.sets, src.reps, src.load_instruction, src.cadence,
                  src.rest_seconds, src.rest_text, src.rir_min, src.rir_max, src.notes,
-                 'PROFESSIONAL', ?2, ?7, ?7
-               FROM prescribed_exercises src
+                 src.origin, src.dose_json, src.dose_text, src.id, ?2, ?7, ?7
+               FROM json_each(?8) j
+               CROSS JOIN prescribed_exercises src ON src.id = json_extract(j.value, '$.s')
                WHERE src.organization_id = ?1 AND src.revision_id = ?4 AND src.phase_index = ?5
-                 AND src.workout_label IN (SELECT value FROM json_each(?8))
                  AND NOT EXISTS (SELECT 1 FROM prescribed_exercises d
                                    WHERE d.revision_id = ?4 AND d.phase_index = ?6)
                  AND ${open}`,
             )
             .bind(
               organizationId, userId, planId, revisionId, fromPhase, toPhase, stamp,
-              JSON.stringify(common),
+              JSON.stringify(copies.map((c) => ({ n: c.newId, s: c.sourceId }))),
             ),
+          // The rows the insert itself wrote: SQL changes() leaves out trigger rows, D1's meta.changes does not (0041 bump).
+          // A SELECT leaves changes() as it is, so the event below still reads the insert.
+          directChanges(),
           eventAfterChange(planId, revisionId, stamp),
+          ...doses.statements,
         ]);
         return results[0].meta.changes > 0
           ? {
               status: "saved",
-              copied: results[0].meta.changes,
+              copied: changesOf(results[1]),
               skipped: usedLabels.filter((label) => !destinationLabels.includes(label)),
+              ...(doses.reshaped ? { notice: RESHAPED_NOTICE } : {}),
             }
           : { status: "not_found" };
       } catch (error) {
@@ -472,7 +785,7 @@ export function prescriptionFor(
       to: Target,
       now = new Date(),
     ): Promise<
-      | { status: "saved"; count: number }
+      | { status: "saved"; count: number; notice?: string }
       | { status: "not_found" | "invalid_target" | "empty_source" | "destination_not_empty" }
     > {
       const schedule = await api.openDraft(planId, revisionId);
@@ -489,6 +802,8 @@ export function prescriptionFor(
       if (inSlot(from).length === 0) return { status: "empty_source" };
       if (inSlot(to).length > 0) return { status: "destination_not_empty" };
       const stamp = now.toISOString();
+      const copies = inSlot(from).map((item) => ({ newId: crypto.randomUUID(), sourceId: item.id, from, to }));
+      const doses = await copyDoses(planId, revisionId, copies, stamp);
       try {
         const results = await db.batch([
           db
@@ -497,12 +812,14 @@ export function prescriptionFor(
                  (id, organization_id, revision_id, phase_index, workout_label, position,
                   exercise_id, name, video_url, video_status, sets, reps, load_instruction,
                   cadence, rest_seconds, rest_text, rir_min, rir_max, notes, origin,
-                  created_by_user_id, created_at, updated_at)
-               SELECT lower(hex(randomblob(16))), src.organization_id, src.revision_id, ?9, ?10,
+                  dose_json, dose_text, copied_from_id, created_by_user_id, created_at, updated_at)
+               SELECT json_extract(j.value, '$.n'), src.organization_id, src.revision_id, ?9, ?10,
                  src.position, src.exercise_id, src.name, src.video_url, src.video_status,
                  src.sets, src.reps, src.load_instruction, src.cadence, src.rest_seconds,
-                 src.rest_text, src.rir_min, src.rir_max, src.notes, 'PROFESSIONAL', ?2, ?6, ?6
-               FROM prescribed_exercises src
+                 src.rest_text, src.rir_min, src.rir_max, src.notes, src.origin, src.dose_json,
+                 src.dose_text, src.id, ?2, ?6, ?6
+               FROM json_each(?11) j
+               CROSS JOIN prescribed_exercises src ON src.id = json_extract(j.value, '$.s')
                WHERE src.organization_id = ?1 AND ${inWorkout("src", "?7", "?8")}
                  AND NOT EXISTS (SELECT 1 FROM prescribed_exercises d
                                    WHERE ${inWorkout("d", "?9", "?10")})
@@ -511,16 +828,254 @@ export function prescriptionFor(
             .bind(
               organizationId, userId, planId, revisionId, "", stamp,
               from.phaseIndex, from.workoutLabel, to.phaseIndex, to.workoutLabel,
+              JSON.stringify(copies.map((c) => ({ n: c.newId, s: c.sourceId }))),
             ),
+          directChanges(),
           eventAfterChange(planId, revisionId, stamp),
+          ...doses.statements,
         ]);
         return results[0].meta.changes > 0
-          ? { status: "saved", count: results[0].meta.changes }
+          ? { status: "saved", count: changesOf(results[1]), ...(doses.reshaped ? { notice: RESHAPED_NOTICE } : {}) }
           : { status: "not_found" };
       } catch (error) {
         if (isUnique(error)) return { status: "destination_not_empty" };
         throw error;
       }
+    },
+
+    /**
+     * Sessions of an OCCURRENCE revision with the dose of each exercise in each (one phase, optionally one week), in the
+     * exercises' order. Empty for TEMPLATE revisions. Same gate as `list` (any state, for the history of past revisions).
+     */
+    async occurrences(planId: string, revisionId: string, page: { phaseIndex: number; week?: number }): Promise<SessionOccurrence[]> {
+      const [sessions, doses] = await db.batch([
+        db
+          .prepare(
+            `SELECT o.id, o.phase_index AS phaseIndex, o.week_index AS week, o.slot_index AS slot, o.workout_label AS label,
+               o.week_start AS weekStart, o.planned_date AS plannedDate
+             FROM plan_session_occurrences o
+             WHERE o.organization_id = ?1 AND o.revision_id = ?4 AND o.phase_index = ?5 AND (?6 IS NULL OR o.week_index = ?6) AND ${seen}
+             ORDER BY o.week_index, o.slot_index`,
+          )
+          .bind(organizationId, userId, planId, revisionId, page.phaseIndex, page.week ?? null),
+        db
+          .prepare(
+            `SELECT x.id, x.occurrence_id AS occurrenceId, x.prescribed_exercise_id AS prescribedExerciseId, x.included, x.sets,
+               x.reps, x.load_instruction AS loadInstruction, x.cadence, x.rest_seconds AS restSeconds, x.rest_text AS restText,
+               x.rir_min AS rirMin, x.rir_max AS rirMax, x.notes, x.dose_text AS doseText, x.dose_json AS doseJson, x.origin
+             FROM prescribed_exercise_occurrences x
+             JOIN plan_session_occurrences o ON o.organization_id = x.organization_id AND o.id = x.occurrence_id
+             JOIN prescribed_exercises pe ON pe.organization_id = x.organization_id AND pe.id = x.prescribed_exercise_id
+             WHERE x.organization_id = ?1 AND x.revision_id = ?4 AND o.phase_index = ?5 AND (?6 IS NULL OR o.week_index = ?6) AND ${seen}
+             ORDER BY o.week_index, o.slot_index, pe.position`,
+          )
+          .bind(organizationId, userId, planId, revisionId, page.phaseIndex, page.week ?? null),
+      ]);
+      const byOccurrence = new Map<string, OccurrenceItem[]>();
+      for (const row of doses.results as Array<Omit<OccurrenceItem, "included"> & { occurrenceId: string; included: number }>) {
+        const { occurrenceId, included, ...rest } = row;
+        byOccurrence.set(occurrenceId, [...(byOccurrence.get(occurrenceId) ?? []), { ...rest, included: included === 1 }]);
+      }
+      return (sessions.results as Array<Omit<SessionOccurrence, "items">>).map((o) => ({ ...o, items: byOccurrence.get(o.id) ?? [] }));
+    },
+
+    /**
+     * Edits the dose of exercises in chosen sessions only ("Só nesta sessão", "Nesta fase, a partir desta semana"): the caller
+     * names the session doses (ids from `occurrences`). Only the fields sent change; an explicit null clears one. With a
+     * structured `dose` (validated; never a load in kg from the engine) the fields and the stored text come from it; typed fields
+     * clear the structured dose. An engine dose becomes "edited by you". DRAFT only.
+     */
+    async updateOccurrence(
+      planId: string,
+      revisionId: string,
+      occurrenceItemIds: string[],
+      rawFields: unknown,
+      dose: Dose | null = null,
+      now = new Date(),
+    ): Promise<{ status: "saved"; count: number } | { status: "not_found" | "invalid" }> {
+      const ids = [...new Set(occurrenceItemIds)];
+      if (!ids.length || ids.length > MAX_OCCURRENCE_EDIT) return { status: "invalid" };
+      const raw = (rawFields ?? {}) as Record<string, unknown>;
+      if (typeof raw !== "object" || Array.isArray(raw) || "videoUrl" in raw) return { status: "invalid" };
+      const parsed = itemFieldsSchema.safeParse(raw);
+      if (!parsed.success) return { status: "invalid" };
+      const sent = Object.keys(raw) as Array<keyof typeof parsed.data>;
+      const patch: Record<string, unknown> = Object.fromEntries(sent.map((key) => [key, parsed.data[key]]));
+      let doseJson: string | null = null;
+      let doseText: string | null = null;
+      if (dose) {
+        if (validateDose(dose).some((issue) => issue.severity === "ERROR")) return { status: "invalid" };
+        const display = toDisplayFields(dose);
+        Object.assign(patch, {
+          sets: display.sets, reps: display.reps, loadInstruction: display.loadInstruction, cadence: display.cadence,
+          restSeconds: display.restSeconds, restText: display.restText, rirMin: display.rirMin, rirMax: display.rirMax,
+        });
+        doseJson = JSON.stringify(dose);
+        doseText = display.doseText;
+      }
+      if (!Object.keys(patch).length) return { status: "invalid" };
+      // The structured dose and its stored text change only with the dose: a notes-only edit keeps them (the text says more than
+      // the fields for intervals and continuous work); a typed dose field clears them, a structured dose replaces them.
+      const doseKeys = ["sets", "reps", "loadInstruction", "cadence", "restSeconds", "restText", "rirMin", "rirMax"];
+      const doseTouched = dose !== null || doseKeys.some((key) => key in patch);
+      const set = (column: string, key: string) =>
+        `${column} = CASE WHEN json_type(?7, '$.${key}') IS NULL THEN ${column} ELSE json_extract(?7, '$.${key}') END`;
+      const stamp = now.toISOString();
+      try {
+        const results = await db.batch([
+          db
+            .prepare(
+              `UPDATE prescribed_exercise_occurrences
+               SET ${set("sets", "sets")}, ${set("reps", "reps")}, ${set("load_instruction", "loadInstruction")},
+                 ${set("cadence", "cadence")}, ${set("rest_seconds", "restSeconds")}, ${set("rest_text", "restText")},
+                 ${set("rir_min", "rirMin")}, ${set("rir_max", "rirMax")}, ${set("notes", "notes")},
+                 dose_json = CASE WHEN ?11 = 1 THEN ?8 ELSE dose_json END, dose_text = CASE WHEN ?11 = 1 THEN ?9 ELSE dose_text END,
+                 updated_at = ?6,
+                 origin = CASE WHEN origin = 'SYSTEM' THEN 'SYSTEM_EDITED' ELSE origin END
+               WHERE organization_id = ?1 AND revision_id = ?4 AND id IN (SELECT value FROM json_each(?10)) AND ${open}`,
+            )
+            .bind(
+              organizationId, userId, planId, revisionId, "", stamp, JSON.stringify(patch), doseJson, doseText, JSON.stringify(ids),
+              doseTouched ? 1 : 0,
+            ),
+          eventAfterChange(planId, revisionId, stamp),
+          // Right after the event, which is written only when doses changed.
+          bumpAfterChange(planId, revisionId),
+        ]);
+        const count = Number(results[0].meta.changes ?? 0);
+        return count > 0 ? { status: "saved", count: Math.min(count, ids.length) } : { status: "not_found" };
+      } catch (error) {
+        // A RIR range made inverted by a partial edit is refused by the table's CHECK.
+        if (String(error).includes("CHECK constraint failed")) return { status: "invalid" };
+        throw error;
+      }
+    },
+
+    /** Includes or leaves out exercises in chosen sessions (the dose stays stored either way). DRAFT only. */
+    async setIncluded(
+      planId: string,
+      revisionId: string,
+      occurrenceItemIds: string[],
+      included: boolean,
+      now = new Date(),
+    ): Promise<{ status: "saved"; count: number } | { status: "not_found" | "invalid" }> {
+      const ids = [...new Set(occurrenceItemIds)];
+      if (!ids.length || ids.length > MAX_OCCURRENCE_EDIT) return { status: "invalid" };
+      const stamp = now.toISOString();
+      const results = await db.batch([
+        db
+          .prepare(
+            `UPDATE prescribed_exercise_occurrences
+             SET included = ?7, updated_at = ?6, origin = CASE WHEN origin = 'SYSTEM' THEN 'SYSTEM_EDITED' ELSE origin END
+             WHERE organization_id = ?1 AND revision_id = ?4 AND id IN (SELECT value FROM json_each(?8)) AND included <> ?7 AND ${open}`,
+          )
+          .bind(organizationId, userId, planId, revisionId, "", stamp, included ? 1 : 0, JSON.stringify(ids)),
+        eventAfterChange(planId, revisionId, stamp),
+        // Right after the event, which is written only when something changed.
+        bumpAfterChange(planId, revisionId),
+      ]);
+      const count = Number(results[0].meta.changes ?? 0);
+      if (count > 0) return { status: "saved", count: Math.min(count, ids.length) };
+      // Nothing to change (already so) is not an error when the doses are this revision's and it is open.
+      const mine = await db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM prescribed_exercise_occurrences x
+           WHERE x.organization_id = ?1 AND x.revision_id = ?4 AND x.id IN (SELECT value FROM json_each(?5)) AND ${open}`,
+        )
+        .bind(organizationId, userId, planId, revisionId, JSON.stringify(ids))
+        .first<{ n: number }>();
+      return (mine?.n ?? 0) === ids.length ? { status: "saved", count: 0 } : { status: "not_found" };
+    },
+
+    /**
+     * "Substitui X a partir da semana N": a new row with another exercise of the library (same filter as `replaceExercise`),
+     * recording which row it substitutes, included only in the chosen sessions (with the dose the old row had there) and left
+     * out of the others; the old row is left out of the chosen sessions. The old row and its doses elsewhere stay. OCCURRENCE
+     * DRAFT only.
+     */
+    async substituteInOccurrences(
+      planId: string,
+      revisionId: string,
+      prescribedExerciseId: string,
+      newExerciseId: string,
+      occurrenceIds: string[],
+      now = new Date(),
+    ): Promise<ItemOutcome | { status: "invalid" }> {
+      const ids = [...new Set(occurrenceIds)];
+      if (!ids.length || ids.length > MAX_OCCURRENCE_EDIT) return { status: "invalid" };
+      if (!(await api.openDraft(planId, revisionId))) return { status: "not_found" };
+      const source = (await api.list(planId, revisionId)).find((item) => item.id === prescribedExerciseId);
+      if (!source) return { status: "not_found" };
+      const sessions = await db
+        .prepare(
+          `SELECT o.id FROM plan_session_occurrences o
+           WHERE o.organization_id = ?1 AND o.revision_id = ?4 AND o.phase_index = ?5 AND o.workout_label = ?6 AND ${open}`,
+        )
+        .bind(organizationId, userId, planId, revisionId, source.phaseIndex, source.workoutLabel)
+        .all<{ id: string }>();
+      const inWorkoutIds = new Set(sessions.results.map((o) => o.id));
+      if (!inWorkoutIds.size) return { status: "invalid_target" };
+      if (ids.some((id) => !inWorkoutIds.has(id))) return { status: "invalid_target" };
+      const id = crypto.randomUUID();
+      const stamp = now.toISOString();
+      const usable = `EXISTS (SELECT 1 FROM exercises e WHERE e.id = ?8 AND e.archived_at IS NULL
+          AND (e.organization_id IS NULL OR e.organization_id = ?1))`;
+      const pick = (column: string) => `(SELECT e.${column} FROM exercises e WHERE e.id = ?8)`;
+      const created = `EXISTS (SELECT 1 FROM prescribed_exercises n WHERE n.organization_id = ?1 AND n.id = ?5 AND n.revision_id = ?4)`;
+      try {
+        const results = await db.batch([
+          db
+            .prepare(
+              `INSERT INTO prescribed_exercises
+                 (id, organization_id, revision_id, phase_index, workout_label, position, exercise_id, name, video_url,
+                  video_status, sets, reps, load_instruction, cadence, rest_seconds, rest_text, rir_min, rir_max, notes, origin,
+                  substitutes_prescribed_exercise_id, created_by_user_id, created_at, updated_at)
+               SELECT ?5, src.organization_id, src.revision_id, src.phase_index, src.workout_label,
+                 (SELECT COALESCE(MAX(x.position), 0) + 1 FROM prescribed_exercises x
+                    WHERE ${inWorkout("x", "src.phase_index", "src.workout_label")}),
+                 ?8, ${pick("name")}, ${pick("video_url")}, ${pick("video_status")}, src.sets, src.reps, src.load_instruction,
+                 src.cadence, src.rest_seconds, src.rest_text, src.rir_min, src.rir_max, src.notes, 'PROFESSIONAL', src.id, ?2, ?6, ?6
+               FROM prescribed_exercises src
+               WHERE src.id = ?7 AND src.organization_id = ?1 AND src.revision_id = ?4 AND ${usable} AND ${isOccurrence}
+                 AND (SELECT COUNT(*) FROM prescribed_exercises c WHERE ${inWorkout("c", "src.phase_index", "src.workout_label")}) < ?9
+                 AND ${open}`,
+            )
+            .bind(organizationId, userId, planId, revisionId, id, stamp, prescribedExerciseId, newExerciseId, MAX_PER_WORKOUT),
+          eventAfterChange(planId, revisionId, stamp),
+          // The new row in every session of the workout: in the chosen ones with the old row's dose there, out of the others.
+          db
+            .prepare(
+              `${occurrenceInsert}
+               SELECT lower(hex(randomblob(16))), ?1, ?4, ?5, o.id,
+                 CASE WHEN o.id IN (SELECT value FROM json_each(?8)) THEN 1 ELSE 0 END,
+                 CASE WHEN x.id IS NULL THEN pe.sets ELSE x.sets END, CASE WHEN x.id IS NULL THEN pe.reps ELSE x.reps END, CASE WHEN x.id IS NULL THEN pe.load_instruction ELSE x.load_instruction END, CASE WHEN x.id IS NULL THEN pe.cadence ELSE x.cadence END, CASE WHEN x.id IS NULL THEN pe.rest_seconds ELSE x.rest_seconds END, CASE WHEN x.id IS NULL THEN pe.rest_text ELSE x.rest_text END, CASE WHEN x.id IS NULL THEN pe.rir_min ELSE x.rir_min END, CASE WHEN x.id IS NULL THEN pe.rir_max ELSE x.rir_max END, CASE WHEN x.id IS NULL THEN pe.notes ELSE x.notes END, NULL,
+                 x.dose_text, NULL, 'PROFESSIONAL', NULL, ?2, ?6, ?6
+               FROM prescribed_exercises pe
+               JOIN plan_session_occurrences o ON o.organization_id = pe.organization_id AND o.revision_id = pe.revision_id
+                 AND o.phase_index = pe.phase_index AND o.workout_label = pe.workout_label
+               LEFT JOIN prescribed_exercise_occurrences x ON x.organization_id = ?1 AND x.prescribed_exercise_id = ?7
+                 AND x.occurrence_id = o.id
+               WHERE pe.organization_id = ?1 AND pe.revision_id = ?4 AND pe.id = ?7 AND ${created} AND ${open}`,
+            )
+            .bind(organizationId, userId, planId, revisionId, id, stamp, prescribedExerciseId, JSON.stringify(ids)),
+          db
+            .prepare(
+              `UPDATE prescribed_exercise_occurrences
+               SET included = 0, updated_at = ?6, origin = CASE WHEN origin = 'SYSTEM' THEN 'SYSTEM_EDITED' ELSE origin END
+               WHERE organization_id = ?1 AND revision_id = ?4 AND prescribed_exercise_id = ?7
+                 AND occurrence_id IN (SELECT value FROM json_each(?8)) AND ${created} AND ${open}`,
+            )
+            .bind(organizationId, userId, planId, revisionId, id, stamp, prescribedExerciseId, JSON.stringify(ids)),
+        ]);
+        if (results[0].meta.changes > 0) return { status: "saved", id };
+      } catch (error) {
+        if (isUnique(error)) return { status: "conflict" };
+        throw error;
+      }
+      const count = (await api.list(planId, revisionId)).filter(
+        (item) => item.phaseIndex === source.phaseIndex && item.workoutLabel === source.workoutLabel,
+      ).length;
+      return count >= MAX_PER_WORKOUT ? { status: "full" } : { status: "not_found" };
     },
   };
   return api;

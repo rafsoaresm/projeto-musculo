@@ -6,6 +6,8 @@ import {
   ScheduleResult,
   ScheduleSummary,
 } from "@/modules/training/components/schedule-view";
+import { phaseTitle } from "@/modules/training/format";
+import { phaseName } from "@/modules/training/periodization";
 import type { PlanActionResult } from "./actions";
 
 /**
@@ -55,7 +57,7 @@ export function PlanReadOnly({
                 className={selected === i ? "phase-tab selected" : "phase-tab"}
                 onClick={() => setSelected(i)}
               >
-                Fase {String(phase.index).padStart(2, "0")}
+                {phaseTitle(phase.index, phaseName(phase))}
               </button>
             ))}
           </div>

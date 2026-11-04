@@ -8,14 +8,33 @@ import {
   type ExportCheckin,
   type ExportLinkSource,
   type ExportRequest,
+  type ExportPlanExercise,
   type ExportSession,
   type ExportSource,
   type StudentDataExport,
 } from "@/modules/pedidos/export";
 import { portalLinksFor, type PortalLink } from "./student-access";
-import { studentTrainingFor } from "./student-plan";
+import { studentTrainingFor, type StudentExercise } from "./student-plan";
 import { activeUser } from "./students";
+import { typedExtras } from "./workout-sessions";
+import type { LoadBasis } from "@/modules/execucao/contracts";
 import { readAnswers, readQuestions } from "@/modules/checkin/contracts";
+
+/** A delivered exercise as the copy names it: stored columns only (never a trace or a structured dose). */
+const planExercise = (exercise: StudentExercise): ExportPlanExercise => ({
+  name: exercise.name,
+  videoUrl: exercise.videoUrl,
+  sets: exercise.sets,
+  reps: exercise.reps,
+  loadInstruction: exercise.loadInstruction,
+  cadence: exercise.cadence,
+  restSeconds: exercise.restSeconds,
+  restText: exercise.restText,
+  rirMin: exercise.rirMin,
+  rirMax: exercise.rirMax,
+  notes: exercise.notes,
+  ...(exercise.doseText !== undefined ? { doseText: exercise.doseText } : {}),
+});
 
 function readReplies(json: string | null): ExportCheckin["replies"] {
   if (!json) return [];
@@ -136,15 +155,25 @@ export function studentExportFor(db: D1Database, userId: string) {
         `SELECT ws.id, ws.performed_on AS performedOn, p.title AS planTitle, ws.phase_index AS phaseIndex,
            ws.workout_label AS workoutLabel, ws.effort, ws.pain_reported AS painReported, ws.notes,
            ws.created_at AS createdAt,
-           EXISTS (SELECT 1 FROM session_acknowledgements a WHERE a.session_id = ws.id) AS read
+           EXISTS (SELECT 1 FROM session_acknowledgements a WHERE a.session_id = ws.id) AS read,
+           o.week_index AS week, o.slot_index AS slot
          FROM workout_sessions ws
          JOIN plan_revisions r ON r.organization_id = ws.organization_id AND r.id = ws.revision_id
          JOIN training_plans p ON p.organization_id = r.organization_id AND p.id = r.plan_id
+         LEFT JOIN plan_session_occurrences o ON o.organization_id = ws.organization_id AND o.id = ws.occurrence_id
          WHERE ws.student_id = ?2 AND ${linked("ws")}
          ORDER BY ws.performed_on DESC, ws.created_at DESC LIMIT ?3`,
       )
       .bind(userId, studentId, EXPORT_SESSION_LIMIT + 1)
-      .all<Omit<ExportSession, "painReported" | "read" | "exercises"> & { id: string; painReported: number; read: number }>();
+      .all<
+        Omit<ExportSession, "painReported" | "read" | "exercises" | "week" | "slot"> & {
+          id: string;
+          painReported: number;
+          read: number;
+          week: number | null;
+          slot: number | null;
+        }
+      >();
     const kept = result.results.slice(0, EXPORT_SESSION_LIMIT);
 
     // The exercises of the sessions above, which a gated query already chose, a few at a time.
@@ -154,7 +183,8 @@ export function studentExportFor(db: D1Database, userId: string) {
       const logged = await db
         .prepare(
           `SELECT se.session_id AS sessionId, se.id AS exerciseId, se.exercise_name AS name, se.done, se.rir,
-             se.pain, se.notes, st.set_number AS setNumber, st.reps, st.load_kg AS loadKg
+             se.pain, se.notes, st.set_number AS setNumber, st.reps, st.load_kg AS loadKg, st.rir AS setRir,
+             st.duration_seconds AS durationSeconds, st.distance_meters AS distanceMeters, st.load_basis AS loadBasis
            FROM session_exercises se
            LEFT JOIN session_sets st ON st.session_exercise_id = se.id
            WHERE se.session_id IN (SELECT value FROM json_each(?1))
@@ -172,6 +202,10 @@ export function studentExportFor(db: D1Database, userId: string) {
           setNumber: number | null;
           reps: number | null;
           loadKg: number | null;
+          setRir: number | null;
+          durationSeconds: number | null;
+          distanceMeters: number | null;
+          loadBasis: LoadBasis | null;
         }>();
       const byExercise = new Map<string, ExportSession["exercises"][number]>();
       for (const row of logged.results) {
@@ -181,12 +215,14 @@ export function studentExportFor(db: D1Database, userId: string) {
           byExercise.set(row.exerciseId, exercise);
           exercises.set(row.sessionId, [...(exercises.get(row.sessionId) ?? []), exercise]);
         }
-        if (row.setNumber !== null) exercise.sets.push({ setNumber: row.setNumber, reps: row.reps, loadKg: row.loadKg });
+        if (row.setNumber !== null)
+          exercise.sets.push({ setNumber: row.setNumber, reps: row.reps, loadKg: row.loadKg, ...typedExtras(row) });
       }
     }
     return {
-      rows: kept.map(({ id, painReported, read, ...row }) => ({
+      rows: kept.map(({ id, painReported, read, week, slot, ...row }) => ({
         ...row,
+        ...(week === null ? {} : { week, slot }),
         painReported: Boolean(painReported),
         read: Boolean(read),
         exercises: exercises.get(id) ?? [],
@@ -241,22 +277,30 @@ export function studentExportFor(db: D1Database, userId: string) {
           weeks: phase.weeks,
           sessionsPerWeek: phase.sessionsPerWeek,
           split: phase.split,
+          name: phase.name,
           workouts: phase.workouts.map((workout) => ({
             label: workout.label,
-            exercises: workout.exercises.map((exercise) => ({
-              name: exercise.name,
-              videoUrl: exercise.videoUrl,
-              sets: exercise.sets,
-              reps: exercise.reps,
-              loadInstruction: exercise.loadInstruction,
-              cadence: exercise.cadence,
-              restSeconds: exercise.restSeconds,
-              restText: exercise.restText,
-              rirMin: exercise.rirMin,
-              rirMax: exercise.rirMax,
-              notes: exercise.notes,
-            })),
+            name: workout.name,
+            exercises: workout.exercises.map(planExercise),
           })),
+          // Plans written session by session: the stored dose of every session (applied, delivered content only; Q9).
+          ...(phase.weeksDetail
+            ? {
+                weeksDetail: phase.weeksDetail.map((week) => ({
+                  index: week.index,
+                  startDate: week.startDate,
+                  endDate: week.endDate,
+                  sessions: week.sessions.map((session) => ({
+                    week: session.week,
+                    slot: session.slot,
+                    label: session.label,
+                    name: session.name,
+                    plannedDate: session.plannedDate,
+                    exercises: session.exercises.map(planExercise),
+                  })),
+                })),
+              }
+            : {}),
         })),
       })),
       requests: requestRows.rows,

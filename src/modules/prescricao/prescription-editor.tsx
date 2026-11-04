@@ -5,11 +5,15 @@ import { ArrowDown, ArrowUp, Copy, ListChecks, Pencil, Plus, Trash2 } from "luci
 import { Pill } from "@/components/ui";
 import type { PrescribedItem, Target } from "@/db/prescription";
 import type { PeriodizationSchedule } from "@/modules/training/contracts";
-import { workoutLabels } from "@/modules/training/periodization";
+import { phaseWorkoutLabels } from "@/modules/training/periodization";
+import { workoutTitle } from "@/modules/training/format";
 import { CATEGORIES } from "@/modules/biblioteca/contracts";
 import { videoLabel } from "@/modules/biblioteca/labels";
-import { describeDose } from "./describe";
+import { changedDoseFields, describeDose, restTextForEditing, storedDoseText } from "./describe";
 import { progressOf, type WorkoutProgress } from "./summary";
+import { revisionOriginLabel } from "./automatica/view";
+import { OccurrenceEditor } from "./occurrence-editor";
+import type { SessionOccurrence } from "@/db/prescription";
 import {
   addExercise,
   copyMesocycle,
@@ -33,6 +37,7 @@ const STATUS: Record<WorkoutProgress["status"], { text: string; tone: "warning" 
   BELOW: { text: "Abaixo do alvo", tone: "warning" },
   MET: { text: "Alvo atendido", tone: "success" },
   ABOVE: { text: "Acima do alvo", tone: "neutral" },
+  NO_TARGET: { text: "Sem alvo", tone: "neutral" },
 };
 
 /**
@@ -46,15 +51,35 @@ export function PrescriptionEditor({
   items,
   library,
   readOnly,
+  occurrence,
+  openProposal = false,
 }: {
   planId: string;
   revisionId: string;
   schedule: PeriodizationSchedule;
-  items: PrescribedItem[];
+  /** Rows of the revision; `doseText` is the text stored when the engine wrote the dose (motor S9), shown as it is. */
+  items: Array<PrescribedItem & { doseText?: string | null }>;
   library: LibraryOption[];
   readOnly: boolean;
+  /**
+   * A revision written session by session (OCCURRENCE, motor S9): the sessions of one phase and the week shown, for the "Doses
+   * por sessão" section. Absent for every TEMPLATE revision, which is drawn exactly as before.
+   */
+  occurrence?: { selfHref: string; phaseIndex: number; week: number; sessions: SessionOccurrence[] };
+  /** An automatic proposal is open for this draft: changes here need the proposal to be updated before it is applied. */
+  openProposal?: boolean;
 }) {
-  const [phase, setPhase] = useState(0);
+  const phaseAt = (index: number | undefined) => {
+    const at = index === undefined ? 0 : schedule.phases.findIndex((p) => p.index === index);
+    return at < 0 ? 0 : at;
+  };
+  const [phase, setPhase] = useState(() => phaseAt(occurrence?.phaseIndex));
+  // A phase link in "Doses por sessão" changes the phase of the page: the workout cards follow it.
+  const [shownPhaseIndex, setShownPhaseIndex] = useState(occurrence?.phaseIndex);
+  if (occurrence && occurrence.phaseIndex !== shownPhaseIndex) {
+    setShownPhaseIndex(occurrence.phaseIndex);
+    setPhase(phaseAt(occurrence.phaseIndex));
+  }
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [copyFromPhase, setCopyFromPhase] = useState("");
@@ -64,7 +89,7 @@ export function PrescriptionEditor({
   const current = schedule.phases[phase];
   // 0.93: a draft with no exercise yet says where to start, with the real names of the first phase and workout.
   const firstPhase = schedule.phases[0];
-  const firstWorkout = workoutLabels(firstPhase.split)[0];
+  const firstWorkout = phaseWorkoutLabels(firstPhase)[0];
   const firstStep = !readOnly && items.length === 0;
   const firstTarget = `adicionar-${firstPhase.index}-${firstWorkout.replace(/\s+/g, "-")}`;
 
@@ -84,13 +109,22 @@ export function PrescriptionEditor({
       <p className="muted">
         {readOnly
           ? "Esta revisão está fechada: os exercícios abaixo não mudam. Para alterar, crie uma nova revisão."
-          : "Você escolhe cada exercício e digita cada valor. Nada é sugerido nem preenchido por padrão, e o alvo de exercícios por treino é só uma referência. A prescrição usa a estrutura já salva."}
+          : occurrence
+            ? "Exercícios propostos automaticamente e aplicados a este rascunho, com dose por sessão. Revise e edite à vontade: nada vai ao aluno antes da sua aprovação e da entrega."
+            : "Você escolhe cada exercício e digita cada valor. Nada é sugerido nem preenchido por padrão, e o alvo de exercícios por treino é só uma referência. A prescrição usa a estrutura já salva."}
       </p>
+      {openProposal && !readOnly && (
+        <p className="small" role="note">
+          <Pill tone="warning">Proposta aberta</Pill> Há uma proposta automática aberta; mudanças aqui exigem atualizar a proposta antes de aplicar.
+        </p>
+      )}
       <p className="small" role="status">
         <Pill tone={below ? "warning" : "success"}>
           {below
             ? `${below} de ${progress.length} treinos abaixo do alvo`
-            : "Todos os treinos atingiram o alvo"}
+            : progress.some((slot) => slot.status === "NO_TARGET")
+              ? "Nenhum treino abaixo do alvo"
+              : "Todos os treinos atingiram o alvo"}
         </Pill>
       </p>
       {firstStep && (
@@ -188,7 +222,7 @@ export function PrescriptionEditor({
         </div>
       )}
       <div className="workout-grid">
-        {workoutLabels(current.split).map((label) => (
+        {phaseWorkoutLabels(current).map((label) => (
           <WorkoutCard
             key={`${current.index}-${label}`}
             planId={planId}
@@ -207,9 +241,24 @@ export function PrescriptionEditor({
             readOnly={readOnly}
             pending={pending}
             run={run}
+            perSession={Boolean(occurrence)}
           />
         ))}
       </div>
+      {occurrence && (
+        <OccurrenceEditor
+          planId={planId}
+          revisionId={revisionId}
+          selfHref={occurrence.selfHref}
+          schedule={schedule}
+          phaseIndex={occurrence.phaseIndex}
+          week={occurrence.week}
+          sessions={occurrence.sessions}
+          items={items}
+          library={library}
+          readOnly={readOnly}
+        />
+      )}
     </section>
   );
 }
@@ -225,17 +274,20 @@ function WorkoutCard({
   readOnly,
   pending,
   run,
+  perSession = false,
 }: {
   planId: string;
   revisionId: string;
   target: Target;
   progress: WorkoutProgress;
-  items: PrescribedItem[];
+  items: Array<PrescribedItem & { doseText?: string | null }>;
   allProgress: WorkoutProgress[];
   library: LibraryOption[];
   readOnly: boolean;
   pending: boolean;
   run: (task: () => Promise<PrescriptionResult>, done?: () => void) => void;
+  /** OCCURRENCE: each row shows where it came from, and the base dose is described as the dose of every session. */
+  perSession?: boolean;
 }) {
   const [category, setCategory] = useState("");
   const [exerciseId, setExerciseId] = useState("");
@@ -258,9 +310,11 @@ function WorkoutCard({
   return (
     <section className="workout-card" aria-label={`Treino ${target.workoutLabel}`}>
       <header>
-        <h3>Treino {target.workoutLabel}</h3>
+        <h3>{workoutTitle(target.workoutLabel, progress.name)}</h3>
         <span className="small muted">
-          {progress.count} de {progress.target}
+          {progress.target === null
+            ? `${progress.count} ${progress.count === 1 ? "exercício" : "exercícios"}`
+            : `${progress.count} de ${progress.target}`}
         </span>
         <Pill tone={status.tone}>{status.text}</Pill>
       </header>
@@ -275,8 +329,14 @@ function WorkoutCard({
                 <div className="exercise-main">
                   <strong>{item.name}</strong>
                   <span className="small muted">
-                    {describeItem(item) || "Sem parâmetros definidos"}
+                    {perSession && "Dose base: "}
+                    {storedDoseText(item) || "Sem parâmetros definidos"}
                   </span>
+                  {perSession && (
+                    <span className="pill-row">
+                      <Pill tone={revisionOriginLabel(item.origin).tone}>{revisionOriginLabel(item.origin).text}</Pill>
+                    </span>
+                  )}
                   {item.notes && <span className="small muted">Obs.: {item.notes}</span>}
                   {item.videoUrl && (
                     <span className="small">
@@ -441,7 +501,7 @@ function WorkoutCard({
                 <select value={copyFrom} onChange={(e) => setCopyFrom(e.target.value)}>
                   <option value="">Escolha…</option>
                   {sources.map((slot) => (
-                    <option key={`${slot.phaseIndex}|${slot.label}`} value={`${slot.phaseIndex}|${slot.label}`}>
+                    <option key={JSON.stringify([slot.phaseIndex, slot.label])} value={JSON.stringify([slot.phaseIndex, slot.label])}>
                       Fase {slot.phaseIndex} · Treino {slot.label} ({slot.count})
                     </option>
                   ))}
@@ -452,10 +512,11 @@ function WorkoutCard({
                 className="button secondary small"
                 disabled={pending || !copyFrom}
                 onClick={() => {
-                  const [phaseIndex, workoutLabel] = copyFrom.split("|");
+                  // JSON, not "fase|rótulo": the source is read back exactly, whatever the label holds.
+                  const [phaseIndex, workoutLabel] = JSON.parse(copyFrom) as [number, string];
                   run(
                     () =>
-                      copyWorkout(planId, revisionId, { phaseIndex: Number(phaseIndex), workoutLabel }, target),
+                      copyWorkout(planId, revisionId, { phaseIndex, workoutLabel }, target),
                     () => setCopyFrom(""),
                   );
                 }}
@@ -476,45 +537,36 @@ function ItemForm({
   onSave,
   onCancel,
 }: {
-  item: PrescribedItem;
+  item: PrescribedItem & { doseText?: string | null };
   pending: boolean;
   onSave: (fields: Record<string, unknown>, customName?: string) => void;
   onCancel: () => void;
 }) {
-  const [value, setValue] = useState({
+  const [initial] = useState(() => ({
     name: item.name,
     sets: item.sets ?? "",
     reps: item.reps ?? "",
     loadInstruction: item.loadInstruction ?? "",
     cadence: item.cadence ?? "",
     restSeconds: item.restSeconds === null ? "" : String(item.restSeconds),
-    restText: item.restText ?? "",
+    restText: restTextForEditing(item),
     rirMin: item.rirMin === null ? "" : String(item.rirMin),
     rirMax: item.rirMax === null ? "" : String(item.rirMax),
     videoUrl: item.videoUrl ?? "",
     notes: item.notes ?? "",
-  });
+  }));
+  const [value, setValue] = useState(initial);
   const set = (key: keyof typeof value) => (event: { target: { value: string } }) =>
     setValue({ ...value, [key]: event.target.value });
-  const number = (text: string) => (text.trim() === "" ? null : Number(text));
   return (
     <form
       className="item-form"
       onSubmit={(event) => {
         event.preventDefault();
+        // Dose fields only when one of them changed: a save of the notes, the video or the name keeps the stored dose (an engine
+        // dose keeps its text); the repository fills what is not sent with what is stored.
         onSave(
-          {
-            sets: value.sets || null,
-            reps: value.reps || null,
-            loadInstruction: value.loadInstruction || null,
-            cadence: value.cadence || null,
-            restSeconds: number(value.restSeconds),
-            restText: value.restText || null,
-            rirMin: number(value.rirMin),
-            rirMax: number(value.rirMax),
-            videoUrl: value.videoUrl || null,
-            notes: value.notes || null,
-          },
+          { ...changedDoseFields(initial, value), videoUrl: value.videoUrl || null, notes: value.notes || null },
           item.exerciseId === null ? value.name : undefined,
         );
       }}

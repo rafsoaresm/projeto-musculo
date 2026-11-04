@@ -37,7 +37,7 @@ export default async function StudentHome() {
         latest
           ? {
               title: latest.title,
-              detail: `Ciclo de ${formatCalendarDate(latest.startDate)} a ${formatCalendarDate(latest.endDate)}, com ${latest.phases.length} fases.`,
+              detail: `Ciclo de ${formatCalendarDate(latest.startDate)} a ${formatCalendarDate(latest.endDate)}, com ${latest.phases.length} ${latest.phases.length === 1 ? "fase" : "fases"}.`,
               delivered: `Revisão ${latest.revisionNumber}, entregue em ${formatDate(latest.deliveredAt)}${deliveredByText(latest.deliveredBy, latest.deliveredOrganizationName)}.`,
             }
           : undefined

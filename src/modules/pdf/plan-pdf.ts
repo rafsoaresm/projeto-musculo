@@ -8,8 +8,8 @@ import {
   type PDFPage,
 } from "pdf-lib";
 import type { StudentExercise, StudentTrainingPlan } from "@/db/student-plan";
-import { describeDose } from "@/modules/prescricao/describe";
-import { formatCalendarDate } from "@/modules/training/format";
+import { storedDoseText } from "@/modules/prescricao/describe";
+import { divisionSuffix, formatCalendarDate, phaseTitle, workoutTitle } from "@/modules/training/format";
 
 /**
  * The delivered plan as a PDF, generated on the server with pdf-lib (pure JavaScript, so it runs
@@ -109,7 +109,7 @@ export function safeLink(url: string | null): string | null {
  * not part of it, so a rename does not make a different version of the same revision.
  */
 export async function planFingerprint(plan: StudentTrainingPlan): Promise<string> {
-  const canonical = JSON.stringify([
+  const canonical = plan.prescriptionModel === "OCCURRENCE" ? occurrenceCanonical(plan) : JSON.stringify([
     plan.revisionId,
     plan.title,
     plan.revisionNumber,
@@ -139,11 +139,68 @@ export async function planFingerprint(plan: StudentTrainingPlan): Promise<string
           exercise.rirMax,
           exercise.notes,
         ]),
+        // v2 names only when present, so the tuples of a v1 plan (and its fingerprint) stay as they were.
+        ...(workout.name ? [workout.name] : []),
       ]),
+      ...(phase.name ? [phase.name] : []),
     ]),
   ]);
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+const exerciseTuple = (exercise: StudentExercise) => [
+  exercise.name,
+  exercise.videoUrl,
+  exercise.videoStatus,
+  exercise.sets,
+  exercise.reps,
+  exercise.loadInstruction,
+  exercise.cadence,
+  exercise.restSeconds,
+  exercise.restText,
+  exercise.rirMin,
+  exercise.rirMax,
+  exercise.notes,
+  exercise.doseText ?? null,
+];
+
+/**
+ * The fingerprint of a revision written session by session (motor S8): every stored dose of every session, under a "v2" marker so it
+ * can never equal the fingerprint of a TEMPLATE revision. Stored text only, as printed.
+ */
+function occurrenceCanonical(plan: StudentTrainingPlan): string {
+  return JSON.stringify([
+    "v2",
+    plan.revisionId,
+    plan.title,
+    plan.revisionNumber,
+    plan.deliveredAt,
+    plan.startDate,
+    plan.endDate,
+    plan.phases.map((phase) => [
+      phase.index,
+      phase.startDate,
+      phase.endDate,
+      phase.weeks,
+      phase.sessionsPerWeek,
+      phase.split,
+      phase.name ?? null,
+      (phase.weeksDetail ?? []).map((week) => [
+        week.index,
+        week.startDate,
+        week.endDate,
+        week.sessions.map((session) => [
+          session.week,
+          session.slot,
+          session.label,
+          session.name,
+          session.plannedDate,
+          session.exercises.map(exerciseTuple),
+        ]),
+      ]),
+    ]),
+  ]);
 }
 
 export const dateTimeBR = (date: Date) =>
@@ -210,7 +267,7 @@ function exerciseHeight(exercise: StudentExercise, flow: Flow): number {
   const dose = wrap(
     flow.regular,
     9.5,
-    printable(flow.regular, describeDose(exercise) || "Sem parâmetros definidos"),
+    printable(flow.regular, storedDoseText(exercise) || "Sem parâmetros definidos"),
     CONTENT_WIDTH - 18,
   );
   const notes = exercise.notes
@@ -229,7 +286,7 @@ function drawExercise(flow: Flow, exercise: StudentExercise, number: number) {
     flow.text(line, x, 10.5, flow.bold);
     flow.y -= 13;
   }
-  const dose = describeDose(exercise) || "Sem parâmetros definidos";
+  const dose = storedDoseText(exercise) || "Sem parâmetros definidos";
   for (const line of wrap(flow.regular, 9.5, printable(flow.regular, dose), width)) {
     flow.text(line, x, 9.5, flow.regular, MUTED);
     flow.y -= 12;
@@ -254,6 +311,38 @@ function drawExercise(flow: Flow, exercise: StudentExercise, number: number) {
     flow.y -= 12;
   }
   flow.y -= 8;
+}
+
+/** A revision written session by session: every week, every session with its stored doses, in order. */
+function drawWeeks(flow: Flow, phase: StudentTrainingPlan["phases"][number]) {
+  for (const week of phase.weeksDetail ?? []) {
+    const first = week.sessions[0]?.exercises[0];
+    flow.need(16 + 18 + (first ? exerciseHeight(first, flow) : 16));
+    flow.text(
+      `Semana ${week.index} · ${formatCalendarDate(week.startDate)} a ${formatCalendarDate(week.endDate)}`,
+      MARGIN,
+      10.5,
+      flow.bold,
+      BRAND,
+    );
+    flow.y -= 16;
+    if (week.sessions.length === 0) {
+      flow.text("Nenhuma sessão nesta semana.", MARGIN + 18, 9.5, flow.regular, MUTED);
+      flow.y -= 16;
+    }
+    for (const session of week.sessions) {
+      flow.need(18 + (session.exercises[0] ? exerciseHeight(session.exercises[0], flow) : 16));
+      const when = session.plannedDate ? ` · ${formatCalendarDate(session.plannedDate)}` : "";
+      flow.text(`Sessão ${session.slot} · ${workoutTitle(session.label, session.name)}${when}`, MARGIN, 11, flow.bold, INK);
+      flow.y -= 17;
+      if (session.exercises.length === 0) {
+        flow.text("Nenhum exercício nesta sessão.", MARGIN + 18, 9.5, flow.regular, MUTED);
+        flow.y -= 16;
+      }
+      session.exercises.forEach((exercise, index) => drawExercise(flow, exercise, index + 1));
+      flow.y -= 4;
+    }
+  }
 }
 
 export async function renderPlanPdf(input: PlanPdfInput): Promise<Uint8Array> {
@@ -316,7 +405,8 @@ export async function renderPlanPdf(input: PlanPdfInput): Promise<Uint8Array> {
   // Phases, workouts, exercises.
   for (const phase of plan.phases) {
     const firstWorkout = phase.workouts[0];
-    const firstExercise = firstWorkout?.exercises[0];
+    const firstExercise =
+      plan.prescriptionModel === "OCCURRENCE" ? phase.weeksDetail?.[0]?.sessions[0]?.exercises[0] : firstWorkout?.exercises[0];
     flow.need(
       34 + 22 + (firstExercise ? exerciseHeight(firstExercise, flow) : 16),
     );
@@ -327,18 +417,37 @@ export async function renderPlanPdf(input: PlanPdfInput): Promise<Uint8Array> {
       height: 22,
       color: SOFT,
     });
-    const head = `Fase ${String(phase.index).padStart(2, "0")}`;
+    const head = phaseTitle(phase.index, phase.name);
     flow.y -= 5;
     flow.text(head, MARGIN + 8, 11, bold, BRAND);
-    const meta =
-      `${formatCalendarDate(phase.startDate)} a ${formatCalendarDate(phase.endDate)} · ${phase.weeks} semanas · ` +
-      `${phase.sessionsPerWeek} ${phase.sessionsPerWeek === 1 ? "sessão" : "sessões"} por semana` +
-      (phase.split === "Full Body" ? "" : ` · divisão ${phase.split}`);
-    flow.text(meta, MARGIN + 8 + bold.widthOfTextAtSize(head, 11) + 10, 9, regular, MUTED);
-    flow.y -= 17 + 12;
+    const meta = printable(
+      regular,
+      `${formatCalendarDate(phase.startDate)} a ${formatCalendarDate(phase.endDate)} · ${phase.weeks} ${phase.weeks === 1 ? "semana" : "semanas"} · ` +
+        `${phase.sessionsPerWeek} ${phase.sessionsPerWeek === 1 ? "sessão" : "sessões"} por semana` +
+        divisionSuffix(phase.split),
+    );
+    const metaX = MARGIN + 8 + bold.widthOfTextAtSize(printable(bold, head), 11) + 10;
+    if (regular.widthOfTextAtSize(meta, 9) <= MARGIN + CONTENT_WIDTH - 8 - metaX) {
+      flow.text(meta, metaX, 9, regular, MUTED);
+      flow.y -= 17 + 12;
+    } else {
+      // A v2 phase with a long name or many workouts: the line goes under the band instead of off the page.
+      flow.y -= 17 + 4;
+      for (const line of wrap(regular, 9, meta, CONTENT_WIDTH - 16)) {
+        flow.need(13);
+        flow.text(line, MARGIN + 8, 9, regular, MUTED);
+        flow.y -= 13;
+      }
+      flow.y -= 8;
+    }
+    if (plan.prescriptionModel === "OCCURRENCE") {
+      drawWeeks(flow, phase);
+      flow.y -= 6;
+      continue;
+    }
     for (const workout of phase.workouts) {
       flow.need(18 + (workout.exercises[0] ? exerciseHeight(workout.exercises[0], flow) : 16));
-      flow.text(`Treino ${workout.label}`, MARGIN, 11, bold, INK);
+      flow.text(workoutTitle(workout.label, workout.name), MARGIN, 11, bold, INK);
       flow.y -= 17;
       if (workout.exercises.length === 0) {
         flow.text("Nenhum exercício neste treino.", MARGIN + 18, 9.5, regular, MUTED);
