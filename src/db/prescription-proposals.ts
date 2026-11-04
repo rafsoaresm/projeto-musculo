@@ -912,7 +912,7 @@ export function proposalsFor(db: D1Database, context: AuthenticatedContext | nul
 
   /** Everything the apply needs to read first, at one consistent version (one batch). Null when the proposal is not reachable. */
   async function applyReads(planId: string, revisionId: string, proposalId: string) {
-    const [h, rows, items, missing, schedule, existingOcc] = await db.batch([
+    const [h, rows, items, missing, schedule, existingOcc, preservedItems, proposalSessions] = await db.batch([
       db.prepare(`${headerSql(draft)} AND p.id = ?5`).bind(organizationId, userId, planId, revisionId, proposalId),
       db
         .prepare(
@@ -948,6 +948,22 @@ export function proposalsFor(db: D1Database, context: AuthenticatedContext | nul
            WHERE o.organization_id = ?1 AND o.revision_id = ?4 AND ${draft}`,
         )
         .bind(organizationId, userId, planId, revisionId),
+      // Where the proposal holds each row already in the draft (PRESERVED): its sessions and slot key (a substitution of it
+      // points at that key).
+      db
+        .prepare(
+          `SELECT i.existing_prescribed_exercise_id AS rowId, i.slot_key AS k, o.phase_index AS p, o.week_index AS w, o.slot_index AS s
+           FROM proposal_items i JOIN proposal_occurrences o ON o.organization_id = i.organization_id AND o.id = i.proposal_occurrence_id
+           WHERE i.organization_id = ?1 AND i.proposal_id = ?5 AND i.origin = 'PRESERVED' AND i.existing_prescribed_exercise_id IS NOT NULL
+             AND ${draft}`,
+        )
+        .bind(organizationId, userId, planId, revisionId, proposalId),
+      db
+        .prepare(
+          `SELECT o.phase_index AS p, o.week_index AS w, o.slot_index AS s FROM proposal_occurrences o
+           WHERE o.organization_id = ?1 AND o.proposal_id = ?5 AND ${draft}`,
+        )
+        .bind(organizationId, userId, planId, revisionId, proposalId),
     ]);
     const row = (h.results as HeaderRow[])[0];
     const scheduleRow = (schedule.results as Array<{ scheduleJson: string }>)[0];
@@ -960,6 +976,8 @@ export function proposalsFor(db: D1Database, context: AuthenticatedContext | nul
       catalogChanged: (missing.results as Array<{ id: string | null }>).map((m) => m.id ?? "(sem exercício)"),
       schedule: JSON.parse(scheduleRow.scheduleJson) as PeriodizationSchedule,
       existingOccurrences: existingOcc.results as Array<{ id: string; phaseIndex: number; week: number; slot: number }>,
+      preservedItems: preservedItems.results as Array<{ rowId: string; k: string; p: number; w: number; s: number }>,
+      proposalSessions: new Set((proposalSessions.results as Array<{ p: number; w: number; s: number }>).map((o) => `${o.p}|${o.w}|${o.s}`)),
     };
   }
 
@@ -976,7 +994,7 @@ export function proposalsFor(db: D1Database, context: AuthenticatedContext | nul
   }
 
   /** One prescribed exercise per engine slot (phase + slot key), positioned after the rows that stay in its workout. */
-  function slotGroups(items: ItemLite[], staying: DraftRow[]) {
+  function slotGroups(items: ItemLite[], staying: DraftRow[], preservedSlots: Map<string, string> = new Map()) {
     const groups = new Map<string, { id: string; p: number; label: string; k: string; x: string | null; first: string; firstPos: number; pos: number }>();
     for (const i of items) {
       const key = `${i.p}|${i.k}`;
@@ -1004,8 +1022,9 @@ export function proposalsFor(db: D1Database, context: AuthenticatedContext | nul
       k: g.k,
       pos: g.pos,
       first: g.first,
-      // A substitution points at the row of the slot it replaces, when that slot is still written by this application.
-      x: g.x ? (idOf.get(`${g.p}|${g.x}`) ?? null) : null,
+      // A substitution points at the row of the slot it replaces: an engine slot written by this application, or a row already
+      // in the draft (PRESERVED slot) that stays.
+      x: g.x ? (idOf.get(`${g.p}|${g.x}`) ?? preservedSlots.get(`${g.p}|${g.x}`) ?? null) : null,
     }));
   }
 
@@ -1120,7 +1139,21 @@ export function proposalsFor(db: D1Database, context: AuthenticatedContext | nul
       weekStart: o.weekStart,
       plannedDate: o.plannedDate,
     }));
-    const groups = slotGroups(read.items, staying);
+    const stayingIds = new Set(staying.map((r) => r.id));
+    const preservedSlots = new Map(read.preservedItems.filter((i) => stayingIds.has(i.rowId)).map((i) => [`${i.p}|${i.k}`, i.rowId]));
+    const groups = slotGroups(read.items, staying, preservedSlots);
+    // Rows the proposal holds (PRESERVED) follow it in every session it covers: where it left one out (a substitution of the row
+    // "from week N on"), the row is written as not included there, even over a dose already per session (design §4.6 step 8).
+    const heldIn = new Set(read.preservedItems.map((i) => `${i.rowId}|${i.p}|${i.w}|${i.s}`));
+    const preservedIds = [...new Set(read.preservedItems.map((i) => i.rowId))].filter((id) => stayingIds.has(id));
+    const rowById = new Map(staying.map((r) => [r.id, r]));
+    const gaps: Array<{ pe: string; o: string }> = [];
+    for (const id of preservedIds) {
+      const r = rowById.get(id) as DraftRow;
+      for (const o of occurrenceRows)
+        if (o.p === r.phaseIndex && o.label === r.label && read.proposalSessions.has(`${o.p}|${o.w}|${o.s}`) && !heldIn.has(`${id}|${o.p}|${o.w}|${o.s}`))
+          gaps.push({ pe: id, o: o.id });
+    }
     const applicationId = crypto.randomUUID();
     const stamp = now.toISOString();
     const counts: ApplyCounts = { occurrences: occurrences.length, rows: groups.length, doses: read.items.length, preserved: staying.length, replaced: replacedRows.length };
@@ -1244,8 +1277,13 @@ export function proposalsFor(db: D1Database, context: AuthenticatedContext | nul
          FROM prescribed_exercises pe
          JOIN plan_session_occurrences o ON o.organization_id = ?1 AND o.revision_id = ?4 AND o.phase_index = pe.phase_index
            AND o.workout_label = pe.workout_label
-         WHERE pe.organization_id = ?1 AND pe.revision_id = ?4 AND (pe.application_id IS NULL OR pe.application_id <> ?6) AND ${tok}
+         WHERE pe.organization_id = ?1 AND pe.revision_id = ?4 AND (pe.application_id IS NULL OR pe.application_id <> ?6)
+           -- A row the proposal holds is written by 6b in the sessions the proposal covers (and left out by 8b where it is not).
+           AND NOT (pe.id IN (SELECT value FROM json_each(?8)) AND EXISTS (SELECT 1 FROM proposal_occurrences po
+             WHERE po.proposal_id = ?5 AND po.phase_index = o.phase_index AND po.week_index = o.week_index AND po.slot_index = o.slot_index))
+           AND ${tok}
          ON CONFLICT (prescribed_exercise_id, occurrence_id) DO NOTHING`,
+        JSON.stringify(preservedIds),
       ),
       // 8. A slot of this application absent from a session of its workout: written as not included there (base dose kept).
       a(
@@ -1258,6 +1296,24 @@ export function proposalsFor(db: D1Database, context: AuthenticatedContext | nul
          WHERE pe.organization_id = ?1 AND pe.revision_id = ?4 AND pe.application_id = ?6 AND ${tok}
          ON CONFLICT (prescribed_exercise_id, occurrence_id) DO NOTHING`,
       ),
+    );
+    // 8b. A row the proposal holds, in a session of its workout where the proposal left it out (substituted there): not included,
+    //     also over a dose already written per session (its fields are kept).
+    for (const chunk of jsonChunks(gaps))
+      statements.push(
+        a(
+          `${occurrenceInsert}
+           SELECT lower(hex(randomblob(16))), ?1, ?4, pe.id, o.id, 0, pe.sets, pe.reps, pe.load_instruction, pe.cadence, pe.rest_seconds,
+             pe.rest_text, pe.rir_min, pe.rir_max, pe.notes, pe.dose_json, pe.dose_text, NULL, ${occurrenceOrigin("pe.origin")}, NULL, ?2, ?7, ?7
+           FROM json_each(?8) j
+           CROSS JOIN prescribed_exercises pe ON pe.id = json_extract(j.value, '$.pe') AND pe.organization_id = ?1 AND pe.revision_id = ?4
+           CROSS JOIN plan_session_occurrences o ON o.id = json_extract(j.value, '$.o') AND o.organization_id = ?1 AND o.revision_id = ?4
+           WHERE ${tok}
+           ON CONFLICT (prescribed_exercise_id, occurrence_id) DO UPDATE SET included = 0, updated_at = excluded.updated_at`,
+          chunk,
+        ),
+      );
+    statements.push(
       // 9. The proposal is closed as APPLIED, with the professional's decision and the plan event (no content in either).
       a(
         `UPDATE prescription_proposals SET state = 'APPLIED', version = version + 1, last_write_id = ?6, closed_at = ?7,
@@ -1293,8 +1349,8 @@ export function proposalsFor(db: D1Database, context: AuthenticatedContext | nul
     }
     if (!failure) {
       const landed = await db
-        .prepare(`SELECT id FROM prescription_applications WHERE organization_id = ?1 AND id = ?2 AND revision_id = ?3`)
-        .bind(organizationId, applicationId, revisionId)
+        .prepare(`SELECT a.id FROM prescription_applications a WHERE a.organization_id = ?1 AND a.id = ?6 AND a.revision_id = ?4 AND ${any}`)
+        .bind(organizationId, userId, planId, revisionId, proposalId, applicationId)
         .first<{ id: string }>();
       if (landed) return { status: "applied", applicationId, counts };
     }

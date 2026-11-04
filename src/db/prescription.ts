@@ -185,7 +185,28 @@ export function prescriptionFor(
       .prepare(`SELECT r.prescription_model AS m FROM plan_revisions r WHERE r.organization_id = ?1 AND r.id = ?4 AND ${open}`)
       .bind(organizationId, userId, planId, revisionId)
       .first<{ m: string }>();
-    if (model?.m !== "OCCURRENCE") return { statements: [], reshaped: false };
+    // TEMPLATE when read: nothing per session, unless an apply turns the revision OCCURRENCE before the copy's batch runs (the
+    // model is checked again inside the batch); then each copy is included in every session of its workout, as `add` does.
+    if (model?.m !== "OCCURRENCE")
+      return {
+        statements: jsonChunks(copies.map((c) => c.newId)).map((chunk) =>
+          db
+            .prepare(
+              `${occurrenceInsert}
+               SELECT lower(hex(randomblob(16))), ?1, ?4, pe.id, o.id, 1, pe.sets, pe.reps, pe.load_instruction, pe.cadence,
+                 pe.rest_seconds, pe.rest_text, pe.rir_min, pe.rir_max, pe.notes, pe.dose_json, pe.dose_text, NULL,
+                 ${occurrenceOrigin("pe.origin")}, NULL, ?2, ?5, ?5
+               FROM json_each(?6) j
+               CROSS JOIN prescribed_exercises pe ON pe.id = j.value AND pe.organization_id = ?1 AND pe.revision_id = ?4
+               JOIN plan_session_occurrences o ON o.organization_id = pe.organization_id AND o.revision_id = pe.revision_id
+                 AND o.phase_index = pe.phase_index AND o.workout_label = pe.workout_label
+               WHERE ${isOccurrence} AND ${open}
+               ON CONFLICT (prescribed_exercise_id, occurrence_id) DO NOTHING`,
+            )
+            .bind(organizationId, userId, planId, revisionId, stamp, chunk),
+        ),
+        reshaped: false,
+      };
     const [occ, doses] = await db.batch([
       db
         .prepare(
@@ -420,6 +441,7 @@ export function prescriptionFor(
       const doseChanged = doseKeys.some((key) => fields[key] !== current[key]);
       const changed =
         doseChanged || fields.notes !== current.notes || link !== current.videoUrl || (name !== undefined && name !== current.name);
+      const notesChanged = fields.notes !== current.notes;
       const applyAll = (options.applyTo ?? "ALL_OCCURRENCES") === "ALL_OCCURRENCES";
       const results = await db.batch([
         db
@@ -441,22 +463,31 @@ export function prescriptionFor(
             link, status, name ?? current.name, itemId, doseChanged ? 1 : 0, changed ? 1 : 0,
           ),
         eventAfterChange(planId, revisionId, stamp),
-        // OCCURRENCE, "todas as sessões": every session of the row takes the base dose just typed (progression replaced).
+        // OCCURRENCE, "todas as sessões": only what changed reaches the sessions. A typed dose replaces every session's dose
+        // (progression replaced, structured dose and its text cleared); new notes replace the sessions' notes; a change of name or
+        // video only (base row columns) leaves every session dose as it is.
         db
           .prepare(
             `UPDATE prescribed_exercise_occurrences
-             SET sets = ?7, reps = ?8, load_instruction = ?9, cadence = ?10, rest_seconds = ?11, rest_text = ?12, rir_min = ?13,
-               rir_max = ?14, notes = ?15, dose_json = NULL, dose_text = NULL, updated_at = ?6,
-               origin = CASE WHEN origin = 'SYSTEM' THEN 'SYSTEM_EDITED' ELSE origin END
-             WHERE organization_id = ?1 AND revision_id = ?4 AND prescribed_exercise_id = ?5 AND ?16 = 1 AND ${isOccurrence}
+             SET sets = CASE WHEN ?16 = 1 THEN ?7 ELSE sets END, reps = CASE WHEN ?16 = 1 THEN ?8 ELSE reps END,
+               load_instruction = CASE WHEN ?16 = 1 THEN ?9 ELSE load_instruction END,
+               cadence = CASE WHEN ?16 = 1 THEN ?10 ELSE cadence END, rest_seconds = CASE WHEN ?16 = 1 THEN ?11 ELSE rest_seconds END,
+               rest_text = CASE WHEN ?16 = 1 THEN ?12 ELSE rest_text END, rir_min = CASE WHEN ?16 = 1 THEN ?13 ELSE rir_min END,
+               rir_max = CASE WHEN ?16 = 1 THEN ?14 ELSE rir_max END, notes = CASE WHEN ?17 = 1 THEN ?15 ELSE notes END,
+               dose_json = CASE WHEN ?16 = 1 THEN NULL ELSE dose_json END, dose_text = CASE WHEN ?16 = 1 THEN NULL ELSE dose_text END,
+               updated_at = ?6, origin = CASE WHEN origin = 'SYSTEM' THEN 'SYSTEM_EDITED' ELSE origin END
+             WHERE organization_id = ?1 AND revision_id = ?4 AND prescribed_exercise_id = ?5 AND ?18 = 1 AND ${isOccurrence}
                AND ${open}
-               AND (sets IS NOT ?7 OR reps IS NOT ?8 OR load_instruction IS NOT ?9 OR cadence IS NOT ?10 OR rest_seconds IS NOT ?11
-                 OR rest_text IS NOT ?12 OR rir_min IS NOT ?13 OR rir_max IS NOT ?14 OR notes IS NOT ?15 OR dose_json IS NOT NULL)`,
+               AND ((?16 = 1 AND (sets IS NOT ?7 OR reps IS NOT ?8 OR load_instruction IS NOT ?9 OR cadence IS NOT ?10
+                   OR rest_seconds IS NOT ?11 OR rest_text IS NOT ?12 OR rir_min IS NOT ?13 OR rir_max IS NOT ?14
+                   OR dose_json IS NOT NULL OR dose_text IS NOT NULL))
+                 OR (?17 = 1 AND notes IS NOT ?15))`,
           )
           .bind(
             organizationId, userId, planId, revisionId, itemId, stamp,
             fields.sets, fields.reps, fields.loadInstruction, fields.cadence,
-            fields.restSeconds, fields.restText, fields.rirMin, fields.rirMax, fields.notes, applyAll && changed ? 1 : 0,
+            fields.restSeconds, fields.restText, fields.rirMin, fields.rirMax, fields.notes,
+            doseChanged ? 1 : 0, notesChanged ? 1 : 0, applyAll && (doseChanged || notesChanged) ? 1 : 0,
           ),
         bumpAfterChange(planId, revisionId),
       ]);
@@ -862,6 +893,10 @@ export function prescriptionFor(
         doseText = display.doseText;
       }
       if (!Object.keys(patch).length) return { status: "invalid" };
+      // The structured dose and its stored text change only with the dose: a notes-only edit keeps them (the text says more than
+      // the fields for intervals and continuous work); a typed dose field clears them, a structured dose replaces them.
+      const doseKeys = ["sets", "reps", "loadInstruction", "cadence", "restSeconds", "restText", "rirMin", "rirMax"];
+      const doseTouched = dose !== null || doseKeys.some((key) => key in patch);
       const set = (column: string, key: string) =>
         `${column} = CASE WHEN json_type(?7, '$.${key}') IS NULL THEN ${column} ELSE json_extract(?7, '$.${key}') END`;
       const stamp = now.toISOString();
@@ -873,11 +908,15 @@ export function prescriptionFor(
                SET ${set("sets", "sets")}, ${set("reps", "reps")}, ${set("load_instruction", "loadInstruction")},
                  ${set("cadence", "cadence")}, ${set("rest_seconds", "restSeconds")}, ${set("rest_text", "restText")},
                  ${set("rir_min", "rirMin")}, ${set("rir_max", "rirMax")}, ${set("notes", "notes")},
-                 dose_json = ?8, dose_text = ?9, updated_at = ?6,
+                 dose_json = CASE WHEN ?11 = 1 THEN ?8 ELSE dose_json END, dose_text = CASE WHEN ?11 = 1 THEN ?9 ELSE dose_text END,
+                 updated_at = ?6,
                  origin = CASE WHEN origin = 'SYSTEM' THEN 'SYSTEM_EDITED' ELSE origin END
                WHERE organization_id = ?1 AND revision_id = ?4 AND id IN (SELECT value FROM json_each(?10)) AND ${open}`,
             )
-            .bind(organizationId, userId, planId, revisionId, "", stamp, JSON.stringify(patch), doseJson, doseText, JSON.stringify(ids)),
+            .bind(
+              organizationId, userId, planId, revisionId, "", stamp, JSON.stringify(patch), doseJson, doseText, JSON.stringify(ids),
+              doseTouched ? 1 : 0,
+            ),
           eventAfterChange(planId, revisionId, stamp),
           // Right after the event, which is written only when doses changed.
           bumpAfterChange(planId, revisionId),

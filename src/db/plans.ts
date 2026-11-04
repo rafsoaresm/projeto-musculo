@@ -174,7 +174,8 @@ export function plansFor(
    * `saveDraft`'s batch after its event and only when that save landed (the revision now holds exactly this input, stamped
    * now). A session that disappears or changes workout is refused while it still includes any exercise
    * (OCCURRENCE_PRESCRIPTION_WOULD_BE_LOST: leave them out of that session first); otherwise its left-out doses and the
-   * session go. Sessions that stay get the new dates; new sessions get every row of their workout, included, with the base dose.
+   * session go. Sessions that stay get the new dates; new sessions get every row of their workout with the base dose, in or out
+   * as in the closest earlier session of that workout (included when there is none).
    */
   async function occurrenceSync(
     revisionId: string,
@@ -188,9 +189,11 @@ export function plansFor(
            o.week_start AS weekStart, o.planned_date AS plannedDate,
            (SELECT COUNT(*) FROM prescribed_exercise_occurrences x
              WHERE x.organization_id = o.organization_id AND x.occurrence_id = o.id AND x.included = 1) AS included
-         FROM plan_session_occurrences o WHERE o.organization_id = ?1 AND o.revision_id = ?2`,
+         FROM plan_session_occurrences o
+         JOIN plan_revisions rv ON rv.organization_id = o.organization_id AND rv.id = o.revision_id
+         WHERE o.organization_id = ?1 AND o.revision_id = ?3 AND ${revisionGate("rv")}`,
       )
-      .bind(organizationId, revisionId)
+      .bind(organizationId, userId, revisionId)
       .all<{ id: string; phaseIndex: number; week: number; slot: number; label: string; weekStart: string; plannedDate: string | null; included: number }>();
     const wanted = new Map(scheduleOccurrences(schedule).map((o) => [occurrenceKey(o), o]));
     const have = new Map(existing.results.map((o) => [occurrenceKey(o), o]));
@@ -247,7 +250,17 @@ export function plansFor(
           `INSERT INTO prescribed_exercise_occurrences (id, organization_id, revision_id, prescribed_exercise_id, occurrence_id,
              included, sets, reps, load_instruction, cadence, rest_seconds, rest_text, rir_min, rir_max, notes, dose_json, dose_text,
              trace_json, origin, source_proposal_item_id, created_by_user_id, created_at, updated_at)
-           SELECT lower(hex(randomblob(16))), ?1, ?2, pe.id, o.id, 1, pe.sets, pe.reps, pe.load_instruction, pe.cadence,
+           SELECT lower(hex(randomblob(16))), ?1, ?2, pe.id, o.id,
+             -- In or out as in the closest earlier session of the workout that already existed (a substitution "from week N on" or
+             -- a row left out keeps being so in the new weeks); included when the workout had no earlier session.
+             COALESCE((SELECT x2.included FROM plan_session_occurrences o2
+               JOIN prescribed_exercise_occurrences x2 ON x2.organization_id = o2.organization_id AND x2.occurrence_id = o2.id
+                 AND x2.prescribed_exercise_id = pe.id
+               WHERE o2.organization_id = ?1 AND o2.revision_id = ?2 AND o2.phase_index = o.phase_index
+                 AND o2.workout_label = o.workout_label AND o2.created_at <> ?3
+                 AND (o2.week_index < o.week_index OR (o2.week_index = o.week_index AND o2.slot_index < o.slot_index))
+               ORDER BY o2.week_index DESC, o2.slot_index DESC LIMIT 1), 1),
+             pe.sets, pe.reps, pe.load_instruction, pe.cadence,
              pe.rest_seconds, pe.rest_text, pe.rir_min, pe.rir_max, pe.notes, pe.dose_json, pe.dose_text, NULL,
              CASE WHEN pe.origin IN ('PROFESSIONAL', 'SYSTEM', 'SYSTEM_EDITED', 'AI') THEN pe.origin ELSE 'PROFESSIONAL' END,
              NULL, ?6, ?3, ?3
@@ -362,9 +375,10 @@ export function plansFor(
                (SELECT COUNT(*) FROM prescribed_exercise_occurrences x
                  WHERE x.organization_id = o.organization_id AND x.occurrence_id = o.id AND x.included = 1) AS included
              FROM plan_session_occurrences o
-             WHERE o.organization_id = ?1 AND o.revision_id IN (SELECT value FROM json_each(?2))`,
+             JOIN plan_revisions rv ON rv.organization_id = o.organization_id AND rv.id = o.revision_id
+             WHERE o.organization_id = ?1 AND o.revision_id IN (SELECT value FROM json_each(?3)) AND ${revisionGate("rv")}`,
           )
-          .bind(organizationId, JSON.stringify(occurrenceIds))
+          .bind(organizationId, userId, JSON.stringify(occurrenceIds))
           .all<{ revisionId: string; phaseIndex: number; label: string; included: number }>();
         for (const row of sessions.results) perOccurrence.set(row.revisionId, [...(perOccurrence.get(row.revisionId) ?? []), row]);
       }

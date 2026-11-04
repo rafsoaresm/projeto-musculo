@@ -676,3 +676,164 @@ describe("topic 16: legacy data stays as it was", () => {
     expect((await doses(d)).filter((x) => x.prescribed_exercise_id === typed.id)).toHaveLength(12);
   });
 });
+
+describe("review of S7: what the professional wrote per session survives the editor and the apply", () => {
+  const altFor = async (proposalId: string, phaseIndex: number, label: string) => {
+    const items = await all<{ exercise_id: string | null; alternatives_json: string }>(
+      `SELECT i.exercise_id, i.alternatives_json FROM proposal_items i JOIN proposal_occurrences o ON o.id = i.proposal_occurrence_id
+       WHERE i.proposal_id = ?1 AND o.phase_index = ?2 AND o.workout_label = ?3`,
+      proposalId, phaseIndex, label,
+    );
+    const used = new Set(items.map((i) => i.exercise_id));
+    return items.flatMap((i) => JSON.parse(i.alternatives_json) as string[]).find((x) => !used.has(x))!;
+  };
+  const preservedKey = async (proposalId: string, rowId: string) =>
+    (await db.prepare("SELECT slot_key AS k FROM proposal_items WHERE proposal_id = ?1 AND origin = 'PRESERVED' AND existing_prescribed_exercise_id = ?2 LIMIT 1")
+      .bind(proposalId, rowId).first<{ k: string }>())!.k;
+  const inclusion = async (d: Draft, rowId: string) =>
+    (await doses(d)).filter((x) => x.prescribed_exercise_id === rowId).map((x) => `${x.week_index}:${x.included}`);
+
+  it("a change of notes, video or name on the base row never resets the doses per session", async () => {
+    const d = await newDraft();
+    await generatedAndApplied(d);
+    const row = (await rows(d)).find((r) => r.phase_index === 1 && r.workout_label === "A" && r.origin === "SYSTEM")!;
+    const week3 = (await rx().occurrences(d.planId, d.revisionId, { phaseIndex: 1, week: 3 })).find((o) => o.label === "A")!.items.find((i) => i.prescribedExerciseId === row.id)!;
+    expect((await rx().updateOccurrence(d.planId, d.revisionId, [week3.id], { sets: "5", reps: "6" })).status).toBe("saved");
+    const before = (await doses(d)).filter((x) => x.prescribed_exercise_id === row.id);
+    expect(before.some((x) => x.dose_text !== null)).toBe(true);
+    // Notes only: every session takes the new notes; doses, structured doses and their texts stay.
+    expect(await rx().update(d.planId, d.revisionId, row.id, { notes: "Controle a descida" })).toBe(true);
+    const after = (await doses(d)).filter((x) => x.prescribed_exercise_id === row.id);
+    for (const x of before) {
+      const y = after.find((z) => z.id === x.id)!;
+      expect(y).toMatchObject({ sets: x.sets, reps: x.reps, dose_json: x.dose_json, dose_text: x.dose_text, included: x.included, notes: "Controle a descida" });
+    }
+    expect(after.find((x) => x.id === week3.id)).toMatchObject({ sets: "5", reps: "6" });
+    // The base row keeps its structured dose too (only the notes changed).
+    expect((await rows(d)).find((r) => r.id === row.id)).toMatchObject({ dose_json: row.dose_json, dose_text: row.dose_text });
+    // A video only: nothing per session changes at all.
+    const snap = await doses(d);
+    expect(await rx().update(d.planId, d.revisionId, row.id, { videoUrl: "https://vimeo.com/123456" })).toBe(true);
+    expect(await doses(d)).toEqual(snap);
+  });
+
+  it("a notes-only edit per session keeps the stored dose text; a dose field clears it", async () => {
+    const d = await newDraft();
+    await generatedAndApplied(d);
+    const row = (await rows(d)).find((r) => r.phase_index === 1 && r.workout_label === "B" && r.origin === "SYSTEM")!;
+    const w1 = (await rx().occurrences(d.planId, d.revisionId, { phaseIndex: 1, week: 1 })).find((o) => o.label === "B")!.items.find((i) => i.prescribedExerciseId === row.id)!;
+    expect(w1.doseText).not.toBeNull();
+    expect((await rx().updateOccurrence(d.planId, d.revisionId, [w1.id], { notes: "Pegada neutra" })).status).toBe("saved");
+    const kept = (await doses(d)).find((x) => x.id === w1.id)!;
+    expect(kept).toMatchObject({ notes: "Pegada neutra", dose_text: w1.doseText, dose_json: w1.doseJson });
+    expect((await rx().updateOccurrence(d.planId, d.revisionId, [w1.id], { reps: "10" })).status).toBe("saved");
+    expect((await doses(d)).find((x) => x.id === w1.id)).toMatchObject({ reps: "10", dose_text: null, dose_json: null, notes: "Pegada neutra" });
+  });
+
+  it("a row of the professional substituted in the proposal from a week on is applied as reviewed (TEMPLATE and OCCURRENCE drafts)", async () => {
+    const d = await newDraft();
+    const manual = await rx().add(d.planId, d.revisionId, { phaseIndex: 1, workoutLabel: "A" }, { exerciseId: "sys-001" }, { sets: "4", reps: "6" });
+    if (manual.status !== "saved") throw new Error("add");
+    let out = await generated(d);
+    let chosen = await altFor(out.proposalId, 1, "A");
+    let sub = ok(await service().substitute(d.planId, d.revisionId, { proposalId: out.proposalId, idempotencyKey: id("key"), writeId: id("write"), expectedVersion: out.version,
+      newExerciseId: chosen, target: { phaseIndex: 1, slotKey: await preservedKey(out.proposalId, manual.id), applies: { kind: "FROM_WEEK", week: 2 } } }));
+    applied(await service().apply(d.planId, d.revisionId, applyPayload(out.proposalId, sub.version)));
+    expect(await inclusion(d, manual.id)).toEqual(["1:1", "2:0", "3:0"]);
+    let substitute = (await rows(d)).find((r) => r.phase_index === 1 && r.workout_label === "A" && r.exercise_id === chosen)!;
+    expect(substitute.substitutes_prescribed_exercise_id).toBe(manual.id);
+    expect(await inclusion(d, substitute.id)).toEqual(["1:0", "2:1", "3:1"]);
+    // The manual row keeps its own dose in the sessions it left (only "included" changed).
+    expect((await doses(d)).filter((x) => x.prescribed_exercise_id === manual.id).every((x) => x.sets === "4" && x.reps === "6")).toBe(true);
+
+    // Again over the OCCURRENCE draft: the engine row of workout B (now a row already in the draft, with doses per session) is
+    // substituted from week 3 on; the apply leaves it out of week 3 even though a dose was already written there.
+    const rowB = (await rows(d)).find((r) => r.phase_index === 1 && r.workout_label === "B" && r.origin === "SYSTEM")!;
+    out = await generated(d);
+    chosen = await altFor(out.proposalId, 1, "B");
+    sub = ok(await service().substitute(d.planId, d.revisionId, { proposalId: out.proposalId, idempotencyKey: id("key"), writeId: id("write"), expectedVersion: out.version,
+      newExerciseId: chosen, target: { phaseIndex: 1, slotKey: await preservedKey(out.proposalId, rowB.id), applies: { kind: "FROM_WEEK", week: 3 } } }));
+    applied(await service().apply(d.planId, d.revisionId, applyPayload(out.proposalId, sub.version)));
+    expect(await inclusion(d, rowB.id)).toEqual(["1:1", "2:1", "3:0"]);
+    substitute = (await rows(d)).find((r) => r.phase_index === 1 && r.workout_label === "B" && r.exercise_id === chosen && r.substitutes_prescribed_exercise_id === rowB.id)!;
+    expect(await inclusion(d, substitute.id)).toEqual(["1:0", "2:0", "3:1"]);
+    // Rows the second proposal did not touch keep exactly what they had.
+    expect(await inclusion(d, manual.id)).toEqual(["1:1", "2:0", "3:0"]);
+  });
+
+  it("new weeks follow the closest earlier week: a substitution from a week on stays one exercise, not both", async () => {
+    const d = await newDraft();
+    await generatedAndApplied(d);
+    const row = (await rows(d)).find((r) => r.phase_index === 1 && r.workout_label === "A" && r.origin === "SYSTEM")!;
+    const fromWeek2 = (await sessions(d)).filter((o) => o.phase_index === 1 && o.workout_label === "A" && o.week_index >= 2).map((o) => o.id);
+    const sub = await rx().substituteInOccurrences(d.planId, d.revisionId, row.id, "sys-010", fromWeek2);
+    if (sub.status !== "saved") throw new Error("substitute");
+    expect(await plans().saveDraft(d.planId, d.revisionId, withBaseWeeks(4))).toBe(true);
+    expect(await inclusion(d, row.id)).toEqual(["1:1", "2:0", "3:0", "4:0"]);
+    expect(await inclusion(d, sub.id)).toEqual(["1:0", "2:1", "3:1", "4:1"]);
+    // Other rows of the workout stay included in the new week.
+    const others = (await rows(d)).filter((r) => r.phase_index === 1 && r.workout_label === "A" && r.id !== row.id && r.id !== sub.id);
+    for (const r of others) expect((await inclusion(d, r.id)).at(-1)).toBe("4:1");
+  });
+
+  it("a copy that races an apply (model read as TEMPLATE, OCCURRENCE when written) still gets a dose in every session", async () => {
+    const d = await newDraft();
+    const manual = await rx().add(d.planId, d.revisionId, { phaseIndex: 1, workoutLabel: "A" }, { customName: "Prancha" }, { sets: "3", reps: "30 s" });
+    if (manual.status !== "saved") throw new Error("add");
+    await generatedAndApplied(d);
+    // The model read before the batch answers TEMPLATE, as if the apply landed between that read and the copy's batch.
+    const stale = new Proxy(db, {
+      get(target, prop, receiver) {
+        if (prop !== "prepare") return Reflect.get(target, prop, receiver);
+        return (sql: string) => {
+          const statement = target.prepare(sql);
+          if (!sql.includes("r.prescription_model AS m")) return statement;
+          return { bind: () => ({ first: async () => ({ m: "TEMPLATE" }) }) };
+        };
+      },
+    }) as D1Database;
+    const dup = await prescriptionFor(stale, scope("tech-a")).duplicate(d.planId, d.revisionId, manual.id);
+    if (dup.status !== "saved") throw new Error("duplicate");
+    const workoutSessions = (await sessions(d)).filter((o) => o.phase_index === 1 && o.workout_label === "A");
+    const copied = (await doses(d)).filter((x) => x.prescribed_exercise_id === dup.id);
+    expect(copied).toHaveLength(workoutSessions.length);
+    expect(copied.every((x) => x.included === 1 && x.sets === "3" && x.reps === "30 s")).toBe(true);
+  });
+
+  it("a revoked assignment or membership, or a disabled user, can neither apply nor edit per session", async () => {
+    const d = await newDraft();
+    const out = await generated(d);
+    const cuts: Array<[string, string, string]> = [
+      ["UPDATE care_assignments SET revoked_at = '2026-11-20T00:00:00Z' WHERE student_id = 'st-1' AND professional_id = 'pro-a'",
+        "UPDATE care_assignments SET revoked_at = NULL WHERE student_id = 'st-1' AND professional_id = 'pro-a'", "assignment"],
+      ["UPDATE memberships SET revoked_at = '2026-11-20T00:00:00Z' WHERE organization_id = 'org-a' AND user_id = 'tech-a'",
+        "UPDATE memberships SET revoked_at = NULL WHERE organization_id = 'org-a' AND user_id = 'tech-a'", "membership"],
+      ["UPDATE users SET disabled_at = '2026-11-20T00:00:00Z' WHERE id = 'tech-a'", "UPDATE users SET disabled_at = NULL WHERE id = 'tech-a'", "user"],
+    ];
+    for (const [cut, restore, label] of cuts) {
+      await run(cut);
+      try {
+        expect(reason(await service().apply(d.planId, d.revisionId, applyPayload(out.proposalId, out.version))), label).toBe("not_found");
+      } finally {
+        await run(restore);
+      }
+    }
+    expect(await count("SELECT COUNT(*) AS n FROM prescription_applications WHERE revision_id = ?1", d.revisionId)).toBe(0);
+    applied(await service().apply(d.planId, d.revisionId, applyPayload(out.proposalId, out.version)));
+    const item = (await rx().occurrences(d.planId, d.revisionId, { phaseIndex: 1, week: 1 }))[0].items[0];
+    const before = await doses(d);
+    for (const [cut, restore, label] of cuts) {
+      await run(cut);
+      try {
+        expect(await rx().occurrences(d.planId, d.revisionId, { phaseIndex: 1 }), label).toEqual([]);
+        expect(await rx().updateOccurrence(d.planId, d.revisionId, [item.id], { sets: "9" }), label).toEqual({ status: "not_found" });
+        expect(await rx().setIncluded(d.planId, d.revisionId, [item.id], false), label).toEqual({ status: "not_found" });
+        expect(await rx().update(d.planId, d.revisionId, item.prescribedExerciseId, { notes: "x" }), label).toBe(false);
+        expect((await plans().overview()).find((r) => r.revisionId === d.revisionId), label).toBeUndefined();
+      } finally {
+        await run(restore);
+      }
+    }
+    expect(await doses(d)).toEqual(before);
+  });
+});
