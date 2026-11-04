@@ -1,154 +1,465 @@
-/** Gymgital generic, deterministic prescription domain. Data are snapshots, never database identities. */
-export type Modality = string;
-export type Unit = "TOTAL" | "PER_HAND" | "PER_SIDE" | "MACHINE_STACK" | "BODYWEIGHT" | "ASSISTANCE" | "NONE";
-export type Strategy = "linear" | "undulating_daily" | "undulating_weekly" | "block" | "steady";
-export type Stimulus = "hypertrophy" | "strength" | "power" | "endurance" | "general" | "recovery" | string;
+/**
+ * Motor de prescrição v2: tipos. O motor é puro (sem banco, rede, IA, relógio ou acaso) e não
+ * conhece organização nem usuário: recebe fatos já autorizados pelo adaptador e devolve uma
+ * proposta para revisão profissional. Todo número traz a sua base (Basis).
+ */
 
-export interface StudentContext {
-  id: string;
-  age?: number;
-  objective: string;
-  experience?: string;
-  minutesPerSession?: number;
-  availableEquipment: string[];
-  preferredExerciseIds?: string[];
-  excludedExerciseIds?: string[];
-  excludedPatterns?: string[];
-  restrictions?: string[];
-  screening: { state: "reviewed" | "pending" | "needs_review"; assessmentId?: string; reviewedBy?: string };
-  assessment?: { id: string; assessedOn: string; method?: string; limitations?: string[] };
+/** De onde vem um valor. EVIDENCE só com referência verificada no repositório. */
+export type Basis = "EVIDENCE" | "HEURISTIC" | "HEURISTIC_ACCEPTED" | "PROFESSIONAL" | "STUDENT_DATA";
+
+export interface Fact<T> {
+  value: T;
+  source: "PROFILE" | "ASSESSMENT" | "STRUCTURE" | "PROFESSIONAL" | "HISTORY" | "RULES";
+  ref?: string;
+  basis: Basis;
+  ruleId?: string;
 }
-export interface Exercise {
+
+export interface Range {
+  min: number;
+  max: number;
+}
+
+export type Metric = "REPS" | "TIME" | "DISTANCE" | "INTERVALS" | "CONTINUOUS";
+export type LoadBasis = "TOTAL" | "PER_HAND" | "PER_SIDE" | "MACHINE_STACK" | "BODYWEIGHT" | "ASSISTANCE" | "NONE";
+
+export type Intensity =
+  | { kind: "RIR"; range: Range }
+  | { kind: "RPE"; range: Range }
+  | { kind: "PERCENT_1RM"; range: Range }
+  | {
+      kind: "ZONE";
+      systemLabel: string;
+      zone: string;
+      bounds?: { unit: "BPM" | "PACE_S_PER_KM" | "WATTS" | "RPE"; range: Range };
+    }
+  | { kind: "PACE"; secondsPerKm: Range }
+  | { kind: "TEXT"; text: string };
+
+export type MethodKind =
+  | "STRAIGHT"
+  | "SUPERSET"
+  | "CIRCUIT"
+  | "DROP_SET"
+  | "REST_PAUSE"
+  | "CLUSTER"
+  | "EMOM"
+  | "AMRAP"
+  | "CUSTOM";
+export interface Method {
+  kind: MethodKind;
+  groupKey?: string;
+  text?: string;
+}
+
+/** Um formato de dose por métrica: força não é forçada em séries × repetições quando não cabe. */
+export type Dose =
+  | {
+      metric: "REPS";
+      sets: number;
+      reps: Range;
+      intensity?: Intensity;
+      tempo?: string;
+      restSeconds: number | null;
+      loadBasis: LoadBasis;
+      /** O motor nunca propõe quilos. */
+      loadKg: null;
+      loadInstruction?: string;
+      method?: Method;
+    }
+  | {
+      metric: "TIME";
+      sets: number;
+      durationSeconds: Range;
+      intensity?: Intensity;
+      restSeconds: number | null;
+      method?: Method;
+    }
+  | { metric: "DISTANCE"; sets: number; distanceMeters: Range; intensity?: Intensity; restSeconds: number | null }
+  | {
+      metric: "INTERVALS";
+      blocks: number;
+      repeats: number;
+      work: { durationSeconds?: Range; distanceMeters?: Range; intensity?: Intensity };
+      recovery: { durationSeconds: Range; mode: "PASSIVE" | "ACTIVE"; intensity?: Intensity };
+      restBetweenBlocksSeconds: number | null;
+    }
+  | { metric: "CONTINUOUS"; durationSeconds?: Range; distanceMeters?: Range; intensity?: Intensity };
+
+/**
+ * Parâmetros numéricos de dose em forma plana: é nesta forma que regras, ajustes do profissional
+ * e progressões semanais se combinam, cada parâmetro com a sua base.
+ */
+export type DoseParam =
+  | "sets"
+  | "repsMin"
+  | "repsMax"
+  | "durationMin"
+  | "durationMax"
+  | "distanceMin"
+  | "distanceMax"
+  | "restSeconds"
+  | "rirMin"
+  | "rirMax"
+  | "rpeMin"
+  | "rpeMax"
+  | "blocks"
+  | "repeats"
+  | "workDurationMin"
+  | "workDurationMax"
+  | "workDistanceMin"
+  | "workDistanceMax"
+  | "recoveryMin"
+  | "recoveryMax"
+  | "restBetweenBlocks";
+
+export interface DosePatch {
+  values?: Partial<Record<DoseParam, number>>;
+  /** Intensidade escrita pelo profissional (zona, ritmo, %1RM, texto). Vence RIR/RPE numéricos. */
+  intensity?: Intensity;
+  tempo?: string;
+  method?: Method;
+  loadBasis?: LoadBasis;
+  loadInstruction?: string;
+  recoveryMode?: "PASSIVE" | "ACTIVE";
+}
+
+/** Progressão semanal dentro de uma fase. As partes se combinam; `model` é o rótulo escolhido. */
+export interface WeeklyProgression {
+  model: "NONE" | "LINEAR" | "STEP" | "SEQUENCE" | "BLOCK" | "CUSTOM";
+  /** LINEAR: interpola do valor inicial (semana 1) ao final (última semana). */
+  ramps?: Array<{ param: DoseParam; from: number; to: number }>;
+  /** STEP: soma `delta` a cada `everyWeeks` semanas, sem passar de `limit`. */
+  steps?: Array<{ param: DoseParam; delta: number; everyWeeks: number; limit?: number }>;
+  /** SEQUENCE (ondulatória): troca o estímulo por semana ou por sessão da semana. */
+  sequence?: { per: "WEEK" | "OCCURRENCE_IN_WEEK"; stimuli: string[] };
+  /** BLOCK: blocos de semanas com estímulo próprio; somam as semanas da fase. */
+  blocks?: Array<{ weeks: number; stimulus: string }>;
+  /** CUSTOM: ajustes de semanas específicas. */
+  weekOverrides?: Array<{ week: number; patch: DosePatch }>;
+  /** Descarga: séries × multiplicador (arredondado, mínimo 0) e ajustes opcionais. */
+  deload?: { weeks: number[]; setsMultiplier: number; patch?: DosePatch };
+}
+
+export interface RuleSetRef {
+  id: string;
+  version: string;
+}
+
+export type MetadataStatus = "REVIEWED" | "INFERRED" | "PENDING";
+
+/** Exercício já filtrado pelo adaptador para o que a organização pode ver. Única fonte de ids. */
+export interface CatalogExercise {
   id: string;
   name: string;
-  modality: Modality;
-  movementPatterns: string[];
+  /** Nome normalizado (como `exercises.name_key`); usado só na chave de exercícios personalizados. */
+  nameKey?: string;
+  category: string | null;
+  modality: string | null;
+  metric: Metric | null;
   primaryMuscles: string[];
-  secondaryMuscles?: string[];
-  /** all entries are required; compatibleAny is optional sets of replacements for equipment variants */
+  secondaryMuscles: string[];
+  patterns: string[];
+  /** Todos exigidos. */
   equipment: string[];
-  compatibleAny?: string[][];
-  difficulty?: number;
-  tags?: string[];
-  unilateral?: boolean;
-  /** reps / time / distance; other modality-specific policies may use any of these. */
-  metric: "reps" | "time" | "distance";
-  secondsPerRep?: number;
-  manualOnly?: boolean;
-  video?: { url: string; status: "REVIEWED" | "UNREVIEWED" | "SEARCH_LINK" };
+  /** Conjuntos alternativos: basta um estar todo disponível. */
+  equipmentAlternatives: string[][];
+  /** 1 (mais simples) a 5. */
+  difficulty: number | null;
+  laterality: "UNILATERAL" | "BILATERAL" | null;
+  compound: boolean | null;
+  secondsPerRep: number | null;
+  cautionTags: string[];
+  /** Substituições curadas (ids do catálogo). */
+  substitutes: string[];
+  /** REVIEWED vence; INFERRED aparece como "Inferido (não revisado)"; PENDING não é selecionado. */
+  metadataStatus: MetadataStatus;
+  archived: boolean;
 }
-export interface Template {
-  id: string;
+
+export type Experience = "BEGINNER" | "INTERMEDIATE" | "ADVANCED";
+
+export interface ScreeningFacts {
+  parq: "CLEAR" | "POSITIVE" | "NOT_DONE";
+  professionalDecision: "CLEARED" | "CLEARED_WITH_RESTRICTIONS" | "REFER" | null;
+  medicalClearanceRecorded: boolean;
+  ref?: string;
+}
+
+export interface FindingFact {
+  kind: "MOVEMENT" | "POSTURE" | "FLEXIBILITY" | "ANAMNESIS" | "ASSESSMENT_CONTEXT";
+  code: string;
   label: string;
-  /** No artificial 3-8 or 30-exercise ceiling. 0 is a recovery/rest template. */
-  exerciseCount: number;
-  targetMuscles?: string[];
-  targetPatterns?: string[];
-  modalities?: Modality[];
-  lockedExerciseIds?: string[];
-  excludedExerciseIds?: string[];
-  /** Controls duration, not total exercises. If infeasible, explain instead of changing the request. */
-  minutes?: number;
-  stimulus?: Stimulus;
-  doseOverrides?: Record<string, Partial<DosePolicy>>;
+  ref?: string;
 }
-export interface Phase {
-  id: string;
+
+export interface StudentFacts {
+  /** Texto do nível no perfil, mapeado por EXPERIENCE_MAP. */
+  level: Fact<string> | null;
+  /** Objetivo em texto: produz apenas sugestões de estímulo, nunca uma escolha. */
+  goal: Fact<string> | null;
+  sessionMinutes: Fact<number> | null;
+  screening: ScreeningFacts;
+  findings: FindingFact[];
+}
+
+export interface WorkoutFocusFacts {
+  stimulus?: Fact<string>;
+  modalities?: string[];
+  muscles?: string[];
+  patterns?: string[];
+  minutes?: number;
+  excludedExerciseIds?: string[];
+}
+
+export interface StructureOccurrence {
+  week: number;
+  slot: number;
+  label: string;
+  plannedDate: string | null;
+  weekStart: string;
+}
+
+export interface StructureWorkout {
+  label: string;
+  name: string | null;
+  exerciseTarget: number | null;
+  focus: WorkoutFocusFacts;
+}
+
+export interface StructurePhase {
+  index: number;
+  name: string | null;
   weeks: number;
   sessionsPerWeek: number;
-  templates: Template[];
-  /** Explicit rotation; defaults to template array order. */
-  rotation?: string[];
-  /** 0=startDate of that phase/week through 6=+6 calendar days; repeated days mean multiple sessions/day. */
-  trainingDays?: number[];
-  strategy?: Strategy;
-  stimulus?: Stimulus;
-  /** Custom block profile by week, aligned with weeks; can override goal for each week. */
-  blocks?: Stimulus[];
-  deloadWeeks?: number[];
-  /** For linear strategy: interpolates selected values; does not predict kg. */
-  linear?: { repsMin?: [number, number]; repsMax?: [number, number]; rirMin?: [number, number]; rirMax?: [number, number]; sets?: [number, number] };
-  /** Direct per-week overrides, by modality; work alongside any strategy. */
-  weeklyPolicies?: Record<number, Record<string, Partial<DosePolicy>>>;
-  deloadMultiplier?: number;
-  volumeTargets?: Record<string, number>;
+  workouts: StructureWorkout[];
+  occurrences: StructureOccurrence[];
+  stimulus?: Fact<string>;
+  progression?: Fact<WeeklyProgression>;
 }
-export interface Periodization {
+
+export interface StructureFacts {
   startDate: string;
-  phases: Phase[];
+  phases: StructurePhase[];
 }
-export interface DosePolicy {
-  sets: number;
-  repsMin?: number;
-  repsMax?: number;
-  durationSeconds?: number;
-  distanceMeters?: number;
-  rirMin?: number;
-  rirMax?: number;
-  restSeconds: number;
-  secondsPerRep?: number;
-  notes?: string;
-}
-export interface PrescriptionPolicies {
-  byStimulus?: Record<string, Partial<Record<string, Partial<DosePolicy>>>>;
-  /** Per-modality overrides, useful for sport-specific, cardio, rehabilitation protocols. */
-  byModality?: Record<string, Partial<DosePolicy>>;
-  duration?: { warmupSeconds?: number; transitionSeconds?: number; setupSeconds?: number };
-  /** Optional resource-oriented beam width; not a clinical restriction. */
-  beamWidth?: number;
-  alternativeCount?: number;
-}
-export interface GenerationInput {
-  student: StudentContext;
-  periodization: Periodization;
-  catalog: Exercise[];
-  policies?: PrescriptionPolicies;
-  existing?: Array<{ phaseId: string; templateId: string; exerciseId: string; locked?: boolean }>;
-  scope?: { phaseIds?: string[] };
-  catalogVersion?: string;
-  evidenceVersion?: string;
-}
-export interface Dose extends DosePolicy {
+
+export interface ExposureSet {
+  reps: number | null;
+  durationSeconds: number | null;
   loadKg: number | null;
-  loadBasis: Unit;
-  loadInstruction: string;
-  progression: string;
+  loadBasis: LoadBasis | null;
+  rir: number | null;
+  completed: boolean;
 }
-export interface PrescriptionItem {
+
+/** Um registro de execução de um exercício (já dentro da janela pedida pelo adaptador). */
+export interface ExposureLog {
   exerciseId: string;
-  exerciseName: string;
-  modality: string;
-  order: number;
-  dose: Dose;
-  alternativeIds: string[];
-  videoStatus: "REVIEWED" | "UNREVIEWED" | "SEARCH_LINK" | "MISSING";
-  origin: "LOCKED" | "PRESERVED" | "ENGINE";
-  reasons: string[];
+  date: string;
+  equipmentKey: string | null;
+  metric: Metric;
+  sets: ExposureSet[];
+  pain: boolean;
+  ref?: string;
 }
-export interface Session {
-  id: string;
-  phaseId: string;
+
+export interface DisplayFields {
+  sets: string | null;
+  reps: string | null;
+  loadInstruction: string | null;
+  cadence: string | null;
+  restSeconds: number | null;
+  restText: string | null;
+  rirMin: number | null;
+  rirMax: number | null;
+  doseText: string;
+}
+
+/** Linha atual da revisão em rascunho: sempre preservada. */
+export interface ExistingItem {
+  prescribedExerciseId: string;
+  phaseIndex: number;
+  label: string;
+  exerciseId: string | null;
+  name: string;
+  nameKey?: string;
+  position: number;
+  dose: Dose | null;
+  display: DisplayFields;
+  origin: string;
+}
+
+export interface ItemTarget {
+  phaseIndex: number;
+  slotKey: string;
+}
+
+export type FlagDecision =
+  | { kind: "EXCLUDE_PATTERN"; pattern: string }
+  | { kind: "EXCLUDE_CAUTION_TAG"; tag: string }
+  | { kind: "EXCLUDE_EXERCISE"; exerciseId: string }
+  | { kind: "ACKNOWLEDGE" };
+
+export interface DoseOverride {
+  /** Ausente = qualquer. */
+  stimulus?: string;
+  modality?: string;
+  metric?: Metric;
+  phaseIndex?: number;
+  label?: string;
+  exerciseId?: string;
+  patch: DosePatch;
+}
+
+export interface GenerationParameters {
+  /** Q1 (04/11/2026): o adaptador preenche FILL_FROM_POLICY por padrão; LEAVE_EMPTY deixa toda dose vazia. */
+  doseMode: "FILL_FROM_POLICY" | "LEAVE_EMPTY";
+  metadataTrust: "REVIEWED_ONLY" | "REVIEWED_AND_INFERRED";
+  stimulusByPhase: Array<{ phaseIndex: number; value: string; basis: "PROFESSIONAL" | "HEURISTIC_ACCEPTED"; ruleId?: string }>;
+  modalitiesByWorkout: Array<{ phaseIndex: number; label: string; modalities: string[] }>;
+  /** null = não informado (pergunta obrigatória); [] = sem equipamento. */
+  availableEquipment: string[] | null;
+  availableMinutes: number | null;
+  timeBudget: "SOFT" | "HARD";
+  exerciseCountByWorkout: Array<{ phaseIndex: number; label: string; count: number | "BY_TIME" }>;
+  preferredExerciseIds: string[];
+  excludedExerciseIds: string[];
+  excludedPatterns: string[];
+  excludedCautionTags: string[];
+  phaseCoverage: Array<{
+    phaseIndex: number;
+    muscles?: string[];
+    patterns?: string[];
+    basis: "PROFESSIONAL" | "HEURISTIC_ACCEPTED";
+    ruleId?: string;
+  }>;
+  progressionByPhase: Array<{ phaseIndex: number; progression: WeeklyProgression }>;
+  doseOverrides: DoseOverride[];
+  /** Métrica escolhida pelo profissional para um exercício (vence o atributo do catálogo). */
+  metricOverrides: Array<{ exerciseId: string; metric: Metric }>;
+  acceptedFlagDecisions: Array<{ flagCode: string; decision: FlagDecision }>;
+}
+
+export type GenerationScope = { kind: "FULL" } | { kind: "PHASES"; phaseIndexes: number[] };
+
+export interface EngineInput {
+  rules: RuleSetRef;
+  /** Data de referência (AAAA-MM-DD) fornecida pelo chamador; o motor não lê o relógio. */
+  asOf: string;
+  parameters: GenerationParameters;
+  student: StudentFacts;
+  structure: StructureFacts;
+  catalog: CatalogExercise[];
+  history: ExposureLog[];
+  existing: ExistingItem[];
+  locked: ItemTarget[];
+  scope: GenerationScope;
+}
+
+export type RegenerationScope =
+  | { kind: "ITEM"; phaseIndex: number; week: number; slot: number; slotKey: string }
+  | { kind: "OCCURRENCE"; phaseIndex: number; week: number; slot: number }
+  | { kind: "WEEK"; phaseIndex: number; week: number }
+  | { kind: "WORKOUT"; phaseIndex: number; label: string; fromWeek?: number }
+  | { kind: "PHASE"; phaseIndex: number }
+  | { kind: "FROM_PHASE"; phaseIndex: number };
+
+export type SubstitutionTarget = {
+  phaseIndex: number;
+  slotKey: string;
+  applies: { kind: "OCCURRENCE"; week: number; slot: number } | { kind: "FROM_WEEK"; week: number } | { kind: "PHASE" };
+};
+
+export interface TraceEntry {
+  code: string;
+  basis: Basis;
+  ruleId?: string;
+  detail: string;
+}
+
+export interface ParamTrace {
+  param: string;
+  value: unknown;
+  basis: Basis;
+  ruleId?: string;
+  refs?: string[];
+}
+
+export interface ItemOut {
+  slotKey: string;
+  position: number;
+  exerciseId: string | null;
+  exerciseName: string;
+  modality: string | null;
+  dose: Dose | null;
+  display: DisplayFields;
+  origin: "ENGINE" | "PRESERVED" | "LOCKED" | "SUBSTITUTED";
+  existingPrescribedExerciseId: string | null;
+  substitutesSlotKey: string | null;
+  alternatives: string[];
+  metadata: "REVIEWED" | "INCLUDES_INFERRED";
+  trace: { selection: TraceEntry[]; params: ParamTrace[] };
+}
+
+export interface OccurrenceOut {
   phaseIndex: number;
   week: number;
-  day: number;
-  date: string;
-  slotIndex: number;
-  templateId: string;
+  slot: number;
   label: string;
-  stimulus: string;
-  items: PrescriptionItem[];
-  estimatedMinutes: number;
-  projected: boolean;
+  plannedDate: string | null;
+  weekStart: string;
+  stimulus: Fact<string> | null;
+  items: ItemOut[];
+  /** Estimativa conservadora; parcial quando algum item não tem duração calculável. */
+  estimatedMinutes: number | null;
+  durationComplete: boolean;
+  budgetMinutes: number | null;
+  budgetSource: "WORKOUT" | "PARAMETERS" | "PROFILE" | null;
 }
+
+export type Severity = "ERROR" | "WARNING" | "INFO";
+
+export interface Suggestion {
+  value: string;
+  ruleId: string;
+  label: string;
+}
+
 export interface Issue {
-  severity: "ERROR" | "WARNING" | "INFO";
+  severity: Severity;
   code: string;
   path: string;
   message: string;
   suggestedAction?: string;
+  phaseIndex?: number;
+  label?: string;
+  /** Quantas ocorrências foram agregadas nesta linha (limites técnicos). */
+  count?: number;
+  /** Sugestões em forma de botões: nada é pré-selecionado. */
+  suggestions?: Suggestion[];
+  /** SELECTION: produzido na seleção e mantido até a fase ser regenerada; as demais são recalculadas. */
+  stage: "INPUT" | "SELECTION" | "VALIDATION";
 }
+
+export interface Assumption {
+  code: string;
+  text: string;
+  basis: Basis;
+  ruleId?: string;
+}
+
+export interface Flag {
+  code: string;
+  severity: Severity;
+  source: "SCREENING" | "ASSESSMENT" | "ANAMNESIS" | "HISTORY";
+  ref?: string;
+  message: string;
+  suggestedDecision?: FlagDecision;
+  decided?: FlagDecision;
+}
+
 export interface VolumeRow {
-  phaseId: string;
+  phaseIndex: number;
   week: number;
   muscle: string;
   directSets: number;
@@ -156,19 +467,75 @@ export interface VolumeRow {
   weightedSets: number;
   occurrences: number;
 }
-export interface GenerationResult {
+
+export interface WorkoutSummary {
+  phaseIndex: number;
+  label: string;
+  name: string | null;
+  stimulus: Fact<string> | null;
+  modalities: Fact<string[]> | null;
+  count: Fact<number> | null;
+  coverage: { muscles: string[]; patterns: string[]; basis: Basis; ruleId?: string } | null;
+  eligible: number;
+  excluded: Record<string, number>;
+}
+
+export interface PhaseSummary {
+  phaseIndex: number;
+  name: string | null;
+  weeks: number;
+  sessionsPerWeek: number;
+  progression: Fact<WeeklyProgression> | null;
+}
+
+export interface ProgressionProposal {
+  action: "INCREASE" | "MAINTAIN" | "REVIEW" | "INSUFFICIENT_DATA";
+  suggestedLoadKg: number | null;
+  explanation: string;
+  basis: Basis;
+  ruleId: string;
+  exposuresUsed: number;
+}
+
+export interface HistorySuggestion {
+  phaseIndex: number;
+  slotKey: string;
+  exerciseId: string;
+  proposal: ProgressionProposal;
+}
+
+export interface RuleUse {
+  ruleId: string;
+  basis: Basis;
+  label: string;
+}
+
+export interface EngineResult {
   engineVersion: string;
-  inputHash: string;
-  policyVersion: string;
+  rules: RuleSetRef;
+  vocabularyVersion: string;
   status: "SUCCEEDED" | "INFEASIBLE";
   validation: "PASSED" | "WARNINGS" | "BLOCKED";
   requiresProfessionalReview: true;
-  sessions: Session[];
+  phases: PhaseSummary[];
+  workouts: WorkoutSummary[];
+  occurrences: OccurrenceOut[];
   issues: Issue[];
+  assumptions: Assumption[];
+  flags: Flag[];
   volume: VolumeRow[];
-  evidence: Array<{ rule: string; source: string; type: "evidence" | "heuristic" }>;
-  decisionTrace: Array<{ sessionId: string; rule: string; inputs: string[]; result: string }>;
+  historySuggestions: HistorySuggestion[];
+  rulesUsed: RuleUse[];
 }
-export interface TrainingSetLog { reps?: number; durationSeconds?: number; loadKg?: number; loadBasis?: Unit; rir?: number; completed: boolean; pain?: boolean; }
-export interface TrainingExposure { exerciseId: string; exerciseMetric: "reps" | "time" | "distance"; equipmentKey: string; date: string; sets: TrainingSetLog[]; notes?: string; }
-export interface ProgressionProposal { action: "INCREASE" | "MAINTAIN" | "REVIEW" | "INSUFFICIENT_DATA"; newLoadKg: number | null; explanation: string; }
+
+/** Operações de revisão devolvem um resultado ou um motivo; nunca lançam exceção. */
+export type EngineOutcome = { ok: true; result: EngineResult } | { ok: false; code: string; message: string };
+
+export interface Alternative {
+  exerciseId: string;
+  name: string;
+  modality: string | null;
+  metadata: "REVIEWED" | "INCLUDES_INFERRED";
+  reasons: string[];
+  score: number;
+}
