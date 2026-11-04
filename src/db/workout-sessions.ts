@@ -13,6 +13,7 @@ import {
   type LoggedExercise,
   type WeeklyRecords,
 } from "@/modules/execucao/progress";
+import { EXPOSURE_MAX_SESSIONS, type ExposureRow, type ExposureWindow } from "@/modules/execucao/exposures";
 import { activeUser, assertContext, technicalAccessExists, type AuthenticatedContext } from "./students";
 
 /**
@@ -721,6 +722,59 @@ export function executionFor(db: D1Database, context: AuthenticatedContext | nul
           .all<ProgressExerciseRow>(),
       ]);
       return assembleProgress(revisions.results, sessions.results, exercises.results, today);
+    },
+
+    /**
+     * What the student did in the last `sinceDays` days up to `today` (inclusive), for the automatic prescription (motor S5):
+     * every session, exercise and set typed, across all plans of the student, newest sessions first up to
+     * `EXPOSURE_MAX_SESSIONS`. Null when this user does not reach the student (organization, active user, active technical
+     * assignment, membership not revoked). Every join carries the organization. Read only; nothing is graded here.
+     */
+    async exposures(studentId: string, window: { sinceDays: number; today?: string }): Promise<ExposureWindow | null> {
+      const until = window.today ?? todayInBrazil();
+      if (!Number.isInteger(window.sinceDays) || window.sinceDays < 0) throw new Error("EXPOSURE_WINDOW_INVALID");
+      const start = new Date(`${until}T12:00:00.000Z`);
+      if (Number.isNaN(start.getTime())) throw new Error("EXPOSURE_WINDOW_INVALID");
+      start.setUTCDate(start.getUTCDate() - window.sinceDays);
+      const since = start.toISOString().slice(0, 10);
+      const reachable = await db
+        .prepare(
+          `SELECT 1 AS ok FROM students s
+           WHERE s.organization_id = ?1 AND s.id = ?3 AND ${activeUser("?2")} AND ${technicalAccessExists("s", "?2")}`,
+        )
+        .bind(organizationId, userId, studentId)
+        .first<{ ok: number }>();
+      if (!reachable) return null;
+      const sessions = await db
+        .prepare(
+          `SELECT ws.id FROM workout_sessions ws
+           WHERE ws.organization_id = ?1 AND ws.student_id = ?3 AND ws.performed_on >= ?4 AND ws.performed_on <= ?5
+             AND ${reach("ws")}
+           ORDER BY ws.performed_on DESC, ws.created_at DESC, ws.id DESC LIMIT ?6`,
+        )
+        .bind(organizationId, userId, studentId, since, until, EXPOSURE_MAX_SESSIONS + 1)
+        .all<{ id: string }>();
+      const truncated = sessions.results.length > EXPOSURE_MAX_SESSIONS;
+      const ids = sessions.results.slice(0, EXPOSURE_MAX_SESSIONS).map((row) => row.id);
+      if (ids.length === 0) return { since, until, sinceDays: window.sinceDays, sessions: 0, truncated: false, rows: [] };
+      const rows = await db
+        .prepare(
+          `SELECT ws.id AS sessionId, ws.performed_on AS performedOn, ws.created_at AS createdAt, ws.effort,
+             se.id AS sessionExerciseId, pe.exercise_id AS exerciseId, se.exercise_name AS name, se.position, se.done,
+             se.rir AS exerciseRir, se.pain,
+             st.set_number AS setNumber, st.reps, st.load_kg AS loadKg, st.rir, st.duration_seconds AS durationSeconds,
+             st.distance_meters AS distanceMeters, st.load_basis AS loadBasis
+           FROM workout_sessions ws
+           JOIN json_each(?4) w ON w.value = ws.id
+           JOIN session_exercises se ON se.organization_id = ws.organization_id AND se.session_id = ws.id
+           JOIN prescribed_exercises pe ON pe.organization_id = ws.organization_id AND pe.id = se.prescribed_exercise_id
+           LEFT JOIN session_sets st ON st.organization_id = ws.organization_id AND st.session_exercise_id = se.id
+           WHERE ws.organization_id = ?1 AND ws.student_id = ?3 AND ${reach("ws")}
+           ORDER BY ws.performed_on, ws.created_at, ws.id, se.position, se.id, st.set_number`,
+        )
+        .bind(organizationId, userId, studentId, JSON.stringify(ids))
+        .all<ExposureRow>();
+      return { since, until, sinceDays: window.sinceDays, sessions: ids.length, truncated, rows: rows.results };
     },
 
     /** The professional's reading of a log, with an optional note. It never changes the log. */

@@ -182,9 +182,17 @@ export interface CatalogExercise {
 
 export type Experience = "BEGINNER" | "INTERMEDIATE" | "ADVANCED";
 
+/**
+ * Decisão do profissional sobre a triagem. CLEARED, MEDICAL_CLEARANCE e OTHER são as três escolhas do PAR-Q da
+ * Avaliação Física (`PARQ_DECISIONS`); REVIEWED é a revisão registrada do formato anterior (só o fundamento,
+ * em texto); CLEARED_WITH_RESTRICTIONS e REFER ficam para outras origens. Nenhuma muda a seleção sozinha.
+ */
+export type ScreeningDecision = "CLEARED" | "CLEARED_WITH_RESTRICTIONS" | "REFER" | "MEDICAL_CLEARANCE" | "OTHER" | "REVIEWED";
+
 export interface ScreeningFacts {
   parq: "CLEAR" | "POSITIVE" | "NOT_DONE";
-  professionalDecision: "CLEARED" | "CLEARED_WITH_RESTRICTIONS" | "REFER" | null;
+  professionalDecision: ScreeningDecision | null;
+  /** "Precisa de liberação médica" registrada (R13: não bloqueia a geração nem a aprovação). */
   medicalClearanceRecorded: boolean;
   ref?: string;
 }
@@ -265,6 +273,8 @@ export interface ExposureLog {
   metric: Metric;
   sets: ExposureSet[];
   pain: boolean;
+  /** Esforço da sessão (0 a 10) que o aluno registrou; só contexto, o motor não o usa para calcular. */
+  sessionEffort?: number | null;
   ref?: string;
 }
 

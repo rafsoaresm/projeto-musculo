@@ -2,7 +2,7 @@
 
 Núcleo puro e determinístico (sem banco, rede, IA, relógio ou acaso). Documentação completa e tabela de regras: [`docs/MOTOR-PRESCRICAO.md`](../../../../docs/MOTOR-PRESCRICAO.md).
 
-**Estado:** etapa S1. O motor está implementado e testado isoladamente (`tests/motor-*.test.ts`), **mas ainda não está ligado ao banco, às telas nem ao fluxo de aprovação e entrega**. O adaptador (`src/modules/prescricao/automatica/`) e as tabelas das propostas vêm nas próximas etapas.
+**Estado:** etapa S5. O motor está implementado e testado (`tests/motor-*.test.ts`), e o adaptador dos dados reais (`src/modules/prescricao/automatica/`, só no servidor) monta a entrada a partir da ficha, da avaliação, da biblioteca, da periodização salva, das linhas já prescritas e do histórico (`tests/motor-input.test.ts`, `tests/generation-context.test.ts`). **Ainda não há gravação de proposta, tela nem ligação com a aprovação e a entrega** (etapas S6 a S9).
 
 | Arquivo | Papel |
 |---|---|

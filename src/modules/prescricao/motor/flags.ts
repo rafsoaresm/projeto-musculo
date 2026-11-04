@@ -19,8 +19,12 @@ export function buildFlags(log: RuleLog, input: EngineInput): Flag[] {
     flags.push({ code: "SCREENING_REFERRED", severity: "WARNING", source: "SCREENING", ...ref, message: "Decisão registrada: encaminhar. Confira se o treino proposto é compatível com o encaminhamento." });
   if (s.professionalDecision === "CLEARED_WITH_RESTRICTIONS")
     flags.push({ code: "SCREENING_RESTRICTIONS", severity: "WARNING", source: "SCREENING", ...ref, message: "Liberado com restrições: transforme cada restrição em exclusão explícita (padrão, exercício ou cuidado)." });
+  if (s.professionalDecision === "OTHER")
+    flags.push({ code: "SCREENING_OTHER_DECISION", severity: "WARNING", source: "SCREENING", ...ref, message: "Decisão registrada: outra decisão. Leia a nota da triagem na avaliação e transforme o que ela pede em exclusões explícitas." });
+  if (s.professionalDecision === "REVIEWED")
+    flags.push({ code: "SCREENING_REVIEWED", severity: "INFO", source: "SCREENING", ...ref, message: "Alerta da triagem (formato anterior) revisado pelo profissional. Leia o fundamento registrado na avaliação." });
   if (s.medicalClearanceRecorded)
-    flags.push({ code: "MEDICAL_CLEARANCE_RECORDED", severity: "INFO", source: "SCREENING", ...ref, message: "Liberação médica registrada. Não impede a geração nem a aprovação." });
+    flags.push({ code: "MEDICAL_CLEARANCE_RECORDED", severity: "INFO", source: "SCREENING", ...ref, message: "Decisão registrada: precisa de liberação médica. Não impede a geração nem a aprovação; confira a liberação antes de entregar." });
 
   const map = log.get("MOVEMENT_FINDING_PATTERN_MAP");
   const grades = new Set(log.get("MOVEMENT_FINDING_GRADES"));

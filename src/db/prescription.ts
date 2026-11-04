@@ -38,6 +38,15 @@ export interface PrescribedItem {
   notes: string | null;
   origin: string;
 }
+/** A row as the automatic prescription's adapter reads it (motor S5): the 0041 columns too. */
+export interface PrescribedItemWithDose extends PrescribedItem {
+  /** Structured dose (motor v2, 0041) as written by an apply; null for every row typed by hand. Never rendered to the student. */
+  doseJson: string | null;
+  /** The dose text materialised when the row was written (0041); null for rows typed by hand before. */
+  doseText: string | null;
+  /** The proposal application that wrote the row (0041); null for rows typed by hand. */
+  applicationId: string | null;
+}
 export type Target = { phaseIndex: number; workoutLabel: string };
 export type ItemOutcome =
   | { status: "saved"; id: string }
@@ -98,6 +107,23 @@ export function prescriptionFor(
         )
         .bind(organizationId, userId, planId, revisionId)
         .all<PrescribedItem>();
+      return result.results;
+    },
+
+    /**
+     * The same rows as `list`, with the structured dose, its stored text and the application that wrote them (0041), for the
+     * input adapter of the automatic prescription. Same gate as `list`.
+     */
+    async listWithDose(planId: string, revisionId: string): Promise<PrescribedItemWithDose[]> {
+      const result = await db
+        .prepare(
+          `SELECT ${columns}, pe.dose_json AS doseJson, pe.dose_text AS doseText, pe.application_id AS applicationId
+           FROM prescribed_exercises pe
+           WHERE pe.organization_id = ?1 AND pe.revision_id = ?4 AND ${seen}
+           ORDER BY pe.phase_index, pe.workout_label, pe.position`,
+        )
+        .bind(organizationId, userId, planId, revisionId)
+        .all<PrescribedItemWithDose>();
       return result.results;
     },
 
