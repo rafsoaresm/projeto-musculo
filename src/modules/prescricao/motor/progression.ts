@@ -29,9 +29,13 @@ export function proposeProgression(
   if (!Number.isInteger(settings.consecutiveSuccesses) || settings.consecutiveSuccesses < 1)
     return proposal("INSUFFICIENT_DATA", null, "Regra de progressão inválida (número de exposições).", 0);
   const n = settings.consecutiveSuccesses;
-  const complete = relevant.filter((x) => x.metric === "REPS" && x.sets.length >= prescribed.sets && x.sets.slice(0, prescribed.sets).every((s) => s.completed));
-  const last = complete.slice(-n);
-  if (last.length < n) return proposal("INSUFFICIENT_DATA", null, `Menos de ${n} execuções completas e comparáveis.`, last.length);
+  // As N exposições cronologicamente mais recentes devem atender ao critério.
+  // Filtrar primeiro as completas fazia uma sessão recente incompleta desaparecer e permitia progredir com sucessos antigos.
+  const last = relevant.slice(-n);
+  if (last.length < n) return proposal("INSUFFICIENT_DATA", null, `Menos de ${n} execuções disponíveis para comparação.`, last.length);
+  if (last.some((x) => x.metric !== "REPS")) return proposal("REVIEW", null, "A métrica mudou entre as últimas execuções: revisão profissional antes de progredir.", n);
+  if (last.some((x) => x.sets.length < prescribed.sets || x.sets.slice(0, prescribed.sets).some((set) => !set.completed)))
+    return proposal("MAINTAIN", null, "Uma das últimas execuções está incompleta: não há sucessos consecutivos suficientes para sugerir aumento.", n);
   const equipment = last[0].equipmentKey;
   if (last.some((x) => x.equipmentKey !== equipment)) return proposal("REVIEW", null, "Equipamento diferente entre as execuções: não dá para comparar.", n);
   const sets = last.flatMap((x) => x.sets.slice(0, prescribed.sets));
