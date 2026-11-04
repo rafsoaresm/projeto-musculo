@@ -100,7 +100,10 @@ const GOLDEN: Record<string, Record<string, string>> = {
     "variety:base": "36e4de1f3873a90ce0d600af3d4d1073c396694bdb300d4d64421917bf7ef178",
     "variety:linear": "848bbd941925b5347c0281a5c7cc00da5486deb12136958fd6b17dca3d3b44ef",
     "variety:cardio-mobility": "434b174ccb72841ecad51ce6b8f06400e8a41c8ae9d2147c307be0d17d7c7c19",
-    "xintus": "dc5991fec24584919117ac2ea59553bab8a436dab05a27e6c5fafb5a6583002e",
+    // Trocado UMA vez em 04/11/2026, antes de qualquer publicação da 2026.11.3 (revisão final V3): a observação aberta
+    // AUDIT_INDIRECT_ONLY deixou de listar Bíceps (pedido do usuário: não recomendar panturrilha, bíceps e abdominais).
+    // Antes: dc5991fec24584919117ac2ea59553bab8a436dab05a27e6c5fafb5a6583002e
+    "xintus": "2e4819aad22b16764e5bcd77e3fb1a0bcf0b05dfcd23c7efa06a89d22319c33c",
     "xintus:previous": "45d26b14770201aa73723e5eb1a6b4d4d400da2a90f5dab575c078dd12c821fb",
     "big-abc": "8ed54536e43dd27887781924dd35da55c62792e21f865ff4eeecd544cffda395",
     "regenerate:item": "878a564ffad2c19f083dbad4d6370ab9792fd09812648fd9880747fae1729349",

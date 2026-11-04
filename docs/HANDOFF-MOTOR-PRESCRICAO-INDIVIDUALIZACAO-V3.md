@@ -2,6 +2,8 @@
 
 **Data:** 04/11/2026 | **Base:** motor 2.0.0, PR #95 incorporado à main | **Produto:** proposta revisável por profissional, nunca entrega automática
 
+> **Situação em 04/11/2026 (0.95.0, branch `feat/motor-v3-auditoria-microciclo-20261104`, não publicada):** fatia A com testes rodando e verdes no `npm run check`; **fatia B feita** (auditoria do plano, regras `2026.11.3`, motor 2.1.0); **fatia C feita** (seleção por microciclo, alvos sugeridos para aceitar, observação da avaliação, regras `2026.11.4`, motor 2.2.0); **fatia D não iniciada**; **fatia E só com contratos** (desligada, sem provedor). O que foi verificado e o que não foi: `VALIDACAO.md`, seção "Motor V3". Decisões tomadas pela ferramenta: `PENDENCIAS.md` R16 (e R17, T9, B62, C42 item e). Limite conhecido: sem alvos aceitos, a seleção muda pouco em relação à anterior (R17).
+
 ## 0. Objetivo e limites
 
 Refinar o motor **existente**, não criar outro gerador. O caso de regressão é o aluno fictício Xintus: objetivo hipertrofia, 2 anos de prática, 4 sessões semanais de 60 minutos, 12 semanas em 3 fases ABAB, academia completa, PAR-Q sem 'Sim', Flexiteste com dorsiflexão nível 2 e demais níveis 3. A saída anterior tinha 6 exercícios por sessão, praticamente todos 8–12 reps, RIR 1–3, 90 s, dois sets por exercício nas semanas 1–2 e três sets nas semanas 3–12. A avaliação é fictícia; nenhuma pontuação de flexibilidade é diagnóstico ou contraindicação.
@@ -26,7 +28,7 @@ Refinar o motor **existente**, não criar outro gerador. O caso de regressão é
 - facts.ts preserva todos os 15 códigos/níveis preenchidos do Flexiteste na observação que chega ao motor, com referência à avaliação, em vez de apenas '15 de 15'. Sem exclusão automática.
 - progression.ts usa as N exposições **mais recentes em ordem cronológica** para exigir sucessos consecutivos. Antes, filtrava exposições incompletas e podia sugerir aumento com sucessos antigos; agora incompletude interrompe a sequência.
 - Testes de regressão adicionados em tests/motor-input.test.ts e tests/motor-progression.test.ts; ENGINE_VERSION corrigida para 2.0.1.
-- Estes testes foram **escritos, não executados neste ambiente conectado**. Rodar npm run check e npm run build:cloud no checkout antes de pedir merge.
+- ~~Estes testes foram escritos, não executados neste ambiente conectado.~~ Rodam no `npm run check` desde a 0.95.0 (ver `VALIDACAO.md`).
 
 ## 3. P0: auditoria de qualidade do PLANO INTEIRO
 
@@ -88,11 +90,11 @@ Não usar IA dentro de motor/generate.ts, select.ts, dose.ts, volume.ts ou flags
 
 ## 10. Fatiamento de execução para Claude
 
-**Fatia A (nesta branch, feita mas sem CI local):** Flexiteste detalhado e regressão de exposições recentes.
-**Fatia B (fazer em PR separado):** auditoria semanal post-process, contratos/avisos/UI, testes do Xintus, sem mudar seleção.
-**Fatia C:** seleção com objetivo de cobertura do microciclo real, regras versionadas e compatibilidade das regenerações.
-**Fatia D:** política de dose específica + calendário de progressão e revisão, sem inventar incrementos.
-**Fatia E (opcional):** revisão sob demanda com IA pequena, cache, orçamento e saída estruturada.
+**Fatia A (feita; testes rodando desde a 0.95.0):** Flexiteste detalhado e regressão de exposições recentes.
+**Fatia B (feita na 0.95.0):** auditoria semanal post-process, contratos/avisos/UI, testes do Xintus, sem mudar seleção.
+**Fatia C (feita na 0.95.0):** seleção com objetivo de cobertura do microciclo real, regras versionadas e compatibilidade das regenerações.
+**Fatia D (não iniciada):** política de dose específica + calendário de progressão e revisão, sem inventar incrementos.
+**Fatia E (opcional; só contratos desligados na 0.95.0):** revisão sob demanda com IA pequena, cache, orçamento e saída estruturada.
 
 Antes de codar as fatias B–E, descrever os comportamentos de negócio que mudariam e quais são opcionais; perguntar apenas decisões imprescindíveis, sem criar um módulo novo se o contrato existente resolver.
 

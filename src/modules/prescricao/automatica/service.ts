@@ -626,13 +626,17 @@ export const AUDIT_RULESET: RuleSetRef = DEFAULT_RULESET;
  * in the library count as "não contado". Before 2.1.0 the adapter sent only minutes as a workout's focus (`facts.ts`), so every
  * stored target came from the phase coverage: it is read as a phase target. Null when `rules` has no audit rules.
  */
-export function auditOfStored(result: Pick<EngineResult, "phases" | "workouts" | "occurrences">, catalog: readonly CatalogExercise[], rules: RuleSetRef = AUDIT_RULESET): AuditReport | null {
+export function auditOfStored(result: Pick<EngineResult, "phases" | "workouts" | "occurrences"> & Partial<Pick<EngineResult, "rules">>, catalog: readonly CatalogExercise[], rules: RuleSetRef = AUDIT_RULESET): AuditReport | null {
   const log = ruleLogFor(rules);
   if (!log || !log.optional("AUDIT_THRESHOLDS")) return null;
   const byId = new Map(catalog.map((e) => [e.id, e]));
   const workouts = result.workouts.map((w) => (w.coverage && !w.coverage.origin ? { ...w, coverage: { ...w.coverage, origin: "PHASE_COVERAGE" as const } } : w));
   const volume = volumeFor(log, result.occurrences, byId);
-  return boundAudit(log, auditPlan({ log, phases: result.phases, structure: null, workouts, occurrences: result.occurrences, volume, byId }));
+  // The suggested action of AUDIT_NO_TARGETS follows the proposal's OWN rules (a regeneration runs with them and refuses an
+  // acceptance they cannot back): no suggestion unless they carry MICROCYCLE_TARGET_SUGGESTIONS (design V3 §3.9).
+  const own = result.rules ? ruleLogFor(result.rules) : null;
+  const suggestionsAccepted = Boolean(own?.optional("MICROCYCLE_TARGET_SUGGESTIONS"));
+  return boundAudit(log, auditPlan({ log, phases: result.phases, structure: null, workouts, occurrences: result.occurrences, volume, byId, suggestionsAccepted }));
 }
 
 export type AuditOutcome = { status: "ok"; audit: AuditReport; source: "STORED" | "VIEW"; rules: RuleSetRef } | { status: "not_found" };

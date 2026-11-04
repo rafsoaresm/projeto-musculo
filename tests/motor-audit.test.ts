@@ -426,6 +426,64 @@ describe("auditoria: item não contado com alvo", () => {
   });
 });
 
+describe("auditoria: revisão final V3 (rodízio, bíceps, ação da proposta antiga)", () => {
+  const plan = { A: ["ex-squat", "ex-legext", "ex-bench"], B: ["ex-rdl", "ex-row", "ex-pulldown"] };
+
+  it("AB 1×/semana: cada semana tem um treino só; divisão entre treinos e equilíbrio medidos na soma das semanas", () => {
+    const phase: PhaseSeed = { weeks: 4, sessionsPerWeek: 1, stimulus: "HYPERTROPHY", workouts: [{ label: "A" }, { label: "B" }] };
+    const { result } = planned([phase], plan);
+    expect(audit(result).phases[0].workouts.map((w) => w.exposuresPerWeek.min)).toEqual([0, 0]);
+    expect(of(result, "AUDIT_WORKOUT_SHARE")).toEqual([]);
+    for (const f of of(result, "AUDIT_PATTERN_IMBALANCE")) {
+      expect(f.week).toBeUndefined();
+      expect(f.rationale).not.toMatch(/sem estímulo do outro lado/);
+    }
+  });
+
+  it("AB 1×/semana com um treino muito maior: a concentração aparece, por sessão e sem semana", () => {
+    const phase: PhaseSeed = { weeks: 4, sessionsPerWeek: 1, stimulus: "HYPERTROPHY", workouts: [{ label: "A" }, { label: "B" }] };
+    const { result } = planned([phase], { A: ["ex-squat", "ex-legext", "ex-bench", "ex-row", "ex-pulldown", "ex-rdl", "ex-legpress"], B: ["ex-legext"] });
+    const [f] = of(result, "AUDIT_WORKOUT_SHARE");
+    expect(f).toMatchObject({ label: "A", measured: { unit: "SHARE" } });
+    expect(f.week).toBeUndefined();
+    expect(f.rationale).toMatch(/uma sessão do treino A/);
+  });
+
+  it("AB 3×/semana (A, B, A / B, A, B): o treino que aparece mais vezes na semana não vira concentração", () => {
+    const phase: PhaseSeed = { weeks: 4, sessionsPerWeek: 3, stimulus: "MUSCULAR_ENDURANCE", workouts: [{ label: "A" }, { label: "B" }] };
+    const { result } = planned([phase], plan);
+    expect(of(result, "AUDIT_WORKOUT_SHARE")).toEqual([]);
+  });
+
+  it("sem alvos e sem rosca: bíceps (só indireto, por remadas e puxadas) fica fora da observação aberta", () => {
+    const phase: PhaseSeed = { weeks: 2, sessionsPerWeek: 4, stimulus: "HYPERTROPHY", rotation: ["A", "B"], workouts: [{ label: "A" }, { label: "B" }] };
+    const { result } = planned([phase], plan);
+    const p = audit(result).phases[0];
+    expect(p.muscles.find((m) => m.muscle === "BICEPS")!.classification).toBe("INDIRECT_ONLY");
+    const [f] = of(result, "AUDIT_INDIRECT_ONLY");
+    expect(f.status).toBe("OPEN");
+    for (const x of audit(result).findings.filter((y) => y.code !== "AUDIT_NO_DIRECT_STIMULUS")) {
+      expect([x.muscle ?? "", ...Object.keys(x.measured?.detail ?? {})].join(" "), x.code).not.toMatch(/CALVES|BICEPS|\bABS\b/);
+      expect(x.rationale, x.code).not.toMatch(/Panturrilha|Bíceps|Abdominais/);
+    }
+    // com alvos (BY_DESIGN, "lido como escolha"), o músculo continua listado: não é recomendação
+    const withTargets = planned([phase], plan, { coverage: () => phaseCov(["QUADRICEPS", "CHEST"]) }).result;
+    expect(Object.keys(of(withTargets, "AUDIT_INDIRECT_ONLY")[0].measured!.detail!)).toContain("BICEPS");
+  });
+
+  it("auditoria calculada na tela de uma proposta 2026.11.2: AUDIT_NO_TARGETS sem a ação de aceitar sugestão", async () => {
+    const { auditOfStored } = await import("@/modules/prescricao/automatica/service");
+    const legacy = auditOfStored(xintusPreviousResult(LEGACY_RULES), XINTUS_CATALOG)!;
+    const current = auditOfStored(xintusPreviousResult(), XINTUS_CATALOG)!;
+    for (const p of [1, 2, 3]) {
+      const old = legacy.findings.find((f) => f.code === "AUDIT_NO_TARGETS" && f.phaseIndex === p)!;
+      expect(old.suggestedAction).not.toMatch(/sugerid/i);
+      expect(old.sourceRefs).toEqual(["rule:AUDIT_COMPREHENSIVE_STIMULI"]);
+      expect(current.findings.find((f) => f.code === "AUDIT_NO_TARGETS" && f.phaseIndex === p)!.suggestedAction).toMatch(/sugeridos/);
+    }
+  });
+});
+
 describe("auditoria: fase mista (resistido, cardio, mobilidade)", () => {
   it("só os treinos com volume entram na divisão e na redundância de padrão", () => {
     const catalog = [...XINTUS_CATALOG, exercise({ id: "ex-ankmob", name: "Mobilidade de tornozelo", modality: "MOBILITY", metric: "TIME", patterns: ["MOBILITY"] })];

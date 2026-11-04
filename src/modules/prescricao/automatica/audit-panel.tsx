@@ -76,6 +76,9 @@ export function AuditPanel({
             <strong>Fase {phaseIndex}</strong> · Formato observado: {rows.shape ?? "sem treinos de volume"}{" "}
             <span className="muted">(descrição; os nomes dos treinos são os seus)</span>
           </p>
+          {!rows.volume ? (
+            <p className="small muted">Fase sem treinos de volume (resistido): a distribuição por músculo não se aplica.</p>
+          ) : (
           <details className="progression-details">
             <summary>Distribuição por músculo · Fase {phaseIndex}</summary>
             <p className="small muted">
@@ -112,6 +115,7 @@ export function AuditPanel({
               </table>
             </div>
           </details>
+          )}
           {rows.patterns.length > 0 && (
             <details className="progression-details">
               <summary>Padrões de movimento · Fase {phaseIndex}</summary>

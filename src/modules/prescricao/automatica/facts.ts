@@ -182,7 +182,7 @@ export function findingFacts(assessment: AssessmentRecord | null): FindingFact[]
     });
     if (readings.length > 0) out.push({
       kind: "FLEXIBILITY", code: "FLEXITEST",
-      label: `Flexiteste: ${readings.length} de ${FLEXITEST_CODES.length} movimentos avaliados; ${readings.join("; ")}. São observações, não contraindicações automáticas.`,
+      label: `Flexiteste: ${readings.length} de ${FLEXITEST_CODES.length} movimentos avaliados; ${readings.join("; ")}. São observações, não contraindicações automáticas`,
       ref,
       readings: structured,
     });

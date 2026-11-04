@@ -166,6 +166,8 @@ describe("mapping the real records", () => {
     expect(flex.label).toContain(`${FLEXITEST_LABEL.elbow_flexion}: nível 3`);
     expect(flex.label).toContain("2 de 15 movimentos avaliados");
     expect(flex.label).toContain("não contraindicações automáticas");
+    // flags.ts junta o rótulo com ". Observação isolada…": um ponto final aqui virava ".." na tela (revisão final V3)
+    expect(flex.label).not.toMatch(/\.\s*$/);
     const result = found.find((f) => f.code === "RESULT:body_fat_percent")!;
     // Method and the formula's limitation travel with the number.
     expect(result.label).toContain("17,3%");

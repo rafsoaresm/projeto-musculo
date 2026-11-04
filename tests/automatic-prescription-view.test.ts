@@ -25,6 +25,7 @@ import {
   rangeText,
   storedAudit,
   UNDEFINED_SETS,
+  SETS_NOT_APPLICABLE,
   NOT_COUNTED,
   pageAudit,
   weekTableAudit,
@@ -453,6 +454,13 @@ describe("Motor V3 S2: the plan audit on the proposal screen", () => {
     };
     const iv = auditView({ ...stored, report: { ...audit, findings: [imbalance] } }, { engineVersion: "2.1.0", acceptSuggestions: false }).observations[0].findings[0];
     expect(iv).toMatchObject({ measured: "Medido: 12 × 0 séries diretas", location: "Semana 4 · dominantes de joelho × de quadril" });
+    // Indirect only: the value counts muscles; the card shows each muscle's weekly maximum, never "3 séries indiretas".
+    const indirect: AuditReport["findings"][number] = {
+      code: "AUDIT_INDIRECT_ONLY", severity: "INFO", status: "OPEN", stage: "VALIDATION", phaseIndex: 1,
+      measured: { unit: "INDIRECT_SETS", value: 3, detail: { ADDUCTORS: 6, SIDE_DELTOID: 4, TRICEPS: 9 } }, sourceRefs: [], rationale: "r", suggestedAction: null,
+    };
+    const ind = auditView({ ...stored, report: { ...audit, findings: [indirect] } }, { engineVersion: "2.2.0", acceptSuggestions: false }).observations[0].findings[0];
+    expect(ind.measured).toBe("Medido (máximo semanal, séries indiretas): Adutores 6 · Deltoide lateral 4 · Tríceps 9");
     const unmet: AuditReport["findings"][number] = {
       code: "AUDIT_TARGET_MUSCLE_UNMET", severity: "WARNING", status: "OPEN", stage: "VALIDATION", phaseIndex: 2, week: 3, label: "A", muscle: "QUADRICEPS",
       measured: { unit: "SESSIONS", value: 0 }, target: { unit: "SESSIONS", min: 1, basis: "PROFESSIONAL", origin: "WORKOUT_FOCUS" },
@@ -477,7 +485,8 @@ describe("Motor V3 S2: the plan audit on the proposal screen", () => {
     const all = [...view.attention, ...view.observations, ...view.descriptive].flatMap((g) => g.findings);
     const under = all.find((f) => f.code === "AUDIT_DURATION_UNDERUSED")!;
     // Never "36–60 min" under the professional's (or the student's) pill: 36 is 60% of 60, a heuristic.
-    expect(under.target).toEqual({ text: "Alvo: ≤ 60 min", basis: "PROFESSIONAL" });
+    // The upper bound is the time available, not a target the plan is under ("Alvo: ≤ 60 min" next to 31 min read as met).
+    expect(under.target).toEqual({ text: "Tempo disponível: 60 min", basis: "PROFESSIONAL" });
     expect(under.threshold).toEqual({ text: "Limiar de uso: 36 min", basis: "HEURISTIC" });
     expect(all.filter((f) => f.code !== "AUDIT_DURATION_UNDERUSED").every((f) => f.threshold === null)).toBe(true);
   });
@@ -550,6 +559,21 @@ describe("Motor V3 S2: the plan audit on the proposal screen", () => {
     expect([q.direct, q.indirect, q.weighted]).toEqual([UNDEFINED_SETS, UNDEFINED_SETS, UNDEFINED_SETS]);
     expect(q.situation).toBe("Direto");
     expect(Number(q.directSessions.split("–")[0])).toBeGreaterThan(0);
+  });
+
+  it("a phase without volume workouts: no all-zero muscle table, and cardio sets read 'não se aplica', not 'não definidas'", () => {
+    const st = structure("2026-11-09", [{ weeks: 2, sessionsPerWeek: 3, workouts: [
+      { label: "Z2", exerciseTarget: 1, focus: { stimulus: { value: "AEROBIC_ENDURANCE", source: "STRUCTURE", basis: "PROFESSIONAL" } } },
+      { label: "Mob", exerciseTarget: 2, focus: { stimulus: { value: "MOBILITY", source: "STRUCTURE", basis: "PROFESSIONAL" } } },
+    ] }]);
+    const r = generate(baseInput({ structure: st }));
+    const rows = auditPhaseRows(r.audit!, 1)!;
+    expect(rows.volume).toBe(false);
+    expect(rows.muscles).toEqual([]);
+    expect(rows.patterns.some((x) => x.sets === SETS_NOT_APPLICABLE)).toBe(true);
+    expect(rows.patterns.every((x) => x.sets !== UNDEFINED_SETS)).toBe(true);
+    expect(rows.unknownNote).toBeNull();
+    expect(auditPhaseRows(audit, 1)!.volume).toBe(true);
   });
 
   it("the weekly table gains sessions with direct stimulus (from the audit) and the target; '—' without an audit", () => {

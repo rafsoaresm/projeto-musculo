@@ -31,9 +31,20 @@ export interface AuditInput {
   occurrences: OccurrenceOut[];
   volume: VolumeRow[];
   byId: ReadonlyMap<string, CatalogExercise>;
+  /**
+   * As regras da PRÓPRIA proposta aceitam os alvos sugeridos (MICROCYCLE_TARGET_SUGGESTIONS)? Só na auditoria calculada na
+   * tela para uma proposta antiga (`log` = regras de auditoria atuais): ela regenera com as regras dela, que podem não ter a
+   * sugestão, e a ação não pode apontar para um aceite que o servidor recusaria. Omitido = lido de `log`.
+   */
+  suggestionsAccepted?: boolean;
 }
 
 const MAX_RATIONALE = 300;
+/**
+ * Músculos que a auditoria nunca põe numa observação aberta sem alvos (pedido do usuário, handoff V3 B: não recomendar
+ * panturrilha, bíceps e abdominais automaticamente). Seguem na tabela de músculos e na descrição AUDIT_NO_DIRECT_STIMULUS.
+ */
+const NO_AUTOMATIC_RECOMMENDATION: ReadonlySet<string> = new Set(["CALVES", "BICEPS", "ABS"]);
 const MAX_REFS = 12;
 
 // ---------- utilidades ----------
@@ -69,6 +80,18 @@ function finding(f: Omit<AuditFinding, "stage" | "sourceRefs" | "rationale"> & {
 }
 
 const rule = (id: string) => `rule:${id}`;
+
+/** "1–4" ou "1, 3, 4". */
+function weeksText(weeks: number[]): string {
+  if (!weeks.length) return "";
+  const contiguous = weeks.every((w, i) => i === 0 || w === weeks[i - 1] + 1);
+  return contiguous && weeks.length > 1 ? `${weeks[0]}–${weeks[weeks.length - 1]}` : weeks.join(", ");
+}
+
+/** Alguma semana que conta não tem sessão de algum treino de volume (rodízio: AB 1×, ABCD 3×). */
+function rotationGap(occs: OccurrenceOut[], volumeLabels: string[], weeks: number[]): boolean {
+  return weeks.some((w) => volumeLabels.some((l) => !occs.some((o) => o.week === w && o.label === l)));
+}
 
 // ---------- fatos de cada item ----------
 
@@ -430,12 +453,13 @@ function auditPhase(pc: PhaseContext): AuditPhase {
 
   // (a) só indireto, (c) omitido por escolha, descrição sem alvos — só em fases com volume; sem alvos, só nas abrangentes
   if (hasVolume && (comprehensive || hasTargets)) {
-    const indirectOnly = muscleRows.filter((r) => !r.isTarget && r.classification === "INDIRECT_ONLY");
+    const open = comprehensive && !hasTargets;
+    // Sem alvos, a observação é aberta ("confirme"): panturrilha, bíceps e abdominais ficam fora dela (não são recomendados).
+    const indirectOnly = muscleRows.filter((r) => !r.isTarget && r.classification === "INDIRECT_ONLY" && !(open && NO_AUTOMATIC_RECOMMENDATION.has(r.muscle)));
     if (indirectOnly.length) {
       const detail: Record<string, number> = {};
       for (const r of indirectOnly) detail[r.muscle] = r.indirect ? r.indirect.max : r.directSessions.max;
       const bySets = !anyUnknown && !anyUncounted;
-      const open = comprehensive && !hasTargets;
       findings.push(finding({
         code: "AUDIT_INDIRECT_ONLY", severity: "INFO", status: open ? "OPEN" : "BY_DESIGN", phaseIndex: p,
         measured: { unit: bySets ? "INDIRECT_SETS" : "SESSIONS", value: indirectOnly.length, detail: bySets ? detail : Object.fromEntries(indirectOnly.map((r) => [r.muscle, sessionsMax(facts, weeks, r.muscle)])) },
@@ -465,7 +489,7 @@ function auditPhase(pc: PhaseContext): AuditPhase {
   if (comprehensive && !hasTargets) {
     // Com MICROCYCLE_TARGET_SUGGESTIONS no conjunto da proposta (2026.11.4+), o achado aponta para a mesma sugestão do aviso
     // NO_TARGETS (uma sugestão só, aceite do profissional); sem a regra, o texto de antes.
-    const suggests = Boolean(pc.a.log.optional("MICROCYCLE_TARGET_SUGGESTIONS"));
+    const suggests = pc.a.suggestionsAccepted ?? Boolean(pc.a.log.optional("MICROCYCLE_TARGET_SUGGESTIONS"));
     findings.push(finding({
       code: "AUDIT_NO_TARGETS", severity: "INFO", status: "OPEN", phaseIndex: p,
       sourceRefs: suggests ? [rule("AUDIT_COMPREHENSIVE_STIMULI"), rule("MICROCYCLE_TARGET_SUGGESTIONS")] : [rule("AUDIT_COMPREHENSIVE_STIMULI")],
@@ -479,21 +503,27 @@ function auditPhase(pc: PhaseContext): AuditPhase {
   // equilíbrio entre padrões
   if (comprehensive) {
     const targetPatterns = new Set(targets.filter((s) => s.kind === "PATTERN").map((s) => s.code));
+    // Rodízio em que algum treino de volume falta numa semana (AB 1×, ABCD 3×): uma semana sozinha mostra só parte da divisão
+    // e o desequilíbrio seria só a rotação. Nesse caso o par é medido na soma das semanas que contam.
+    const balanceWeeks = checkWeeks.filter((w) => weekRows[w - 1].uncountedItems === 0);
+    const groups: Array<{ week: number | undefined; weeks: number[] }> = rotationGap(occs, volumeLabels, checkWeeks)
+      ? (balanceWeeks.length ? [{ week: undefined, weeks: balanceWeeks }] : [])
+      : balanceWeeks.map((w) => ({ week: w, weeks: [w] }));
     for (const pair of pc.a.log.optional("AUDIT_BALANCE_PAIRS") ?? []) {
-      let best: { week: number; a: number; b: number; ratio: number; unit: "DIRECT_SETS" | "SESSIONS" } | null = null;
-      for (const w of checkWeeks) {
+      let best: { week: number | undefined; a: number; b: number; ratio: number; unit: "DIRECT_SETS" | "SESSIONS" } | null = null;
+      for (const g of groups) {
         // Item não contado: não se sabe de que lado ele está; a semana fica fora (§3.5.12).
-        if (weekRows[w - 1].uncountedItems > 0) continue;
-        const side = (codes: string[]) => volumeFacts.filter((f) => f.occ.week === w && f.patterns.some((x) => codes.includes(x)));
+        const side = (codes: string[]) => volumeFacts.filter((f) => g.weeks.includes(f.occ.week) && f.patterns.some((x) => codes.includes(x)));
         const sa = side(pair.a);
         const sb = side(pair.b);
         const bySessions = [...sa, ...sb].some((f) => f.unknownSets);
-        const va = bySessions ? sessionsWith(sa, w, () => true) : sa.reduce((s, f) => s + (f.sets ?? 0), 0);
-        const vb = bySessions ? sessionsWith(sb, w, () => true) : sb.reduce((s, f) => s + (f.sets ?? 0), 0);
+        const sessionsIn = (fs: ItemFact[]) => g.weeks.reduce((n, w) => n + sessionsWith(fs, w, () => true), 0);
+        const va = bySessions ? sessionsIn(sa) : sa.reduce((s, f) => s + (f.sets ?? 0), 0);
+        const vb = bySessions ? sessionsIn(sb) : sb.reduce((s, f) => s + (f.sets ?? 0), 0);
         if (va === 0 && vb === 0) continue;
         const ratio = Math.min(va, vb) === 0 ? Number.POSITIVE_INFINITY : Math.max(va, vb) / Math.min(va, vb);
         if (!best || ratio > best.ratio || (ratio === best.ratio && va + vb > best.a + best.b))
-          best = { week: w, a: va, b: vb, ratio, unit: bySessions ? "SESSIONS" : "DIRECT_SETS" };
+          best = { week: g.week, a: va, b: vb, ratio, unit: bySessions ? "SESSIONS" : "DIRECT_SETS" };
       }
       if (!best || best.ratio <= t.balanceRatioMax) continue;
       const dominant = best.a > best.b ? pair.a : pair.b;
@@ -502,12 +532,13 @@ function auditPhase(pc: PhaseContext): AuditPhase {
       if (intended.length && intended.every((x) => dominant.includes(x)) && !intended.some((x) => other.includes(x))) continue;
       const unitText = best.unit === "SESSIONS" ? "sessões" : "séries";
       const ratioText = Number.isFinite(best.ratio) ? `razão ${numberText(r2(best.ratio))}` : "sem estímulo do outro lado";
+      const span = best.week === undefined ? ` na soma das semanas ${weeksText(balanceWeeks)} (nem todo treino aparece em toda semana)` : "";
       findings.push(finding({
         // `pattern` leva o código do par (AUDIT_BALANCE_PAIRS), ex.: KNEE_HIP
-        code: "AUDIT_PATTERN_IMBALANCE", severity: "INFO", status: "OPEN", phaseIndex: p, week: best.week, pattern: pair.code,
+        code: "AUDIT_PATTERN_IMBALANCE", severity: "INFO", status: "OPEN", phaseIndex: p, ...(best.week !== undefined ? { week: best.week } : {}), pattern: pair.code,
         measured: { unit: best.unit === "SESSIONS" ? "SESSIONS" : "RATIO", value: Number.isFinite(best.ratio) ? r2(best.ratio) : 0, detail: { a: best.a, b: best.b } },
         sourceRefs: [rule("AUDIT_BALANCE_PAIRS"), `pair:${pair.code}`, rule("AUDIT_THRESHOLDS")],
-        rationale: `${where(best.week)}: ${labelsOf(PATTERN_LABELS, pair.a)} somam ${numberText(best.a)} ${unitText} e ${labelsOf(PATTERN_LABELS, pair.b)} somam ${numberText(best.b)} (${ratioText}; limiar ${numberText(t.balanceRatioMax)}, heurística operacional).${phase.splitShape ? ` Formato observado: ${SHAPE_TEXT[phase.splitShape]}.` : ""}`,
+        rationale: `${where(best.week)}: ${labelsOf(PATTERN_LABELS, pair.a)} somam ${numberText(best.a)} ${unitText}${span} e ${labelsOf(PATTERN_LABELS, pair.b)} somam ${numberText(best.b)} (${ratioText}; limiar ${numberText(t.balanceRatioMax)}, heurística operacional).${phase.splitShape ? ` Formato observado: ${SHAPE_TEXT[phase.splitShape]}.` : ""}`,
         suggestedAction: "Confirme se o desequilíbrio entre os padrões é intencional para o objetivo e a estrutura.",
       }));
     }
@@ -536,23 +567,40 @@ function auditPhase(pc: PhaseContext): AuditPhase {
   }
 
   // distribuição entre treinos de volume
+  // Medida por sessão (séries ponderadas de uma sessão do treino ÷ soma das sessões típicas de cada treino): um treino que
+  // aparece mais vezes na semana (B, A, B) não vira "concentração". Semana que não tem todos os treinos de volume (rodízio)
+  // não se mede sozinha: a conta passa à soma das semanas que contam.
   if (volumeLabels.length >= 2) {
+    const shareWeeks = checkWeeks.filter(known);
+    const gap = rotationGap(occs, volumeLabels, shareWeeks);
+    const groups: Array<{ week: number | undefined; weeks: number[] }> = gap
+      ? (shareWeeks.length ? [{ week: undefined, weeks: shareWeeks }] : [])
+      : shareWeeks.map((w) => ({ week: w, weeks: [w] }));
+    const perSession = (label: string, weeksIn: number[]): number | null => {
+      const n = weeksIn.reduce((c, w) => c + occs.filter((o) => o.week === w && o.label === label).length, 0);
+      if (!n) return null;
+      return volumeFacts.filter((f) => weeksIn.includes(f.occ.week) && f.occ.label === label).reduce((s, f) => s + (f.weighted ?? 0), 0) / n;
+    };
     for (const label of volumeLabels) {
-      let top: { week: number; share: number; sets: number; total: number } | null = null;
-      for (const w of checkWeeks.filter(known)) {
-        const total = weekRows[w - 1].weighted ?? 0;
+      let top: { week: number | undefined; share: number; sets: number; total: number } | null = null;
+      for (const g of groups) {
+        const each = volumeLabels.map((l) => perSession(l, g.weeks));
+        if (each.some((v) => v === null)) continue;
+        const total = (each as number[]).reduce((s, v) => s + v, 0);
         if (total <= 0) continue;
-        const sets = volumeFacts.filter((f) => f.occ.week === w && f.occ.label === label).reduce((s, f) => s + (f.weighted ?? 0), 0);
-        if (!top || sets / total > top.share) top = { week: w, share: sets / total, sets: r2(sets), total };
+        const sets = perSession(label, g.weeks) as number;
+        if (!top || sets / total > top.share) top = { week: g.week, share: sets / total, sets: r2(sets), total: r2(total) };
       }
-      if (top && top.share > t.workoutShareMax)
+      if (top && top.share > t.workoutShareMax) {
+        const span = top.week === undefined ? ` (média das semanas ${weeksText(shareWeeks)}: nem todo treino aparece em toda semana)` : "";
         findings.push(finding({
-          code: "AUDIT_WORKOUT_SHARE", severity: "INFO", status: "OPEN", phaseIndex: p, week: top.week, label,
+          code: "AUDIT_WORKOUT_SHARE", severity: "INFO", status: "OPEN", phaseIndex: p, ...(top.week !== undefined ? { week: top.week } : {}), label,
           measured: { unit: "SHARE", value: r2(top.share), detail: { sets: top.sets, total: top.total } },
           sourceRefs: [rule("AUDIT_THRESHOLDS"), `coverage:${p}:${label}`],
-          rationale: `${where(top.week)}: o treino ${label} carrega ${pct(top.share)} das séries ponderadas da semana entre os treinos com volume (${numberText(top.sets)} de ${numberText(top.total)}; limiar ${pct(t.workoutShareMax)}).`,
+          rationale: `${where(top.week)}: uma sessão do treino ${label} carrega ${pct(top.share)} das séries ponderadas de uma sessão de cada treino com volume${span} (${numberText(top.sets)} de ${numberText(top.total)}; limiar ${pct(t.workoutShareMax)}).`,
           suggestedAction: "Confirme se a distribuição entre os treinos é intencional.",
         }));
+      }
     }
   }
 

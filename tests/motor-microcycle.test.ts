@@ -302,6 +302,34 @@ describe("microciclo: treino que não aparece em toda semana (ABCD 3×, ABC 2×,
   });
 });
 
+describe("microciclo: regenerar sem mudar nada devolve o mesmo plano, também em rodízio", () => {
+  // Revisão final V3: em rodízio (treino que falta em alguma semana), a semana ou o treino regenerado escolhia diferente da
+  // geração com a mesma entrada, porque os treinos mantidos entravam inteiros no estado antes do guloso.
+  const shapes: Array<[string, string[], number, boolean, CatalogExercise[] | undefined]> = [
+    ["ABCD 3×, sem alvos", ["A", "B", "C", "D"], 3, false, undefined],
+    ["ABCD 3×, com alvos", ["A", "B", "C", "D"], 3, true, XINTUS_CATALOG],
+    ["ABC 2×, sem alvos", ["A", "B", "C"], 2, false, XINTUS_CATALOG],
+    ["ABC 4×, sem alvos", ["A", "B", "C"], 4, false, undefined],
+    ["AB 3×, com alvos", ["A", "B"], 3, true, XINTUS_CATALOG],
+  ];
+  it.each(shapes)("%s: semana, treino (inteiro e a partir da semana 2) e sessão", (_name, labels, spw, targets, catalog) => {
+    const input = baseInput({
+      ...(catalog ? { catalog } : {}),
+      structure: structure("2026-11-09", [{ weeks: 4, sessionsPerWeek: spw, stimulus: "HYPERTROPHY", workouts: labels.map((label) => ({ label, exerciseTarget: 4 })) }]),
+      ...(targets ? { parameters: parameters({ phaseCoverage: [{ phaseIndex: 1, muscles: ["QUADRICEPS", "HAMSTRINGS", "GLUTES", "CHEST", "LATS"], basis: "PROFESSIONAL" }] }) } : {}),
+    });
+    const g = generate(input);
+    expect(g.status).toBe("SUCCEEDED");
+    const same = canonicalJson(g.occurrences);
+    const scopes = [
+      ...[1, 2, 3, 4].map((week) => ({ kind: "WEEK" as const, phaseIndex: 1, week })),
+      ...labels.flatMap((label) => [{ kind: "WORKOUT" as const, phaseIndex: 1, label }, { kind: "WORKOUT" as const, phaseIndex: 1, label, fromWeek: 2 }]),
+      ...g.occurrences.slice(0, 3).map((o) => ({ kind: "OCCURRENCE" as const, phaseIndex: 1, week: o.week, slot: o.slot })),
+    ];
+    for (const scope of scopes) expect(canonicalJson(ok(regenerate(input, g, scope)).occurrences), JSON.stringify(scope)).toBe(same);
+  });
+});
+
 describe("microciclo: cardio e mobilidade não recebem alvos de hipertrofia", () => {
   it("fase só de cardio e mobilidade: mesma seleção da 2026.11.3, sem termos de microciclo", () => {
     const seed: PhaseSeed = { weeks: 2, sessionsPerWeek: 3, workouts: [

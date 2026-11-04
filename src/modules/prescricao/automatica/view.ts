@@ -756,9 +756,13 @@ function findingView(f: AuditFinding, n: number, offer: boolean): AuditFindingVi
   if (f.pattern) where.push(f.code === "AUDIT_PATTERN_IMBALANCE" ? (PAIR_LABELS[f.pattern] ?? f.pattern) : `padrão ${patternName(f.pattern)}`);
   const m = f.measured;
   const sides = f.code === "AUDIT_PATTERN_IMBALANCE" && m?.detail && m.detail.a !== undefined && m.detail.b !== undefined ? m.detail : null;
+  // AUDIT_INDIRECT_ONLY: `value` counts the muscles; what was measured is each muscle's weekly maximum (in `detail`).
+  const perMuscle = f.code === "AUDIT_INDIRECT_ONLY" && m?.detail && Object.keys(m.detail).length ? m.detail : null;
   const measured = !m
     ? null
-    : sides
+    : perMuscle
+      ? `Medido (máximo semanal, ${UNIT_TEXT[m.unit][1]}): ${Object.entries(perMuscle).map(([k, v]) => `${muscleName(k)} ${num(v)}`).join(" · ")}`
+      : sides
       // the two sides as measured (sets, or sessions when some sets are unknown); "0" on one side is "no stimulus there", not a ratio
       ? `Medido: ${num(sides.a)} × ${num(sides.b)} ${m.unit === "SESSIONS" ? "sessões" : "séries diretas"}`
       : `Medido: ${auditValueText(m.unit, m.value)}${m.from !== undefined ? ` (antes: ${auditValueText(m.unit, m.from)})` : ""}`;
@@ -785,7 +789,10 @@ function findingView(f: AuditFinding, n: number, offer: boolean): AuditFindingVi
     statusText: f.status === "BY_DESIGN" ? "Escolha do profissional" : null,
     location: where.length ? where.join(" · ") : null,
     measured,
-    target: targetText && f.target ? { text: `Alvo: ${targetText}`, basis: f.target.basis } : { text: "Sem alvo definido", basis: null },
+    // The upper bound of the time-use range is the time available, not a target the plan should stay under.
+    target: split
+      ? { text: `Tempo disponível: ${auditValueText(f.target!.unit, f.target!.max!)}`, basis: f.target!.basis }
+      : targetText && f.target ? { text: `Alvo: ${targetText}`, basis: f.target.basis } : { text: "Sem alvo definido", basis: null },
     threshold,
     rationale: f.rationale,
     suggestedAction: f.suggestedAction,
@@ -866,6 +873,8 @@ export const UNDEFINED_SETS = "séries não definidas";
 /** A total not computed because some item could not be counted (no library exercise, or no muscles): not a dose without sets. */
 export const NOT_COUNTED = "não calculado (item não contado)";
 const NOT_COMPUTED = "não calculado";
+/** Sets of a pattern worked only by items whose dose has no sets (continuous cardio, mobility by time): not missing data. */
+export const SETS_NOT_APPLICABLE = "não se aplica (sem séries)";
 
 /** Why a set total is unknown, from the per-week counts of the audit: doses without sets, items not counted, or both. */
 function unknownCause(weeks: ReadonlyArray<Pick<AuditWeek, "unknownSetItems" | "uncountedItems">>): { cell: string; note: string | null } {
@@ -914,12 +923,14 @@ function targetCell(t: AuditTarget | undefined, isTarget: boolean): string {
 export function auditPhaseRows(
   report: AuditReport,
   phaseIndex: number,
-): { shape: string | null; muscles: AuditMuscleRowView[]; patterns: AuditPatternRowView[]; unknownNote: string | null } | null {
+): { shape: string | null; volume: boolean; muscles: AuditMuscleRowView[]; patterns: AuditPatternRowView[]; unknownNote: string | null } | null {
   const p = report.phases.find((x) => x.phaseIndex === phaseIndex);
   if (!p) return null;
   const cause = unknownCause(p.weekRows);
+  // No volume workout in the phase (cardio, mobility): the muscle table would be all zeros; the panel says so in one line.
+  const volume = p.workouts.some((w) => w.volumeWorkout);
   const order: Record<AuditMuscleRow["classification"], number> = { DIRECT: 0, INDIRECT_ONLY: 1, UNKNOWN: 2, NONE: 3 };
-  const muscles = [...p.muscles]
+  const muscles = (volume ? [...p.muscles] : [])
     .sort((a, b) => Number(b.isTarget) - Number(a.isTarget) || order[a.classification] - order[b.classification] || muscleName(a.muscle).localeCompare(muscleName(b.muscle), "pt-BR"))
     .map((m) => ({
       muscle: muscleName(m.muscle),
@@ -936,11 +947,12 @@ export function auditPhaseRows(
     .sort((a, b) => Number(b.isTarget) - Number(a.isTarget) || b.sessions.max - a.sessions.max || patternName(a.pattern).localeCompare(patternName(b.pattern), "pt-BR"))
     .map((x) => ({
       pattern: patternName(x.pattern),
-      sets: rangeText(x.sets) ?? cause.cell,
+      // Without doses lacking sets or items not counted in the phase, a null total can only come from items with no sets.
+      sets: rangeText(x.sets) ?? (cause.note ? cause.cell : SETS_NOT_APPLICABLE),
       sessions: rangeText(x.sessions)!,
       target: x.isTarget ? "Alvo" : "—",
     }));
-  return { shape: p.splitShape ? SHAPE_TEXT[p.splitShape] : null, muscles, patterns, unknownNote: cause.note };
+  return { shape: p.splitShape ? SHAPE_TEXT[p.splitShape] : null, volume, muscles, patterns, unknownNote: cause.note };
 }
 
 /**

@@ -32,6 +32,13 @@ export interface FixedWorkout {
   patterns: Record<string, number>;
   /** Sessões com o exercício. */
   exercises: Record<string, number>;
+  /**
+   * Exercícios da biblioteca do treino, na ordem da primeira sessão, quando todas as sessões dele na fase têm o mesmo conjunto
+   * (o treino como a seleção o deixou). Com isso a seleção refaz as escolhas dele no mesmo passo em que a geração as fez, e
+   * regenerar sem mudar nada devolve o mesmo plano. null = sessões diferentes entre si (troca parcial) ou item fora da
+   * biblioteca: o treino entra no estado da semana pela soma acima.
+   */
+  replay: string[] | null;
 }
 
 /** Troca do profissional presente em todas as sessões do escopo de uma regeneração: ocupa a vaga e conta no estado. */
@@ -149,12 +156,34 @@ export function fixedWorkoutFrom(ctx: EngineContext, phase: StructurePhase, labe
   };
   const counts = (r: Record<string, number | null>) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, v ?? 0])) as Record<string, number>;
   return {
+    replay: replayOf(ctx, occurrences.filter((o) => o.phaseIndex === phase.index && o.label === label)),
     exposures: weeklyExposureOf(phase, label, weeks),
     weighted: minOf((w) => w.weighted, (v) => v),
     directSessions: counts(minOf((w) => w.direct, (v) => v.size)),
     patterns: counts(minOf((w) => w.patterns, (v) => v.size)),
     exercises: counts(minOf((w) => w.exercises, (v) => v.size)),
   };
+}
+
+/** Lista para refazer as escolhas de um treino mantido (ver `FixedWorkout.replay`). */
+function replayOf(ctx: EngineContext, occs: OccurrenceOut[]): string[] | null {
+  if (!occs.length) return null;
+  const idsOf = (o: OccurrenceOut): string[] | null => {
+    const ids: string[] = [];
+    for (const item of o.items) {
+      if (!item.exerciseId || !ctx.byId.has(item.exerciseId)) return null;
+      ids.push(item.exerciseId);
+    }
+    return ids;
+  };
+  const first = idsOf(occs[0]);
+  if (!first) return null;
+  const key = [...first].sort(cmp).join("|");
+  for (const o of occs.slice(1)) {
+    const ids = idsOf(o);
+    if (!ids || [...ids].sort(cmp).join("|") !== key) return null;
+  }
+  return first;
 }
 
 // ---------- estado da semana ----------
@@ -177,6 +206,13 @@ interface Lane {
   x: number;
   remaining: number;
   fixed: FixedWorkout | null;
+  /**
+   * Treino mantido cujas escolhas são refeitas no guloso: só os exercícios gravados podem ser escolhidos, mas todos os
+   * candidatos são pontuados (o empate e a ordem dos passos ficam como na geração). Nada dele sai na regeneração.
+   */
+  replay: boolean;
+  /** Exercícios que um treino em `replay` pode escolher (os gravados). */
+  allowed: ReadonlySet<string> | null;
   /** Exercícios da biblioteca no treino (fixos e escolhidos), na ordem. */
   chosen: CatalogExercise[];
   ids: Set<string>;
@@ -370,11 +406,28 @@ export function planPhaseMicrocycle(ctx: EngineContext, phase: StructurePhase, u
     const volLane = Boolean(draft.modalities?.value.some((m) => vol.has(codeOf(m))));
     const occ0 = draft.occs[0];
     const stim0 = occ0 ? occurrenceStimulus(input, phase, workout, occ0.week, indexInWeek(phase, occ0)) : null;
+    const candidates = draft.pool.filter((e) => !draft.taken.has(e.id) && !draft.blocked.has(e.id));
+    let remaining = fixed ? 0 : openSlots(draft);
+    let replay = false;
+    let allowed: Set<string> | null = null;
+    // Treino mantido igual em todas as sessões: as escolhas dele são refeitas só entre os exercícios gravados, no passo em
+    // que a seleção as faria. Sem isso, a soma dele entraria inteira antes do guloso e os outros treinos escolheriam diferente
+    // da geração com a mesma entrada. Se algum exercício gravado não é mais candidato, a soma (`fixed`) vale.
+    if (fixed?.replay && volLane && draft.runnable) {
+      const want = fixed.replay.filter((id) => !draft.taken.has(id));
+      const wanted = new Set(want);
+      const restricted = candidates.filter((e) => wanted.has(e.id));
+      if (want.length === wanted.size && restricted.length === wanted.size) {
+        allowed = wanted;
+        remaining = restricted.length;
+        replay = true;
+      }
+    }
     return {
-      i, draft, vol: volLane, x: weeklyExposureOf(phase, workout.label, weeks), remaining: fixed ? 0 : openSlots(draft), fixed,
+      i, draft, vol: volLane, x: weeklyExposureOf(phase, workout.label, weeks), remaining, fixed, replay, allowed,
       chosen: draft.slots.map((s) => s.exercise).filter((e): e is CatalogExercise => e !== null),
       ids: new Set(draft.taken), picks: [],
-      candidates: draft.pool.filter((e) => !draft.taken.has(e.id) && !draft.blocked.has(e.id)),
+      candidates,
       primaryHere: new Set(), patternsHere: new Set(draft.slots.flatMap((sl) => (sl.exercise ? patternsOf(sl.exercise) : []))), noTargets: false, staticMemo: new Map(), setsMemo: new Map(),
       refOcc: occ0 ? { week: occ0.week, stimulus: stim0?.value ?? null } : null,
     };
@@ -441,7 +494,7 @@ export function planPhaseMicrocycle(ctx: EngineContext, phase: StructurePhase, u
     for (const p of patternsOf(e)) state.addPattern(p, lane.x);
   };
   for (const lane of lanes) {
-    if (lane.fixed) {
+    if (lane.fixed && !lane.replay) {
       const f = lane.fixed;
       for (const [id, n] of Object.entries(f.exercises)) state.hold(id, lane.i, n);
       if (!lane.vol) continue;
@@ -464,7 +517,7 @@ export function planPhaseMicrocycle(ctx: EngineContext, phase: StructurePhase, u
 
   // ---- passo 2: guloso entre os treinos de volume ----
   const minimum = log.get("COUNT_FROM_TIME").minimum;
-  const volumeLanes = lanes.filter((l) => l.vol && !l.fixed && l.draft.runnable);
+  const volumeLanes = lanes.filter((l) => l.vol && (!l.fixed || l.replay) && l.draft.runnable);
   let steps = 0;
   const scoreOf = (lane: Lane, e: CatalogExercise, withTrace: boolean): Scored & { parts: TraceEntry[] } => {
     let st = lane.staticMemo.get(e.id);
@@ -481,24 +534,32 @@ export function planPhaseMicrocycle(ctx: EngineContext, phase: StructurePhase, u
     return { score: dyn.score + (lane.noTargets ? W.noTargets : 0) + st.score, trace: [], parts: withTrace ? [...dyn.trace, ...noT, ...st.trace] : [] };
   };
   while (steps < M.maxSteps) {
-    let best: { lane: Lane; e: CatalogExercise; score: number; parts: TraceEntry[]; tie: boolean } | null = null;
+    type Best = { lane: Lane; e: CatalogExercise; score: number; parts: TraceEntry[]; tie: boolean };
+    // `top`: o melhor entre todos os candidatos (como na geração); `best`: o melhor que pode ser escolhido (um treino mantido
+    // só escolhe os exercícios gravados). Sem mudança na entrada, os dois coincidem; com mudança, vale o que pode ser escolhido.
+    let top: Best | null = null;
+    let best: Best | null = null;
     for (const lane of volumeLanes) {
       if (lane.remaining <= 0) continue;
       let any = false;
       for (const e of lane.candidates) {
         if (lane.ids.has(e.id)) continue;
-        any = true;
         const s = scoreOf(lane, e, false);
+        if (!top || s.score > top.score) top = { lane, e, score: s.score, parts: s.parts, tie: false };
+        else if (s.score === top.score) top.tie = true;
+        if (lane.allowed && !lane.allowed.has(e.id)) continue;
+        any = true;
         if (!best || s.score > best.score) best = { lane, e, score: s.score, parts: s.parts, tie: false };
         else if (s.score === best.score) best.tie = true;
       }
       if (!any) lane.remaining = 0;
     }
     if (!best) break;
+    if (top && top.lane === best.lane && top.e === best.e) best = top;
     steps++;
     const { lane, e } = best;
     const draft = lane.draft;
-    if (draft.count === "BY_TIME" && lane.picks.length + draft.slots.length >= minimum) {
+    if (!lane.replay && draft.count === "BY_TIME" && lane.picks.length + draft.slots.length >= minimum) {
       const minutes = dosePreview(ctx, { phase, workout: draft.workout }, [...lane.chosen, e], draft.preserved);
       if (minutes === null || !draft.budget || minutes > draft.budget.minutes) {
         lane.remaining = 0;
@@ -506,10 +567,10 @@ export function planPhaseMicrocycle(ctx: EngineContext, phase: StructurePhase, u
       }
     }
     const rank = lane.picks.length + 1;
-    best.parts = scoreOf(lane, e, true).parts;
+    best.parts = lane.replay ? [] : scoreOf(lane, e, true).parts;
     lane.picks.push({
       exercise: e,
-      selection: [
+      selection: lane.replay ? [] : [
         ...choiceEntries(ctx, draft, e), ...best.parts,
         { code: "RANK", basis: log.basis("MICROCYCLE_SELECTION"), ruleId: "MICROCYCLE_SELECTION",
           detail: `Escolha ${rank} do treino ${draft.workout.label} pela pontuação ${numberText(best.score)} (seleção da fase inteira, passo ${steps})${best.tie ? "; empate desfeito pela ordem dos treinos e pelo código do exercício" : ""}.` },
@@ -521,7 +582,7 @@ export function planPhaseMicrocycle(ctx: EngineContext, phase: StructurePhase, u
     lane.remaining--;
     put(lane, e, refSets(lane, e));
   }
-  const stepLimited = new Set(volumeLanes.filter((l) => l.remaining > 0 && l.candidates.some((e) => !l.ids.has(e.id))).map((l) => l.i));
+  const stepLimited = new Set(volumeLanes.filter((l) => !l.fixed && l.remaining > 0 && l.candidates.some((e) => !l.ids.has(e.id))).map((l) => l.i));
 
   // ---- treinos que não são de volume: seleção antiga, na ordem da estrutura ----
   const usedInPhase = new Set<string>();
