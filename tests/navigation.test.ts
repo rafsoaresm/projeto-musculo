@@ -70,6 +70,7 @@ describe("navigation by area (handoff V2, section 3)", () => {
       ["avaliacoes", "avaliacoes"],
       ["prescricao", "prescricao"],
       ["planos", "prescricao"],
+      ["planos/novo", "prescricao"],
       ["periodizacao", "prescricao"],
       ["biblioteca", "biblioteca"],
       ["biblioteca/abc", "biblioteca"],

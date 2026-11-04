@@ -264,7 +264,7 @@ export async function readyPlan(page: Page, studentURL: string, title: string) {
     await page.getByLabel("Divisão de treinos").selectOption("Full Body");
     await page.getByLabel("Alvo de exercícios por treino").selectOption("3");
   }
-  await page.getByRole("button", { name: "Salvar rascunho" }).click();
+  await page.getByRole("button", { name: "Salvar e prescrever exercícios" }).click();
   await expect(page.getByRole("heading", { name: title })).toBeVisible();
   const fullBody = page.getByRole("region", { name: "Treino Full Body" });
   for (const name of ["Agachamento da triagem", "Remada da triagem", "Prancha da triagem"]) {
@@ -281,4 +281,13 @@ export async function readyPlan(page: Page, studentURL: string, title: string) {
   await page.getByRole("button", { name: "Marcar estrutura como pronta" }).click();
   await expect(page.getByRole("heading", { name: "Aprovar esta revisão" })).toBeVisible();
   return page.url();
+}
+
+/** A draft revision folds the structure of the cycle under the prescription (0.93); this unfolds it. */
+export async function openStructure(page: Page) {
+  const details = page.locator("details.structure-details");
+  await expect(details).toHaveCount(1);
+  if (!(await details.evaluate((node) => (node as HTMLDetailsElement).open)))
+    await details.locator("summary").click();
+  await expect(details.getByLabel("Data de início")).toBeVisible();
 }

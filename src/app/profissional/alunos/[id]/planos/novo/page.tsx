@@ -25,13 +25,26 @@ export default async function NewPlan({
       <PageHeading
         eyebrow={student.displayName}
         title="Novo plano de periodização"
-        description="Defina as fases, calcule o calendário e salve o rascunho no cadastro do aluno."
+        description="Defina o ciclo e cada fase; ao salvar, você vai direto para a prescrição dos exercícios."
         aside={<Pill tone="brand">Rascunho estrutural</Pill>}
       />
+      <ol className="plan-steps" aria-label="Etapas do novo plano">
+        <li>
+          <span className="mini-number">1</span> Estrutura do ciclo
+        </li>
+        <li>
+          <span className="mini-number">2</span> Configurar cada fase
+        </li>
+        <li>
+          <span className="mini-number">3</span> Prescrever exercícios
+        </li>
+      </ol>
       <Planner
         persist={{
           askTitle: true,
-          saveLabel: "Salvar rascunho",
+          // 0.93: the same save as before, named for where it leads (the action redirects to the prescription).
+          saveLabel: "Salvar e prescrever exercícios",
+          prescribeNext: true,
           save: createPlan.bind(null, student.id),
         }}
       />

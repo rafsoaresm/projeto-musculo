@@ -1,5 +1,4 @@
 import { test, expect } from "@playwright/test";
-import { readFile } from "node:fs/promises";
 import {
   createProfessional,
   localIP,
@@ -51,16 +50,24 @@ test("entry page, navigation and responsive layout render without application er
   expect(errors).toEqual([]);
 });
 
-test("calculates independent phases, exports the actual draft and invalidates stale results", async ({
+test("calculates independent phases, offers no JSON export and invalidates stale results", async ({
   page,
 }) => {
   await page.setExtraHTTPHeaders({ "cf-connecting-ip": localIP() });
   await createProfessional(page, "Estúdio planejador");
   await page.goto("./profissional/periodizacao");
   await page.waitForLoadState("networkidle");
+  // 0.93: nothing here is saved, and the way to keep a plan is "Novo plano" (choose the student), not a file.
+  await expect(page.getByText(/Exporte|JSON/)).toHaveCount(0);
+  await expect(page.locator(".notice").getByRole("link", { name: "Novo plano" })).toBeVisible();
   await page.getByLabel("Data de início").fill("2026-10-26");
   await page.getByLabel("Microciclos (semanas)").selectOption("3");
   await page.getByLabel("Sessões por semana").selectOption("2");
+  // The target goes up to 20 exercises per workout (user, 03/11/2026).
+  const target = page.getByLabel("Alvo de exercícios por treino");
+  await expect(target.locator("option")).toHaveCount(18);
+  await expect(target.locator("option").last()).toHaveText("20 exercícios");
+  await target.selectOption("20");
   await page.getByRole("button", { name: "Fase 02", exact: true }).click();
   await expect(page.getByLabel("Microciclos (semanas)")).toHaveValue("4");
   await page.getByRole("button", { name: "Calcular planejamento" }).click();
@@ -68,33 +75,15 @@ test("calculates independent phases, exports the actual draft and invalidates st
   await expect(page.locator(".summary-stats")).toContainText("30");
   await page.getByRole("button", { name: "Fase 01", exact: true }).click();
   await expect(page.locator(".microcycles")).toContainText("C / A");
-  const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Exportar rascunho JSON" }).click();
-  const download = await downloadPromise;
-  const file = await download.path();
-  expect(file).toBeTruthy();
-  const result = JSON.parse(await readFile(file!, "utf8"));
-  expect(result).toMatchObject({
-    status: "DRAFT",
-    totalWeeks: 11,
-    totalSessions: 30,
-    startDate: "2026-10-26",
-    endDate: "2027-01-10",
-  });
-  expect(
-    result.phases[0].microcycles.map((w: { sessions: string[] }) => w.sessions),
-  ).toEqual([
-    ["A", "B"],
-    ["C", "A"],
-    ["B", "C"],
-  ]);
+  await expect(page.locator(".schedule-result tbody tr").first().locator("td").last()).toHaveText("20");
+  await expect(page.getByRole("button", { name: /Exportar/ })).toHaveCount(0);
+  await expect(page.getByText(/JSON/)).toHaveCount(0);
   await page.getByLabel("Sessões por semana").selectOption("3");
-  await expect(
-    page.getByRole("button", { name: "Exportar rascunho JSON" }),
-  ).toHaveCount(0);
   await expect(
     page.getByRole("heading", { name: "Seu ciclo começa aqui." }),
   ).toBeVisible();
+  await page.locator(".notice").getByRole("link", { name: "Novo plano" }).click();
+  await expect(page.getByRole("heading", { name: "Novo plano: escolha o aluno", level: 1 })).toBeVisible();
 });
 
 test("requires a date and offers all twelve independently configurable phases", async ({

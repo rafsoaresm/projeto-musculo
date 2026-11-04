@@ -11,13 +11,14 @@ import { studentAccessFor } from "@/db/student-access";
 import { prescriptionFor } from "@/db/prescription";
 import { assessmentsFor } from "@/db/assessments";
 import { PageHeading, Pill } from "@/components/ui";
-import { Planner } from "@/modules/training/components/planner";
+import { formatCalendarDate } from "@/modules/training/format";
 import {
   createRevision,
   markReady,
   saveDraft,
 } from "@/modules/planos/actions";
 import { PlanReadOnly } from "@/modules/planos/plan-readonly";
+import { DraftWorkspace } from "@/modules/planos/draft-workspace";
 import { stateLabel } from "@/modules/planos/labels";
 import { PrescriptionEditor } from "@/modules/prescricao/prescription-editor";
 import { ApprovalPanel, type ScreeningInfo } from "@/modules/planos/approval-panel";
@@ -102,34 +103,33 @@ export default async function PlanRevision({
         title={detail.plan.title}
         description={
           revision.state === "DRAFT"
-            ? "Rascunho em edição. Salve a estrutura, prescreva os exercícios e marque como pronta quando estiver certo: depois disso a revisão não aceita mais edição."
+            ? "Rascunho em edição. Prescreva os exercícios de cada treino; a estrutura do ciclo fica logo abaixo. Quando estiver certo, marque como pronta: depois disso a revisão não aceita mais edição."
             : revision.state === "DELIVERED"
               ? "Revisão entregue ao aluno. Ela não muda mais."
               : "Revisão fechada para edição."
         }
         aside={<Pill tone={label.tone}>{label.text}</Pill>}
       />
+      {/* 0.93: the prescription is the main content of a draft; the structure is folded under it. */}
       {revision.state === "DRAFT" ? (
-        <Planner
-          initial={revision.input}
-          persist={{
-            saveLabel: "Salvar alterações",
-            save: saveDraft.bind(null, planId, revisionId),
-            ready: {
-              label: "Marcar estrutura como pronta",
-              action: markReady.bind(null, planId, revisionId),
-            },
-          }}
+        <DraftWorkspace
+          editor={editor}
+          input={revision.input}
+          structureSummary={`${revision.schedule.phases.length} fases · ${revision.schedule.totalWeeks} semanas · ${formatCalendarDate(revision.schedule.startDate)} a ${formatCalendarDate(revision.schedule.endDate)}`}
+          save={saveDraft.bind(null, planId, revisionId)}
+          markReady={markReady.bind(null, planId, revisionId)}
         />
       ) : (
-        <PlanReadOnly
-          state={revision.state}
-          schedule={revision.schedule}
-          createRevision={createRevision.bind(null, planId, revisionId)}
-        />
+        <>
+          {decision}
+          {editor}
+          <PlanReadOnly
+            state={revision.state}
+            schedule={revision.schedule}
+            createRevision={createRevision.bind(null, planId, revisionId)}
+          />
+        </>
       )}
-      {decision}
-      {editor}
       <Link href={`/profissional/alunos/${student.id}?aba=periodizacao`} className="button secondary">
         <ArrowLeft size={17} /> Voltar ao aluno
       </Link>

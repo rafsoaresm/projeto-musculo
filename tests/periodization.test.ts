@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { buildPeriodization } from "@/modules/training/periodization";
-import type { PhaseInput } from "@/modules/training/contracts";
+import {
+  EXERCISES_PER_SESSION_OPTIONS,
+  periodizationInputSchema,
+  type PhaseInput,
+} from "@/modules/training/contracts";
 
 const phase = (updates: Partial<PhaseInput> = {}): PhaseInput => ({
   weeks: 3,
@@ -88,7 +92,8 @@ describe("periodization calendar and rotation", () => {
     { sessionsPerWeek: 0 },
     { sessionsPerWeek: 8 },
     { exercisesPerSession: 2 },
-    { exercisesPerSession: 9 },
+    { exercisesPerSession: 21 },
+    { exercisesPerSession: 12.5 },
     { split: "XX" },
   ])("rejects unsupported parameters %j", (update) => {
     const data = input();
@@ -98,5 +103,18 @@ describe("periodization calendar and rotation", () => {
         phases: [{ ...data.phases[0], ...update }, ...data.phases.slice(1)],
       }),
     ).toThrow();
+  });
+  // 0.93 (user, 03/11/2026): the target goes up to 20; 21 is refused and plans saved with 3 to 8 still load.
+  it("accepts a target of 3 to 20 exercises per workout and refuses 21", () => {
+    expect(EXERCISES_PER_SESSION_OPTIONS).toEqual(Array.from({ length: 18 }, (_, i) => i + 3));
+    const withTarget = (exercisesPerSession: number) => {
+      const data = input();
+      return { ...data, phases: [phase({ exercisesPerSession }), ...data.phases.slice(1)] };
+    };
+    expect(buildPeriodization(withTarget(20)).phases[0].exercisesPerSession).toBe(20);
+    expect(periodizationInputSchema.safeParse(withTarget(20)).success).toBe(true);
+    expect(periodizationInputSchema.safeParse(withTarget(21)).success).toBe(false);
+    expect(periodizationInputSchema.safeParse(withTarget(2)).success).toBe(false);
+    for (const old of [3, 5, 8]) expect(periodizationInputSchema.safeParse(withTarget(old)).success).toBe(true);
   });
 });
