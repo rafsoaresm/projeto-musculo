@@ -2,6 +2,7 @@ import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import type { D1Database } from "@cloudflare/workers-types";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { assessmentsFor } from "@/db/assessments";
+import { exerciseMetadataFor } from "@/db/exercise-metadata";
 import { plansFor } from "@/db/plans";
 import { prescriptionFor } from "@/db/prescription";
 import { executionFor, studentSessionsFor } from "@/db/workout-sessions";
@@ -101,9 +102,9 @@ beforeAll(async () => {
       `INSERT INTO professionals(id,organization_id,user_id,display_name) VALUES ('pro-a','org-a','tech-a','Pro A'),('pro-a2','org-a','tech-a2','Pro A2'),
        ('pro-off','org-a','tech-off','Off'),('pro-rev','org-a','tech-rev','Rev'),('pro-ra','org-a','tech-ra','Ra'),('pro-b','org-b','tech-b','Pro B')`,
     ),
-    db.prepare("INSERT INTO students(id,organization_id,display_name) VALUES ('st-1','org-a','One'),('st-2','org-a','Two'),('st-3','org-a','Three'),('st-b','org-b','B')"),
+    db.prepare("INSERT INTO students(id,organization_id,display_name) VALUES ('st-1','org-a','One'),('st-2','org-a','Two'),('st-3','org-a','Three'),('st-4','org-a','Four'),('st-b','org-b','B')"),
     db.prepare(
-      `INSERT INTO care_assignments(organization_id,student_id,professional_id) VALUES ('org-a','st-1','pro-a'),('org-a','st-2','pro-a'),('org-a','st-3','pro-a'),
+      `INSERT INTO care_assignments(organization_id,student_id,professional_id) VALUES ('org-a','st-1','pro-a'),('org-a','st-2','pro-a'),('org-a','st-3','pro-a'),('org-a','st-4','pro-a'),
        ('org-a','st-1','pro-off'),('org-a','st-1','pro-rev'),('org-a','st-1','pro-ra'),('org-b','st-b','pro-b')`,
     ),
     db.prepare("INSERT INTO student_access(organization_id,student_id,user_id) VALUES ('org-a','st-1','client-1')"),
@@ -242,6 +243,24 @@ describe("loading the student's real data (gated)", () => {
     const before = (await executionFor(db, scope("tech-a")).exposures("st-1", { sinceDays: 180, today: "2026-11-09" }))!;
     expect(before.sessions).toBe(1);
     await expect(executionFor(db, scope("tech-a")).exposures("st-1", { sinceDays: -1 })).rejects.toThrow("EXPOSURE_WINDOW_INVALID");
+    // Every other identity the adapter refuses is refused by exposures() itself, not only by the earlier revision lookup.
+    for (const who of [scope("tech-a", "org-b"), scope("commercial-a"), scope("client-1"), scope("tech-off"), scope("tech-rev")])
+      expect(await ex(who), JSON.stringify(who)).toBeNull();
+  });
+
+  it("records a catalog hash in the ledger references: stable when nothing changed, different after a reviewed field with the same counts", async () => {
+    const load = async () => built(okContext(await loadGenerationContext(db, scope("tech-a"), draft.planId, draft.revisionId, { now: NOW }))).facts.catalog;
+    const first = await load();
+    expect(first.hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(await load()).toEqual(first);
+    // Reviewing an inferred field of an exercise that has other inferred fields keeps it INFERRED: the counts stay, the hash moves.
+    const meta = exerciseMetadataFor(db, scope("tech-a"));
+    const goblet = (await meta.resolve(["sys-001"])).get("sys-001")!;
+    const [field, resolved] = Object.entries(goblet.fields).find(([, f]) => f?.provenance === "INFERRED" && f.value !== null)!;
+    expect(await meta.setField("sys-001", field as never, resolved!.value, null, day(19))).toMatchObject({ status: "saved" });
+    const after = await load();
+    expect(after.hash).not.toBe(first.hash);
+    expect({ ...after, hash: "" }).toEqual({ ...first, hash: "" });
   });
 });
 
@@ -304,6 +323,26 @@ describe("topic 6: triagem com alertas (real assessment)", () => {
     r = generate(out.input);
     expect(r.flags.map((f) => f.code)).toContain("SCREENING_REVIEWED");
     expect(JSON.stringify([out.input, r.flags])).not.toMatch(/SEGREDO/);
+  });
+});
+
+describe("topic 16: an assessment recorded before 0031 (no answer list)", () => {
+  it("without a 'Sim', questions the product shows as not answered make the screening NOT_DONE, never CLEAR", async () => {
+    const legacy = legacyAssessments(db, scope("tech-a"));
+    const started = await legacy.startDraft("st-4", day(6));
+    if (started.status !== "started") throw new Error(started.status);
+    // Stored as before 0031 (no answer list; recorded rows are frozen, so the list is cleared while still a draft): a 0 is a "Não"
+    // or a question never asked, and the product shows it as not answered.
+    await run("UPDATE assessments SET screening_answered = NULL WHERE id = ?1", started.id);
+    await legacy.saveDraft(started.id, { ...ALL_NO, assessedOn: "2026-11-06" }, day(6));
+    expect(await legacy.record(started.id, { screeningAsked: true }, day(6))).toMatchObject({ status: "recorded", riskStatus: "CLEAR" });
+    const recorded = (await assessmentsFor(db, scope("tech-a")).get(started.id))!;
+    expect(recorded.earlierFormat).toBe(true);
+    expect(Object.values(recorded.flags).every((flag) => flag === null)).toBe(true);
+    const p = (await plansFor(db, scope("tech-a")).create("st-4", { title: "Antes de 0031", input: V2 }))!;
+    const ctx = okContext(await loadGenerationContext(db, scope("tech-a"), p.planId, p.revisionId, { now: NOW }));
+    expect(ctx.assessment!.standing.risk).toBe("CLEAR");
+    expect(built(ctx).input.student.screening).toEqual({ parq: "NOT_DONE", professionalDecision: null, medicalClearanceRecorded: false, ref: `assessment:${started.id}` });
   });
 });
 

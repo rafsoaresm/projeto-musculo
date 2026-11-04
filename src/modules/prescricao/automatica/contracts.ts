@@ -138,7 +138,8 @@ export const generationAnswersSchema = z
           basis: z.enum(["PROFESSIONAL", "HEURISTIC_ACCEPTED"]),
           ruleId: z.string().max(60).optional(),
         })
-        .strict(),
+        .strict()
+        .refine((c) => c.basis !== "HEURISTIC_ACCEPTED" || Boolean(c.ruleId), { message: "Uma sugestão aceita cita a sua regra." }),
     )
       .refine((items) => unique(items.map((c) => c.phaseIndex)), { message: "Uma cobertura por fase." })
       .default([]),
@@ -217,7 +218,8 @@ export interface GenerationFactRefs {
   revision: { id: string; contentVersion: number; prescriptionModel: string; structureVersion: 1 | 2 };
   profile: { updatedAt: string } | null;
   assessment: { id: string; assessedOn: string; recordedAt: string | null; formatVersion: number | null } | null;
-  catalog: { exercises: number; reviewed: number; inferred: number; pending: number };
+  /** `hash`: SHA-256 of the catalog and its resolved metadata as read; the counts alone cannot show a reviewed field. */
+  catalog: { hash: string; exercises: number; reviewed: number; inferred: number; pending: number };
   history: { since: string; until: string; sinceDays: number; sessions: number; truncated: boolean; logs: number };
   existing: { rows: number };
   asOf: string;
@@ -237,4 +239,9 @@ export type BuildOutcome =
       facts: GenerationFactRefs;
     }
   | { ok: false; code: "UNKNOWN_EXERCISE"; exerciseIds: string[] }
-  | { ok: false; code: "UNKNOWN_TARGET"; targets: Array<{ phaseIndex: number; label?: string }> };
+  | { ok: false; code: "UNKNOWN_TARGET"; targets: Array<{ phaseIndex: number; label?: string }> }
+  /**
+   * An answer marked HEURISTIC_ACCEPTED that no rule of this rule set suggested: a value the professional chose is PROFESSIONAL,
+   * and the justification must never pass it off as an accepted heuristic.
+   */
+  | { ok: false; code: "UNSUPPORTED_SUGGESTION"; targets: Array<{ field: "stimulusByPhase" | "phaseCoverage"; phaseIndex: number }> };

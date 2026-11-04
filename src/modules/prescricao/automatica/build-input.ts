@@ -83,6 +83,23 @@ export function buildEngineInput(ctx: GenerationContext, answers: GenerationAnsw
   if (options.scope?.kind === "PHASES") options.scope.phaseIndexes.forEach(checkPhase);
   if (badTargets.length) return { ok: false, code: "UNKNOWN_TARGET", targets: badTargets };
 
+  // 1b. "Sugestão aceita" only for what a rule of this rule set actually suggests: the stimulus chips come from the student's goal
+  // (GOAL_STIMULUS_HINTS); the coverage chips are patterns of DEFAULT_COVERAGE (any modality: which modality a workout ends up with is
+  // the engine's to resolve) and never muscles. Anything else the professional chose is PROFESSIONAL.
+  const goalChips = new Set(goalSuggestions(studentFacts(ctx.profile, ctx.assessment).goal?.value ?? null, rules).map((s) => s.value));
+  const coverageChips = new Set(Object.values(ruleSet.rules.DEFAULT_COVERAGE.value).flat());
+  const unsupported: Array<{ field: "stimulusByPhase" | "phaseCoverage"; phaseIndex: number }> = [];
+  for (const s of answers.stimulusByPhase)
+    if (s.basis === "HEURISTIC_ACCEPTED" && (s.ruleId !== "GOAL_STIMULUS_HINTS" || !goalChips.has(s.value)))
+      unsupported.push({ field: "stimulusByPhase", phaseIndex: s.phaseIndex });
+  for (const c of answers.phaseCoverage)
+    if (
+      c.basis === "HEURISTIC_ACCEPTED" &&
+      (c.ruleId !== "DEFAULT_COVERAGE" || Boolean(c.muscles?.length) || !c.patterns?.length || c.patterns.some((p) => !coverageChips.has(p)))
+    )
+      unsupported.push({ field: "phaseCoverage", phaseIndex: c.phaseIndex });
+  if (unsupported.length) return { ok: false, code: "UNSUPPORTED_SUGGESTION", targets: unsupported };
+
   // 2. The engine's parameters: only what the professional answered, plus the two defaults decided on 04/11/2026.
   const parameters: GenerationParameters = {
     doseMode: answers.doseMode ?? "FILL_FROM_POLICY",
@@ -208,7 +225,9 @@ export function buildEngineInput(ctx: GenerationContext, answers: GenerationAnsw
   const pending = ctx.catalog.filter((e) => e.metadataStatus === "PENDING").length;
   if (pending)
     assumptions.push({ code: "CATALOG_PENDING_EXCLUDED", text: `${pending} exercício(s) da biblioteca pendentes de curadoria não entram na seleção automática.`, basis: "HEURISTIC" });
-  if (answers.excludedCautionTags.length && ctx.cautionTagsUnknown.length)
+  // Markers excluded by the answers or by an accepted alert decision: either way an exercise with no marker set passes the exclusion.
+  const excludesByTag = answers.excludedCautionTags.length > 0 || answers.acceptedFlagDecisions.some((d) => d.decision.kind === "EXCLUDE_CAUTION_TAG");
+  if (excludesByTag && ctx.cautionTagsUnknown.length)
     assumptions.push({ code: "CAUTION_TAGS_PARTIAL", text: `${ctx.cautionTagsUnknown.length} exercício(s) sem marcadores de cuidado revisados: a exclusão por marcador não os alcança.`, basis: "HEURISTIC" });
   if (ctx.revision.schedule.schemaVersion === 1)
     assumptions.push({ code: "STRUCTURE_V1", text: "Periodização no formato anterior: o alvo de exercícios de cada treino é o da fase e não há datas previstas por sessão.", basis: "PROFESSIONAL" });
@@ -239,7 +258,7 @@ export function buildEngineInput(ctx: GenerationContext, answers: GenerationAnsw
     assessment: ctx.assessment
       ? { id: ctx.assessment.id, assessedOn: ctx.assessment.assessedOn, recordedAt: ctx.assessment.recordedAt, formatVersion: ctx.assessment.formatVersion }
       : null,
-    catalog: { exercises: ctx.catalog.length, ...counts },
+    catalog: { hash: ctx.catalogHash, exercises: ctx.catalog.length, ...counts },
     history: { since: w.since, until: w.until, sinceDays: w.sinceDays, sessions: w.sessions, truncated: w.truncated, logs: ctx.history.summary.logs.length },
     existing: { rows: ctx.existing.length },
     asOf: ctx.asOf,

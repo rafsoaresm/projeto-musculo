@@ -21,6 +21,7 @@ import { readPosture } from "@/modules/avaliacoes/v2/posture";
 import { readProfile, readScreening } from "@/modules/avaliacoes/v2/screening";
 import { todayInBrazil } from "@/modules/execucao/contracts";
 import { toExposureHistory } from "@/modules/execucao/exposures";
+import { canonicalJson, sha256Hex } from "@/modules/prescricao/motor/hash";
 import { DEFAULT_RULESET, getRuleSet } from "@/modules/prescricao/motor/rules";
 import type { RuleSetRef } from "@/modules/prescricao/motor/types";
 import { buildPeriodization } from "@/modules/training/periodization";
@@ -87,6 +88,14 @@ export async function loadGenerationContext(
   if (!window) return { status: "not_found" };
   const metadata = await exerciseMetadataFor(db, context).resolve(records.map((r) => r.id));
   const catalog = buildCatalog(records, metadata);
+  // The library as this generation read it: exercises with their resolved metadata (per-field provenance and alternatives
+  // included), in a stable order. A reviewed field or a swapped alternative changes it even when the counts stay the same.
+  const catalogHash = await sha256Hex(
+    canonicalJson({
+      catalog: [...catalog].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+      metadata: [...metadata.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+    }),
+  );
   const { rows, ...windowInfo } = window;
   return {
     status: "ok",
@@ -104,6 +113,7 @@ export async function loadGenerationContext(
       profile,
       assessment,
       catalog,
+      catalogHash,
       cautionTagsUnknown: withoutCautionField(metadata, catalog.map((e) => e.id)),
       history: { window: windowInfo, summary: toExposureHistory(rows, new Map(catalog.map((e) => [e.id, e.metric]))) },
       existing,

@@ -80,6 +80,8 @@ export interface GenerationContext {
   assessment: AssessmentRecord | null;
   /** The organization's visible, not archived library with resolved metadata: the only source of exercise ids. */
   catalog: CatalogExercise[];
+  /** SHA-256 of the catalog with its resolved metadata, as read (design §2: the ledger's catalog reference). */
+  catalogHash: string;
   /** Catalog ids whose caution markers nobody set (never inferred): an exclusion by marker cannot see them. */
   cautionTagsUnknown: string[];
   history: { window: Omit<ExposureWindow, "rows">; summary: ExposureHistory };
@@ -98,7 +100,8 @@ const PARQ_DECISION_MAP = { cleared: "CLEARED", medical_clearance: "MEDICAL_CLEA
  * - Avaliação Física: all seven "Não" → CLEAR; any "Sim" → POSITIVE; anything else (no screening module, a question without an
  *   answer) → NOT_DONE. The decision is the professional's (Liberado / Precisa de liberação médica / Outra decisão); "Precisa
  *   de liberação médica" never blocks (PENDENCIAS R13, closed by the user on 03/11/2026).
- * - Earlier format: its risk column; a recorded review counts as a decision (REVIEWED), never as "cleared".
+ * - Earlier format: its risk column; a recorded review counts as a decision (REVIEWED), never as "cleared". Without a "Sim",
+ *   a question the reader gives as not answered (null: before 0031 "Não" and "never asked" were stored alike) → NOT_DONE.
  * - No recorded assessment: NOT_DONE.
  */
 export function screeningFacts(assessment: AssessmentRecord | null): ScreeningFacts {
@@ -114,8 +117,12 @@ export function screeningFacts(assessment: AssessmentRecord | null): ScreeningFa
     return { parq, professionalDecision: mapped, medicalClearanceRecorded: mapped === "MEDICAL_CLEARANCE", ref };
   }
   const positive = assessment.standing.risk === "REVIEW_REQUIRED";
+  // Before 0031 a "Não" and a question never asked were stored alike: the reader gives null for those, and the product shows
+  // them as not answered. Without a "Sim", any such question means the screening was not done, never that it was clear.
+  const flags = Object.values(assessment.legacy?.flags ?? {}) as Array<boolean | null>;
+  const unasked = !assessment.legacy || flags.length === 0 || flags.some((flag) => flag === null);
   return {
-    parq: positive ? "POSITIVE" : "CLEAR",
+    parq: positive ? "POSITIVE" : unasked ? "NOT_DONE" : "CLEAR",
     professionalDecision: positive && assessment.standing.reviewed ? "REVIEWED" : null,
     medicalClearanceRecorded: false,
     ref,

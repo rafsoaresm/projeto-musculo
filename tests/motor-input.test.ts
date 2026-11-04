@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ResultRow } from "@/db/assessments";
+import { SCREENING_ITEMS, type ScreeningKey } from "@/modules/avaliacoes/contracts";
 import type { ExerciseRecord } from "@/db/exercises";
 import type { PrescribedItemWithDose } from "@/db/prescription";
 import type { StudentProfile } from "@/db/student-profile";
@@ -73,6 +74,7 @@ const ctxOf = (over: Partial<GenerationContext> = {}): GenerationContext => ({
   profile: profile(),
   assessment: assessment(),
   catalog: CATALOG,
+  catalogHash: "c".repeat(64),
   cautionTagsUnknown: [],
   history: { window: { since: "2026-05-24", until: "2026-11-20", sinceDays: 180, sessions: 0, truncated: false }, summary: toExposureHistory([]) },
   existing: [],
@@ -99,6 +101,7 @@ describe("the answers contract (GenerationAnswers)", () => {
     bad({ excludedPatterns: ["SQUATS"] });
     bad({ stimulusByPhase: [{ phaseIndex: 1, value: "X", basis: "PROFESSIONAL" }, { phaseIndex: 1, value: "Y", basis: "PROFESSIONAL" }] });
     bad({ stimulusByPhase: [{ phaseIndex: 1, value: "HYPERTROPHY", basis: "HEURISTIC_ACCEPTED" }] });
+    bad({ phaseCoverage: [{ phaseIndex: 1, patterns: ["SQUAT"], basis: "HEURISTIC_ACCEPTED" }] });
     bad({ stimulusByPhase: [{ phaseIndex: 13, value: "X", basis: "PROFESSIONAL" }] });
     bad({ exerciseCountByWorkout: [{ phaseIndex: 1, label: "A", count: 0 }] });
     bad({ availableMinutes: 0 });
@@ -131,12 +134,17 @@ describe("mapping the real records", () => {
     expect(screeningFacts(null)).toEqual({ parq: "NOT_DONE", professionalDecision: null, medicalClearanceRecorded: false });
   });
 
-  it("reads the earlier format by its risk; a recorded review is REVIEWED, never 'cleared'", () => {
-    const legacy = (risk: "CLEAR" | "REVIEW_REQUIRED", reviewed: boolean) =>
-      assessment({ formatVersion: null, standing: { risk, reviewed, reviewedAt: reviewed ? "x" : null }, screening: null, legacy: { flags: {} as never, posture: { findings: [], notes: null }, movement: [] } });
+  it("reads the earlier format by its risk; a recorded review is REVIEWED, never 'cleared'; an unasked question is NOT_DONE", () => {
+    const flagsOf = (value: boolean | null, overrides: Partial<Record<ScreeningKey, boolean | null>> = {}) =>
+      ({ ...Object.fromEntries(SCREENING_ITEMS.map((item) => [item.key, value])), ...overrides }) as Record<ScreeningKey, boolean | null>;
+    const legacy = (risk: "CLEAR" | "REVIEW_REQUIRED", reviewed: boolean, flags = flagsOf(false)) =>
+      assessment({ formatVersion: null, standing: { risk, reviewed, reviewedAt: reviewed ? "x" : null }, screening: null, legacy: { flags, posture: { findings: [], notes: null }, movement: [] } });
     expect(screeningFacts(legacy("CLEAR", false)).parq).toBe("CLEAR");
-    expect(screeningFacts(legacy("REVIEW_REQUIRED", false))).toMatchObject({ parq: "POSITIVE", professionalDecision: null });
-    expect(screeningFacts(legacy("REVIEW_REQUIRED", true))).toMatchObject({ parq: "POSITIVE", professionalDecision: "REVIEWED" });
+    expect(screeningFacts(legacy("REVIEW_REQUIRED", false, flagsOf(false, { [SCREENING_ITEMS[0].key]: true })))).toMatchObject({ parq: "POSITIVE", professionalDecision: null });
+    expect(screeningFacts(legacy("REVIEW_REQUIRED", true, flagsOf(null, { [SCREENING_ITEMS[0].key]: true })))).toMatchObject({ parq: "POSITIVE", professionalDecision: "REVIEWED" });
+    // Before 0031: no "Sim" and questions the reader gives as not answered → the screening was not done, never "clear".
+    expect(screeningFacts(legacy("CLEAR", false, flagsOf(null))).parq).toBe("NOT_DONE");
+    expect(screeningFacts(legacy("CLEAR", false, flagsOf(false, { [SCREENING_ITEMS[1].key]: null }))).parq).toBe("NOT_DONE");
   });
 
   it("turns observations into findings from catalog labels and recorded numbers, never from free text; neutral posture is not a finding", () => {
@@ -303,9 +311,38 @@ describe("topic 7: missing data become questions and assumptions, never numbers"
     expect(buildEngineInput(ctx, parseGenerationAnswers({ ...FULL, stimulusByPhase: [{ phaseIndex: 3, value: "X", basis: "PROFESSIONAL" }] }))).toMatchObject({ ok: false, code: "UNKNOWN_TARGET" });
   });
 
+  it("accepts 'sugestão aceita' only for what a rule actually suggested; a value the professional chose stays PROFESSIONAL", () => {
+    const ctx = ctxOf(); // goal "Hipertrofia" → GOAL_STIMULUS_HINTS suggests HYPERTROPHY
+    const run = (over: GenerationAnswersInput) => buildEngineInput(ctx, parseGenerationAnswers({ ...FULL, ...over }));
+    const stimulus = (value: string, ruleId: string) => ({
+      stimulusByPhase: [{ phaseIndex: 1, value, basis: "HEURISTIC_ACCEPTED" as const, ruleId }, { phaseIndex: 2, value: "STRENGTH", basis: "PROFESSIONAL" as const }],
+    });
+    expect(run(stimulus("HYPERTROPHY", "GOAL_STIMULUS_HINTS"))).toMatchObject({ ok: true });
+    expect(run(stimulus("STRENGTH", "GOAL_STIMULUS_HINTS"))).toEqual({ ok: false, code: "UNSUPPORTED_SUGGESTION", targets: [{ field: "stimulusByPhase", phaseIndex: 1 }] });
+    expect(run(stimulus("HYPERTROPHY", "MADE_UP_RULE"))).toMatchObject({ ok: false, code: "UNSUPPORTED_SUGGESTION" });
+    // Without a goal there is no stimulus chip at all.
+    expect(buildEngineInput(ctxOf({ profile: profile({ goal: null }), assessment: null }), parseGenerationAnswers({ ...FULL, ...stimulus("HYPERTROPHY", "GOAL_STIMULUS_HINTS") }))).toMatchObject({ code: "UNSUPPORTED_SUGGESTION" });
+    const coverage = (c: Record<string, unknown>) => ({ phaseCoverage: [{ phaseIndex: 1, basis: "HEURISTIC_ACCEPTED", ruleId: "DEFAULT_COVERAGE", ...c }] }) as GenerationAnswersInput;
+    expect(run(coverage({ patterns: ["SQUAT", "HINGE"] }))).toMatchObject({ ok: true });
+    expect(run(coverage({ patterns: ["SQUAT"], ruleId: "MADE_UP_RULE" }))).toMatchObject({ code: "UNSUPPORTED_SUGGESTION" });
+    expect(run(coverage({ muscles: ["QUADRICEPS"], patterns: ["SQUAT"] }))).toEqual({ ok: false, code: "UNSUPPORTED_SUGGESTION", targets: [{ field: "phaseCoverage", phaseIndex: 1 }] });
+    // The same values typed by the professional are fine as PROFESSIONAL.
+    expect(run({ phaseCoverage: [{ phaseIndex: 1, basis: "PROFESSIONAL", muscles: ["QUADRICEPS"] }], stimulusByPhase: [{ phaseIndex: 1, value: "STRENGTH", basis: "PROFESSIONAL" }, { phaseIndex: 2, value: "STRENGTH", basis: "PROFESSIONAL" }] })).toMatchObject({ ok: true });
+  });
+
   it("warns when the profile's days per week are fewer than the sessions of a phase (fact, not a block)", () => {
     expect(build(ctxOf()).issues.map((i) => `${i.code}:${i.phaseIndex}`)).toEqual(["AVAILABILITY_BELOW_SESSIONS:1"]);
     expect(build(ctxOf({ profile: profile({ daysPerWeek: null }) })).issues).toEqual([]);
+  });
+
+  it("says a marker exclusion cannot reach exercises without markers, whether it comes from the answers or from an accepted alert decision", () => {
+    const partial = (ctx: GenerationContext, answers: GenerationAnswersInput) => build(ctx, answers).assumptions.some((a) => a.code === "CAUTION_TAGS_PARTIAL");
+    const unknown = ctxOf({ cautionTagsUnknown: [CATALOG[0].id] });
+    expect(partial(unknown, FULL)).toBe(false);
+    expect(partial(unknown, { ...FULL, excludedCautionTags: ["AXIAL_LOAD"] })).toBe(true);
+    expect(partial(unknown, { ...FULL, acceptedFlagDecisions: [{ flagCode: "ANAMNESIS:injuries", decision: { kind: "EXCLUDE_CAUTION_TAG", tag: "AXIAL_LOAD" } }] })).toBe(true);
+    expect(partial(unknown, { ...FULL, acceptedFlagDecisions: [{ flagCode: "ANAMNESIS:injuries", decision: { kind: "EXCLUDE_PATTERN", pattern: "SQUAT" } }] })).toBe(false);
+    expect(partial(ctxOf(), { ...FULL, acceptedFlagDecisions: [{ flagCode: "ANAMNESIS:injuries", decision: { kind: "EXCLUDE_CAUTION_TAG", tag: "AXIAL_LOAD" } }] })).toBe(false);
   });
 
   it("is deterministic and keeps health free text out of the engine input and of the ledger references", () => {
