@@ -126,6 +126,27 @@ describe("motor: ajuste pelo histórico (sugestão, nunca valor)", () => {
     expect(proposeProgression([log("2026-10-01", 10, 2), log("2026-10-05", 12, 2)], legpress, dose, settings, "2026-11-04").action).toBe("MAINTAIN");
   });
 
+  it("não ignora execução recente incompleta após sucessos antigos", () => {
+    const first = log("2026-10-01", 12, 2);
+    const second = log("2026-10-05", 12, 2);
+    const incomplete = log("2026-10-10", 12, 2);
+    incomplete.sets[0].completed = false;
+    const r = proposeProgression([incomplete, first, second], legpress, dose, settings, "2026-11-04");
+    expect(r).toMatchObject({ action: "MAINTAIN", suggestedLoadKg: null });
+    expect(r.explanation).toContain("incompleta");
+
+    // Após a interrupção, duas novas execuções completas permitem nova sugestão.
+    const resumed = [log("2026-10-15", 12, 2), log("2026-10-20", 12, 2)];
+    expect(proposeProgression([first, second, incomplete, ...resumed], legpress, dose, settings, "2026-11-04"))
+      .toMatchObject({ action: "INCREASE", suggestedLoadKg: 105 });
+  });
+
+  it("não compara a dose com execuções recentes em outra métrica", () => {
+    const earlier = log("2026-10-01", 12, 2);
+    const changed = log("2026-10-05", 12, 2, 100, { metric: "TIME" });
+    expect(proposeProgression([earlier, changed], legpress, dose, settings, "2026-11-04").action).toBe("REVIEW");
+  });
+
   it("registros fora da janela ou depois da data de referência não contam", () => {
     const top = [log("2025-01-01", 12, 2), log("2025-01-05", 12, 2)];
     expect(proposeProgression(top, legpress, dose, settings, "2026-11-04").action).toBe("INSUFFICIENT_DATA");
