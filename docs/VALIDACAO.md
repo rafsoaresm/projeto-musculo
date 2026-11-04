@@ -2,6 +2,18 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Fatia 0.93: Novo plano a partir de Planos e treinos, alvo até 20 e fluxo de prescrição evidente (pedidos do usuário de 03/11/2026)
+
+**Sem migration.**
+
+- **Novo plano em Planos e treinos:** botão principal "Novo plano" (também no estado vazio) que abre `/profissional/planos/novo`, a escolha do aluno: busca por nome (ignora maiúsculas, acentos e espaços; funciona sem JavaScript), só os alunos para quem a pessoa pode prescrever (`studentsFor().prescribable()`: atribuição técnica ativa, o mesmo critério de criar o plano), plano em andamento de cada aluno com "Continuar prescrição" quando é rascunho. Escolher o aluno leva ao "Novo plano" do aluno, que já existia.
+- **Alvo de exercícios por treino de 3 a 20** (tela e schema, conferido no servidor). Planos salvos com 3 a 8 continuam abrindo.
+- **Caminho até a prescrição:** etapas 1, 2 e 3 no Novo plano, com "Salvar e prescrever exercícios" como botão principal; na revisão em rascunho, a prescrição vem primeiro ("Prescrição dos exercícios"), com "Primeiro passo: escolha os exercícios do Treino A da Fase 01" quando está vazia e um atalho até "Adicionar exercício"; a estrutura do ciclo fica recolhida abaixo, e "Marcar estrutura como pronta" foi para "Concluir o rascunho". "Continuar prescrição" nas listas de planos, na escolha do aluno e na aba de planos do aluno.
+- **JSON fora da área do profissional:** sem "Exportar rascunho JSON" no planejador e no simulador. O "Baixar meus dados" do aluno continua com JSON.
+- **Escolhas da ferramenta (PENDENCIAS B55):** "em andamento" = revisão mais recente em rascunho, revisão necessária, pronta ou aprovada; o botão aparece para dono, gestor e técnico, e a lista mostra só alunos atribuídos.
+- **Verificado localmente:** tipos e lint; `npx vitest run` com 131 arquivos e 2003 testes (D1 de `inProgress` e `prescribable`: outra organização, membro comercial, login do portal, técnico sem atribuição, atribuição revogada); e2e nos dois mounts (raiz: 29 passaram, 3 pulados; `/treinador`: 28 passaram, 2 pulados) com `plans-new`, `plans`, `prescription`, `planner`, `delivery`, `execution`, `navigation-v4`, `responsive` e `student-tabs`; capturas a 1440, 1280, 1024, 768 e 390. Três revisões independentes; os achados de tela e texto foram corrigidos.
+- **Não verificado:** técnico sem atribuição só em D1 (não há tela para criar esse membro); o fluxo no Webflow Cloud ao vivo.
+
 ## Fatia 0.92: Classificações pelas tabelas de referência (tabelas enviadas pelo usuário em 03/11/2026)
 
 **Migration `0040_result_classifications.sql`** (aditiva): coluna opcional `assessment_results.classification` (JSON, até 2000 caracteres), congelada com o resultado pelos gatilhos da 0033. Linhas antigas ficam vazias e nunca são reclassificadas: as telas e o PDF dizem "registrada antes das tabelas de referência".

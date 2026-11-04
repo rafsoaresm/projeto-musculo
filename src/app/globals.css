@@ -7707,13 +7707,13 @@ fieldset.yes-no legend {
   }
 }
 /* 0.93b: the overview of plans wraps its long cells so every column fits at 768 and 1024 without scrolling inside. */
-table.plan-overview td[data-label="Plano"],
-table.plan-overview td[data-label="Pendências"] {
+table.plan-overview th,
+table.plan-overview td,
+table.plan-overview .pill {
   white-space: normal;
-  min-width: 9rem;
 }
-table.plan-overview td[data-label="Pendências"] .pill {
-  white-space: normal;
+table.plan-overview td[data-label="Plano"] {
+  min-width: 8rem;
 }
 .revision-cell {
   display: inline-flex;
