@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { ArrowRight, CalendarDays, Info, RotateCw } from "lucide-react";
+import { useEffect, useState, useTransition } from "react";
+import Link from "next/link";
+import { ArrowRight, CalendarDays, Info, ListChecks, RotateCw } from "lucide-react";
 import { buildPeriodization } from "../periodization";
 import {
+  EXERCISES_PER_SESSION_OPTIONS,
   periodizationInputSchema,
   phaseSchema,
   type PhaseInput,
@@ -30,18 +32,27 @@ export interface PlannerPersistence {
     title?: string;
     input: PeriodizationInput;
   }) => Promise<PersistResult>;
-  /** Marks the saved draft as structurally ready. Needs everything saved first. */
-  ready?: { label: string; action: () => Promise<PersistResult> };
+  /**
+   * A new plan (0.93): saving is the way to the prescription, so the save becomes the primary action of a third step,
+   * "Prescrever exercícios", and the calculation stays a secondary preview.
+   */
+  prescribeNext?: boolean;
 }
 
 export function Planner({
   initial,
   persist,
+  onDirtyChange,
+  newPlanHref,
 }: {
   /** Start values when a saved draft is opened. */
   initial?: PeriodizationInput;
-  /** Without it, the planner only calculates and exports (no data is stored). */
+  /** Without it, the planner only calculates (no data is stored). */
   persist?: PlannerPersistence;
+  /** Told whenever the form gains or loses changes that are not saved yet. */
+  onDirtyChange?: (dirty: boolean) => void;
+  /** The simulator points to "Novo plano" (choose the student) for keeping a plan. Absent when the role cannot prescribe. */
+  newPlanHref?: string;
 }) {
   const [startDate, setStartDate] = useState(initial?.startDate ?? "");
   const [phases, setPhases] = useState<PhaseInput[]>(() =>
@@ -59,6 +70,9 @@ export function Planner({
   const [status, setStatus] = useState("");
   const [saving, startSaving] = useTransition();
   const phase = phases[selected];
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
 
   function invalidate() {
     setSchedule(null);
@@ -122,27 +136,6 @@ export function Planner({
       setStatus("Rascunho salvo.");
     });
   }
-  function markReady() {
-    startSaving(async () => {
-      const outcome = await persist?.ready?.action();
-      if (outcome?.error) setError(outcome.error);
-    });
-  }
-  function download() {
-    if (!schedule) return;
-    const url = URL.createObjectURL(
-      new Blob([JSON.stringify(schedule, null, 2)], {
-        type: "application/json",
-      }),
-    );
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `planejamento-${schedule.startDate}.json`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
 
   return (
     <>
@@ -150,9 +143,16 @@ export function Planner({
         <Info size={19} />
         <p>
           {/* Handoff V4, A01: the plan does hold the prescription; the simulator saves nothing. */}
-          {persist
-            ? "Rascunho visível apenas para você. Configure o ciclo e os exercícios; o aluno verá somente a revisão entregue."
-            : "Simulação: nada aqui é salvo. Exporte para guardar o resultado; para guardar no cadastro de um aluno, abra o aluno e escolha Novo plano."}
+          {persist ? (
+            "Rascunho visível apenas para você. Configure o ciclo e os exercícios; o aluno verá somente a revisão entregue."
+          ) : newPlanHref ? (
+            <>
+              Simulação: nada aqui é salvo. Para guardar um plano no cadastro de um aluno, use{" "}
+              <Link href={newPlanHref}>Novo plano</Link> e escolha o aluno.
+            </>
+          ) : (
+            "Simulação: nada aqui é salvo."
+          )}
         </p>
       </div>
       <div className="planner-layout">
@@ -295,7 +295,7 @@ export function Planner({
                     })
                   }
                 >
-                  {[3, 4, 5, 6, 7, 8].map((n) => (
+                  {EXERCISES_PER_SESSION_OPTIONS.map((n) => (
                     <option key={n} value={n}>
                       {n} exercícios
                     </option>
@@ -311,34 +311,49 @@ export function Planner({
               </p>
             </div>
           </section>
+          <button
+            className={
+              persist ? "button secondary calculate-button" : "button primary calculate-button"
+            }
+            type="submit"
+          >
+            Calcular planejamento <ArrowRight size={18} />
+          </button>
           {error && (
             <p className="error-message" role="alert">
               {error}
             </p>
           )}
-          <button className="button primary calculate-button" type="submit">
-            Calcular planejamento <ArrowRight size={18} />
-          </button>
-          {persist && (
+          {persist?.prescribeNext && (
+            <section className="panel prescribe-step" aria-labelledby="etapa-prescrever">
+              <div className="panel-title">
+                <span className="mini-number">3</span>
+                <h2 id="etapa-prescrever">Prescrever exercícios</h2>
+              </div>
+              <p>
+                Os exercícios de cada treino são escolhidos logo depois de salvar: o botão abaixo salva
+                o rascunho e abre a prescrição, fase por fase e treino por treino.
+              </p>
+              <button
+                className="button primary prescribe-button"
+                type="button"
+                disabled={saving}
+                onClick={persistNow}
+              >
+                <ListChecks size={18} /> {saving ? "Salvando…" : persist.saveLabel}
+              </button>
+            </section>
+          )}
+          {persist && !persist.prescribeNext && (
             <div className="persist-actions">
               <button
-                className="button secondary"
+                className="button primary"
                 type="button"
                 disabled={saving || (!persist.askTitle && !dirty)}
                 onClick={persistNow}
               >
                 {saving ? "Salvando…" : persist.saveLabel}
               </button>
-              {persist.ready && (
-                <button
-                  className="button secondary"
-                  type="button"
-                  disabled={saving || dirty}
-                  onClick={markReady}
-                >
-                  {persist.ready.label}
-                </button>
-              )}
               {dirty && !persist.askTitle && (
                 <span className="small muted" role="status">
                   Há alterações não salvas.
@@ -354,7 +369,7 @@ export function Planner({
         </form>
         <aside className="planner-summary" aria-live="polite">
           {schedule ? (
-            <ScheduleSummary schedule={schedule} onDownload={download} />
+            <ScheduleSummary schedule={schedule} />
           ) : (
             <div className="summary-empty">
               <span className="icon-tile brand-tile">

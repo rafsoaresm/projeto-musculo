@@ -1,17 +1,11 @@
 "use client";
 
-import { CalendarDays, Download } from "lucide-react";
+import { CalendarDays } from "lucide-react";
 import type { PeriodizationSchedule } from "../contracts";
 import { formatCalendarDate as formatDate } from "../format";
 
 /** Real duration of a calculated cycle. Shared by the planner and saved plans. */
-export function ScheduleSummary({
-  schedule,
-  onDownload,
-}: {
-  schedule: PeriodizationSchedule;
-  onDownload?: () => void;
-}) {
+export function ScheduleSummary({ schedule }: { schedule: PeriodizationSchedule }) {
   return (
     <>
       <div className="summary-top">
@@ -39,21 +33,6 @@ export function ScheduleSummary({
         Calendário contínuo, sem sobreposição. Datas das sessões e dias de
         descanso serão definidos na prescrição.
       </p>
-      {onDownload && (
-        <>
-          <button
-            className="button secondary full-width"
-            type="button"
-            onClick={onDownload}
-          >
-            <Download size={17} /> Exportar rascunho JSON
-          </button>
-          <p className="small muted">
-            A exportação contém apenas a estrutura. Não equivale a uma
-            prescrição aprovada.
-          </p>
-        </>
-      )}
     </>
   );
 }

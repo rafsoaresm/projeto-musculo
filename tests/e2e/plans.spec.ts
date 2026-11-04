@@ -7,7 +7,7 @@ import {
   noHorizontalOverflow,
   password,
   uniqueEmail,
-  expectNoTermsBox, showStudentTab
+  expectNoTermsBox, openStructure, showStudentTab
 } from "./helpers";
 
 test("a professional saves, revisits and revises a plan; nobody else reaches it", async ({
@@ -25,15 +25,19 @@ test("a professional saves, revisits and revises a plan; nobody else reaches it"
   await expect(
     page.getByRole("heading", { name: "Novo plano de periodização" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Salvar rascunho" }).click();
+  await page.getByRole("button", { name: "Salvar e prescrever exercícios" }).click();
   await expect(page.locator(".error-message")).toBeVisible();
   await page.getByLabel("Nome do plano").fill("Ciclo inicial");
   await page.getByLabel("Data de início").fill("2026-11-02");
-  await page.getByRole("button", { name: "Salvar rascunho" }).click();
+  await page.getByRole("button", { name: "Salvar e prescrever exercícios" }).click();
 
-  // Lands on revision 1 as a draft, with the date and phases as saved.
+  // Lands on revision 1 as a draft: the prescription first, the structure folded under it with the date and phases as saved.
   await expect(page.getByRole("heading", { name: "Ciclo inicial" })).toBeVisible();
   await expect(page.getByText("Rascunho", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Prescrição dos exercícios" })).toBeVisible();
+  await expect(page.locator("details.structure-details summary")).toContainText("3 fases · 12 semanas · 02/11/2026");
+  await expect(page.getByLabel("Data de início")).toBeHidden();
+  await openStructure(page);
   await expect(page.getByLabel("Data de início")).toHaveValue("2026-11-02");
   const revisionURL = page.url();
   await noHorizontalOverflow(page);
@@ -47,6 +51,7 @@ test("a professional saves, revisits and revises a plan; nobody else reaches it"
   await page.getByRole("button", { name: "Salvar alterações" }).click();
   await expect(page.getByText("Rascunho salvo.")).toBeVisible();
   await page.reload();
+  await openStructure(page);
   await expect(page.getByLabel("Quantidade de fases")).toHaveValue("6");
   await expect(page.locator(".big-stat")).toContainText("24");
 

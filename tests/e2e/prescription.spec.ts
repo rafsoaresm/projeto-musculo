@@ -3,7 +3,7 @@ import {
   addStudent,
   createProfessional,
   localIP,
-  noHorizontalOverflow, showStudentTab
+  noHorizontalOverflow, openStructure, showStudentTab
 } from "./helpers";
 
 // The page has two sets of phase tabs: the planner's and the prescription's.
@@ -24,9 +24,9 @@ test("a professional prescribes by hand, reorders, copies and revises without lo
   await page.getByRole("link", { name: "Novo plano" }).click();
   await page.getByLabel("Nome do plano").fill("Ciclo com exercícios");
   await page.getByLabel("Data de início").fill("2026-11-02");
-  await page.getByRole("button", { name: "Salvar rascunho" }).click();
+  await page.getByRole("button", { name: "Salvar e prescrever exercícios" }).click();
   await expect(page.getByRole("heading", { name: "Ciclo com exercícios" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Exercícios por mesociclo" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Prescrição dos exercícios" })).toBeVisible();
   await expect(page.getByText("9 de 9 treinos abaixo do alvo")).toBeVisible();
   const revisionURL = page.url();
 
@@ -101,7 +101,8 @@ test("a professional prescribes by hand, reorders, copies and revises without lo
   await c.getByLabel("Ou um exercício com nome próprio").fill("Só no C");
   await c.getByRole("button", { name: "Adicionar com nome próprio" }).click();
   await expect(c.getByText("1 de 5", { exact: true })).toBeVisible();
-  // The planner above edits phase 1; switch its split to AB.
+  // The planner, folded under the prescription, edits phase 1; switch its split to AB.
+  await openStructure(page);
   await page.getByRole("group", { name: "Selecionar fase" }).getByRole("button", { name: "Fase 01" }).click();
   await page.getByLabel("Divisão de treinos").selectOption("AB");
   await page.getByRole("button", { name: "Salvar alterações" }).click();
@@ -136,8 +137,13 @@ test("a professional prescribes by hand, reorders, copies and revises without lo
   await expect(row.getByText("Rascunho", { exact: true })).toBeVisible();
   await expect(row.getByText(/treinos abaixo do alvo/)).toBeVisible();
   await noHorizontalOverflow(page);
-  await row.getByRole("link", { name: "Ciclo com exercícios" }).click();
+  await row.getByRole("link", { name: "Ciclo com exercícios", exact: true }).click();
   await expect(page.getByText("Revisão 2", { exact: false }).first()).toBeVisible();
+  // 0.93: a draft links straight to its prescription.
+  await page.goto("./profissional/prescricao");
+  await page.locator("tbody tr", { hasText: "Ciclo com exercícios" }).getByRole("link", { name: /^Continuar prescrição/ }).click();
+  await expect(page.getByText("Revisão 2", { exact: false }).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Prescrição dos exercícios" })).toBeInViewport();
   // The overview counts open drafts and no longer calls prescribing "coming soon".
   await page.goto("./profissional");
   await expect(page.getByText("Planos em rascunho")).toBeVisible();

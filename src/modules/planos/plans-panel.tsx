@@ -48,6 +48,16 @@ export function PlansPanel({
                         {revision.totalWeeks} semanas ·{" "}
                         {revision.totalSessions} sessões
                       </span>
+                      {revision.state === "DRAFT" && (
+                        // 0.93: a draft goes straight to its prescription.
+                        <Link
+                          className="step-link"
+                          href={`/profissional/alunos/${studentId}/planos/${plan.id}/${revision.id}#prescricao`}
+                        >
+                          Continuar prescrição
+                          <span className="sr-only"> de {plan.title}</span>
+                        </Link>
+                      )}
                     </li>
                   );
                 })}

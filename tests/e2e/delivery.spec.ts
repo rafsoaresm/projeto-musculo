@@ -36,7 +36,7 @@ test("a plan reaches the client only after the professional approves and deliver
     await page.getByLabel("Divisão de treinos").selectOption("Full Body");
     await page.getByLabel("Alvo de exercícios por treino").selectOption("3");
   }
-  await page.getByRole("button", { name: "Salvar rascunho" }).click();
+  await page.getByRole("button", { name: "Salvar e prescrever exercícios" }).click();
   await expect(page.getByRole("heading", { name: "Plano entregue" })).toBeVisible();
 
   const fullBody = workout(page, "Full Body");

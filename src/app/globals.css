@@ -1426,8 +1426,12 @@ button.account-link {
   border-radius: var(--radius-card);
   margin-bottom: 14px;
 }
-.planner-form .button.primary {
+.planner-form .calculate-button,
+.planner-form .prescribe-button {
   width: 100%;
+}
+.planner-form .calculate-button {
+  margin-bottom: 24px;
 }
 .planner-summary {
   position: sticky;
@@ -7521,4 +7525,159 @@ fieldset.yes-no legend {
 .name-history table.stack th[scope="row"]::before {
   white-space: nowrap;
   flex: none;
+}
+
+/* ---------- 0.93 Novo plano: steps, student picker, prescription first ---------- */
+.heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.page-heading .heading-actions {
+  justify-content: flex-end;
+}
+.step-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--color-primary-strong);
+  font-weight: 700;
+  text-decoration: underline;
+  overflow-wrap: anywhere;
+}
+.plan-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  margin: 0 0 20px;
+  padding: 0;
+  list-style: none;
+  font-weight: 700;
+  color: var(--color-ink);
+}
+.plan-steps li {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.prescribe-step p {
+  margin-bottom: 16px;
+}
+.picker-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: end;
+}
+.picker-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 22px;
+  background: #fff;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  overflow-wrap: anywhere;
+}
+.picker-main {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.picker-main h2 {
+  font-size: var(--font-size-base);
+  color: var(--color-primary-strong);
+}
+.picker-plans {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.picker-plans li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+}
+.picker-row > .button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.prescription-start {
+  display: flex;
+  gap: 12px;
+  margin: 0 0 20px;
+  padding: 16px;
+  background: var(--color-primary-soft);
+  border: 1px solid var(--color-primary-line);
+  border-radius: var(--radius-card);
+}
+.prescription-start > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--color-primary-strong);
+}
+.prescription-start p {
+  margin: 4px 0 0;
+}
+.add-exercise > h4 {
+  margin: 0;
+  font-size: var(--font-size-sm);
+}
+.structure-details {
+  margin-bottom: 24px;
+  background: #fff;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+}
+.structure-details > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  min-height: 56px;
+  padding: 12px 22px;
+  cursor: pointer;
+  list-style: none;
+}
+.structure-details > summary::-webkit-details-marker {
+  display: none;
+}
+.structure-summary-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.structure-summary-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  color: var(--color-primary-strong);
+  font-weight: 700;
+}
+.structure-details[open] .structure-summary-action svg {
+  transform: rotate(180deg);
+}
+.structure-body {
+  padding: 0 22px 22px;
+}
+@media (max-width: 640px) {
+  .picker-search {
+    grid-template-columns: 1fr;
+  }
+  .picker-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .structure-details > summary,
+  .structure-body {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
 }

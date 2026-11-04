@@ -20,6 +20,7 @@ export function PlanTable({ rows }: { rows: PlanOverviewRow[] }) {
               Exercícios
             </th>
             <th scope="col">Pendências</th>
+            <th scope="col">Próximo passo</th>
           </tr>
         </thead>
         <tbody>
@@ -57,6 +58,16 @@ export function PlanTable({ rows }: { rows: PlanOverviewRow[] }) {
                   ) : (
                     <Pill tone="success">Alvo atendido em todos os treinos</Pill>
                   )}
+                </td>
+                <td data-label="Próximo passo">
+                  {/* 0.93: a draft goes straight to its prescription. */}
+                  <Link
+                    className="step-link"
+                    href={`/profissional/alunos/${row.studentId}/planos/${row.planId}/${row.revisionId}${row.state === "DRAFT" ? "#prescricao" : ""}`}
+                  >
+                    {row.state === "DRAFT" ? "Continuar prescrição" : "Abrir revisão"}
+                    <span className="sr-only"> de {row.title}, {row.studentName}</span>
+                  </Link>
                 </td>
               </tr>
             );

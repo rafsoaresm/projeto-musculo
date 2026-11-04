@@ -379,3 +379,54 @@ describe("access that ends", () => {
     ]);
   });
 });
+
+// 0.93: the student picker of "Novo plano" tells which students already have a plan in progress.
+describe("plans in progress for the student picker", () => {
+  it("lists the newest revision of undelivered plans, only of students this user reaches", async () => {
+    await db.batch([
+      db.prepare(
+        `INSERT INTO students(id,organization_id,display_name) VALUES
+         ('st-p1','org-a','Picker One'),('st-p2','org-a','Picker Two'),('st-p3','org-a','Picker Three')`,
+      ),
+      db.prepare(
+        `INSERT INTO care_assignments(organization_id,student_id,professional_id) VALUES
+         ('org-a','st-p1','pro-a2'),('org-a','st-p2','pro-a2'),('org-a','st-p3','pro-a')`,
+      ),
+    ]);
+    const mine = plansFor(db, scope("tech-a2"));
+    const draft = (await mine.create("st-p1", { title: "Rascunho do picker", input: input() }))!;
+    const ready = (await mine.create("st-p2", { title: "Pronto do picker", input: input() }))!;
+    expect(await mine.markReady(ready.planId, ready.revisionId)).toBe(true);
+    // A plan of a student of someone else in the same organization.
+    expect(await plansFor(db, scope("tech-a")).create("st-p3", { title: "De outro", input: input() })).not.toBeNull();
+
+    const rows = await mine.inProgress();
+    const ours = rows.filter((row) => row.studentId.startsWith("st-p"));
+    expect(ours.map(({ studentId, planId, revisionId, title, revisionNumber, state }) => ({ studentId, planId, revisionId, title, revisionNumber, state }))).toEqual(
+      expect.arrayContaining([
+        { studentId: "st-p1", planId: draft.planId, revisionId: draft.revisionId, title: "Rascunho do picker", revisionNumber: 1, state: "DRAFT" },
+        { studentId: "st-p2", planId: ready.planId, revisionId: ready.revisionId, title: "Pronto do picker", revisionNumber: 1, state: "READY" },
+      ]),
+    );
+    expect(ours).toHaveLength(2);
+    // Only students assigned to tech-a2 appear, never st-p3 nor another organization's.
+    expect(rows.every((row) => ["st-2", "st-p1", "st-p2"].includes(row.studentId))).toBe(true);
+
+    // A new revision of the ready plan: only the newest revision of the plan is listed.
+    const next = await mine.newRevisionFrom(ready.planId, ready.revisionId);
+    expect(next.status).toBe("created");
+    const again = (await mine.inProgress()).filter((row) => row.planId === ready.planId);
+    expect(again).toHaveLength(1);
+    expect(again[0]).toMatchObject({ revisionNumber: 2, state: "DRAFT" });
+
+    // Nothing for people without the assignment, other organizations or a commercial member.
+    for (const who of [scope("tech-a"), scope("owner-a"), scope("commercial-a"), scope("tech-b", "org-b"), scope("owner-b", "org-b"), scope("client-1"), scope("tech-a2", "org-b")])
+      expect((await plansFor(db, who).inProgress()).filter((row) => ["st-p1", "st-p2"].includes(row.studentId)), JSON.stringify(who)).toEqual([]);
+
+    // Revoking the assignment hides the plan at once.
+    await db.prepare("UPDATE care_assignments SET revoked_at = '2026-11-01T00:00:00.000Z' WHERE student_id = 'st-p1'").run();
+    expect((await mine.inProgress()).some((row) => row.studentId === "st-p1")).toBe(false);
+    await db.prepare("UPDATE care_assignments SET revoked_at = NULL WHERE student_id = 'st-p1'").run();
+    expect((await mine.inProgress()).some((row) => row.studentId === "st-p1")).toBe(true);
+  });
+});
