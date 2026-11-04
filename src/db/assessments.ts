@@ -11,6 +11,7 @@ import {
   type RiskStatus,
   type ScreeningKey,
 } from "@/modules/avaliacoes/contracts";
+import { todayInBrazil } from "@/modules/execucao/contracts";
 import { SECTION_STATUSES, isModule, type AssessmentModule, type SectionStatus } from "@/modules/avaliacoes/catalog";
 import { COMPOSITION_MODULE, compositionSchema } from "@/modules/avaliacoes/v2/composition";
 import { PROFILE_MODULE, SCREENING_MODULE, profileSchema, screeningSchema } from "@/modules/avaliacoes/v2/screening";
@@ -648,7 +649,7 @@ export function assessmentsFor(db: D1Database, context: AuthenticatedContext | n
              WHERE s.organization_id = ?1 AND s.id = ?3 AND ${activeUser("?2")}
                AND ${technicalAccessExists("s", "?2")}`,
           )
-          .bind(organizationId, userId, studentId, id, stamp.slice(0, 10), stamp, templateId, template?.version ?? null, template?.enabled ?? null)
+          .bind(organizationId, userId, studentId, id, todayInBrazil(now), stamp, templateId, template?.version ?? null, template?.enabled ?? null)
           .run();
         return result.meta.changes > 0 ? { status: "started", id } : { status: "not_found" };
       } catch (error) {
