@@ -9,7 +9,9 @@ export function PlanTable({ rows }: { rows: PlanOverviewRow[] }) {
   return (
     <div className="table-wrap">
       <table className="data-table stack">
-        <caption className="sr-only">Planos e prescrição dos seus alunos</caption>
+        <caption className="sr-only">
+          Planos e prescrição dos seus alunos
+        </caption>
         <thead>
           <tr>
             <th scope="col">Aluno</th>
@@ -20,7 +22,6 @@ export function PlanTable({ rows }: { rows: PlanOverviewRow[] }) {
               Exercícios
             </th>
             <th scope="col">Pendências</th>
-            <th scope="col">Próximo passo</th>
           </tr>
         </thead>
         <tbody>
@@ -29,23 +30,43 @@ export function PlanTable({ rows }: { rows: PlanOverviewRow[] }) {
             return (
               <tr key={row.revisionId}>
                 <th scope="row" data-label="Aluno">
-                  <Link className="row-link" href={`/profissional/alunos/${row.studentId}`}>
+                  <Link
+                    className="row-link"
+                    href={`/profissional/alunos/${row.studentId}`}
+                  >
                     {row.studentName}
                   </Link>
                 </th>
                 <td data-label="Plano">
-                  <Link
-                    className="row-link"
-                    href={`/profissional/alunos/${row.studentId}/planos/${row.planId}/${row.revisionId}`}
-                  >
-                    {row.title}
-                  </Link>
+                  <span className="plan-cell">
+                    <Link
+                      className="row-link"
+                      href={`/profissional/alunos/${row.studentId}/planos/${row.planId}/${row.revisionId}`}
+                    >
+                      {row.title}
+                    </Link>
+                    {row.state === "DRAFT" && (
+                      // 0.93: a draft goes straight to its prescription.
+                      <Link
+                        className="step-link"
+                        href={`/profissional/alunos/${row.studentId}/planos/${row.planId}/${row.revisionId}#prescricao`}
+                      >
+                        Continuar prescrição
+                        <span className="sr-only">
+                          {" "}
+                          de {row.title}, {row.studentName}
+                        </span>
+                      </Link>
+                    )}
+                  </span>
                 </td>
                 <td data-label="Revisão">
-                  {row.revisionNumber} <Pill tone={label.tone}>{label.text}</Pill>
+                  {row.revisionNumber}{" "}
+                  <Pill tone={label.tone}>{label.text}</Pill>
                 </td>
                 <td data-label="Período">
-                  {formatCalendarDate(row.startDate)} a {formatCalendarDate(row.endDate)}
+                  {formatCalendarDate(row.startDate)} a{" "}
+                  {formatCalendarDate(row.endDate)}
                 </td>
                 <td className="num" data-label="Exercícios">
                   {row.exercises}
@@ -56,18 +77,10 @@ export function PlanTable({ rows }: { rows: PlanOverviewRow[] }) {
                       {row.below} de {row.workouts} treinos abaixo do alvo
                     </Pill>
                   ) : (
-                    <Pill tone="success">Alvo atendido em todos os treinos</Pill>
+                    <Pill tone="success">
+                      Alvo atendido em todos os treinos
+                    </Pill>
                   )}
-                </td>
-                <td data-label="Próximo passo">
-                  {/* 0.93: a draft goes straight to its prescription. */}
-                  <Link
-                    className="step-link"
-                    href={`/profissional/alunos/${row.studentId}/planos/${row.planId}/${row.revisionId}${row.state === "DRAFT" ? "#prescricao" : ""}`}
-                  >
-                    {row.state === "DRAFT" ? "Continuar prescrição" : "Abrir revisão"}
-                    <span className="sr-only"> de {row.title}, {row.studentName}</span>
-                  </Link>
                 </td>
               </tr>
             );
