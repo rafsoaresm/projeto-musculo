@@ -13,6 +13,7 @@ Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em
 - **Escolhas da ferramenta (PENDENCIAS B55):** "em andamento" = revisão mais recente em rascunho, revisão necessária, pronta ou aprovada; o botão aparece para dono, gestor e técnico, e a lista mostra só alunos atribuídos.
 - **Verificado localmente:** tipos e lint; `npx vitest run` com 131 arquivos e 2003 testes (D1 de `inProgress` e `prescribable`: outra organização, membro comercial, login do portal, técnico sem atribuição, atribuição revogada); e2e nos dois mounts (raiz: 29 passaram, 3 pulados; `/treinador`: 28 passaram, 2 pulados) com `plans-new`, `plans`, `prescription`, `planner`, `delivery`, `execution`, `navigation-v4`, `responsive` e `student-tabs`; capturas a 1440, 1280, 1024, 768 e 390. Três revisões independentes; os achados de tela e texto foram corrigidos.
 - **Não verificado:** técnico sem atribuição só em D1 (não há tela para criar esse membro); o fluxo no Webflow Cloud ao vivo.
+- **CI e deploy:** o CI do PR #96 passou (`validate` e `validate (/treinador)`, no commit `35b8352`); merge `0eaa581`; deploy `8aa7e355` com sucesso em 04/11/2026 (sem migration).
 
 ## Fatia 0.92: Classificações pelas tabelas de referência (tabelas enviadas pelo usuário em 03/11/2026)
 
