@@ -15,7 +15,7 @@ import { ContextSummary } from "@/modules/prescricao/automatica/context-summary"
 import { GenerationForm } from "@/modules/prescricao/automatica/generation-form";
 import { ProposalView, type ProposalHeaderView } from "@/modules/prescricao/automatica/proposal-view";
 import { ApplyPanel } from "@/modules/prescricao/automatica/apply-panel";
-import { canAcceptSuggestions, pickPhase, pickWeek, storedAudit, type AuditSource } from "@/modules/prescricao/automatica/view";
+import { canAcceptSuggestions, pageAudit, pickPhase, pickWeek } from "@/modules/prescricao/automatica/view";
 import { getRuleSet } from "@/modules/prescricao/motor/rules";
 
 export const dynamic = "force-dynamic";
@@ -141,14 +141,10 @@ export default async function AutomaticPrescription({
   const week = pickWeek(phase, one("semana"));
   // The audit recorded with the proposal comes with the summary already read; only a proposal generated before the audit has
   // it computed now (design V3 §3.9), never written back.
-  let audit: AuditSource | null = storedAudit(page.summary);
+  const audit = await pageAudit(page.summary, () => service.viewAudit(planId, revisionId, open.id));
   // Sent to the screen once, as `audit`, not twice.
   const summaryWithoutAudit = { ...page.summary };
   delete summaryWithoutAudit.audit;
-  if (!audit) {
-    const computed = await service.viewAudit(planId, revisionId, open.id);
-    audit = computed.status === "ok" ? { report: computed.audit, source: computed.source, rules: computed.rules } : null;
-  }
   const header: ProposalHeaderView = {
     id: page.header.id,
     version: page.header.version,

@@ -583,6 +583,26 @@ export function auditOfStored(result: Pick<EngineResult, "phases" | "workouts" |
 
 export type AuditOutcome = { status: "ok"; audit: AuditReport; source: "STORED" | "VIEW"; rules: RuleSetRef } | { status: "not_found" };
 
+/**
+ * Audits computed at view time, kept in the isolate's memory so that phase and week clicks on a proposal recorded before the
+ * audit do not read the whole proposal and recompute it on every render (design V3 §3.9; ≈ 35–55 ms of CPU locally for 12 phases
+ * × 4 weeks × 7 sessions and 200 exercises). The key is the organization, the proposal, its version and a digest of the library
+ * as read now, so any change to the proposal or to the library computes it again. It is consulted only after the gated reads
+ * (header and library) succeed, so it never answers for someone who no longer reaches the proposal. Bounded, least recently
+ * used first out; it lives only as long as the isolate and is never written anywhere.
+ */
+const VIEW_AUDIT_MEMO_LIMIT = 16;
+const viewAuditMemo = new Map<string, AuditReport>();
+
+function rememberViewAudit(key: string, audit: AuditReport): void {
+  viewAuditMemo.delete(key);
+  viewAuditMemo.set(key, audit);
+  while (viewAuditMemo.size > VIEW_AUDIT_MEMO_LIMIT) viewAuditMemo.delete(viewAuditMemo.keys().next().value as string);
+}
+
+/** Test seam: how many view-time audits are remembered (and a way to forget them). */
+export const viewAuditMemoForTests = { size: () => viewAuditMemo.size, clear: () => viewAuditMemo.clear() };
+
 // ---------- the service ----------
 
 export function proposalService(
@@ -830,13 +850,27 @@ export function proposalService(
      * proposal (one gated read) and the library (gated `loadCatalogForPlan`), labelled with the rules used, and never written back.
      */
     async viewAudit(planId: string, revisionId: string, proposalId: string): Promise<AuditOutcome> {
-      const snap = await repo.asEngineResult(planId, revisionId, proposalId);
-      if (!snap) return { status: "not_found" };
-      if (snap.result.audit) return { status: "ok", audit: snap.result.audit, source: "STORED", rules: snap.result.audit.rules };
+      // Gated reads first: the header (with the summary, on a DRAFT revision as the full read below) and the library. The memo is
+      // consulted only after both succeed.
+      const head = await repo.summary(planId, revisionId, proposalId);
+      if (!head || head.header.revisionState !== "DRAFT") return { status: "not_found" };
+      if (head.summary.audit) return { status: "ok", audit: head.summary.audit, source: "STORED", rules: head.summary.audit.rules };
       const loaded = await loadCatalogForPlan(db, context, planId, revisionId);
       if (loaded.status !== "ok") return { status: "not_found" };
+      const library = await sha256Hex(canonicalJson([...loaded.catalog].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))));
+      const key = `${context.organizationId}|${proposalId}|${head.header.version}|${AUDIT_RULESET.id}@${AUDIT_RULESET.version}|${library}`;
+      const remembered = viewAuditMemo.get(key);
+      if (remembered) {
+        rememberViewAudit(key, remembered);
+        return { status: "ok", audit: remembered, source: "VIEW", rules: remembered.rules };
+      }
+      const snap = await repo.asEngineResult(planId, revisionId, proposalId);
+      if (!snap) return { status: "not_found" };
       const audit = auditOfStored(snap.result, loaded.catalog);
-      return audit ? { status: "ok", audit, source: "VIEW", rules: audit.rules } : { status: "not_found" };
+      if (!audit) return { status: "not_found" };
+      // Remembered only when the content read is the version of the key (a write in between computes it again next time).
+      if (snap.header.version === head.header.version) rememberViewAudit(key, audit);
+      return { status: "ok", audit, source: "VIEW", rules: audit.rules };
     },
 
     /** What "Aplicar ao rascunho" would write and what it asks first. Null when the proposal is not reachable. */

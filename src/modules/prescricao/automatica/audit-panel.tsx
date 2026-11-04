@@ -64,7 +64,7 @@ export function AuditPanel({
             <summary>Distribuição por músculo · Fase {phaseIndex}</summary>
             <p className="small muted">
               Por semana da fase (mínimo–máximo entre as semanas). Diretas: músculo principal; indiretas: secundário; a ponderada soma as
-              indiretas pelo fator da regra. “Séries não definidas”: há dose sem séries, então o total não é calculado (não é zero).
+              indiretas pelo fator da regra.{rows.unknownNote && ` ${rows.unknownNote}`}
               <span className="scroll-hint"> Deslize a tabela para o lado para ver todas as colunas.</span>
             </p>
             <div className="execution-scroll" tabIndex={0} role="region" aria-label={`Distribuição por músculo da fase ${phaseIndex}, rolável para o lado`}>
@@ -100,7 +100,7 @@ export function AuditPanel({
             <details className="progression-details">
               <summary>Padrões de movimento · Fase {phaseIndex}</summary>
               <p className="small muted">
-                Séries e sessões por semana (mínimo–máximo). Só os padrões trabalhados ou marcados como alvo.
+                Séries e sessões por semana (mínimo–máximo). Só os padrões trabalhados ou marcados como alvo.{rows.unknownNote && ` ${rows.unknownNote}`}
                 <span className="scroll-hint"> Deslize a tabela para o lado para ver todas as colunas.</span>
               </p>
               <div className="execution-scroll" tabIndex={0} role="region" aria-label={`Padrões de movimento da fase ${phaseIndex}, rolável para o lado`}>
@@ -191,6 +191,11 @@ function Finding({ f, href }: { f: AuditFindingView; href: (phaseIndex: number, 
             </>
           )}
         </span>
+        {f.threshold && (
+          <span>
+            {f.threshold.text} <Pill tone={BASIS_TONES[f.threshold.basis]}>{BASIS_LABELS[f.threshold.basis]}</Pill>
+          </span>
+        )}
       </span>
       <span className="small">
         {f.rationale}

@@ -16,6 +16,7 @@ import type {
   AuditReport,
   AuditTarget,
   AuditUnit,
+  AuditWeek,
   Basis,
   DoseParam,
   HistorySuggestion,
@@ -603,6 +604,29 @@ export function storedAudit(summary: { audit?: AuditReport }): AuditSource | nul
 }
 
 /**
+ * The page's audit: the one recorded in the summary already loaded, with no call and no read; only a proposal generated before
+ * the audit calls `compute` (the service's `viewAudit`, design V3 §3.9). Null when there is none.
+ */
+export async function pageAudit(
+  summary: { audit?: AuditReport },
+  compute: () => Promise<{ status: "ok"; audit: AuditReport; source: AuditSource["source"]; rules: RuleSetRef } | { status: "not_found" }>,
+): Promise<AuditSource | null> {
+  const stored = storedAudit(summary);
+  if (stored) return stored;
+  const out = await compute();
+  return out.status === "ok" ? { report: out.audit, source: out.source, rules: out.rules } : null;
+}
+
+/**
+ * The audit that may add columns to the weekly volume table. That table shows the volume stored with the proposal; only a
+ * recorded audit comes from the same reading. One computed now uses today's library, so its counts could disagree with the
+ * stored ones in the same row: it stays in its own panel.
+ */
+export function weekTableAudit(audit: AuditSource | null): AuditReport | null {
+  return audit?.source === "STORED" ? audit.report : null;
+}
+
+/**
  * Whether the proposal's own rule set offers suggested targets to accept (`MICROCYCLE_TARGET_SUGGESTIONS`, rules 2026.11.4+).
  * A regeneration runs with the proposal's rule set, which would refuse an acceptance that its rules cannot back, so no card or
  * accept button is offered otherwise (design V3 §3.9, review point 9).
@@ -659,6 +683,11 @@ export interface AuditFindingView {
   measured: string | null;
   /** The target with its basis, or "Sem alvo definido" (never a heuristic presented as a target). */
   target: { text: string; basis: Basis | null };
+  /**
+   * A bound of the target that comes from a rule threshold, not from the student or the professional (the lower bound of the
+   * time-use range: a fraction of the time available). Shown apart, labelled as the heuristic it is; null otherwise.
+   */
+  threshold: { text: string; basis: "HEURISTIC" } | null;
   rationale: string;
   suggestedAction: string | null;
   /** Rows aggregated by the technical limit: "(14 achados iguais agrupados)". */
@@ -709,7 +738,12 @@ function findingView(f: AuditFinding, n: number, offer: boolean): AuditFindingVi
       // the two sides as measured (sets, or sessions when some sets are unknown); "0" on one side is "no stimulus there", not a ratio
       ? `Medido: ${num(sides.a)} × ${num(sides.b)} ${m.unit === "SESSIONS" ? "sessões" : "séries diretas"}`
       : `Medido: ${auditValueText(m.unit, m.value)}${m.from !== undefined ? ` (antes: ${auditValueText(m.unit, m.from)})` : ""}`;
-  const targetText = f.target ? auditTargetText(f.target) : null;
+  // The time-use range: its upper bound is the time available (student data or the professional's), its lower bound is the
+  // rule's threshold (a heuristic). One basis pill cannot cover both, so the threshold goes on a line of its own.
+  const split = f.target && f.target.origin === "AVAILABILITY" && f.target.ruleId && f.target.min !== undefined && f.target.max !== undefined;
+  const shown: AuditTarget | undefined = split ? { unit: f.target!.unit, max: f.target!.max!, basis: f.target!.basis, origin: f.target!.origin } : f.target;
+  const targetText = shown ? auditTargetText(shown) : null;
+  const threshold: AuditFindingView["threshold"] = split ? { text: `Limiar de uso: ${auditValueText(f.target!.unit, f.target!.min!)}`, basis: "HEURISTIC" } : null;
   const links: AuditFindingView["links"] = [];
   if (f.phaseIndex !== undefined) {
     if (f.week !== undefined) links.push({ phaseIndex: f.phaseIndex, week: f.week, text: `Ver a semana ${f.week} da fase ${f.phaseIndex}` });
@@ -727,6 +761,7 @@ function findingView(f: AuditFinding, n: number, offer: boolean): AuditFindingVi
     location: where.length ? where.join(" · ") : null,
     measured,
     target: targetText && f.target ? { text: `Alvo: ${targetText}`, basis: f.target.basis } : { text: "Sem alvo definido", basis: null },
+    threshold,
     rationale: f.rationale,
     suggestedAction: f.suggestedAction,
     aggregated: f.count && f.count > 1 ? `(${f.count} achados iguais agrupados)` : null,
@@ -803,6 +838,23 @@ const SITUATION_TEXT: Record<AuditMuscleRow["classification"], string> = {
   UNKNOWN: "Não contado",
 };
 export const UNDEFINED_SETS = "séries não definidas";
+/** A total not computed because some item could not be counted (no library exercise, or no muscles): not a dose without sets. */
+export const NOT_COUNTED = "não calculado (item não contado)";
+const NOT_COMPUTED = "não calculado";
+
+/** Why a set total is unknown, from the per-week counts of the audit: doses without sets, items not counted, or both. */
+function unknownCause(weeks: ReadonlyArray<Pick<AuditWeek, "unknownSetItems" | "uncountedItems">>): { cell: string; note: string | null } {
+  const unknown = weeks.some((w) => w.unknownSetItems > 0);
+  const uncounted = weeks.some((w) => w.uncountedItems > 0);
+  const notes = [
+    unknown ? "“Séries não definidas”: há dose sem séries." : null,
+    uncounted ? "“Item não contado”: há item fora da biblioteca ou sem músculos cadastrados, que não entra na conta." : null,
+  ].filter((x): x is string => x !== null);
+  return {
+    cell: unknown && uncounted ? NOT_COMPUTED : uncounted ? NOT_COUNTED : UNDEFINED_SETS,
+    note: notes.length ? `${notes.join(" ")} Por isso o total não é calculado (não é zero).` : null,
+  };
+}
 
 export interface AuditMuscleRowView {
   muscle: string;
@@ -834,17 +886,21 @@ function targetCell(t: AuditTarget | undefined, isTarget: boolean): string {
  * direct stimulus, the target and the situation; per pattern the weekly sets and sessions (patterns never worked and not targeted
  * are left out). Unknown sets read "séries não definidas", never 0. Null when the phase was not audited.
  */
-export function auditPhaseRows(report: AuditReport, phaseIndex: number): { shape: string | null; muscles: AuditMuscleRowView[]; patterns: AuditPatternRowView[] } | null {
+export function auditPhaseRows(
+  report: AuditReport,
+  phaseIndex: number,
+): { shape: string | null; muscles: AuditMuscleRowView[]; patterns: AuditPatternRowView[]; unknownNote: string | null } | null {
   const p = report.phases.find((x) => x.phaseIndex === phaseIndex);
   if (!p) return null;
+  const cause = unknownCause(p.weekRows);
   const order: Record<AuditMuscleRow["classification"], number> = { DIRECT: 0, INDIRECT_ONLY: 1, UNKNOWN: 2, NONE: 3 };
   const muscles = [...p.muscles]
     .sort((a, b) => Number(b.isTarget) - Number(a.isTarget) || order[a.classification] - order[b.classification] || muscleName(a.muscle).localeCompare(muscleName(b.muscle), "pt-BR"))
     .map((m) => ({
       muscle: muscleName(m.muscle),
-      direct: rangeText(m.direct) ?? UNDEFINED_SETS,
-      indirect: rangeText(m.indirect) ?? UNDEFINED_SETS,
-      weighted: rangeText(m.weighted) ?? UNDEFINED_SETS,
+      direct: rangeText(m.direct) ?? cause.cell,
+      indirect: rangeText(m.indirect) ?? cause.cell,
+      weighted: rangeText(m.weighted) ?? cause.cell,
       directSessions: rangeText(m.directSessions)!,
       target: targetCell(m.target, m.isTarget),
       situation: SITUATION_TEXT[m.classification],
@@ -855,11 +911,11 @@ export function auditPhaseRows(report: AuditReport, phaseIndex: number): { shape
     .sort((a, b) => Number(b.isTarget) - Number(a.isTarget) || b.sessions.max - a.sessions.max || patternName(a.pattern).localeCompare(patternName(b.pattern), "pt-BR"))
     .map((x) => ({
       pattern: patternName(x.pattern),
-      sets: rangeText(x.sets) ?? UNDEFINED_SETS,
+      sets: rangeText(x.sets) ?? cause.cell,
       sessions: rangeText(x.sessions)!,
       target: x.isTarget ? "Alvo" : "—",
     }));
-  return { shape: p.splitShape ? SHAPE_TEXT[p.splitShape] : null, muscles, patterns };
+  return { shape: p.splitShape ? SHAPE_TEXT[p.splitShape] : null, muscles, patterns, unknownNote: cause.note };
 }
 
 /**
@@ -880,7 +936,7 @@ export function contributionView(
   const weekTotal = !row
     ? null
     : row.weighted === null
-      ? `Total da semana ${week} na fase (${sessions}): não calculado, há ${UNDEFINED_SETS}.`
+      ? `Total da semana ${week} na fase (${sessions}): não calculado, há ${[row.unknownSetItems > 0 ? UNDEFINED_SETS : null, row.uncountedItems > 0 ? "item não contado (fora da biblioteca ou sem músculos)" : null].filter(Boolean).join(" e ")}.`
       : `Total da semana ${week} na fase (${sessions}): ${auditValueText("WEIGHTED_SETS", row.weighted)}.`;
   return { lines, weekTotal };
 }

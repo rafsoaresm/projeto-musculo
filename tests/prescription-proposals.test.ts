@@ -6,7 +6,7 @@ import { prescriptionFor } from "@/db/prescription";
 import { outputHashOf, proposalsFor, jsonChunks } from "@/db/prescription-proposals";
 import { ADAPTER_ASSUMPTION_CODES } from "@/modules/prescricao/automatica/build-input";
 import type { GenerationAnswersInput } from "@/modules/prescricao/automatica/contracts";
-import { AUDIT_RULESET, auditOfStored, proposalService, withAdapter, type ProposalOutcome } from "@/modules/prescricao/automatica/service";
+import { AUDIT_RULESET, auditOfStored, proposalService, viewAuditMemoForTests, withAdapter, type ProposalOutcome } from "@/modules/prescricao/automatica/service";
 import { loadCatalogForPlan } from "@/modules/prescricao/automatica/context";
 import { auditView, canAcceptSuggestions, storedAudit } from "@/modules/prescricao/automatica/view";
 import { DEFAULT_RULESET, getRuleSet } from "@/modules/prescricao/motor/rules";
@@ -850,5 +850,55 @@ describe("Motor V3 S2: the plan audit with the proposal", () => {
     const other = await newDraft();
     const otherOut = await generated(other);
     expect((await service().viewAudit(d.planId, d.revisionId, otherOut.proposalId)).status).toBe("not_found");
+  });
+
+  it("a proposal whose rule set is gone is refused for every change and for alternatives, never run with the default rules", async () => {
+    const { d, proposalId } = await legacyProposal();
+    const occ = (await snapshot(d, proposalId)).result.occurrences.find((o) => o.phaseIndex === 1)!;
+    await run("UPDATE prescription_proposals SET rules_version = '1999.01.1' WHERE id = ?1", proposalId);
+    const gens = () => count("SELECT COUNT(*) AS n FROM prescription_generations WHERE proposal_id = ?1", proposalId);
+    const before = await gens();
+    const out = await service().regenerate(d.planId, d.revisionId, { proposalId, idempotencyKey: id("key"), ...cas(1), scope: { kind: "PHASE", phaseIndex: 1 } });
+    expect(failure(out)).toBe("invalid");
+    expect(out.ok ? "" : out.message).toContain("não estão mais disponíveis");
+    // The default rules would rank alternatives fine: the refusal shows alternatives read the proposal's own (missing) rules.
+    expect((await service().alternatives(d.planId, d.revisionId, { proposalId, phaseIndex: 1, slotKey: occ.items[0].slotKey })).status).toBe("not_found");
+    expect(await gens()).toBe(before);
+    expect((await repo().header(d.planId, d.revisionId, proposalId))!.version).toBe(1);
+  });
+
+  it("the audit computed at view time is remembered by proposal version and library, and only after the gated reads", async () => {
+    viewAuditMemoForTests.clear();
+    const { d, proposalId } = await legacyProposal();
+    const first = await service().viewAudit(d.planId, d.revisionId, proposalId);
+    if (first.status !== "ok") throw new Error(first.status);
+    expect(viewAuditMemoForTests.size()).toBe(1);
+    // A second render: the same object comes back, so the whole proposal was not read nor the audit computed again.
+    const second = await service().viewAudit(d.planId, d.revisionId, proposalId);
+    if (second.status !== "ok") throw new Error(second.status);
+    expect(second.audit).toBe(first.audit);
+    expect(second.source).toBe("VIEW");
+    // Someone who does not reach the proposal is refused before the memo is consulted.
+    for (const [user, org] of [["tech-b", "org-b"], ["tech-rev", "org-a"], ["tech-a2", "org-a"]] as const)
+      expect((await service(user, org).viewAudit(d.planId, d.revisionId, proposalId)).status, `${user}@${org}`).toBe("not_found");
+    // The library changes: computed again, from the library as it is now.
+    await run(
+      `INSERT INTO exercises(id, organization_id, name, name_key, category, source, created_at, updated_at)
+       VALUES (?1, 'org-a', 'Exercício novo', 'exercício novo', 'Peito', 'ORGANIZATION', 'x', 'x')`,
+      id("ex"),
+    );
+    const third = await service().viewAudit(d.planId, d.revisionId, proposalId);
+    if (third.status !== "ok") throw new Error(third.status);
+    expect(third.audit).not.toBe(first.audit);
+    expect(third.audit).toEqual(auditOfStored((await snapshot(d, proposalId)).result, await catalogOf(d)));
+    // The proposal changes (a lock bumps its version): computed again.
+    const snap = await snapshot(d, proposalId);
+    ok(await service().lock(d.planId, d.revisionId, { proposalId, ...cas(1), targets: [{ phaseIndex: 1, slotKey: snap.result.occurrences[0].items[0].slotKey }], locked: true }));
+    const fourth = await service().viewAudit(d.planId, d.revisionId, proposalId);
+    if (fourth.status !== "ok") throw new Error(fourth.status);
+    expect(fourth.audit).not.toBe(third.audit);
+    expect(viewAuditMemoForTests.size()).toBe(3);
+    // Nothing of it was ever written to the proposal.
+    expect((await snapshot(d, proposalId)).result.audit).toBeUndefined();
   });
 });

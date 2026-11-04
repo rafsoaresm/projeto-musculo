@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_RULESET, getRuleSet } from "@/modules/prescricao/motor/rules";
 import { parseGenerationAnswers, type GenerationQuestion } from "@/modules/prescricao/automatica/contracts";
 import {
@@ -22,6 +22,9 @@ import {
   rangeText,
   storedAudit,
   UNDEFINED_SETS,
+  NOT_COUNTED,
+  pageAudit,
+  weekTableAudit,
   numberOf,
   openRequired,
   pickPhase,
@@ -461,6 +464,70 @@ describe("Motor V3 S2: the plan audit on the proposal screen", () => {
       aggregated: "(3 achados iguais agrupados)",
       links: [{ phaseIndex: 2, week: 3, text: "Ver a semana 3 da fase 2" }],
     });
+  });
+
+  it("time use: the time available is the target with its basis; the rule's threshold is a heuristic on a line of its own", () => {
+    const st = structure("2026-11-09", [{ weeks: 2, sessionsPerWeek: 2, stimulus: "STRENGTH", workouts: [{ label: "A", exerciseTarget: 1 }, { label: "B", exerciseTarget: 1 }] }]);
+    const r = generate(baseInput({ structure: st, parameters: parameters({ availableMinutes: 60 }) }));
+    const view = auditView(storedAudit(r)!, { engineVersion: r.engineVersion, acceptSuggestions: false });
+    const all = [...view.attention, ...view.observations, ...view.descriptive].flatMap((g) => g.findings);
+    const under = all.find((f) => f.code === "AUDIT_DURATION_UNDERUSED")!;
+    // Never "36–60 min" under the professional's (or the student's) pill: 36 is 60% of 60, a heuristic.
+    expect(under.target).toEqual({ text: "Alvo: ≤ 60 min", basis: "PROFESSIONAL" });
+    expect(under.threshold).toEqual({ text: "Limiar de uso: 36 min", basis: "HEURISTIC" });
+    expect(all.filter((f) => f.code !== "AUDIT_DURATION_UNDERUSED").every((f) => f.threshold === null)).toBe(true);
+  });
+
+  it("an unknown total says why: doses without sets, items not counted, or both", () => {
+    const phase = audit.phases[0];
+    const as = (unknownSetItems: number, uncountedItems: number): AuditReport => ({
+      ...audit,
+      phases: [{
+        ...phase,
+        weekRows: phase.weekRows.map((w) => ({ ...w, unknownSetItems, uncountedItems, weighted: null })),
+        muscles: phase.muscles.map((m) => ({ ...m, direct: null, indirect: null, weighted: null })),
+        patterns: phase.patterns.map((x) => ({ ...x, sets: null })),
+      }],
+    });
+    // A custom row (no library exercise) only: "não contado", never "séries não definidas".
+    const uncounted = auditPhaseRows(as(0, 1), 1)!;
+    expect(new Set(uncounted.muscles.flatMap((m) => [m.direct, m.indirect, m.weighted]))).toEqual(new Set([NOT_COUNTED]));
+    expect(uncounted.patterns.every((x) => x.sets === NOT_COUNTED)).toBe(true);
+    expect(uncounted.unknownNote).toContain("Item não contado");
+    expect(uncounted.unknownNote).not.toContain("Séries não definidas");
+    // Doses without sets only.
+    const unknown = auditPhaseRows(as(1, 0), 1)!;
+    expect(unknown.muscles[0].direct).toBe(UNDEFINED_SETS);
+    expect(unknown.unknownNote).toContain("dose sem séries");
+    expect(unknown.unknownNote).not.toContain("não contado");
+    // Both: neither cause alone.
+    const both = auditPhaseRows(as(1, 1), 1)!;
+    expect(both.muscles[0].direct).toBe("não calculado");
+    expect(both.unknownNote).toContain("dose sem séries");
+    expect(both.unknownNote).toContain("não contado");
+    // Every total known: no note.
+    expect(auditPhaseRows(audit, 1)!.unknownNote).toBeNull();
+    // The week total of "Contribuição na semana" names the cause of that week.
+    const occ = xintus.occurrences.find((o) => o.phaseIndex === 1 && o.week === 3)!;
+    const item = occ.items.find((i) => i.trace.selection.some((t) => t.code === "WEEKLY_CONTRIBUTION"))!;
+    const c = contributionView(item, as(0, 1), 1, 3)!.weekTotal!;
+    expect(c).toContain("não calculado, há item não contado");
+    expect(c).not.toContain(UNDEFINED_SETS);
+    expect(contributionView(item, as(1, 1), 1, 3)!.weekTotal).toContain(`${UNDEFINED_SETS} e item não contado`);
+  });
+
+  it("the weekly table takes only a recorded audit; the page computes one only when none is recorded", async () => {
+    expect(weekTableAudit(stored)).toBe(audit);
+    expect(weekTableAudit({ ...stored, source: "VIEW" })).toBeNull();
+    expect(weekTableAudit(null)).toBeNull();
+    const compute = vi.fn(async () => ({ status: "ok" as const, audit, source: "VIEW" as const, rules: audit.rules }));
+    // A recorded audit: straight from the summary already loaded, no call (so no extra read).
+    expect(await pageAudit(xintus, compute)).toEqual(stored);
+    expect(compute).not.toHaveBeenCalled();
+    const legacy = generate(xintusInput(LEGACY_RULES));
+    expect(await pageAudit(legacy, compute)).toEqual({ report: audit, source: "VIEW", rules: audit.rules });
+    expect(compute).toHaveBeenCalledTimes(1);
+    expect(await pageAudit(legacy, async () => ({ status: "not_found" as const }))).toBeNull();
   });
 
   it("the phase tables: ranges per week, situation, split shape; unknown sets read 'séries não definidas', never 0", () => {

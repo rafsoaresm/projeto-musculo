@@ -41,6 +41,7 @@ import {
   ruleLabel,
   traceParamLabel,
   traceValue,
+  weekTableAudit,
   weekVolume,
   type AuditSource,
 } from "./view";
@@ -427,7 +428,7 @@ export function ProposalView({
             })}
           </div>
         )}
-        <WeekVolume rows={weekVolume(summary.volume ?? [], phaseIndex, week, audit?.report ?? null)} week={week} audited={audit !== null} />
+        <WeekVolume rows={weekVolume(summary.volume ?? [], phaseIndex, week, weekTableAudit(audit))} week={week} audited={weekTableAudit(audit) !== null} />
         {phase.weeks > 1 &&
           labels.map((label) => {
             const rows = proposalProgression(occurrences, phaseIndex, phase.weeks, label);
