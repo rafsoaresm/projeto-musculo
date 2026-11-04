@@ -4,6 +4,7 @@ import {
   EDIT_WINDOW_HOURS,
   parseSession,
   todayInBrazil,
+  type LoadBasis,
   type SessionInput,
 } from "@/modules/execucao/contracts";
 import {
@@ -31,6 +32,11 @@ export interface SessionSetRow {
   setNumber: number;
   reps: number | null;
   loadKg: number | null;
+  /** Optional fields of 0043, typed by the student; null is "not informed". */
+  rir?: number | null;
+  durationSeconds?: number | null;
+  distanceMeters?: number | null;
+  loadBasis?: LoadBasis | null;
 }
 export interface SessionExerciseRow {
   prescribedExerciseId: string;
@@ -50,6 +56,8 @@ export interface SessionSummary {
   effort: number | null;
   painReported: boolean;
   createdAt: string;
+  /** The session of the week logged (OCCURRENCE revisions, 0043); null for TEMPLATE revisions. */
+  occurrenceId: string | null;
 }
 export interface StudentSession extends SessionSummary {
   planId: string;
@@ -64,7 +72,8 @@ export interface StudentSession extends SessionSummary {
 export type SaveOutcome =
   | { status: "saved"; id: string; created: boolean; painReported: boolean }
   | { status: "locked" }
-  | { status: "conflict" }
+  /** `other_occurrence`: the same workout already has a log that day, for another session of the week. */
+  | { status: "conflict"; reason?: "other_occurrence" }
   | { status: "not_found" }
   | { status: "invalid" };
 export type RemoveSessionOutcome = { status: "removed" } | { status: "locked" } | { status: "not_found" };
@@ -81,6 +90,7 @@ interface SessionRow {
   phaseIndex: number;
   workoutLabel: string;
   performedOn: string;
+  occurrenceId: string | null;
   effort: number | null;
   pain: number;
   notes: string | null;
@@ -101,6 +111,25 @@ interface ExerciseSetRow {
   setNumber: number | null;
   reps: number | null;
   loadKg: number | null;
+  setRir: number | null;
+  durationSeconds: number | null;
+  distanceMeters: number | null;
+  loadBasis: LoadBasis | null;
+}
+
+/** The optional per-set fields (0043) the student typed; none are added for a set without them, so older logs read as before. */
+export function typedExtras(row: {
+  setRir: number | null;
+  durationSeconds: number | null;
+  distanceMeters: number | null;
+  loadBasis: LoadBasis | null;
+}): Pick<SessionSetRow, "rir" | "durationSeconds" | "distanceMeters" | "loadBasis"> {
+  return {
+    ...(row.setRir !== null ? { rir: row.setRir } : {}),
+    ...(row.durationSeconds !== null ? { durationSeconds: row.durationSeconds } : {}),
+    ...(row.distanceMeters !== null ? { distanceMeters: row.distanceMeters } : {}),
+    ...(row.loadBasis !== null ? { loadBasis: row.loadBasis } : {}),
+  };
 }
 
 /** Exercises with their sets, in the order of the workout, for the given sessions (already gated). */
@@ -111,7 +140,8 @@ async function exercisesOf(db: D1Database, sessionIds: string[]) {
       `SELECT se.session_id AS sessionId, se.id AS sessionExerciseId,
          se.prescribed_exercise_id AS prescribedExerciseId, se.exercise_name AS name,
          se.position, se.done, se.rir, se.pain, se.notes,
-         st.set_number AS setNumber, st.reps, st.load_kg AS loadKg
+         st.set_number AS setNumber, st.reps, st.load_kg AS loadKg, st.rir AS setRir,
+         st.duration_seconds AS durationSeconds, st.distance_meters AS distanceMeters, st.load_basis AS loadBasis
        FROM session_exercises se
        LEFT JOIN session_sets st ON st.session_exercise_id = se.id
        WHERE se.session_id IN (SELECT value FROM json_each(?1))
@@ -138,13 +168,14 @@ async function exercisesOf(db: D1Database, sessionIds: string[]) {
       bySession.set(row.sessionId, [...(bySession.get(row.sessionId) ?? []), exercise]);
     }
     if (row.setNumber !== null)
-      exercise.sets.push({ setNumber: row.setNumber, reps: row.reps, loadKg: row.loadKg });
+      exercise.sets.push({ setNumber: row.setNumber, reps: row.reps, loadKg: row.loadKg, ...typedExtras(row) });
   }
   return bySession;
 }
 
 const summaryColumns = `ws.id, ws.performed_on AS performedOn, ws.phase_index AS phaseIndex,
-  ws.workout_label AS workoutLabel, ws.effort, ws.pain_reported AS pain, ws.created_at AS createdAt`;
+  ws.workout_label AS workoutLabel, ws.effort, ws.pain_reported AS pain, ws.created_at AS createdAt,
+  ws.occurrence_id AS occurrenceId`;
 
 interface ProgressRevision {
   planId: string;
@@ -160,6 +191,19 @@ interface ProgressSession {
   revisionId: string;
   performedOn: string;
   workoutLabel: string;
+  /** OCCURRENCE revisions: the session logged. The same session logged on two days counts once (Q5). */
+  occurrenceId: string | null;
+}
+
+/** Each session of the week counts once, at its first log; TEMPLATE logs (no session) are all kept, as before. */
+export function distinctOccurrences<T extends { occurrenceId: string | null; performedOn: string }>(logs: T[]): T[] {
+  const first = new Map<string, T>();
+  for (const log of logs) {
+    if (log.occurrenceId === null) continue;
+    const seen = first.get(log.occurrenceId);
+    if (!seen || log.performedOn < seen.performedOn) first.set(log.occurrenceId, log);
+  }
+  return logs.filter((log) => log.occurrenceId === null || first.get(log.occurrenceId) === log);
 }
 interface ProgressExerciseRow {
   sessionExerciseId: string;
@@ -192,7 +236,7 @@ function assembleProgress(
             workouts: week.sessions,
           })),
         ),
-        sessions.filter((log) => log.revisionId === revision.revisionId),
+        distinctOccurrences(sessions.filter((log) => log.revisionId === revision.revisionId)),
         { since: deliveredOn, until: supersededOn && supersededOn < today ? supersededOn : today, today },
       );
       return {
@@ -279,7 +323,8 @@ export function studentSessionsFor(db: D1Database, userId: string) {
           .all<ProgressRevision>(),
         db
           .prepare(
-            `SELECT ws.revision_id AS revisionId, ws.performed_on AS performedOn, ws.workout_label AS workoutLabel
+            `SELECT ws.revision_id AS revisionId, ws.performed_on AS performedOn, ws.workout_label AS workoutLabel,
+               ws.occurrence_id AS occurrenceId
              FROM workout_sessions ws
              WHERE ws.student_id = ?2 AND ${linked("ws")}`,
           )
@@ -345,6 +390,7 @@ export function studentSessionsFor(db: D1Database, userId: string) {
         phaseIndex: row.phaseIndex,
         workoutLabel: row.workoutLabel,
         performedOn: row.performedOn,
+        occurrenceId: row.occurrenceId,
         effort: row.effort,
         painReported: Boolean(row.pain),
         notes: row.notes,
@@ -367,7 +413,7 @@ export function studentSessionsFor(db: D1Database, userId: string) {
       // The newest delivered revision of the plan, for a student this login is linked to.
       const target = await db
         .prepare(
-          `SELECT r.id AS revisionId, r.organization_id AS organizationId
+          `SELECT r.id AS revisionId, r.organization_id AS organizationId, r.prescription_model AS model
            FROM student_access sa
            JOIN students s ON s.organization_id = sa.organization_id AND s.id = sa.student_id
            JOIN training_plans p ON p.organization_id = s.organization_id AND p.student_id = s.id
@@ -378,17 +424,34 @@ export function studentSessionsFor(db: D1Database, userId: string) {
                                      WHERE x.plan_id = p.id AND x.state = 'DELIVERED')`,
         )
         .bind(userId, studentId, input.planId)
-        .first<{ revisionId: string; organizationId: string }>();
+        .first<{ revisionId: string; organizationId: string; model: "TEMPLATE" | "OCCURRENCE" }>();
       if (!target) return { status: "not_found" };
+      // OCCURRENCE revisions log one session of one week (0043); TEMPLATE revisions never name one.
+      const perOccurrence = target.model === "OCCURRENCE";
+      if (perOccurrence !== (input.occurrenceId !== null)) return { status: "invalid" };
 
-      const prescribed = await db
-        .prepare(
-          `SELECT id, name, position FROM prescribed_exercises
-           WHERE organization_id = ?1 AND revision_id = ?2 AND phase_index = ?3 AND workout_label = ?4`,
-        )
-        .bind(target.organizationId, target.revisionId, input.phaseIndex, input.workoutLabel)
-        .all<{ id: string; name: string; position: number }>();
-      if (prescribed.results.length === 0) return { status: "not_found" };
+      const prescribed = perOccurrence
+        ? await db
+            .prepare(
+              `SELECT pe.id, pe.name, pe.position
+               FROM plan_session_occurrences o
+               JOIN prescribed_exercise_occurrences x ON x.organization_id = o.organization_id AND x.occurrence_id = o.id
+                 AND x.included = 1
+               JOIN prescribed_exercises pe ON pe.organization_id = x.organization_id AND pe.id = x.prescribed_exercise_id
+                 AND pe.revision_id = o.revision_id
+               WHERE o.organization_id = ?1 AND o.revision_id = ?2 AND o.phase_index = ?3 AND o.workout_label = ?4
+                 AND o.id = ?5`,
+            )
+            .bind(target.organizationId, target.revisionId, input.phaseIndex, input.workoutLabel, input.occurrenceId)
+            .all<{ id: string; name: string; position: number }>()
+        : await db
+            .prepare(
+              `SELECT id, name, position FROM prescribed_exercises
+               WHERE organization_id = ?1 AND revision_id = ?2 AND phase_index = ?3 AND workout_label = ?4`,
+            )
+            .bind(target.organizationId, target.revisionId, input.phaseIndex, input.workoutLabel)
+            .all<{ id: string; name: string; position: number }>();
+      if (prescribed.results.length === 0) return { status: perOccurrence ? "invalid" : "not_found" };
       const byId = new Map(prescribed.results.map((exercise) => [exercise.id, exercise]));
       if (input.exercises.some((exercise) => !byId.has(exercise.prescribedExerciseId)))
         return { status: "invalid" };
@@ -396,13 +459,15 @@ export function studentSessionsFor(db: D1Database, userId: string) {
       const existing = await db
         .prepare(
           `SELECT id, pain_reported AS pain, created_at AS createdAt, logged_by_user_id AS loggedBy,
-             EXISTS (SELECT 1 FROM session_acknowledgements a WHERE a.session_id = workout_sessions.id) AS acknowledged
+             occurrence_id AS occurrenceId, EXISTS (SELECT 1 FROM session_acknowledgements a WHERE a.session_id = workout_sessions.id) AS acknowledged
            FROM workout_sessions
            WHERE student_id = ?1 AND revision_id = ?2 AND phase_index = ?3 AND workout_label = ?4
              AND performed_on = ?5`,
         )
         .bind(studentId, target.revisionId, input.phaseIndex, input.workoutLabel, input.performedOn)
-        .first<{ id: string; pain: number; createdAt: string; loggedBy: string; acknowledged: number }>();
+        .first<{ id: string; pain: number; createdAt: string; loggedBy: string; occurrenceId: string | null; acknowledged: number }>();
+      // One log per workout and day (0012). Another session of the week on the same day is a conflict, never a rewrite.
+      if (existing && existing.occurrenceId !== input.occurrenceId) return { status: "conflict", reason: "other_occurrence" };
       if (existing && (existing.loggedBy !== userId || existing.pain || existing.acknowledged || !withinWindow(existing.createdAt, now)))
         return { status: "locked" };
 
@@ -432,8 +497,8 @@ export function studentSessionsFor(db: D1Database, userId: string) {
             .prepare(
               `INSERT INTO workout_sessions
                  (id, organization_id, student_id, revision_id, phase_index, workout_label, performed_on,
-                  effort, pain_reported, notes, logged_by_user_id, created_at, updated_at)
-               SELECT ?2, s.organization_id, s.id, ?3, ?4, ?5, ?6, ?7, 0, ?8, ?1, ?9, ?9
+                  effort, pain_reported, notes, logged_by_user_id, created_at, updated_at, occurrence_id)
+               SELECT ?2, s.organization_id, s.id, ?3, ?4, ?5, ?6, ?7, 0, ?8, ?1, ?9, ?9, ?12
                FROM students s
                WHERE s.id = ?10 AND s.organization_id = ?11
                  AND EXISTS (SELECT 1 FROM student_access sa
@@ -442,7 +507,7 @@ export function studentSessionsFor(db: D1Database, userId: string) {
             )
             .bind(
               userId, sessionId, target.revisionId, input.phaseIndex, input.workoutLabel,
-              input.performedOn, input.effort, input.notes, stamp, studentId, target.organizationId,
+              input.performedOn, input.effort, input.notes, stamp, studentId, target.organizationId, input.occurrenceId,
             ),
         );
       }
@@ -467,13 +532,14 @@ export function studentSessionsFor(db: D1Database, userId: string) {
           statements.push(
             db
               .prepare(
-                `INSERT INTO session_sets (id, organization_id, session_exercise_id, set_number, reps, load_kg)
-                 SELECT ?3, ?4, ?5, ?6, ?7, ?8
+                `INSERT INTO session_sets (id, organization_id, session_exercise_id, set_number, reps, load_kg,
+                   rir, duration_seconds, distance_meters, load_basis)
+                 SELECT ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12
                  WHERE EXISTS (SELECT 1 FROM session_exercises se WHERE se.id = ?5 AND ${owned("se.session_id")})`,
               )
               .bind(
                 userId, sessionId, crypto.randomUUID(), target.organizationId, exerciseId, index + 1,
-                set.reps, set.loadKg,
+                set.reps, set.loadKg, set.rir, set.durationSeconds, set.distanceMeters, set.loadBasis,
               ),
           ),
         );
@@ -497,6 +563,7 @@ export function studentSessionsFor(db: D1Database, userId: string) {
         if (message.includes("UNIQUE")) return { status: "conflict" };
         if (message.includes("SESSION_REVISION_INVALID")) return { status: "not_found" };
         if (message.includes("SESSION_EXERCISE_INVALID")) return { status: "invalid" };
+        if (message.includes("SESSION_OCCURRENCE_INVALID")) return { status: "invalid" };
         throw error;
       }
       return { status: "saved", id: sessionId, created: !existing, painReported: input.painReported };
@@ -549,10 +616,14 @@ export interface PlannedDose {
   restText: string | null;
   rirMin: number | null;
   rirMax: number | null;
+  /** OCCURRENCE revisions: the dose text stored for that session (null when typed field by field). Absent for TEMPLATE. */
+  doseText?: string | null;
 }
 export interface ExecutionDetail extends ExecutionRow {
   studentId: string;
   notes: string | null;
+  /** The session of the week logged ("Semana 3, sessão 2"); null for TEMPLATE revisions. */
+  occurrence: { week: number; slot: number; plannedDate: string | null } | null;
   exercises: Array<SessionExerciseRow & { planned: PlannedDose }>;
   /** Prescribed exercises of the workout that the student did not log at all. */
   notLogged: string[];
@@ -589,8 +660,11 @@ export function executionFor(db: D1Database, context: AuthenticatedContext | nul
       AND ${activeUser("?2")} AND ${technicalAccessExists("s", "?2")})`;
   const rowColumns = `${summaryColumns}, p.title AS planTitle, r.revision_number AS revisionNumber,
     (SELECT COUNT(*) FROM session_exercises se WHERE se.session_id = ws.id AND se.done = 1) AS exercisesDone,
-    (SELECT COUNT(*) FROM prescribed_exercises pe WHERE pe.revision_id = ws.revision_id
-       AND pe.phase_index = ws.phase_index AND pe.workout_label = ws.workout_label) AS exercisesPlanned,
+    CASE WHEN ws.occurrence_id IS NULL
+      THEN (SELECT COUNT(*) FROM prescribed_exercises pe WHERE pe.revision_id = ws.revision_id
+              AND pe.phase_index = ws.phase_index AND pe.workout_label = ws.workout_label)
+      ELSE (SELECT COUNT(*) FROM prescribed_exercise_occurrences x WHERE x.organization_id = ws.organization_id
+              AND x.occurrence_id = ws.occurrence_id AND x.included = 1) END AS exercisesPlanned,
     (SELECT COUNT(*) FROM session_sets st JOIN session_exercises se ON se.id = st.session_exercise_id
        WHERE se.session_id = ws.id) AS setsLogged,
     (SELECT MAX(a.created_at) FROM session_acknowledgements a WHERE a.session_id = ws.id) AS acknowledgedAt`;
@@ -624,20 +698,35 @@ export function executionFor(db: D1Database, context: AuthenticatedContext | nul
         .bind(organizationId, userId, sessionId)
         .first<RawRow & { studentId: string; notes: string | null }>();
       if (!row) return null;
-      const [logged, planned, readings] = await Promise.all([
+      const [logged, planned, readings, occurrence] = await Promise.all([
         exercisesOf(db, [sessionId]),
-        db
-          .prepare(
-            `SELECT pe.id, pe.name, pe.position, pe.sets, pe.reps, pe.load_instruction AS loadInstruction,
-               pe.cadence, pe.rest_seconds AS restSeconds, pe.rest_text AS restText,
-               pe.rir_min AS rirMin, pe.rir_max AS rirMax
-             FROM workout_sessions ws
-             JOIN prescribed_exercises pe ON pe.revision_id = ws.revision_id
-               AND pe.phase_index = ws.phase_index AND pe.workout_label = ws.workout_label
-             WHERE ws.id = ?1 ORDER BY pe.position`,
-          )
-          .bind(sessionId)
-          .all<PlannedDose & { id: string; name: string; position: number }>(),
+        row.occurrenceId === null
+          ? db
+              .prepare(
+                `SELECT pe.id, pe.name, pe.position, pe.sets, pe.reps, pe.load_instruction AS loadInstruction,
+                   pe.cadence, pe.rest_seconds AS restSeconds, pe.rest_text AS restText,
+                   pe.rir_min AS rirMin, pe.rir_max AS rirMax
+                 FROM workout_sessions ws
+                 JOIN prescribed_exercises pe ON pe.organization_id = ws.organization_id AND pe.revision_id = ws.revision_id
+                   AND pe.phase_index = ws.phase_index AND pe.workout_label = ws.workout_label
+                 WHERE ws.organization_id = ?1 AND ws.id = ?2 ORDER BY pe.position`,
+              )
+              .bind(organizationId, sessionId)
+              .all<PlannedDose & { id: string; name: string; position: number }>()
+          : // What that session of the week foresaw: the doses stored for it (never the trace).
+            db
+              .prepare(
+                `SELECT pe.id, pe.name, pe.position, x.sets, x.reps, x.load_instruction AS loadInstruction,
+                   x.cadence, x.rest_seconds AS restSeconds, x.rest_text AS restText,
+                   x.rir_min AS rirMin, x.rir_max AS rirMax, x.dose_text AS doseText
+                 FROM workout_sessions ws
+                 JOIN prescribed_exercise_occurrences x ON x.organization_id = ws.organization_id
+                   AND x.occurrence_id = ws.occurrence_id AND x.included = 1
+                 JOIN prescribed_exercises pe ON pe.organization_id = x.organization_id AND pe.id = x.prescribed_exercise_id
+                 WHERE ws.organization_id = ?1 AND ws.id = ?2 ORDER BY pe.position`,
+              )
+              .bind(organizationId, sessionId)
+              .all<PlannedDose & { id: string; name: string; position: number }>(),
         db
           .prepare(
             `SELECT pr.display_name AS reviewerName, a.note, a.created_at AS createdAt
@@ -647,6 +736,15 @@ export function executionFor(db: D1Database, context: AuthenticatedContext | nul
           )
           .bind(organizationId, sessionId)
           .all<{ reviewerName: string | null; note: string | null; createdAt: string }>(),
+        row.occurrenceId === null
+          ? null
+          : db
+              .prepare(
+                `SELECT o.week_index AS week, o.slot_index AS slot, o.planned_date AS plannedDate
+                 FROM plan_session_occurrences o WHERE o.organization_id = ?1 AND o.id = ?2`,
+              )
+              .bind(organizationId, row.occurrenceId)
+              .first<{ week: number; slot: number; plannedDate: string | null }>(),
       ]);
       const plannedById = new Map(planned.results.map((item) => [item.id, item]));
       const exercises = (logged.get(sessionId) ?? []).map((exercise) => {
@@ -662,6 +760,7 @@ export function executionFor(db: D1Database, context: AuthenticatedContext | nul
             restText: item?.restText ?? null,
             rirMin: item?.rirMin ?? null,
             rirMax: item?.rirMax ?? null,
+            ...(row.occurrenceId === null ? {} : { doseText: item?.doseText ?? null }),
           },
         };
       });
@@ -670,6 +769,7 @@ export function executionFor(db: D1Database, context: AuthenticatedContext | nul
         ...shape(row),
         studentId: row.studentId,
         notes: row.notes,
+        occurrence: occurrence ?? null,
         exercises,
         notLogged: planned.results.filter((item) => !seen.has(item.id)).map((item) => item.name),
         acknowledgements: readings.results,
@@ -701,7 +801,8 @@ export function executionFor(db: D1Database, context: AuthenticatedContext | nul
           .all<ProgressRevision>(),
         db
           .prepare(
-            `SELECT ws.revision_id AS revisionId, ws.performed_on AS performedOn, ws.workout_label AS workoutLabel
+            `SELECT ws.revision_id AS revisionId, ws.performed_on AS performedOn, ws.workout_label AS workoutLabel,
+               ws.occurrence_id AS occurrenceId
              FROM workout_sessions ws
              WHERE ws.organization_id = ?1 AND ws.student_id = ?3 AND ${reach("ws")}`,
           )

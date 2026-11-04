@@ -1,4 +1,6 @@
 import { REQUEST_KIND_LABEL, outcomeLabel, type RequestKind, type RequestOutcome } from "./contracts";
+import { storedDoseText } from "@/modules/prescricao/describe";
+import type { LoadBasis } from "@/modules/execucao/contracts";
 
 /**
  * "Baixar meus dados": a copy of what the tool already shows the student, generated for the login
@@ -81,14 +83,42 @@ export interface ExportSession {
   notes: string | null;
   createdAt: string;
   read: boolean;
+  /** The session of the week logged (plans written session by session, 0043); absent or null otherwise. */
+  week?: number | null;
+  slot?: number | null;
   exercises: Array<{
     name: string;
     done: boolean;
     rir: number | null;
     pain: boolean;
     notes: string | null;
-    sets: Array<{ setNumber: number; reps: number | null; loadKg: number | null }>;
+    sets: ExportSet[];
   }>;
+}
+export interface ExportSet {
+  setNumber: number;
+  reps: number | null;
+  loadKg: number | null;
+  /** Optional fields the student may type (0043); null is "not informed". */
+  rir?: number | null;
+  durationSeconds?: number | null;
+  distanceMeters?: number | null;
+  loadBasis?: LoadBasis | null;
+}
+export interface ExportPlanExercise {
+  name: string;
+  videoUrl: string | null;
+  sets: string | null;
+  reps: string | null;
+  loadInstruction: string | null;
+  cadence: string | null;
+  restSeconds: number | null;
+  restText: string | null;
+  rirMin: number | null;
+  rirMax: number | null;
+  notes: string | null;
+  /** Plans written session by session: the dose text stored for it; absent otherwise. */
+  doseText?: string | null;
 }
 export interface ExportPlan {
   title: string;
@@ -113,18 +143,20 @@ export interface ExportPlan {
       label: string;
       /** Free name of a v2 workout; absent or null for v1. */
       name?: string | null;
-      exercises: Array<{
-        name: string;
-        videoUrl: string | null;
-        sets: string | null;
-        reps: string | null;
-        loadInstruction: string | null;
-        cadence: string | null;
-        restSeconds: number | null;
-        restText: string | null;
-        rirMin: number | null;
-        rirMax: number | null;
-        notes: string | null;
+      exercises: ExportPlanExercise[];
+    }>;
+    /** Plans written session by session (motor S8): every week with its sessions and stored doses. Absent otherwise. */
+    weeksDetail?: Array<{
+      index: number;
+      startDate: string;
+      endDate: string;
+      sessions: Array<{
+        week: number;
+        slot: number;
+        label: string;
+        name: string | null;
+        plannedDate: string | null;
+        exercises: ExportPlanExercise[];
       }>;
     }>;
   }>;
@@ -137,6 +169,34 @@ export interface ExportRequest {
   outcome: RequestOutcome | null;
   outcomeNote: string | null;
   decidedAt: string | null;
+}
+
+/** The optional per-set fields, only those the student typed, so a set without them keeps the keys it always had. */
+function setExtras(set: ExportSet) {
+  return {
+    ...(set.rir !== null && set.rir !== undefined ? { repeticoesEmReserva: set.rir } : {}),
+    ...(set.durationSeconds !== null && set.durationSeconds !== undefined ? { duracaoSegundos: set.durationSeconds } : {}),
+    ...(set.distanceMeters !== null && set.distanceMeters !== undefined ? { distanciaMetros: set.distanceMeters } : {}),
+    ...(set.loadBasis ? { cargaContadaComo: set.loadBasis } : {}),
+  };
+}
+
+/** One delivered exercise. Plans written session by session also carry the stored dose text, as the student reads it. */
+function planExercise(exercise: ExportPlanExercise) {
+  return {
+    nome: exercise.name,
+    video: exercise.videoUrl,
+    series: exercise.sets,
+    repeticoes: exercise.reps,
+    carga: exercise.loadInstruction,
+    cadencia: exercise.cadence,
+    descansoSegundos: exercise.restSeconds,
+    descansoTexto: exercise.restText,
+    repeticoesEmReservaMinimo: exercise.rirMin,
+    repeticoesEmReservaMaximo: exercise.rirMax,
+    observacoes: exercise.notes,
+    ...(exercise.doseText !== undefined ? { dose: storedDoseText(exercise) || null } : {}),
+  };
 }
 
 /**
@@ -191,6 +251,8 @@ export function buildExport(source: ExportSource) {
           observacoes: item.notes,
           registradoEm: item.createdAt,
           lidoPeloProfissional: item.read,
+          // Only for a session of the week (0043), so the file of a plan with one dose per phase keeps its keys.
+          ...(item.week ? { semana: item.week, sessao: item.slot ?? null } : {}),
           exercicios: item.exercises.map((exercise) => ({
             nome: exercise.name,
             feito: exercise.done,
@@ -201,6 +263,7 @@ export function buildExport(source: ExportSource) {
               numero: set.setNumber,
               repeticoes: set.reps,
               cargaKg: set.loadKg,
+              ...setExtras(set),
             })),
           })),
         })),
@@ -225,20 +288,25 @@ export function buildExport(source: ExportSource) {
           treinos: phase.workouts.map((workout) => ({
             treino: workout.label,
             ...(workout.name ? { nome: workout.name } : {}),
-            exercicios: workout.exercises.map((exercise) => ({
-              nome: exercise.name,
-              video: exercise.videoUrl,
-              series: exercise.sets,
-              repeticoes: exercise.reps,
-              carga: exercise.loadInstruction,
-              cadencia: exercise.cadence,
-              descansoSegundos: exercise.restSeconds,
-              descansoTexto: exercise.restText,
-              repeticoesEmReservaMinimo: exercise.rirMin,
-              repeticoesEmReservaMaximo: exercise.rirMax,
-              observacoes: exercise.notes,
-            })),
+            exercicios: workout.exercises.map(planExercise),
           })),
+          ...(phase.weeksDetail
+            ? {
+                // "semanas" is the count of weeks (kept as it was); the weeks themselves go here.
+                semanasDoTreino: phase.weeksDetail.map((week) => ({
+                  semana: week.index,
+                  inicio: week.startDate,
+                  fim: week.endDate,
+                  sessoes: week.sessions.map((session) => ({
+                    sessao: session.slot,
+                    treino: session.label,
+                    ...(session.name ? { nome: session.name } : {}),
+                    dataPrevista: session.plannedDate,
+                    exercicios: session.exercises.map(planExercise),
+                  })),
+                })),
+              }
+            : {}),
         })),
       })),
       pedidosSobreMeusDados: {

@@ -92,6 +92,8 @@ afterAll(async () => {
 
 describe("the contract of a log", () => {
   it("keeps only what the student did, noted or reported, and never invents a number", () => {
+    // The optional per-set fields of 0043 are never filled in: not typed is null.
+    const noExtras = { rir: null, durationSeconds: null, distanceMeters: null, loadBasis: null };
     const parsed = parseSession(
       log("p", [
         { prescribedExerciseId: "a", done: true, rir: 2, sets: [{ reps: 10, loadKg: 22.54 }, {}, { reps: 8 }] },
@@ -102,7 +104,7 @@ describe("the contract of a log", () => {
       TODAY,
     );
     expect(parsed.exercises).toEqual([
-      { prescribedExerciseId: "a", done: true, rir: 2, pain: false, notes: null, sets: [{ reps: 10, loadKg: 22.5 }, { reps: 8, loadKg: null }] },
+      { prescribedExerciseId: "a", done: true, rir: 2, pain: false, notes: null, sets: [{ reps: 10, loadKg: 22.5, ...noExtras }, { reps: 8, loadKg: null, ...noExtras }] },
       { prescribedExerciseId: "c", done: false, rir: null, pain: true, notes: "ombro", sets: [] },
     ]);
     expect(parsed.painReported).toBe(true);

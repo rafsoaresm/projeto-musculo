@@ -28,3 +28,9 @@ export function describeDose(item: DoseFields): string {
   else if (item.rirMax !== null) parts.push(`RIR até ${item.rirMax}`);
   return parts.join(" · ");
 }
+
+/**
+ * What a reader prints for one dose (motor S8, design §5.2): the text stored when the dose was written (an engine dose, a
+ * structured one), or the typed fields in one line, as for every dose before 0041. Never re-rendered from a structured dose.
+ */
+export const storedDoseText = (item: DoseFields & { doseText?: string | null }): string => item.doseText?.trim() || describeDose(item);

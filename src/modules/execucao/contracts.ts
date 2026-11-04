@@ -34,6 +34,19 @@ const whole = (min: number, max: number) =>
     .nullish()
     .transform((value) => value ?? null);
 
+/** How a load typed by the student was counted (0043). Optional, never filled in. */
+export const LOAD_BASES = ["TOTAL", "PER_HAND", "PER_SIDE", "MACHINE_STACK", "BODYWEIGHT", "ASSISTANCE", "NONE"] as const;
+export type LoadBasis = (typeof LOAD_BASES)[number];
+export const LOAD_BASIS_LABEL: Record<LoadBasis, string> = {
+  TOTAL: "Total",
+  PER_HAND: "Por mão",
+  PER_SIDE: "Por lado",
+  MACHINE_STACK: "Placas da máquina",
+  BODYWEIGHT: "Peso do corpo",
+  ASSISTANCE: "Assistência",
+  NONE: "Sem carga",
+};
+
 const setSchema = z
   .object({
     reps: whole(0, 999),
@@ -44,6 +57,16 @@ const setSchema = z
       .max(1000)
       .nullish()
       .transform((value) => (value === null || value === undefined ? null : Math.round(value * 10) / 10)),
+    // Optional per-set fields of 0043 (decided 04/11/2026, Q7: optional and collapsed). Absent is "not informed", never 0.
+    rir: whole(0, 10),
+    durationSeconds: whole(0, 86_400),
+    distanceMeters: z
+      .number()
+      .min(0)
+      .max(1_000_000)
+      .nullish()
+      .transform((value) => (value === null || value === undefined ? null : Math.round(value * 10) / 10)),
+    loadBasis: z.enum(LOAD_BASES).nullish().transform((value) => value ?? null),
   })
   .strict();
 
@@ -64,6 +87,13 @@ export const daysBetween = (from: string, to: string) =>
 const sessionSchema = z
   .object({
     planId: z.string().min(1).max(64),
+    /** The session of the week being logged: required for OCCURRENCE revisions, refused for TEMPLATE ones (0043). */
+    occurrenceId: z
+      .string()
+      .min(1)
+      .max(64)
+      .nullish()
+      .transform((value) => value ?? null),
     phaseIndex: z.number().int().min(1).max(12),
     workoutLabel: z.string().trim().min(1).max(20),
     performedOn: z
@@ -80,8 +110,17 @@ const sessionSchema = z
   })
   .strict();
 
+export interface SetInput {
+  reps: number | null;
+  loadKg: number | null;
+  rir: number | null;
+  durationSeconds: number | null;
+  distanceMeters: number | null;
+  loadBasis: LoadBasis | null;
+}
 export interface SessionInput {
   planId: string;
+  occurrenceId: string | null;
   phaseIndex: number;
   workoutLabel: string;
   performedOn: string;
@@ -95,9 +134,13 @@ export interface SessionInput {
     rir: number | null;
     pain: boolean;
     notes: string | null;
-    sets: Array<{ reps: number | null; loadKg: number | null }>;
+    sets: SetInput[];
   }>;
 }
+
+/** A set row is kept when the student typed anything in it. */
+const typedSomething = (set: SetInput) =>
+  set.reps !== null || set.loadKg !== null || set.rir !== null || set.durationSeconds !== null || set.distanceMeters !== null;
 
 /**
  * `today` is the calendar day in the student's zone. A row only exists for an exercise the student
@@ -124,12 +167,13 @@ export function parseSession(raw: unknown, today: string): SessionInput {
       pain: exercise.pain,
       notes: exercise.notes,
       sets: exercise.done
-        ? exercise.sets.filter((set) => set.reps !== null || set.loadKg !== null)
+        ? exercise.sets.filter(typedSomething)
         : [],
     }))
     .filter((exercise) => exercise.done || exercise.pain || exercise.notes);
   return {
     planId: parsed.planId,
+    occurrenceId: parsed.occurrenceId,
     phaseIndex: parsed.phaseIndex,
     workoutLabel: parsed.workoutLabel,
     performedOn: parsed.performedOn,
@@ -148,4 +192,47 @@ export const todayInBrazil = (now = new Date()) =>
 export function parseLoadText(value: string): number | null {
   const plain = value.trim().replace(",", ".");
   return /^\d{1,4}(\.\d{1,2})?$/.test(plain) ? Number(plain) : null;
+}
+
+/**
+ * The optional per-set fields the student typed (0043), in words, for the screens and the copy of the data: "RIR 2 · 45 s · 400 m ·
+ * carga por mão". Empty when none was typed (nothing is said, never 0).
+ */
+export function setExtrasText(set: {
+  rir?: number | null;
+  durationSeconds?: number | null;
+  distanceMeters?: number | null;
+  loadBasis?: LoadBasis | null;
+}): string {
+  const number = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
+  return [
+    set.rir !== null && set.rir !== undefined ? `RIR ${set.rir}` : null,
+    set.durationSeconds !== null && set.durationSeconds !== undefined ? `${set.durationSeconds} s` : null,
+    set.distanceMeters !== null && set.distanceMeters !== undefined ? `${number.format(set.distanceMeters)} m` : null,
+    set.loadBasis ? `carga: ${LOAD_BASIS_LABEL[set.loadBasis].toLowerCase()}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/** Optional per-set fields offered to the student (Q7: optional, collapsed). */
+export type ExtraSetField = "rir" | "durationSeconds" | "distanceMeters" | "loadBasis";
+
+/**
+ * Which optional per-set fields the form offers for one exercise, from the metric of its stored dose (0043). TEMPLATE revisions offer
+ * none (their form stays as it was). A session dose without a structured metric (typed by the professional) is read as repetitions.
+ */
+export function extraSetFields(perSession: boolean, metric: string | null | undefined): ExtraSetField[] {
+  if (!perSession) return [];
+  switch (metric) {
+    case "TIME":
+      return ["durationSeconds", "rir"];
+    case "DISTANCE":
+      return ["distanceMeters", "durationSeconds"];
+    case "INTERVALS":
+    case "CONTINUOUS":
+      return ["durationSeconds", "distanceMeters"];
+    default:
+      return ["rir", "loadBasis"];
+  }
 }

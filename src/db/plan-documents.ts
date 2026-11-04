@@ -59,7 +59,7 @@ export function planDocumentsFor(db: D1Database, context: AuthenticatedContext |
              r.revision_number AS revisionNumber, r.delivered_at AS deliveredAt,
              r.delivered_by_name AS deliveredBy, r.delivered_organization_name AS deliveredOrganizationName,
              r.start_date AS startDate, r.end_date AS endDate, r.schedule_json AS scheduleJson,
-             s.id AS studentId, s.display_name AS studentName, o.name AS organizationName
+             r.prescription_model AS prescriptionModel, s.id AS studentId, s.display_name AS studentName, o.name AS organizationName
            FROM training_plans p
            JOIN plan_revisions r ON r.organization_id = p.organization_id AND r.plan_id = p.id
            JOIN students s ON s.organization_id = p.organization_id AND s.id = p.student_id

@@ -1,6 +1,7 @@
 import { RECOVERY_LABELS } from "@/modules/checkin/contracts";
 import { formatCalendarDate, workoutTitle } from "@/modules/training/format";
 import { REQUEST_KIND_LABEL, outcomeLabel } from "./contracts";
+import { setExtrasText } from "@/modules/execucao/contracts";
 import {
   EXPORT_CHECKIN_LIMIT,
   EXPORT_INCLUDED,
@@ -106,7 +107,8 @@ function checkinBlocks(item: ExportCheckin): ReadableBlock[] {
 function setLine(set: ExportSession["exercises"][number]["sets"][number]): string {
   const reps = set.reps === null ? "repetições não informadas" : plural(set.reps, "repetição", "repetições");
   const load = set.loadKg === null ? "carga não informada" : `${decimal(set.loadKg)} kg`;
-  return `Série ${set.setNumber}: ${reps} · ${load}`;
+  const extras = setExtrasText(set);
+  return `Série ${set.setNumber}: ${reps} · ${load}${extras ? ` · ${extras}` : ""}`;
 }
 
 function sessionBlocks(item: ExportSession): ReadableBlock[] {
@@ -115,7 +117,7 @@ function sessionBlocks(item: ExportSession): ReadableBlock[] {
     {
       kind: "facts",
       rows: [
-        row("Plano", `${item.planTitle} · fase ${item.phaseIndex}`),
+        row("Plano", `${item.planTitle} · fase ${item.phaseIndex}${item.week ? ` · semana ${item.week}, sessão ${item.slot ?? "?"}` : ""}`),
         row("Esforço percebido", item.effort === null ? NOT_INFORMED : `${item.effort} de 10`),
         row("Dor registrada", yesNo(item.painReported)),
         row("Observações", textOr(item.notes)),
@@ -153,6 +155,8 @@ function planExerciseLines(exercise: PlanExercise): string {
     .filter(Boolean)
     .join(" · ");
   return [
+    // A plan written session by session: the dose as the student reads it, then each field.
+    ...(exercise.doseText !== undefined && exercise.doseText ? [`Dose: ${exercise.doseText}`] : []),
     `Séries: ${textOr(exercise.sets, NOT_DEFINED)}`,
     `Repetições: ${textOr(exercise.reps, NOT_DEFINED)}`,
     `Carga: ${textOr(exercise.loadInstruction, NOT_DEFINED)}`,
@@ -185,6 +189,27 @@ function planBlocks(plan: ExportPlan): ReadableBlock[] {
         `${plural(phase.weeks, "semana", "semanas")} · ${plural(phase.sessionsPerWeek, "sessão", "sessões")} por semana · ` +
         `divisão ${phase.split}`,
     });
+    if (phase.weeksDetail) {
+      // Written session by session: every week and session with its stored doses.
+      for (const week of phase.weeksDetail)
+        for (const session of week.sessions) {
+          blocks.push({
+            kind: "heading",
+            text: `Semana ${week.index}, sessão ${session.slot} · ${workoutTitle(session.label, session.name)}${
+              session.plannedDate ? ` · ${formatCalendarDate(session.plannedDate)}` : ""
+            }`,
+          });
+          if (session.exercises.length === 0) {
+            blocks.push({ kind: "text", text: "Nenhum exercício nesta sessão.", muted: true });
+            continue;
+          }
+          blocks.push({
+            kind: "facts",
+            rows: session.exercises.map((exercise, index) => row(`${index + 1}. ${exercise.name}`, planExerciseLines(exercise))),
+          });
+        }
+      continue;
+    }
     for (const workout of phase.workouts) {
       // "Treino A", then "1.", "2." as the plan PDF numbers them.
       blocks.push({ kind: "heading", text: workoutTitle(workout.label, workout.name) });

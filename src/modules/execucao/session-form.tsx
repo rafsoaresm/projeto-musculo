@@ -6,7 +6,16 @@ import { Plus, Trash2 } from "lucide-react";
 import { Notice } from "@/components/ui";
 import type { StudentSession } from "@/db/workout-sessions";
 import { deleteSession, saveSession } from "./actions";
-import { MAX_SETS, PAIN_ADVICE, PAIN_SAVED_TEXT, parseLoadText } from "./contracts";
+import {
+  LOAD_BASES,
+  LOAD_BASIS_LABEL,
+  MAX_SETS,
+  PAIN_ADVICE,
+  PAIN_SAVED_TEXT,
+  parseLoadText,
+  type ExtraSetField,
+  type LoadBasis,
+} from "./contracts";
 
 export interface LoggableExercise {
   id: string;
@@ -16,12 +25,19 @@ export interface LoggableExercise {
   notes: string | null;
   /** What the student typed the last time, as a reference. Never filled into a field. */
   last: string | null;
+  /** Optional per-set fields offered, collapsed (sessions of the week only; none for plans with one dose per phase). */
+  extraFields?: ExtraSetField[];
 }
 
 interface SetDraft {
   reps: string;
   load: string;
+  rir: string;
+  duration: string;
+  distance: string;
+  loadBasis: string;
 }
+const blankSet = (): SetDraft => ({ reps: "", load: "", rir: "", duration: "", distance: "", loadBasis: "" });
 interface ExerciseDraft {
   done: boolean;
   sets: SetDraft[];
@@ -33,7 +49,7 @@ interface ExerciseDraft {
 const emptySets = (prescribed: string | null): SetDraft[] => {
   // Only the number of empty rows follows the prescription: no repetition or load is ever filled in.
   const count = prescribed && /^\d{1,2}$/.test(prescribed.trim()) ? Number(prescribed.trim()) : 1;
-  return Array.from({ length: Math.max(1, Math.min(count, MAX_SETS)) }, () => ({ reps: "", load: "" }));
+  return Array.from({ length: Math.max(1, Math.min(count, MAX_SETS)) }, blankSet);
 };
 
 const loadText = (value: number | null) => (value === null ? "" : String(value).replace(".", ","));
@@ -54,6 +70,7 @@ export function SessionForm({
   initial,
   today,
   oldest,
+  occurrenceId = null,
 }: {
   studentId: string;
   planId: string;
@@ -66,6 +83,8 @@ export function SessionForm({
   initial: StudentSession | null;
   today: string;
   oldest: string;
+  /** The session of the week being logged, for plans written session by session; null otherwise. */
+  occurrenceId?: string | null;
 }) {
   const router = useRouter();
   const [performedOn, setPerformedOn] = useState(initial?.performedOn ?? today);
@@ -80,7 +99,14 @@ export function SessionForm({
           ? {
               done: saved.done,
               sets: saved.sets.length
-                ? saved.sets.map((set) => ({ reps: set.reps === null ? "" : String(set.reps), load: loadText(set.loadKg) }))
+                ? saved.sets.map((set) => ({
+                    reps: set.reps === null ? "" : String(set.reps),
+                    load: loadText(set.loadKg),
+                    rir: set.rir === null || set.rir === undefined ? "" : String(set.rir),
+                    duration: set.durationSeconds === null || set.durationSeconds === undefined ? "" : String(set.durationSeconds),
+                    distance: loadText(set.distanceMeters ?? null),
+                    loadBasis: set.loadBasis ?? "",
+                  }))
                 : emptySets(prescribedSets[exercise.id] ?? null),
               rir: saved.rir === null ? "" : String(saved.rir),
               pain: saved.pain,
@@ -126,7 +152,26 @@ export function SessionForm({
           return { ok: false, problem: `${exercise.name}, série ${index + 1}: use só números inteiros nas repetições.` };
         if (set.load.trim() !== "" && load === null)
           return { ok: false, problem: `${exercise.name}, série ${index + 1}: confira a carga (por exemplo 22,5).` };
-        sets.push({ reps, loadKg: load });
+        if (!exercise.extraFields?.length) {
+          sets.push({ reps, loadKg: load });
+          continue;
+        }
+        const durationText = set.duration.trim();
+        const duration = durationText === "" ? null : /^\d{1,5}$/.test(durationText) ? Number(durationText) : undefined;
+        if (duration === undefined || (duration !== null && duration > 86_400))
+          return { ok: false, problem: `${exercise.name}, série ${index + 1}: use só segundos inteiros na duração.` };
+        const distanceText = set.distance.trim().replace(",", ".");
+        const distance = distanceText === "" ? null : /^\d{1,7}(\.\d{1,2})?$/.test(distanceText) ? Number(distanceText) : null;
+        if ((distanceText !== "" && distance === null) || (distance !== null && distance > 1_000_000))
+          return { ok: false, problem: `${exercise.name}, série ${index + 1}: confira a distância em metros (por exemplo 400).` };
+        sets.push({
+          reps,
+          loadKg: load,
+          rir: set.rir === "" ? null : Number(set.rir),
+          durationSeconds: duration,
+          distanceMeters: distance,
+          loadBasis: set.loadBasis === "" ? null : (set.loadBasis as LoadBasis),
+        });
       }
       built.push({
         prescribedExerciseId: exercise.id,
@@ -141,6 +186,7 @@ export function SessionForm({
       ok: true,
       value: {
         planId,
+        ...(occurrenceId ? { occurrenceId } : {}),
         phaseIndex,
         workoutLabel,
         performedOn,
@@ -262,6 +308,62 @@ export function SessionForm({
                           onChange={(event) => updateSet(exercise.id, index, { load: event.target.value })}
                         />
                       </label>
+                      {exercise.extraFields && exercise.extraFields.length > 0 && (
+                        <details className="set-extras">
+                          <summary>Mais detalhes da série {index + 1} (opcional)</summary>
+                          {exercise.extraFields.includes("rir") && (
+                            <label>
+                              Repetições que sobraram (RIR)
+                              <select value={set.rir} onChange={(event) => updateSet(exercise.id, index, { rir: event.target.value })}>
+                                <option value="">Não informar</option>
+                                {Array.from({ length: 11 }, (_, value) => (
+                                  <option key={value} value={value}>
+                                    {value}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          )}
+                          {exercise.extraFields.includes("durationSeconds") && (
+                            <label>
+                              Duração (segundos)
+                              <input
+                                value={set.duration}
+                                inputMode="numeric"
+                                maxLength={5}
+                                onChange={(event) => updateSet(exercise.id, index, { duration: event.target.value })}
+                              />
+                            </label>
+                          )}
+                          {exercise.extraFields.includes("distanceMeters") && (
+                            <label>
+                              Distância (metros)
+                              <input
+                                value={set.distance}
+                                inputMode="decimal"
+                                maxLength={9}
+                                onChange={(event) => updateSet(exercise.id, index, { distance: event.target.value })}
+                              />
+                            </label>
+                          )}
+                          {exercise.extraFields.includes("loadBasis") && (
+                            <label>
+                              Como a carga foi contada
+                              <select
+                                value={set.loadBasis}
+                                onChange={(event) => updateSet(exercise.id, index, { loadBasis: event.target.value })}
+                              >
+                                <option value="">Não informar</option>
+                                {LOAD_BASES.map((basis) => (
+                                  <option key={basis} value={basis}>
+                                    {LOAD_BASIS_LABEL[basis]}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          )}
+                        </details>
+                      )}
                       <button
                         type="button"
                         className="button danger-outline small"
@@ -278,7 +380,7 @@ export function SessionForm({
                     type="button"
                     className="button secondary small"
                     disabled={draft.sets.length >= MAX_SETS}
-                    onClick={() => update(exercise.id, { sets: [...draft.sets, { reps: "", load: "" }] })}
+                    onClick={() => update(exercise.id, { sets: [...draft.sets, blankSet()] })}
                   >
                     <Plus size={16} /> Adicionar série
                   </button>

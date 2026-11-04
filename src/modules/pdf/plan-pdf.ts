@@ -8,7 +8,7 @@ import {
   type PDFPage,
 } from "pdf-lib";
 import type { StudentExercise, StudentTrainingPlan } from "@/db/student-plan";
-import { describeDose } from "@/modules/prescricao/describe";
+import { storedDoseText } from "@/modules/prescricao/describe";
 import { divisionSuffix, formatCalendarDate, phaseTitle, workoutTitle } from "@/modules/training/format";
 
 /**
@@ -109,7 +109,7 @@ export function safeLink(url: string | null): string | null {
  * not part of it, so a rename does not make a different version of the same revision.
  */
 export async function planFingerprint(plan: StudentTrainingPlan): Promise<string> {
-  const canonical = JSON.stringify([
+  const canonical = plan.prescriptionModel === "OCCURRENCE" ? occurrenceCanonical(plan) : JSON.stringify([
     plan.revisionId,
     plan.title,
     plan.revisionNumber,
@@ -147,6 +147,60 @@ export async function planFingerprint(plan: StudentTrainingPlan): Promise<string
   ]);
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+const exerciseTuple = (exercise: StudentExercise) => [
+  exercise.name,
+  exercise.videoUrl,
+  exercise.videoStatus,
+  exercise.sets,
+  exercise.reps,
+  exercise.loadInstruction,
+  exercise.cadence,
+  exercise.restSeconds,
+  exercise.restText,
+  exercise.rirMin,
+  exercise.rirMax,
+  exercise.notes,
+  exercise.doseText ?? null,
+];
+
+/**
+ * The fingerprint of a revision written session by session (motor S8): every stored dose of every session, under a "v2" marker so it
+ * can never equal the fingerprint of a TEMPLATE revision. Stored text only, as printed.
+ */
+function occurrenceCanonical(plan: StudentTrainingPlan): string {
+  return JSON.stringify([
+    "v2",
+    plan.revisionId,
+    plan.title,
+    plan.revisionNumber,
+    plan.deliveredAt,
+    plan.startDate,
+    plan.endDate,
+    plan.phases.map((phase) => [
+      phase.index,
+      phase.startDate,
+      phase.endDate,
+      phase.weeks,
+      phase.sessionsPerWeek,
+      phase.split,
+      phase.name ?? null,
+      (phase.weeksDetail ?? []).map((week) => [
+        week.index,
+        week.startDate,
+        week.endDate,
+        week.sessions.map((session) => [
+          session.week,
+          session.slot,
+          session.label,
+          session.name,
+          session.plannedDate,
+          session.exercises.map(exerciseTuple),
+        ]),
+      ]),
+    ]),
+  ]);
 }
 
 export const dateTimeBR = (date: Date) =>
@@ -213,7 +267,7 @@ function exerciseHeight(exercise: StudentExercise, flow: Flow): number {
   const dose = wrap(
     flow.regular,
     9.5,
-    printable(flow.regular, describeDose(exercise) || "Sem parâmetros definidos"),
+    printable(flow.regular, storedDoseText(exercise) || "Sem parâmetros definidos"),
     CONTENT_WIDTH - 18,
   );
   const notes = exercise.notes
@@ -232,7 +286,7 @@ function drawExercise(flow: Flow, exercise: StudentExercise, number: number) {
     flow.text(line, x, 10.5, flow.bold);
     flow.y -= 13;
   }
-  const dose = describeDose(exercise) || "Sem parâmetros definidos";
+  const dose = storedDoseText(exercise) || "Sem parâmetros definidos";
   for (const line of wrap(flow.regular, 9.5, printable(flow.regular, dose), width)) {
     flow.text(line, x, 9.5, flow.regular, MUTED);
     flow.y -= 12;
@@ -257,6 +311,38 @@ function drawExercise(flow: Flow, exercise: StudentExercise, number: number) {
     flow.y -= 12;
   }
   flow.y -= 8;
+}
+
+/** A revision written session by session: every week, every session with its stored doses, in order. */
+function drawWeeks(flow: Flow, phase: StudentTrainingPlan["phases"][number]) {
+  for (const week of phase.weeksDetail ?? []) {
+    const first = week.sessions[0]?.exercises[0];
+    flow.need(16 + 18 + (first ? exerciseHeight(first, flow) : 16));
+    flow.text(
+      `Semana ${week.index} · ${formatCalendarDate(week.startDate)} a ${formatCalendarDate(week.endDate)}`,
+      MARGIN,
+      10.5,
+      flow.bold,
+      BRAND,
+    );
+    flow.y -= 16;
+    if (week.sessions.length === 0) {
+      flow.text("Nenhuma sessão nesta semana.", MARGIN + 18, 9.5, flow.regular, MUTED);
+      flow.y -= 16;
+    }
+    for (const session of week.sessions) {
+      flow.need(18 + (session.exercises[0] ? exerciseHeight(session.exercises[0], flow) : 16));
+      const when = session.plannedDate ? ` · ${formatCalendarDate(session.plannedDate)}` : "";
+      flow.text(`Sessão ${session.slot} · ${workoutTitle(session.label, session.name)}${when}`, MARGIN, 11, flow.bold, INK);
+      flow.y -= 17;
+      if (session.exercises.length === 0) {
+        flow.text("Nenhum exercício nesta sessão.", MARGIN + 18, 9.5, flow.regular, MUTED);
+        flow.y -= 16;
+      }
+      session.exercises.forEach((exercise, index) => drawExercise(flow, exercise, index + 1));
+      flow.y -= 4;
+    }
+  }
 }
 
 export async function renderPlanPdf(input: PlanPdfInput): Promise<Uint8Array> {
@@ -319,7 +405,8 @@ export async function renderPlanPdf(input: PlanPdfInput): Promise<Uint8Array> {
   // Phases, workouts, exercises.
   for (const phase of plan.phases) {
     const firstWorkout = phase.workouts[0];
-    const firstExercise = firstWorkout?.exercises[0];
+    const firstExercise =
+      plan.prescriptionModel === "OCCURRENCE" ? phase.weeksDetail?.[0]?.sessions[0]?.exercises[0] : firstWorkout?.exercises[0];
     flow.need(
       34 + 22 + (firstExercise ? exerciseHeight(firstExercise, flow) : 16),
     );
@@ -352,6 +439,11 @@ export async function renderPlanPdf(input: PlanPdfInput): Promise<Uint8Array> {
         flow.y -= 13;
       }
       flow.y -= 8;
+    }
+    if (plan.prescriptionModel === "OCCURRENCE") {
+      drawWeeks(flow, phase);
+      flow.y -= 6;
+      continue;
     }
     for (const workout of phase.workouts) {
       flow.need(18 + (workout.exercises[0] ? exerciseHeight(workout.exercises[0], flow) : 16));
