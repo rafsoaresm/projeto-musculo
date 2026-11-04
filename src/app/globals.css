@@ -7536,6 +7536,10 @@ fieldset.yes-no legend {
 }
 .page-heading .heading-actions {
   justify-content: flex-end;
+  flex-shrink: 0;
+}
+.picker-list {
+  margin: 0 0 24px;
 }
 .step-link {
   display: inline-flex;
@@ -7668,6 +7672,10 @@ fieldset.yes-no legend {
   padding: 0 22px 22px;
 }
 @media (max-width: 640px) {
+  .page-heading .heading-actions {
+    justify-content: flex-start;
+    flex-shrink: 1;
+  }
   .picker-search {
     grid-template-columns: 1fr;
   }

@@ -138,47 +138,43 @@ export function PrescriptionEditor({
           {notice}
         </p>
       )}
-      {!readOnly && !items.some((item) => item.phaseIndex === current.index) && (
+      {!readOnly &&
+        !items.some((item) => item.phaseIndex === current.index) &&
+        schedule.phases.some((other) => items.some((item) => item.phaseIndex === other.index)) && (
         <div className="copy-phase">
-          {schedule.phases
-            .filter((other) => items.some((item) => item.phaseIndex === other.index))
-            .length > 0 && (
-            <>
-              <label>
-                Copiar o mesociclo de outra fase
-                <select
-                  value={copyFromPhase}
-                  onChange={(event) => setCopyFromPhase(event.target.value)}
-                >
-                  <option value="">Escolha…</option>
-                  {schedule.phases
-                    .filter((other) => other.index !== current.index)
-                    .filter((other) => items.some((item) => item.phaseIndex === other.index))
-                    .map((other) => (
-                      <option key={other.index} value={other.index}>
-                        Fase {String(other.index).padStart(2, "0")} (
-                        {items.filter((item) => item.phaseIndex === other.index).length}{" "}
-                        exercícios)
-                      </option>
-                    ))}
-                </select>
-              </label>
-              <button
-                type="button"
-                className="button secondary small"
-                disabled={pending || !copyFromPhase}
-                onClick={() =>
-                  run(
-                    () =>
-                      copyMesocycle(planId, revisionId, Number(copyFromPhase), current.index),
-                    () => setCopyFromPhase(""),
-                  )
-                }
-              >
-                Copiar mesociclo
+          <label>
+            Copiar o mesociclo de outra fase
+            <select
+              value={copyFromPhase}
+              onChange={(event) => setCopyFromPhase(event.target.value)}
+            >
+              <option value="">Escolha…</option>
+              {schedule.phases
+                .filter((other) => other.index !== current.index)
+                .filter((other) => items.some((item) => item.phaseIndex === other.index))
+                .map((other) => (
+                  <option key={other.index} value={other.index}>
+                    Fase {String(other.index).padStart(2, "0")} (
+                    {items.filter((item) => item.phaseIndex === other.index).length}{" "}
+                    exercícios)
+                  </option>
+                ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            className="button secondary small"
+            disabled={pending || !copyFromPhase}
+            onClick={() =>
+              run(
+                () =>
+                  copyMesocycle(planId, revisionId, Number(copyFromPhase), current.index),
+                () => setCopyFromPhase(""),
+              )
+            }
+          >
+            Copiar mesociclo
               </button>
-            </>
-          )}
         </div>
       )}
       <div className="workout-grid">
