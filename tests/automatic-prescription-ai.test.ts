@@ -8,10 +8,10 @@ vi.mock("server-only", () => ({}));
 import {
   AI_PROMPT_VERSION, aiCacheKey, validateAiResponse, workoutKey, type AiAllowedRefs, type AiReviewResponse,
 } from "@/modules/prescricao/automatica/ai/contracts";
-import { AI_REVIEW_DEFAULTS, aiReviewUsable, resolveAiReviewConfig, type AiReviewConfig } from "@/modules/prescricao/automatica/ai/config";
+import { AI_CHARS_PER_TOKEN, AI_REVIEW_DEFAULTS, aiReviewUsable, aiSummaryLimits, resolveAiReviewConfig, type AiReviewConfig } from "@/modules/prescricao/automatica/ai/config";
 import { buildAiSummary } from "@/modules/prescricao/automatica/ai/summary";
 import { disabledReviewer, requestAiReview, type ProposalReviewer } from "@/modules/prescricao/automatica/ai/reviewer";
-import { canonicalJson, generate, type EngineInput, type EngineResult } from "@/modules/prescricao/motor";
+import { canonicalJson, generate, type CatalogExercise, type EngineInput, type EngineResult } from "@/modules/prescricao/motor";
 import { XINTUS_CATALOG, xintusInput } from "./helpers/xintus";
 import { LEGACY_RULES } from "./helpers/motor-fixtures";
 
@@ -39,7 +39,8 @@ function secretInput(over: Partial<EngineInput> = {}): EngineInput {
   };
 }
 
-const catalog = new Map(XINTUS_CATALOG.map((e) => [e.id, e]));
+// Nomes da biblioteca da organização são digitados pelo profissional: aqui carregam dados de identificação.
+const catalog = new Map<string, CatalogExercise>(XINTUS_CATALOG.map((e) => [e.id, { ...e, name: `${e.name} (Maria Fictícia CPF 123.456.789-00)` }]));
 const resultOf = (input: EngineInput): EngineResult => generate(input);
 const BIG = { maxChars: 1_000_000 };
 
@@ -52,7 +53,11 @@ describe("resumo para a revisão por IA", () => {
     const { summary, allowed } = build();
     const text = canonicalJson(summary);
     for (const s of SECRETS) expect(text, s).not.toContain(s);
-    for (const e of XINTUS_CATALOG) expect(text, e.id).not.toContain(`"${e.id}"`);
+    for (const e of XINTUS_CATALOG) {
+      expect(text, e.id).not.toContain(`"${e.id}"`);
+      expect(text, e.name).not.toContain(e.name);
+    }
+    expect(text).not.toMatch(/"name"/);
     expect(text).not.toMatch(/assessment:|"ref"|"name":"Fase|"plannedDate"|"weekStart"|Hipertrofia e/);
     expect(summary.exercises.every((e) => /^X\d+$/.test(e.alias))).toBe(true);
     expect(summary.phases.flatMap((p) => p.workouts.map((w) => w.label))).toEqual(["T1", "T2", "T1", "T2", "T1", "T2"]);
@@ -74,7 +79,8 @@ describe("resumo para a revisão por IA", () => {
     // o resumo não lista as sessões uma a uma
     expect(text).not.toMatch(/"week":\d+,"slot"/);
     // tradução de volta: só o servidor conhece o id real
-    for (const [a, id] of Object.entries(allowed.exerciseIds)) expect(catalog.get(id)?.name).toBe(summary.exercises.find((e) => e.alias === a)?.name);
+    for (const [a, id] of Object.entries(allowed.exerciseIds))
+      expect(catalog.get(id)?.primaryMuscles).toEqual(summary.exercises.find((e) => e.alias === a)?.primaryMuscles);
   });
 
   it("é determinístico e respeita maxChars cortando alternativas, depois INFO, depois padrões", () => {
@@ -84,18 +90,32 @@ describe("resumo para a revisão por IA", () => {
     expect(full.summary.omitted).toEqual({ alternatives: 0, infoFindings: 0, patternRows: 0 });
     expect(full.summary.phases.some((p) => p.workouts.some((w) => w.alternatives.length > 0))).toBe(true);
 
-    const noAlternatives = full.chars - full.summary.phases.flatMap((p) => p.workouts).reduce((n, w) => n + w.alternatives.length * 5, 0);
-    const a = build(noAlternatives);
+    // Um caractere a menos: só alternativas saem (são as primeiras a sair e há várias).
+    const a = build(full.chars - 1);
     expect(a.fits).toBe(true);
-    expect(a.chars).toBeLessThanOrEqual(noAlternatives);
+    expect(a.chars).toBeLessThanOrEqual(full.chars - 1);
     expect(a.summary.omitted.alternatives).toBeGreaterThan(0);
-    expect(a.summary.omitted.infoFindings).toBe(0);
+    expect(a.summary.omitted).toMatchObject({ infoFindings: 0, patternRows: 0 });
 
-    const tight = build(Math.floor(full.chars * 0.6));
-    expect(tight.summary.omitted.patternRows + tight.summary.omitted.infoFindings).toBeGreaterThan(0);
+    // Sem nenhuma alternativa nem achado INFO: o próximo corte só pode ser de linhas de padrão.
+    const totalAlternatives = full.summary.phases.flatMap((p) => p.workouts).reduce((n, w) => n + w.alternatives.length, 0);
+    const totalInfo = full.summary.audit.filter((f) => f.severity === "INFO").length;
+    expect(totalInfo).toBeGreaterThan(0);
+    const stripped = {
+      ...full.summary,
+      phases: full.summary.phases.map((p) => ({ ...p, workouts: p.workouts.map((w) => ({ ...w, alternatives: [] })) })),
+      audit: full.summary.audit.filter((f) => f.severity !== "INFO"),
+      exercises: full.summary.exercises.filter((e) => full.summary.phases.some((p) => p.workouts.some((w) => w.exercises.includes(e.alias)))),
+      omitted: { alternatives: totalAlternatives, infoFindings: totalInfo, patternRows: 0 },
+    };
+    const tightLimit = canonicalJson(stripped).length - 1;
+    const tight = build(tightLimit);
+    expect(tight.fits).toBe(true);
+    expect(tight.chars).toBeLessThanOrEqual(tightLimit);
+    expect(tight.summary.omitted).toMatchObject({ alternatives: totalAlternatives, infoFindings: totalInfo });
+    expect(tight.summary.omitted.patternRows).toBeGreaterThan(0);
     expect(tight.summary.phases.every((p) => p.workouts.every((w) => w.alternatives.length === 0))).toBe(true);
-    if (tight.summary.omitted.patternRows > 0) expect(tight.summary.audit.every((f) => f.severity !== "INFO")).toBe(true);
-    expect(tight.fits ? tight.chars <= Math.floor(full.chars * 0.6) : true).toBe(true);
+    expect(tight.summary.audit.every((f) => f.severity !== "INFO")).toBe(true);
     // o que foi cortado deixa de ser citável
     const cutAliases = full.allowed.refs.filter((r) => !tight.allowed.refs.includes(r));
     expect(cutAliases.length).toBeGreaterThan(0);
@@ -112,6 +132,49 @@ describe("resumo para a revisão por IA", () => {
     expect(summary.audit).toEqual([]);
     expect(summary.phases.every((p) => p.muscles.length === 0 && p.patterns.length === 0)).toBe(true);
     expect(summary.phases[0].workouts[0].exercises.length).toBeGreaterThan(0);
+  });
+});
+
+describe("itens do profissional (preservados, travados, substituídos)", () => {
+  it("vão marcados em fixed e nenhuma sugestão pode apontar para eles", () => {
+    const input = secretInput();
+    const result = resultOf(input);
+    // Marca como travado o primeiro exercício do treino A da fase 1 (em todas as sessões) e como substituído o segundo, numa sessão só.
+    const occ = result.occurrences.filter((o) => o.phaseIndex === 1 && o.label === "A");
+    const [lockedId, substitutedId] = [...occ[0].items].sort((x, y) => x.position - y.position).map((i) => i.exerciseId!);
+    const marked: EngineResult = {
+      ...result,
+      occurrences: result.occurrences.map((o) =>
+        o.phaseIndex !== 1 || o.label !== "A"
+          ? o
+          : {
+              ...o,
+              items: o.items.map((i) =>
+                i.exerciseId === lockedId ? { ...i, origin: "LOCKED" as const } : i.exerciseId === substitutedId && o === occ[0] ? { ...i, origin: "SUBSTITUTED" as const } : i,
+              ),
+            },
+      ),
+    };
+    const { summary, allowed } = buildAiSummary(marked, input.student, catalog, BIG);
+    const aliasOf = (id: string) => Object.entries(allowed.exerciseIds).find(([, v]) => v === id)![0];
+    const t1 = summary.phases.find((p) => p.phaseIndex === 1)!.workouts.find((w) => w.label === "T1")!;
+    expect(t1.fixed).toEqual([aliasOf(lockedId), aliasOf(substitutedId)]);
+    expect(allowed.fixedByWorkout[workoutKey(1, "T1")]).toEqual(t1.fixed);
+    expect(allowed.eligibleByWorkout[workoutKey(1, "T1")]).not.toContain(aliasOf(lockedId));
+    // o mesmo exercício em outra fase, escolhido pelo motor, continua elegível lá
+    const other = summary.phases.find((p) => p.phaseIndex !== 1 && p.workouts.some((w) => w.exercises.includes(aliasOf(lockedId))));
+    if (other) {
+      const w = other.workouts.find((x) => x.exercises.includes(aliasOf(lockedId)))!;
+      expect(w.fixed).toEqual([]);
+      expect(allowed.eligibleByWorkout[workoutKey(other.phaseIndex, w.label)]).toContain(aliasOf(lockedId));
+    }
+    for (const action of ["REVIEW_ITEM", "CONSIDER_SUBSTITUTION", "NOTE"] as const) {
+      const r = validateAiResponse(
+        { observations: [], suggestions: [{ action, exerciseId: aliasOf(lockedId), phaseIndex: 1, workoutLabel: "T1", reason: "Trocar este item.", sourceRefs: [] }] },
+        allowed,
+      );
+      expect(r.ok ? [] : r.problems, action).toEqual([expect.stringMatching(/decisão do profissional/)]);
+    }
   });
 });
 
@@ -160,9 +223,17 @@ describe("validação da resposta", () => {
     const say = (message: string) => problems({ ...r, observations: [{ ...r.observations[0], message }] });
     for (const m of ["Ver https://exemplo.org/estudo", "Segundo Schoenfeld et al., mais volume", "doi 10.1519/JSC.0000", "PMID 12345678", "Estudo de Silva (2019)"])
       expect(say(m), m).toEqual([expect.stringMatching(/referência bibliográfica/)]);
-    for (const m of ["Fazer 4x10 no agachamento", "Subir para 4 séries", "Usar 80% de 1RM", "Manter RIR 2", "Carga de 40 kg", "8 a 12 repetições"])
+    for (const m of [
+      "Fazer 4x10 no agachamento", "Fazer 4 X 10", "Subir para 4 séries", "Usar 80% de 1RM", "Manter RIR 2", "Manter 2 RIR", "RPE 8",
+      "Carga de 40 kg", "8 a 12 repetições", "8-12 reps", "1 série", "3 sets por semana", "Fazer três séries", "Descanso de 90 s", "60 segundos de pausa",
+    ])
       expect(say(m), m).toEqual([expect.stringMatching(/dose/)]);
-    expect(say("A fase 2 repete a fase 1 com pouca variação")).toEqual([]);
+    // os apelidos do próprio resumo (T1, X3, A2) e números que não são dose passam
+    for (const m of [
+      "A fase 2 repete a fase 1 com pouca variação", "No T1 X3 cobre pouco o alvo.", "Conferir X1 X2 juntos.", "T2 x X4 se sobrepõem.",
+      "A1 e A2 mostram salto entre semanas.", "Sessões de 60 min nas 12 semanas.", "Fazer uma série de ajustes no T2.",
+    ])
+      expect(say(m), m).toEqual([]);
   });
 
   it("recusa textos longos e listas acima do limite", () => {
@@ -213,8 +284,9 @@ describe("chave de cache, configuração e revisor desligado", () => {
   });
 
   it("um revisor ligado (falso, em teste) só tem a resposta aceita depois da validação no servidor", async () => {
-    const config: AiReviewConfig = { ...AI_REVIEW_DEFAULTS, enabled: true, modelId: "modelo-teste", monthlyBudgetCents: 100 };
-    const b = build();
+    const config: AiReviewConfig = { ...AI_REVIEW_DEFAULTS, enabled: true, modelId: "modelo-teste", monthlyBudgetCents: 100, maxInputTokens: 10_000 };
+    const b = build(aiSummaryLimits(config).maxChars);
+    expect(b.fits).toBe(true);
     const usage = { inputTokens: 1, outputTokens: 1, latencyMs: 1 };
     const fake = (raw: unknown): ProposalReviewer => ({ review: vi.fn(async () => ({ status: "OK" as const, raw, usage })) });
     const good = { observations: [], suggestions: [{ action: "NOTE", reason: "Plano coerente com os alvos.", sourceRefs: [] }] };
@@ -223,6 +295,17 @@ describe("chave de cache, configuração e revisor desligado", () => {
     expect(await requestAiReview(b, config, fake({ ...good, approve: true }))).toMatchObject({ status: "FAILED", reason: "INVALID_RESPONSE" });
     expect(await requestAiReview(b, config, { review: async () => { throw new Error("rede"); } })).toEqual({ status: "FAILED", reason: "PROVIDER" });
     expect(await requestAiReview(build(200), config, fake(good))).toEqual({ status: "FAILED", reason: "INPUT_TOO_LARGE" });
+  });
+
+  it("o teto de entrada vem da configuração: um resumo montado com maxChars maior não passa", async () => {
+    expect(aiSummaryLimits(AI_REVIEW_DEFAULTS)).toEqual({ maxChars: AI_REVIEW_DEFAULTS.maxInputTokens * AI_CHARS_PER_TOKEN });
+    const config: AiReviewConfig = { ...AI_REVIEW_DEFAULTS, enabled: true, modelId: "modelo-teste", monthlyBudgetCents: 100, maxInputTokens: 10 };
+    const spy: ProposalReviewer = { review: vi.fn() };
+    const huge = build(); // montado com 1.000.000 de caracteres: "cabe" no próprio limite
+    expect(huge.fits).toBe(true);
+    expect(huge.chars).toBeGreaterThan(aiSummaryLimits(config).maxChars);
+    expect(await requestAiReview(huge, config, spy)).toEqual({ status: "FAILED", reason: "INPUT_TOO_LARGE" });
+    expect(spy.review).not.toHaveBeenCalled();
   });
 
   it("o motor não importa a revisão por IA", () => {

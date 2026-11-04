@@ -15,10 +15,12 @@ export const AI_PROMPT_VERSION = "2026.11.1";
 
 // ---------- resumo enviado (compacto e sem identificação) ----------
 
-/** Exercício por apelido (`X1`, `X2`…): o id da biblioteca não sai do servidor. */
+/**
+ * Exercício por apelido (`X1`, `X2`…): nem o id nem o nome saem do servidor. A biblioteca é da organização e o nome é digitado
+ * pelo profissional (pode carregar qualquer texto); o modelo vê só modalidade, músculos e padrões.
+ */
 export interface AiSummaryExercise {
   alias: string;
-  name: string;
   modality: string | null;
   primaryMuscles: string[];
   secondaryMuscles: string[];
@@ -32,6 +34,11 @@ export interface AiSummaryWorkout {
   exposuresPerWeek: AuditRange | null;
   /** Apelidos dos exercícios do treino, na ordem da primeira sessão em que aparecem. */
   exercises: string[];
+  /**
+   * Apelidos (subconjunto de `exercises`) que são decisão do profissional em alguma sessão do treino: linha preservada,
+   * travada ou substituída. Soberanos: nenhuma sugestão pode apontar para eles.
+   */
+  fixed: string[];
   /** Linhas sem exercício da biblioteca (não enviadas). */
   unlistedItems: number;
   /** Apelidos de alternativas elegíveis já calculadas pelo motor (no máximo 5). */
@@ -125,8 +132,13 @@ export interface AiReviewSummary {
 export interface AiAllowedRefs {
   /** phaseIndex → apelidos dos treinos daquela fase. */
   workouts: Record<string, string[]>;
-  /** "<phaseIndex>|<apelido do treino>" → apelidos de exercício aceitos naquele treino (do plano ou alternativas enviadas). */
+  /**
+   * "<phaseIndex>|<apelido do treino>" → apelidos de exercício que uma sugestão pode apontar naquele treino: os do plano
+   * escolhidos pelo motor e as alternativas enviadas. Nunca os preservados, travados ou substituídos (ver `fixedByWorkout`).
+   */
   eligibleByWorkout: Record<string, string[]>;
+  /** "<phaseIndex>|<apelido do treino>" → apelidos que são decisão do profissional naquele treino. */
+  fixedByWorkout: Record<string, string[]>;
   /** Apelidos presentes no resumo (F*, A*, I*, X*). */
   refs: string[];
   /** Apelido → id real da biblioteca, para o servidor traduzir uma sugestão aceita. */
@@ -182,9 +194,25 @@ export type AiReviewResponse = z.infer<typeof aiReviewResponseSchema>;
 
 /** Referência bibliográfica escrita pelo modelo (endereço, DOI, PMID, "et al.", "(2019)"): não verificável, recusada. */
 const REFERENCE_TEXT = /https?:\/\/|www\.|\bdoi\b|\b10\.\d{4,9}\/|\bpmid\b|pubmed|\bet\s+al\b|\(\s*(?:19|20)\d{2}\s*\)/i;
-/** Número de dose no texto (séries × repetições, carga, %, RIR/RPE, séries/repetições): a IA não prescreve dose. */
-const DOSE_TEXT =
-  /\d+\s*[x×]\s*\d+|\d+(?:[.,]\d+)?\s*(?:kg|quilos?)\b|\d+(?:[.,]\d+)?\s*%|\b(?:rir|rpe)\s*[:=]?\s*\d|\d+\s*(?:a\s*\d+\s*)?(?:s[ée]ries|repeti[çc][õo]es|reps?)\b/i;
+/**
+ * Número de dose no texto: a IA não prescreve dose. Cobre séries × repetições, carga, %, RIR/RPE (antes ou depois do número),
+ * séries/repetições/sets no singular e no plural, por extenso (dois a vinte; "uma série" fica de fora por ser expressão comum)
+ * e descanso em segundos. O número não pode vir colado a uma letra: `T1 X3` e `X1 X2` são os apelidos do próprio resumo.
+ */
+const DOSE_UNIT = String.raw`(?:s[ée]ries?|sets?|repeti[çc](?:[ãa]o|[õo]es)|reps?|rir|rpe)`;
+const DOSE_WORD = String.raw`(?:dois|duas|tr[êe]s|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|quinze|vinte)`;
+const DOSE_TEXT = new RegExp(
+  [
+    String.raw`(?<![\p{L}\d])\d+\s*[x×]\s*\d+`,
+    String.raw`(?<![\p{L}\d])\d+(?:[.,]\d+)?\s*(?:kg|quilos?)(?![\p{L}])`,
+    String.raw`(?<![\p{L}\d])\d+(?:[.,]\d+)?\s*%`,
+    String.raw`(?<![\p{L}])(?:rir|rpe)\s*[:=]?\s*\d`,
+    String.raw`(?<![\p{L}\d])\d+(?:[.,]\d+)?\s*(?:(?:a|-|–|até)\s*\d+\s*)?${DOSE_UNIT}(?![\p{L}])`,
+    String.raw`(?<![\p{L}])${DOSE_WORD}\s+${DOSE_UNIT}(?![\p{L}])`,
+    String.raw`(?<![\p{L}\d])\d+\s*(?:s|seg|segundos?)(?![\p{L}])`,
+  ].join("|"),
+  "iu",
+);
 
 export type AiValidation = { ok: true; response: AiReviewResponse } | { ok: false; problems: string[] };
 
@@ -227,6 +255,8 @@ export function validateAiResponse(raw: unknown, allowed: AiAllowedRefs): AiVali
     cited(`${path}.sourceRefs`, s.sourceRefs);
     if (s.exerciseId !== undefined) {
       if (s.phaseIndex === undefined || s.workoutLabel === undefined) problems.push(`${path}.exerciseId: exercício sem fase e treino`);
+      else if ((allowed.fixedByWorkout[workoutKey(s.phaseIndex, s.workoutLabel)] ?? []).includes(s.exerciseId))
+        problems.push(`${path}.exerciseId: ${s.exerciseId} é decisão do profissional (preservado, travado ou substituído) no treino ${s.workoutLabel} da fase ${s.phaseIndex}`);
       else if (!(allowed.eligibleByWorkout[workoutKey(s.phaseIndex, s.workoutLabel)] ?? []).includes(s.exerciseId))
         problems.push(`${path}.exerciseId: ${s.exerciseId} não é elegível no treino ${s.workoutLabel} da fase ${s.phaseIndex}`);
     }

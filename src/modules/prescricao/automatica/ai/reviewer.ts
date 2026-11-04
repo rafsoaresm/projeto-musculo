@@ -1,11 +1,12 @@
 /**
  * Porta da revisão opcional por IA (design V3 §6). Só existe a implementação desligada: nenhuma chamada de rede, nenhum
- * fornecedor. `requestAiReview` é a costura que um fornecedor futuro usaria: confere a configuração, monta a chave de cache e
- * valida a resposta crua no servidor antes de devolvê-la. O resultado é só leitura para o profissional; nada aqui aprova,
+ * fornecedor. `requestAiReview` é a costura que um fornecedor futuro usaria: confere a configuração e o tamanho do resumo
+ * contra `maxInputTokens` (ver `aiSummaryLimits`), monta a chave de cache e valida a resposta crua no servidor antes de
+ * devolvê-la. O limite de saída (`maxOutputTokens`) segue na configuração entregue ao fornecedor, que o aplica na chamada. O resultado é só leitura para o profissional; nada aqui aprova,
  * entrega ou altera a proposta.
  */
 import "server-only";
-import { aiReviewUsable, type AiReviewConfig } from "./config";
+import { aiReviewUsable, aiSummaryLimits, type AiReviewConfig } from "./config";
 import { aiCacheKey, validateAiResponse, type AiReviewResponse, type AiReviewSummary } from "./contracts";
 import type { AiSummaryBuild } from "./summary";
 
@@ -46,7 +47,8 @@ export async function requestAiReview(
   reviewer: ProposalReviewer = disabledReviewer,
 ): Promise<AiReviewOutcome> {
   if (!aiReviewUsable(config) || config.modelId === null) return NOT_CONFIGURED;
-  if (!build.fits) return { status: "FAILED", reason: "INPUT_TOO_LARGE" };
+  // O teto vem da configuração, não do `maxChars` com que o resumo foi montado: quem chama não consegue furar o limite de custo.
+  if (!build.fits || build.chars > aiSummaryLimits(config).maxChars) return { status: "FAILED", reason: "INPUT_TOO_LARGE" };
   const cacheKey = await aiCacheKey(build.summary, config.modelId, config.promptVersion);
   let reply: AiReviewerReply;
   try {

@@ -48,3 +48,15 @@ export function aiReviewUsable(config: AiReviewConfig): boolean {
     config.timeoutMs > 0
   );
 }
+
+/**
+ * Caracteres por token usados para converter `maxInputTokens` num teto de caracteres do resumo. Estimativa operacional
+ * conservadora (JSON com códigos curtos tende a ter menos caracteres por token que prosa), sem fornecedor medido: decidida
+ * pela ferramenta em 04/11/2026, a confirmar com o tokenizador do fornecedor escolhido.
+ */
+export const AI_CHARS_PER_TOKEN = 3;
+
+/** Teto de caracteres do resumo canônico para esta configuração. Use em `buildAiSummary(..., aiSummaryLimits(config))`. */
+export function aiSummaryLimits(config: AiReviewConfig): { maxChars: number } {
+  return { maxChars: Math.max(0, Math.floor(config.maxInputTokens)) * AI_CHARS_PER_TOKEN };
+}

@@ -4,7 +4,8 @@
  * Entra: códigos de estímulo, nível de experiência (enum), minutos por sessão, modalidades, exercícios por apelido, achados da
  * avaliação só como código/grau/nível, a auditoria (faixas por músculo e padrão, achados com números) e os avisos do motor.
  * Não entra: nome, CPF, ids de aluno/plano/avaliação/exercício, datas, fotos, observações, texto livre do objetivo, da
- * anamnese ou dos nomes de treino, nem as sessões uma a uma.
+ * anamnese, dos rótulos e nomes de treino e dos nomes de exercício (a biblioteca é da organização e o nome é digitado), nem as
+ * sessões uma a uma. Exercícios preservados, travados ou substituídos são marcados em `fixed` e não podem ser alvo de sugestão.
  *
  * Determinístico: a mesma proposta dá o mesmo texto canônico (e a mesma chave de cache). Se passar de `maxChars`, corta nesta
  * ordem até caber: alternativas, achados INFO da auditoria, linhas de padrão. O que foi cortado fica contado em `omitted`.
@@ -76,6 +77,7 @@ export function buildAiSummary(
         .filter((w) => w.phaseIndex === p.phaseIndex)
         .map((w) => {
           const planned: string[] = [];
+          const fixed = new Set<string>();
           const pool: string[] = [];
           const unlisted = new Set<string>();
           const mine = inPhase.filter((x) => x.label === w.label);
@@ -86,6 +88,7 @@ export function buildAiSummary(
                 continue;
               }
               if (!planned.includes(item.exerciseId)) planned.push(item.exerciseId);
+              if (item.origin !== "ENGINE") fixed.add(item.exerciseId);
               for (const alt of item.alternatives) if (catalog.has(alt) && !pool.includes(alt)) pool.push(alt);
             }
           return {
@@ -93,6 +96,7 @@ export function buildAiSummary(
             modalities: codes(w.modalities?.value ?? mine.flatMap((o) => o.items.map((i) => i.modality ?? ""))).sort(),
             exposuresPerWeek: auditPhase?.workouts.find((r) => r.label === w.label)?.exposuresPerWeek ?? null,
             exercises: planned.map(alias),
+            fixed: planned.filter((id) => fixed.has(id)).map((id) => aliasOf.get(id)!),
             unlistedItems: unlisted.size,
             // ids por enquanto: recebem apelido depois de todos os exercícios do plano
             alternatives: pool.filter((id) => !planned.includes(id)).slice(0, AI_SUMMARY_MAX_ALTERNATIVES),
@@ -162,7 +166,7 @@ export function buildAiSummary(
   const exerciseRow = (id: string): AiSummaryExercise => {
     const e = catalog.get(id)!;
     return {
-      alias: aliasOf.get(id)!, name: e.name.slice(0, 80), modality: e.modality && ENUM_CODE.test(e.modality) ? e.modality : null,
+      alias: aliasOf.get(id)!, modality: e.modality && ENUM_CODE.test(e.modality) ? e.modality : null,
       primaryMuscles: codes(e.primaryMuscles), secondaryMuscles: codes(e.secondaryMuscles), patterns: codes(e.patterns),
     };
   };
@@ -178,7 +182,7 @@ export function buildAiSummary(
         experience: mapped && EXPERIENCES.has(mapped) ? (mapped as AiReviewSummary["student"]["experience"]) : null,
         sessionMinutes: typeof minutes === "number" && Number.isFinite(minutes) ? minutes : null,
       },
-      phases: phases.map((p) => ({ ...p, workouts: p.workouts.map((w) => ({ ...w })), patterns: [...p.patterns] })),
+      phases: phases.map((p) => ({ ...p, workouts: p.workouts.map((w) => ({ ...w, fixed: [...w.fixed] })), patterns: [...p.patterns] })),
       findings,
       audit: auditFindings,
       issues,
@@ -221,8 +225,11 @@ export function buildAiSummary(
   const allowed: AiAllowedRefs = {
     workouts: Object.fromEntries(summary.phases.map((p) => [String(p.phaseIndex), p.workouts.map((w) => w.label)])),
     eligibleByWorkout: Object.fromEntries(
-      summary.phases.flatMap((p) => p.workouts.map((w) => [workoutKey(p.phaseIndex, w.label), [...w.exercises, ...w.alternatives]])),
+      summary.phases.flatMap((p) =>
+        p.workouts.map((w) => [workoutKey(p.phaseIndex, w.label), [...w.exercises.filter((x) => !w.fixed.includes(x)), ...w.alternatives]]),
+      ),
     ),
+    fixedByWorkout: Object.fromEntries(summary.phases.flatMap((p) => p.workouts.map((w) => [workoutKey(p.phaseIndex, w.label), [...w.fixed]]))),
     refs: [
       ...summary.findings.map((f) => f.alias),
       ...summary.audit.map((f) => f.alias),
