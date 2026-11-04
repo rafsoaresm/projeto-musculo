@@ -1,19 +1,20 @@
-# Gymgital motor de prescrição v1.0.0
+# Motor de prescrição v2 (`ENGINE_VERSION` 2.0.0)
 
-Núcleo determinístico TypeScript, sem Node/LLM e sem alterações nas revisões entregues.
+Núcleo puro e determinístico (sem banco, rede, IA, relógio ou acaso). Documentação completa e tabela de regras: [`docs/MOTOR-PRESCRICAO.md`](../../../../docs/MOTOR-PRESCRICAO.md).
 
-API: `generatePrescription(input)`, `replaceExercise(...)`, `proposeProgression(...)`, `fromGymgitalSchedule(...)`, `adaptGymgitalCatalog(...)`, `toGymgitalDraft(...)`.
+**Estado:** etapa S1. O motor está implementado e testado isoladamente (`tests/motor-*.test.ts`), **mas ainda não está ligado ao banco, às telas nem ao fluxo de aprovação e entrega**. O adaptador (`src/modules/prescricao/automatica/`) e as tabelas das propostas vêm nas próximas etapas.
 
-**Status:** módulo de domínio implementado e testado isoladamente. **Ainda não está conectado à interface, rotas, banco D1 ou fluxo de aprovação/entrega.** Não tratar como funcionalidade publicada.
+| Arquivo | Papel |
+|---|---|
+| `types.ts` | Tipos: fatos com base, doses por métrica, entrada, resultado, escopos |
+| `rules/` | Regras em JSON (`gymgital-base@2026.11.1`), registro congelado, referências (não verificadas) |
+| `generate.ts` | Geração completa, revalidação, unidades de trabalho |
+| `regenerate.ts` | Regenerar escopos, substituir, alternativas, rebase |
+| `select.ts`, `eligibility.ts` | Seleção gulosa por cobertura e elegibilidade (equipamento, modalidade, exclusões, confiança nos metadados) |
+| `dose.ts`, `progress-week.ts` | Doses em camadas, progressão semanal, texto pt-BR |
+| `duration.ts`, `volume.ts`, `flags.ts` | Duração × disponibilidade, volume por músculo, alertas |
+| `progression.ts` | Sugestão de progressão pelo histórico (nunca valor) |
+| `bounds.ts` | Limites técnicos de gravação |
+| `hash.ts`, `calendar.ts`, `vocabulary.ts`, `trace.ts`, `validate.ts` | Apoio |
 
-O módulo aceita qualquer número positivo de fases/semanas, templates livres e objetivos textuais. Retorna `INFEASIBLE` quando catálogo, equipamentos, travas ou tempo não permitem a prescrição, em vez de violar silenciosamente as condições. Dados clínicos e de triagem exigem revisão profissional.
-
-O schema legado em `src/modules/training/contracts.ts` ainda limita fases a 3/6/12, semanas a 3–6, splits A–G e exercícios a 3–8; `src/modules/prescricao/contracts.ts` ainda tem `MAX_PER_WORKOUT=30`. A liberdade do motor não remove esses limites do produto sem migração aditiva e atualização de UI/API.
-
-**Ponto arquitetural crítico:** `src/db/prescription.ts` armazena itens por fase + label, e não por sessão real. Para salvar doses ondulatórias e progressões semanais, criar novas entidades de ocorrências e sets versionados. Não sobrescrever dados manuais nem revisões entregues.
-
-Integração deve ser server-only com `requireWorkspace`, vínculo técnico ativo e filtros tenant por query. Snapshot, idempotência e compare-and-swap devem ser verificados dentro da transação D1. Aplicar proposta e entregar são ações distintas, ambas revisadas pelo profissional.
-
-A pontuação de exercícios, valores padrão e estimativas de duração são heurísticas operacionais editáveis, não protocolos clínicos validados. Cardio, mobilidade e modalidades customizadas são aceitos com política explícita, mas não devem ser tratados como prescrições clínicas validadas.
-
-Testes isolados: pacote entregue separadamente ao usuário; rodar `npm run check` e `npm run build:cloud` no checkout completo antes do merge.
+API: `generate`, `regenerate`, `substitute`, `rebase`, `alternativesFor`, `revalidate`, `validateDose`, `toDisplayFields`, `describeStructuredDose`, `proposeProgression`, `canonicalInput`, `canonicalRequest`, `sha256Hex`, `scheduleOccurrences`, `workUnits`.

@@ -1,4 +1,16 @@
+/**
+ * Motor de prescrição v2 (puro): sem banco, rede, IA, relógio ou acaso. Recebe fatos já
+ * autorizados pelo adaptador e devolve uma proposta para revisão profissional. Nenhuma função
+ * daqui aprova ou entrega um plano.
+ */
 export * from "./types";
-export { generatePrescription, replaceExercise, assertRevisionForApply, REFERENCES, ENGINE_VERSION, POLICY_VERSION } from "./engine";
+export { ENGINE_VERSION, generate, revalidate, workUnits } from "./generate";
+export { regenerate, substitute, rebase, alternativesFor } from "./regenerate";
+export { validateDose, toDisplayFields, describeStructuredDose, EMPTY_DOSE_TEXT } from "./dose";
 export { proposeProgression } from "./progression";
-export { fromGymgitalSchedule, adaptGymgitalCatalog, toGymgitalDraft } from "./adapter-gymgital";
+export { canonicalInput, canonicalRequest, canonicalJson, sha256Hex } from "./hash";
+export { scheduleOccurrences, dateAdd, validDate } from "./calendar";
+export { slotKeyOf, parseSlotKey } from "./select";
+export { TECHNICAL_LIMITS } from "./bounds";
+export { RULESETS, REFERENCES, DEFAULT_RULESET, getRuleSet, validateRuleSet, renderRulesTable, BASIS_TEXT } from "./rules";
+export { VOCABULARY_VERSION, ISSUE_LABELS, STIMULUS_LABELS, MODALITY_LABELS, PATTERN_LABELS } from "./vocabulary";

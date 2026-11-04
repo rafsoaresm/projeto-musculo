@@ -128,9 +128,9 @@ export interface DosePatch {
 export interface WeeklyProgression {
   model: "NONE" | "LINEAR" | "STEP" | "SEQUENCE" | "BLOCK" | "CUSTOM";
   /** LINEAR: interpola do valor inicial (semana 1) ao final (última semana). */
-  ramps?: Array<{ param: DoseParam; from: number; to: number }>;
+  ramps?: Array<{ param: DoseParam; from: number; to: number; metric?: Metric }>;
   /** STEP: soma `delta` a cada `everyWeeks` semanas, sem passar de `limit`. */
-  steps?: Array<{ param: DoseParam; delta: number; everyWeeks: number; limit?: number }>;
+  steps?: Array<{ param: DoseParam; delta: number; everyWeeks: number; limit?: number; metric?: Metric }>;
   /** SEQUENCE (ondulatória): troca o estímulo por semana ou por sessão da semana. */
   sequence?: { per: "WEEK" | "OCCURRENCE_IN_WEEK"; stimuli: string[] };
   /** BLOCK: blocos de semanas com estímulo próprio; somam as semanas da fase. */
@@ -160,9 +160,12 @@ export interface CatalogExercise {
   primaryMuscles: string[];
   secondaryMuscles: string[];
   patterns: string[];
-  /** Todos exigidos. */
+  /** Equipamento padrão: todos exigidos. Vazio = sem equipamento. */
   equipment: string[];
-  /** Conjuntos alternativos: basta um estar todo disponível. */
+  /**
+   * Conjuntos alternativos ao padrão: o exercício é elegível se o padrão estiver todo disponível
+   * OU se algum destes conjuntos estiver todo disponível.
+   */
   equipmentAlternatives: string[][];
   /** 1 (mais simples) a 5. */
   difficulty: number | null;
@@ -190,6 +193,8 @@ export interface FindingFact {
   kind: "MOVEMENT" | "POSTURE" | "FLEXIBILITY" | "ANAMNESIS" | "ASSESSMENT_CONTEXT";
   code: string;
   label: string;
+  /** Grau do achado (ex.: teste de movimento MODERATE, STOPPED_BY_PAIN). */
+  grade?: string;
   ref?: string;
 }
 
@@ -385,6 +390,9 @@ export interface ParamTrace {
   refs?: string[];
 }
 
+/** REVIEWED; INCLUDES_INFERRED = "Inferido (não revisado)"; PENDING = sem curadoria; NOT_APPLICABLE = linha sem exercício da biblioteca. */
+export type ItemMetadata = "REVIEWED" | "INCLUDES_INFERRED" | "PENDING" | "NOT_APPLICABLE";
+
 export interface ItemOut {
   slotKey: string;
   position: number;
@@ -397,7 +405,7 @@ export interface ItemOut {
   existingPrescribedExerciseId: string | null;
   substitutesSlotKey: string | null;
   alternatives: string[];
-  metadata: "REVIEWED" | "INCLUDES_INFERRED";
+  metadata: ItemMetadata;
   trace: { selection: TraceEntry[]; params: ParamTrace[] };
 }
 
@@ -535,7 +543,22 @@ export interface Alternative {
   exerciseId: string;
   name: string;
   modality: string | null;
-  metadata: "REVIEWED" | "INCLUDES_INFERRED";
+  metadata: ItemMetadata;
   reasons: string[];
   score: number;
+}
+
+/** Item alvo de alternativas; com semana e sessão, exclui o que já está naquela sessão. */
+export interface AlternativeTarget extends ItemTarget {
+  week?: number;
+  slot?: number;
+}
+
+export interface ProgressionSettings {
+  consecutiveSuccesses: number;
+  maximumIncrementFraction: number;
+  /** Menor incremento do equipamento, informado pelo profissional. Ausente = não propor aumento. */
+  incrementKg: number | null;
+  /** Janela de histórico considerada, em dias antes de `today`. */
+  windowDays: number;
 }

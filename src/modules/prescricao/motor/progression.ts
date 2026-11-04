@@ -1,31 +1,53 @@
-import type { Dose, ProgressionProposal, TrainingExposure } from "./types";
-export interface ProgressionSettings { consecutiveSuccesses?: number; incrementKg?: number; maximumIncrementFraction?: number; }
-/** A proposal, not an automatic modification of delivered sessions. */
-export function proposeProgression(exposures: TrainingExposure[], exerciseId: string, prescribed: Dose, settings: ProgressionSettings = {}): ProgressionProposal {
-  const relevant = exposures.filter(x => x.exerciseId === exerciseId).sort((a, b) => a.date.localeCompare(b.date));
-  if (relevant.some(x => x.sets.some(s => s.pain))) return { action: "REVIEW", newLoadKg: null, explanation: "Dor relatada em uma exposição: revisão profissional antes de progressão." };
-  const threshold = settings.consecutiveSuccesses ?? 2;
-  if (!Number.isSafeInteger(threshold) || threshold <= 0) throw new Error("INVALID_PROGRESSION_THRESHOLD");
-  const completed = relevant.filter(x => x.sets.length >= prescribed.sets && x.sets.every(s => s.completed)).slice(-threshold);
-  if (completed.length < threshold) return { action: "INSUFFICIENT_DATA", newLoadKg: null, explanation: "Poucas exposições completas e comparáveis; não inventar carga." };
-  const equipment = completed[0]?.equipmentKey;
-  if (completed.some(x => x.equipmentKey !== equipment || x.exerciseMetric !== "reps")) return { action: "REVIEW", newLoadKg: null, explanation: "Equipamento ou métrica diferente impede comparação." };
-  const logs = completed.flatMap(x => x.sets.slice(0, prescribed.sets));
-  if (logs.some(s => s.loadKg === undefined || s.loadBasis !== prescribed.loadBasis || s.rir === undefined)) {
-    return { action: "INSUFFICIENT_DATA", newLoadKg: null, explanation: "Faltam kg, unidade/base ou RIR comparáveis." };
-  }
-  const uniqueLoads = [...new Set(logs.map(s => s.loadKg))];
-  if (uniqueLoads.length !== 1) return { action: "REVIEW", newLoadKg: null, explanation: "Cargas diferentes entre séries/exposições; conferir antes da progressão." };
-  const load = uniqueLoads[0];
-  if (load === undefined || prescribed.repsMax === undefined) return { action: "INSUFFICIENT_DATA", newLoadKg: null, explanation: "Faltam parâmetros suficientes para propor progressão." };
-  if (!logs.every(s => (s.reps ?? -1) >= prescribed.repsMax! && (s.rir ?? -1) >= (prescribed.rirMin ?? 0))) {
-    return { action: "MAINTAIN", newLoadKg: load, explanation: "Ainda não atingiu o topo da faixa com esforço adequado em todas as séries." };
-  }
-  const increment = settings.incrementKg;
-  if (increment === undefined || !Number.isFinite(increment) || increment <= 0) {
-    return { action: "MAINTAIN", newLoadKg: load, explanation: "Incremento do equipamento não informado; manter kg até confirmar." };
-  }
-  const maximumFraction = settings.maximumIncrementFraction ?? 0.10;
-  if (load <= 0 || increment / load > maximumFraction) return { action: "MAINTAIN", newLoadKg: load, explanation: "O menor incremento excede a progressão máxima configurada; não aumentar automaticamente." };
-  return { action: "INCREASE", newLoadKg: Math.round((load + increment) * 100) / 100, explanation: `Propor +${increment} kg na mesma base ${prescribed.loadBasis} após ${threshold} exposições comparáveis; exige aceite profissional.` };
+/**
+ * Sugestão de progressão pelo histórico de execução. É só sugestão, mostrada no traço e no painel
+ * do item; nunca é gravada como valor da dose. Proteções: dor → REVIEW; dados faltando →
+ * INSUFFICIENT_DATA; sem incremento do equipamento → MAINTAIN; aumento acima do teto → MAINTAIN.
+ */
+import { cmp } from "./vocabulary";
+import { daysBetween } from "./calendar";
+import type { CatalogExercise, Dose, ExposureLog, ProgressionProposal, ProgressionSettings } from "./types";
+
+const RULE = "PROGRESSION_HISTORY";
+
+function proposal(action: ProgressionProposal["action"], suggestedLoadKg: number | null, explanation: string, exposuresUsed: number): ProgressionProposal {
+  return { action, suggestedLoadKg, explanation, basis: action === "MAINTAIN" && suggestedLoadKg !== null ? "STUDENT_DATA" : "HEURISTIC", ruleId: RULE, exposuresUsed };
+}
+
+export function proposeProgression(
+  history: ExposureLog[],
+  exercise: CatalogExercise,
+  prescribed: Dose,
+  settings: ProgressionSettings,
+  today: string,
+): ProgressionProposal {
+  const relevant = history
+    .filter((x) => x.exerciseId === exercise.id && x.date <= today && daysBetween(x.date, today) <= settings.windowDays)
+    .sort((a, b) => cmp(a.date, b.date) || cmp(a.ref ?? "", b.ref ?? ""));
+  if (!relevant.length) return proposal("INSUFFICIENT_DATA", null, "Sem registros deste exercício na janela de histórico.", 0);
+  if (relevant.some((x) => x.pain)) return proposal("REVIEW", null, "Dor relatada em um registro: revisão profissional antes de qualquer progressão.", relevant.length);
+  if (prescribed.metric !== "REPS") return proposal("INSUFFICIENT_DATA", null, "Sugestão por histórico só para doses por repetições.", 0);
+  if (!Number.isInteger(settings.consecutiveSuccesses) || settings.consecutiveSuccesses < 1)
+    return proposal("INSUFFICIENT_DATA", null, "Regra de progressão inválida (número de exposições).", 0);
+  const n = settings.consecutiveSuccesses;
+  const complete = relevant.filter((x) => x.metric === "REPS" && x.sets.length >= prescribed.sets && x.sets.slice(0, prescribed.sets).every((s) => s.completed));
+  const last = complete.slice(-n);
+  if (last.length < n) return proposal("INSUFFICIENT_DATA", null, `Menos de ${n} execuções completas e comparáveis.`, last.length);
+  const equipment = last[0].equipmentKey;
+  if (last.some((x) => x.equipmentKey !== equipment)) return proposal("REVIEW", null, "Equipamento diferente entre as execuções: não dá para comparar.", n);
+  const sets = last.flatMap((x) => x.sets.slice(0, prescribed.sets));
+  if (sets.some((s) => s.loadKg === null || s.loadBasis === null || s.rir === null || s.reps === null))
+    return proposal("INSUFFICIENT_DATA", null, "Faltam carga, base da carga, repetições ou RIR por série.", n);
+  if (sets.some((s) => s.loadBasis !== prescribed.loadBasis)) return proposal("REVIEW", null, "A base da carga registrada difere da prescrita.", n);
+  const loads = [...new Set(sets.map((s) => s.loadKg as number))];
+  if (loads.length !== 1) return proposal("REVIEW", null, "Cargas diferentes entre séries ou execuções: conferir antes de progredir.", n);
+  const load = loads[0];
+  const target = prescribed.intensity?.kind === "RIR" ? prescribed.intensity.range.min : null;
+  if (target === null) return proposal("INSUFFICIENT_DATA", null, "A dose não usa RIR: sem como comparar o esforço registrado.", n);
+  if (!sets.every((s) => (s.reps as number) >= prescribed.reps.max && (s.rir as number) >= target))
+    return proposal("MAINTAIN", load, "Ainda não atingiu o topo da faixa com o esforço indicado em todas as séries.", n);
+  const inc = settings.incrementKg;
+  if (inc === null || !Number.isFinite(inc) || inc <= 0) return proposal("MAINTAIN", load, "Topo da faixa atingido; o incremento do equipamento não foi informado, então a carga se mantém até o profissional decidir.", n);
+  if (load <= 0 || inc / load > settings.maximumIncrementFraction)
+    return proposal("MAINTAIN", load, "O menor incremento passa do aumento máximo configurado; não aumentar automaticamente.", n);
+  return { action: "INCREASE", suggestedLoadKg: Math.round((load + inc) * 100) / 100, explanation: `Sugerir +${inc} kg na mesma base após ${n} execuções no topo da faixa; exige aceite do profissional.`, basis: "HEURISTIC", ruleId: RULE, exposuresUsed: n };
 }
