@@ -20,7 +20,7 @@ import { MOVEMENT_GRADES, MOVEMENT_TESTS, POSTURE_VIEWS } from "@/modules/avalia
 import type { PostureRegionKey } from "@/modules/avaliacoes/catalog";
 import { PARQ_CODES, type ProfilePayload, type ScreeningPayload } from "@/modules/avaliacoes/v2/screening";
 import type { PosturePayload } from "@/modules/avaliacoes/v2/posture";
-import type { MovementPayload } from "@/modules/avaliacoes/v2/flexitest";
+import { FLEXITEST_CODES, FLEXITEST_LABEL, type MovementPayload } from "@/modules/avaliacoes/v2/flexitest";
 import { REPETITION_TESTS, TEST_TITLE, type TestsPayload } from "@/modules/avaliacoes/v2/physical-tests";
 import type { ConclusionPayload } from "@/modules/avaliacoes/v2/conclusion";
 import { FLAG_LABEL, RESULT_LABEL, formatResult, isResultEstimate, methodLabel } from "@/modules/avaliacoes/v2/review";
@@ -169,8 +169,17 @@ export function findingFacts(assessment: AssessmentRecord | null): FindingFact[]
     }
   }
   if (assessment.movement) {
-    const assessed = Object.keys(assessment.movement.flexitest.levels).length;
-    if (assessed > 0) out.push({ kind: "FLEXIBILITY", code: "FLEXITEST", label: `Flexiteste: ${assessed} de 15 movimentos avaliados`, ref });
+    // Preservar o resultado de cada movimento: somente a contagem ocultava achados relevantes (por exemplo, dorsiflexão).
+    // Isto é contexto descritivo, não inferência de lesão, diagnóstico ou exclusão automática de exercícios.
+    const readings = FLEXITEST_CODES.flatMap((code) => {
+      const level = assessment.movement?.flexitest.levels[code];
+      return level === undefined ? [] : [`${FLEXITEST_LABEL[code]}: nível ${level}`];
+    });
+    if (readings.length > 0) out.push({
+      kind: "FLEXIBILITY", code: "FLEXITEST",
+      label: `Flexiteste: ${readings.length} de ${FLEXITEST_CODES.length} movimentos avaliados; ${readings.join("; ")}. São observações, não contraindicações automáticas.`,
+      ref,
+    });
   }
   if (assessment.screening) {
     for (const [code, entry] of Object.entries(assessment.screening.anamnesis) as Array<[keyof typeof ANAMNESIS, { answer: string | null } | undefined]>) {
