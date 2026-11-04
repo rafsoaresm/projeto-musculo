@@ -3,7 +3,7 @@ import {
   alternativesFor, canonicalJson, generate, parseSlotKey, rebase, regenerate, substitute, toDisplayFields,
   type EngineInput, type EngineOutcome, type EngineResult, type ExistingItem, type OccurrenceOut,
 } from "@/modules/prescricao/motor";
-import { baseInput, codes, parameters } from "./helpers/motor-fixtures";
+import { AUDIT_RULES, baseInput, codes, parameters } from "./helpers/motor-fixtures";
 
 const ok = (o: EngineOutcome): EngineResult => {
   if (!o.ok) throw new Error(`${o.code}: ${o.message}`);
@@ -97,7 +97,7 @@ describe("motor: regeneração parcial (tópico 9)", () => {
 });
 
 describe("motor: substituição de exercícios (tópico 10)", () => {
-  const input = baseInput();
+  const input = baseInput({ rules: AUDIT_RULES }); // o fixture conta com a seleção por treino (goblet fora do treino A); o microciclo tem os seus em motor-microcycle;
   const before = generate(input);
   const a1 = before.occurrences.find((o) => o.phaseIndex === 1 && o.label === "A")!;
   const target = a1.items.find((i) => i.exerciseId === "ex-legpress")!;
@@ -173,7 +173,7 @@ describe("motor: substituição de exercícios (tópico 10)", () => {
 });
 
 describe("motor: revisão nunca troca sozinho o que o profissional decidiu (tópicos 9–11)", () => {
-  const input = baseInput();
+  const input = baseInput({ rules: AUDIT_RULES }); // o fixture conta com a seleção por treino (goblet fora do treino A); o microciclo tem os seus em motor-microcycle;
   const existing: ExistingItem[] = [{ prescribedExerciseId: "pe-1", phaseIndex: 1, label: "A", exerciseId: "ex-squat", name: "Agachamento livre", position: 1, dose: null, display: toDisplayFields(null), origin: "PROFESSIONAL" }];
   const withRows = { ...input, existing };
   const base = generate(withRows);

@@ -135,7 +135,16 @@ export function buildEngineInput(ctx: GenerationContext, answers: GenerationAnsw
     metricOverrides: answers.metricOverrides,
     acceptedFlagDecisions: answers.acceptedFlagDecisions,
   };
-  const student = studentFacts(ctx.profile, ctx.assessment);
+  const studentAll = studentFacts(ctx.profile, ctx.assessment);
+  // Leituras estruturadas só vão ao motor com a regra que as usa (2026.11.4+): a entrada das versões anteriores fica igual.
+  const student = ruleSet.rules.FINDING_OBSERVATION_MAP
+    ? studentAll
+    : { ...studentAll, findings: studentAll.findings.map((f) => {
+        if (!f.readings) return f;
+        const rest = { ...f };
+        delete rest.readings;
+        return rest;
+      }) };
   const input: EngineInput = {
     rules,
     asOf: ctx.asOf,

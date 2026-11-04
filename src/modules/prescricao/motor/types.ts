@@ -209,6 +209,11 @@ export interface FindingFact {
   /** Grau do achado (ex.: teste de movimento MODERATE, STOPPED_BY_PAIN). */
   grade?: string;
   ref?: string;
+  /**
+   * Leituras estruturadas (Flexiteste: código do movimento e nível). O adaptador só as envia quando o conjunto de regras tem
+   * FINDING_OBSERVATION_MAP (2026.11.4+), para que a entrada das versões anteriores fique igual byte a byte.
+   */
+  readings?: Array<{ code: string; label: string; level: number }>;
 }
 
 export interface StudentFacts {

@@ -24,7 +24,7 @@ import {
 } from "@/modules/prescricao/automatica/facts";
 import type { ResolvedMetadata } from "@/modules/biblioteca/metadata/status";
 import type { FieldValue } from "@/modules/biblioteca/metadata/fields";
-import { generate, scheduleOccurrences, type EngineInput, type EngineResult } from "@/modules/prescricao/motor";
+import { canonicalInput, generate, scheduleOccurrences, type EngineInput, type EngineResult } from "@/modules/prescricao/motor";
 import { buildPeriodization } from "@/modules/training/periodization";
 import { CATALOG } from "./helpers/motor-fixtures";
 
@@ -172,6 +172,29 @@ describe("mapping the real records", () => {
     expect(result.label).toContain("estimativa");
     expect(result.label).toContain("Fora da faixa original de validação");
     expect(JSON.stringify(found)).not.toMatch(/SEGREDO/);
+  });
+
+  it("Flexiteste: structured readings (code and level) reach the engine only with FINDING_OBSERVATION_MAP (2026.11.4+)", () => {
+    const flex = findingFacts(assessment()).find((f) => f.code === "FLEXITEST")!;
+    expect(flex.readings).toEqual([
+      { code: "hip_flexion", label: FLEXITEST_LABEL.hip_flexion, level: 2 },
+      { code: "elbow_flexion", label: FLEXITEST_LABEL.elbow_flexion, level: 3 },
+    ].sort((a, b) => Object.keys(FLEXITEST_LABEL).indexOf(a.code) - Object.keys(FLEXITEST_LABEL).indexOf(b.code)));
+    const answers = parseGenerationAnswers(FULL);
+    const withRules = (version: string) => {
+      const out = buildEngineInput(ctxOf(), answers, { rules: { id: "gymgital-base", version } });
+      if (!out.ok) throw new Error(out.code);
+      return out.input;
+    };
+    // 2026.11.2 and 2026.11.3: the input (and its hash) is what it was before the readings existed.
+    for (const version of ["2026.11.2", "2026.11.3"]) {
+      const input = withRules(version);
+      expect(input.student.findings.some((f) => "readings" in f), version).toBe(false);
+      const stripped = { ...input, student: { ...input.student, findings: input.student.findings.map((f) => ({ ...f })) } };
+      expect(canonicalInput(input)).toBe(canonicalInput(stripped));
+      expect(canonicalInput(input)).not.toContain("readings");
+    }
+    expect(withRules("2026.11.4").student.findings.find((f) => f.code === "FLEXITEST")!.readings).toHaveLength(2);
   });
 
   it("maps library metadata to the engine (S4 handoff): pending fields are empty, never guessed; the summary becomes metadataStatus", () => {

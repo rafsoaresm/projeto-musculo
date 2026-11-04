@@ -103,6 +103,7 @@ export const ISSUE_LABELS: Record<string, string> = {
   COUNT_BY_TIME_NEEDS_BUDGET: "Quantidade pelo tempo sem tempo disponível",
   EQUIPMENT_UNKNOWN: "Equipamentos disponíveis não informados",
   CATALOG_INSUFFICIENT: "Biblioteca sem exercícios elegíveis suficientes",
+  MICROCYCLE_STEP_LIMIT: "Seleção parou no limite técnico de passos",
   EXERCISE_TARGET_UNMET: "Quantidade de exercícios não atingida",
   LOCKED_EXERCISE_INELIGIBLE: "Exercício travado não é mais elegível",
   EXISTING_EXCEEDS_TARGET: "Linhas existentes passam da quantidade",

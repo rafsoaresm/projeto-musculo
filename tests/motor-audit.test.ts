@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  auditPlan, boundAudit, canonicalJson, generate, getRuleSet, rebase, regenerate, revalidate, substitute, AUDIT_VERSION,
+  auditPlan, boundAudit, canonicalJson, DEFAULT_RULESET, generate, getRuleSet, rebase, regenerate, revalidate, substitute, AUDIT_VERSION,
   type AuditFinding, type AuditReport, type CoverageTargets, type EngineInput, type EngineOutcome, type EngineResult, type RuleSet,
 } from "@/modules/prescricao/motor";
 import { RuleLog, ruleLogFor } from "@/modules/prescricao/motor/trace";
-import { CATALOG, FULL_GYM, LEGACY_RULES, baseInput, exercise, parameters, structure, type PhaseSeed } from "./helpers/motor-fixtures";
+import { AUDIT_RULES, CATALOG, FULL_GYM, LEGACY_RULES, baseInput, exercise, parameters, structure, type PhaseSeed } from "./helpers/motor-fixtures";
 import {
   XINTUS_CATALOG, XINTUS_PREVIOUS_PLAN, repsDose, resultFrom, xintusInput, xintusPreviousDose, xintusPreviousResult, type PlanItemSeed,
 } from "./helpers/xintus";
@@ -41,7 +41,7 @@ describe("auditoria: Xintus, plano anterior (ABAB, 4 sessões por semana)", () =
 
   it("conta as sessões reais de cada semana e as exposições de cada treino", () => {
     expect(a.auditVersion).toBe(AUDIT_VERSION);
-    expect(a.rules).toEqual({ id: "gymgital-base", version: "2026.11.3" });
+    expect(a.rules).toEqual(DEFAULT_RULESET);
     expect(a.phasesAudited).toEqual([1, 2, 3]);
     expect(a.occurrences).toBe(48);
     for (const p of a.phases) {
@@ -207,7 +207,8 @@ describe("auditoria: alvos (b), escolha (c) e escopo do alvo", () => {
   it("generate: weeklySets e origin entram nos alvos gravados só com as regras da auditoria", () => {
     const params = parameters({ phaseCoverage: [{ phaseIndex: 1, muscles: ["QUADRICEPS"], weeklySets: [{ muscle: "QUADRICEPS", minWeighted: 10, maxWeighted: 20 }], basis: "PROFESSIONAL" }] });
     const st = structure("2026-11-09", [phase]);
-    const now = generate(baseInput({ catalog: XINTUS_CATALOG, structure: st, parameters: params }));
+    // Mesma seleção da 2026.11.2: comparar com a auditoria sobre a seleção antiga (2026.11.3).
+    const now = generate(baseInput({ rules: AUDIT_RULES, catalog: XINTUS_CATALOG, structure: st, parameters: params }));
     expect(now.workouts[0].coverage).toEqual({ muscles: ["QUADRICEPS"], patterns: [], basis: "PROFESSIONAL", origin: "PHASE_COVERAGE", weeklySets: [{ muscle: "QUADRICEPS", minWeighted: 10, maxWeighted: 20, basis: "PROFESSIONAL" }] });
     const legacy = generate(baseInput({ rules: LEGACY_RULES, catalog: XINTUS_CATALOG, structure: st, parameters: params }));
     expect(legacy.workouts[0].coverage).toEqual({ muscles: ["QUADRICEPS"], patterns: [], basis: "PROFESSIONAL" });
@@ -454,7 +455,8 @@ describe("auditoria: dose × estímulo (DOSE_DEFAULTS da própria versão)", () 
 
 describe("auditoria: limites, determinismo, separação e reprodução", () => {
   it("não muda status, validação, avisos nem volume; ausente nas versões sem auditoria", () => {
-    const now = generate(xintusInput());
+    // A auditoria sobre a seleção antiga (2026.11.3) contra a 2026.11.2: só o campo `audit` (e as regras dele) muda.
+    const now = generate(xintusInput(AUDIT_RULES));
     const legacy = generate(xintusInput(LEGACY_RULES));
     expect("audit" in legacy).toBe(false);
     expect([now.status, now.validation]).toEqual([legacy.status, legacy.validation]);
@@ -513,8 +515,8 @@ describe("auditoria: limites, determinismo, separação e reprodução", () => {
   });
 
   it("a auditoria não lê a origem dos itens (travar não a deixa velha) e não muda a entrada", () => {
-    const r = xintusPreviousResult();
-    const log = ruleLogFor({ id: "gymgital-base", version: "2026.11.3" })!;
+    const r = xintusPreviousResult(AUDIT_RULES);
+    const log = ruleLogFor(AUDIT_RULES)!;
     const byId = new Map(XINTUS_CATALOG.map((e) => [e.id, e]));
     const locked = r.occurrences.map((o) => ({ ...o, items: o.items.map((i) => ({ ...i, origin: "LOCKED" as const })) }));
     const frozen = JSON.parse(JSON.stringify(locked));
@@ -560,7 +562,8 @@ describe("rastreabilidade: contribuição semanal do item (só números do item)
         const sets = i.dose && "sets" in i.dose ? i.dose.sets : null;
         expect(entries[0].detail).toContain(`Semana ${o.week}: 2 sessões do treino ${o.label} × ${sets} séries = ${sets! * 2} séries`);
         expect(entries[0].detail).not.toMatch(/ de \d+ na semana/);
-        expect(i.trace.selection.at(-1)!.code).toBe("WEEKLY_CONTRIBUTION");
+        // derivados depois da seleção: a contribuição e, com FINDING_OBSERVATION_MAP (2026.11.4+), as observações da avaliação
+        expect(i.trace.selection.filter((t) => t.code !== "ASSESSMENT_OBSERVATION").at(-1)!.code).toBe("WEEKLY_CONTRIBUTION");
       }
     expect(generate(xintusInput(LEGACY_RULES)).occurrences.every((o) => o.items.every((i) => i.trace.selection.every((t) => t.code !== "WEEKLY_CONTRIBUTION")))).toBe(true);
   });

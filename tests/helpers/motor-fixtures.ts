@@ -126,3 +126,6 @@ export const codes = (r: { issues: Array<{ code: string }> }) => r.issues.map((i
 
 /** Versão anterior à auditoria: testes que fixam detalhes da seleção ou do resultado da 2026.11.2 usam esta versão explicitamente. */
 export const LEGACY_RULES = { id: "gymgital-base", version: "2026.11.2" } as const;
+
+/** Auditoria com a seleção antiga (por treino): testes que comparam a auditoria com a seleção da 2026.11.2 usam esta versão. */
+export const AUDIT_RULES = { id: "gymgital-base", version: "2026.11.3" } as const;

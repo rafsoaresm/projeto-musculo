@@ -175,10 +175,16 @@ export function findingFacts(assessment: AssessmentRecord | null): FindingFact[]
       const level = assessment.movement?.flexitest.levels[code];
       return level === undefined ? [] : [`${FLEXITEST_LABEL[code]}: nível ${level}`];
     });
+    // Leituras estruturadas (código e nível): `buildEngineInput` só as envia ao motor com FINDING_OBSERVATION_MAP (2026.11.4+).
+    const structured = FLEXITEST_CODES.flatMap((code) => {
+      const level = assessment.movement?.flexitest.levels[code];
+      return level === undefined ? [] : [{ code, label: FLEXITEST_LABEL[code], level }];
+    });
     if (readings.length > 0) out.push({
       kind: "FLEXIBILITY", code: "FLEXITEST",
       label: `Flexiteste: ${readings.length} de ${FLEXITEST_CODES.length} movimentos avaliados; ${readings.join("; ")}. São observações, não contraindicações automáticas.`,
       ref,
+      readings: structured,
     });
   }
   if (assessment.screening) {

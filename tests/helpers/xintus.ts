@@ -28,6 +28,9 @@ export const XINTUS_FLEXITEST_LABEL =
   `Flexiteste: ${FLEXITEST_CODES.length} de ${FLEXITEST_CODES.length} movimentos avaliados; ` +
   `${FLEXITEST_CODES.map((c) => `${FLEXITEST_LABEL[c]}: nível ${XINTUS_LEVELS[c]}`).join("; ")}. São observações, não contraindicações automáticas.`;
 
+/** As 15 leituras estruturadas (o motor só as lê com FINDING_OBSERVATION_MAP, 2026.11.4+). */
+export const XINTUS_READINGS = FLEXITEST_CODES.map((code) => ({ code, label: FLEXITEST_LABEL[code], level: XINTUS_LEVELS[code] }));
+
 export function xintusInput(rules: RuleSetRef = DEFAULT_RULESET, over: Partial<EngineInput> = {}): EngineInput {
   const phase = {
     weeks: 4, sessionsPerWeek: 4, stimulus: "HYPERTROPHY", rotation: ["A", "B"], trainingDays: [0, 1, 3, 4],
@@ -40,7 +43,7 @@ export function xintusInput(rules: RuleSetRef = DEFAULT_RULESET, over: Partial<E
       goal: { value: "Hipertrofia e tonificação", source: "PROFILE", basis: "STUDENT_DATA" },
       sessionMinutes: { value: 60, source: "PROFILE", basis: "STUDENT_DATA" },
       screening: { parq: "CLEAR", professionalDecision: null, medicalClearanceRecorded: false },
-      findings: [{ kind: "FLEXIBILITY", code: "FLEXITEST", label: XINTUS_FLEXITEST_LABEL, ref: "assessment:as-xintus" }],
+      findings: [{ kind: "FLEXIBILITY", code: "FLEXITEST", label: XINTUS_FLEXITEST_LABEL, ref: "assessment:as-xintus", readings: XINTUS_READINGS }],
     },
     structure: structure("2026-11-09", [phase, phase, phase]),
     catalog: XINTUS_CATALOG,

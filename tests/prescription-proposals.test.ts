@@ -717,8 +717,8 @@ describe("Motor V3 S2: the plan audit with the proposal", () => {
     const snap = await fresh(d, out.proposalId);
     const audit = snap.result.audit!;
     expect(audit.rules).toEqual(DEFAULT_RULESET);
-    expect(audit.rules.version).toBe("2026.11.3");
-    expect(snap.header.rulesVersion).toBe("2026.11.3");
+    expect(audit.rules.version).toBe("2026.11.4");
+    expect(snap.header.rulesVersion).toBe("2026.11.4");
     expect(audit.phasesAudited).toEqual([1, 2, 3]);
     // Phase 1 is hypertrophy with no structured targets: the absence is described, never filled in.
     expect(codesOf(snap, 1)).toContain("AUDIT_NO_TARGETS");
@@ -819,13 +819,14 @@ describe("Motor V3 S2: the plan audit with the proposal", () => {
     const legacyRules = getRuleSet(LEGACY_RULES);
     expect(canAcceptSuggestions(legacyRules)).toBe(false);
     const view = auditView({ report: out.audit, source: out.source, rules: out.rules }, { engineVersion: snap.header.engineVersion, acceptSuggestions: canAcceptSuggestions(legacyRules) });
-    expect(view.viewNotice).toContain("Auditoria calculada agora com as regras gymgital-base 2026.11.3");
+    expect(view.viewNotice).toContain("Auditoria calculada agora com as regras gymgital-base 2026.11.4");
     expect(view.viewNotice).toContain("Não foi gravada na proposta.");
     const all = [...view.attention, ...view.observations, ...view.descriptive].flatMap((g) => g.findings);
     expect(all.some((f) => f.code === "AUDIT_NO_TARGETS")).toBe(true);
     expect(all.every((f) => !f.offerSuggestion)).toBe(true);
-    // A 2026.11.3 proposal (audit stored, no suggestion rule) offers none either.
-    expect(canAcceptSuggestions(getRuleSet(DEFAULT_RULESET))).toBe(false);
+    // A 2026.11.3 proposal (audit stored, no suggestion rule) offers none either; 2026.11.4 carries the rule (the card comes in S4).
+    expect(canAcceptSuggestions(getRuleSet({ id: "gymgital-base", version: "2026.11.3" }))).toBe(false);
+    expect(canAcceptSuggestions(getRuleSet(DEFAULT_RULESET))).toBe(true);
   });
 
   it("the stored audit is read from the summary already loaded; viewAudit on such a proposal reads it back, computes nothing", async () => {

@@ -6,6 +6,7 @@
 import base from "./gymgital-base.json";
 import base2 from "./gymgital-base-2026.11.2.json";
 import base3 from "./gymgital-base-2026.11.3.json";
+import base4 from "./gymgital-base-2026.11.4.json";
 import referencesFile from "./references.json";
 import type { Basis, DoseParam, Experience, LoadBasis, Metric, RuleSetRef } from "../types";
 import { MUSCLE_LABELS, PATTERN_LABELS } from "../vocabulary";
@@ -84,6 +85,33 @@ export interface AuditThresholds {
   maxFindings: number;
 }
 
+/** Pesos da seleção por microciclo (2026.11.4). Pesos podem ser negativos; maxSteps é um limite técnico (inteiro ≥ 1). */
+export interface MicrocycleSelection {
+  weeklyDeficit: number;
+  frequencyGap: number;
+  targetAffinity: number;
+  overTarget: number;
+  weeklyPatternNew: number;
+  weeklyPatternRepeat: number;
+  weeklyPatternRedundancy: number;
+  sameExerciseWeekly: number;
+  maxSteps: number;
+}
+
+/** Alvos sugeridos de um estímulo (2026.11.4): só valem depois do aceite do profissional. */
+export interface StimulusTargetSuggestion {
+  muscles?: string[];
+  patterns?: string[];
+  minDirectSessions?: number;
+  weeklyWeightedSets?: { min: number; max: number };
+}
+
+/** Leitura da avaliação (`FLEXITEST:<código>`) que vira observação nos exercícios destes padrões. */
+export interface FindingObservation {
+  patterns: string[];
+  text: string;
+}
+
 export interface AuditBalancePair {
   code: string;
   a: string[];
@@ -92,7 +120,8 @@ export interface AuditBalancePair {
 
 /**
  * Regras que só existem a partir de uma versão: uma versão anterior não as tem e o motor segue sem elas.
- * 2026.11.2: EXTERNAL_LOAD_STIMULI. 2026.11.3: AUDIT_* (auditoria técnica do plano).
+ * 2026.11.2: EXTERNAL_LOAD_STIMULI. 2026.11.3: AUDIT_* (auditoria técnica do plano). 2026.11.4: MICROCYCLE_SELECTION,
+ * MICROCYCLE_TARGET_SUGGESTIONS e FINDING_OBSERVATION_MAP (seleção por microciclo, alvos sugeridos, observações da avaliação).
  */
 export interface OptionalRuleValues {
   EXTERNAL_LOAD_STIMULI: string[];
@@ -100,6 +129,9 @@ export interface OptionalRuleValues {
   AUDIT_COMPREHENSIVE_STIMULI: string[];
   AUDIT_BALANCE_PAIRS: AuditBalancePair[];
   AUDIT_REGIONS: Record<string, string[]>;
+  MICROCYCLE_SELECTION: MicrocycleSelection;
+  MICROCYCLE_TARGET_SUGGESTIONS: Record<string, StimulusTargetSuggestion>;
+  FINDING_OBSERVATION_MAP: Record<string, FindingObservation>;
 }
 
 export type RequiredRuleId = keyof RuleValues;
@@ -150,12 +182,18 @@ const GYMGITAL_BASE_2026_11_2 = deepFreeze(JSON.parse(JSON.stringify(base2)) as 
  * 2026.11.3: 2026.11.2 + regras da auditoria técnica do plano (AUDIT_THRESHOLDS, AUDIT_COMPREHENSIVE_STIMULI, AUDIT_BALANCE_PAIRS,
  * AUDIT_REGIONS). Seleção e doses iguais às da 2026.11.2.
  */
-const GYMGITAL_BASE = deepFreeze(JSON.parse(JSON.stringify(base3)) as RuleSet);
+const GYMGITAL_BASE_2026_11_3 = deepFreeze(JSON.parse(JSON.stringify(base3)) as RuleSet);
+/**
+ * 2026.11.4: 2026.11.3 + seleção da fase inteira por microciclo (MICROCYCLE_SELECTION), alvos sugeridos para aceite
+ * (MICROCYCLE_TARGET_SUGGESTIONS) e leituras da avaliação que viram observação (FINDING_OBSERVATION_MAP). Doses iguais.
+ */
+const GYMGITAL_BASE = deepFreeze(JSON.parse(JSON.stringify(base4)) as RuleSet);
 
 /** Conjuntos publicados. Uma versão publicada nunca muda: novos números entram como nova versão. */
 export const RULESETS: Readonly<Record<string, RuleSet>> = deepFreeze({
   [`${GYMGITAL_BASE_2026_11_1.id}@${GYMGITAL_BASE_2026_11_1.version}`]: GYMGITAL_BASE_2026_11_1,
   [`${GYMGITAL_BASE_2026_11_2.id}@${GYMGITAL_BASE_2026_11_2.version}`]: GYMGITAL_BASE_2026_11_2,
+  [`${GYMGITAL_BASE_2026_11_3.id}@${GYMGITAL_BASE_2026_11_3.version}`]: GYMGITAL_BASE_2026_11_3,
   [`${GYMGITAL_BASE.id}@${GYMGITAL_BASE.version}`]: GYMGITAL_BASE,
 });
 
@@ -222,6 +260,38 @@ export function validateRuleSet(rules: RuleSet): string[] {
   const keys = rules.rules.DOSE_DEFAULTS.value.map((d) => `${d.stimulus}|${d.modality}|${d.metric}`);
   if (new Set(keys).size !== keys.length) problems.push("DOSE_DEFAULTS: entradas repetidas para o mesmo estímulo, modalidade e métrica");
   problems.push(...auditRuleProblems(rules));
+  problems.push(...microcycleRuleProblems(rules));
+  return problems;
+}
+
+const MICRO_POSITIVE = ["weeklyDeficit", "frequencyGap", "targetAffinity", "weeklyPatternNew", "weeklyPatternRepeat"] as const;
+const MICRO_NEGATIVE = ["overTarget", "weeklyPatternRedundancy", "sameExerciseWeekly"] as const;
+
+/** Regras da seleção por microciclo (opcionais): sinais dos pesos, limite de passos, códigos e números das sugestões. */
+function microcycleRuleProblems(rules: RuleSet): string[] {
+  const problems: string[] = [];
+  const m = rules.rules.MICROCYCLE_SELECTION?.value;
+  if (m) {
+    for (const k of MICRO_POSITIVE) if (!(typeof m[k] === "number" && m[k] >= 0)) problems.push(`MICROCYCLE_SELECTION.${k}: deve ser ≥ 0`);
+    for (const k of MICRO_NEGATIVE) if (!(typeof m[k] === "number" && m[k] <= 0)) problems.push(`MICROCYCLE_SELECTION.${k}: peso contra, deve ser ≤ 0`);
+    if (!(Number.isInteger(m.maxSteps) && m.maxSteps >= 1)) problems.push("MICROCYCLE_SELECTION.maxSteps: inteiro ≥ 1");
+  }
+  for (const [stimulus, s] of Object.entries(rules.rules.MICROCYCLE_TARGET_SUGGESTIONS?.value ?? {})) {
+    for (const x of s.muscles ?? []) if (!MUSCLE_LABELS[x]) problems.push(`MICROCYCLE_TARGET_SUGGESTIONS.${stimulus}: músculo desconhecido ${x}`);
+    for (const x of s.patterns ?? []) if (!PATTERN_LABELS[x]) problems.push(`MICROCYCLE_TARGET_SUGGESTIONS.${stimulus}: padrão desconhecido ${x}`);
+    if (!(s.muscles?.length || s.patterns?.length)) problems.push(`MICROCYCLE_TARGET_SUGGESTIONS.${stimulus}: sem músculos nem padrões`);
+    if (s.minDirectSessions !== undefined && !(Number.isInteger(s.minDirectSessions) && s.minDirectSessions >= 1 && s.minDirectSessions <= 14))
+      problems.push(`MICROCYCLE_TARGET_SUGGESTIONS.${stimulus}.minDirectSessions: inteiro de 1 a 14`);
+    const w = s.weeklyWeightedSets;
+    if (w && !(w.min >= 0 && w.max >= w.min && w.max <= 60)) problems.push(`MICROCYCLE_TARGET_SUGGESTIONS.${stimulus}.weeklyWeightedSets: 0 ≤ min ≤ max ≤ 60`);
+    if ((s.minDirectSessions !== undefined || w) && !s.muscles?.length) problems.push(`MICROCYCLE_TARGET_SUGGESTIONS.${stimulus}: alvos semanais sem músculos`);
+  }
+  for (const [key, o] of Object.entries(rules.rules.FINDING_OBSERVATION_MAP?.value ?? {})) {
+    if (!/^FLEXITEST:[a-z_]+$/.test(key)) problems.push(`FINDING_OBSERVATION_MAP.${key}: chave fora do formato FLEXITEST:<código>`);
+    if (!o.patterns.length) problems.push(`FINDING_OBSERVATION_MAP.${key}: sem padrões`);
+    for (const p of o.patterns) if (!PATTERN_LABELS[p]) problems.push(`FINDING_OBSERVATION_MAP.${key}: padrão desconhecido ${p}`);
+    if (!o.text?.trim()) problems.push(`FINDING_OBSERVATION_MAP.${key}: sem texto`);
+  }
   return problems;
 }
 
