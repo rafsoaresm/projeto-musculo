@@ -241,8 +241,10 @@ export function studentExportFor(db: D1Database, userId: string) {
           weeks: phase.weeks,
           sessionsPerWeek: phase.sessionsPerWeek,
           split: phase.split,
+          name: phase.name,
           workouts: phase.workouts.map((workout) => ({
             label: workout.label,
+            name: workout.name,
             exercises: workout.exercises.map((exercise) => ({
               name: exercise.name,
               videoUrl: exercise.videoUrl,

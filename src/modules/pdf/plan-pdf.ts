@@ -9,7 +9,7 @@ import {
 } from "pdf-lib";
 import type { StudentExercise, StudentTrainingPlan } from "@/db/student-plan";
 import { describeDose } from "@/modules/prescricao/describe";
-import { formatCalendarDate } from "@/modules/training/format";
+import { divisionSuffix, formatCalendarDate, phaseTitle, workoutTitle } from "@/modules/training/format";
 
 /**
  * The delivered plan as a PDF, generated on the server with pdf-lib (pure JavaScript, so it runs
@@ -139,7 +139,10 @@ export async function planFingerprint(plan: StudentTrainingPlan): Promise<string
           exercise.rirMax,
           exercise.notes,
         ]),
+        // v2 names only when present, so the tuples of a v1 plan (and its fingerprint) stay as they were.
+        ...(workout.name ? [workout.name] : []),
       ]),
+      ...(phase.name ? [phase.name] : []),
     ]),
   ]);
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonical));
@@ -327,18 +330,32 @@ export async function renderPlanPdf(input: PlanPdfInput): Promise<Uint8Array> {
       height: 22,
       color: SOFT,
     });
-    const head = `Fase ${String(phase.index).padStart(2, "0")}`;
+    const head = phaseTitle(phase.index, phase.name);
     flow.y -= 5;
     flow.text(head, MARGIN + 8, 11, bold, BRAND);
-    const meta =
-      `${formatCalendarDate(phase.startDate)} a ${formatCalendarDate(phase.endDate)} · ${phase.weeks} semanas · ` +
-      `${phase.sessionsPerWeek} ${phase.sessionsPerWeek === 1 ? "sessão" : "sessões"} por semana` +
-      (phase.split === "Full Body" ? "" : ` · divisão ${phase.split}`);
-    flow.text(meta, MARGIN + 8 + bold.widthOfTextAtSize(head, 11) + 10, 9, regular, MUTED);
-    flow.y -= 17 + 12;
+    const meta = printable(
+      regular,
+      `${formatCalendarDate(phase.startDate)} a ${formatCalendarDate(phase.endDate)} · ${phase.weeks} ${phase.weeks === 1 ? "semana" : "semanas"} · ` +
+        `${phase.sessionsPerWeek} ${phase.sessionsPerWeek === 1 ? "sessão" : "sessões"} por semana` +
+        divisionSuffix(phase.split),
+    );
+    const metaX = MARGIN + 8 + bold.widthOfTextAtSize(printable(bold, head), 11) + 10;
+    if (regular.widthOfTextAtSize(meta, 9) <= MARGIN + CONTENT_WIDTH - 8 - metaX) {
+      flow.text(meta, metaX, 9, regular, MUTED);
+      flow.y -= 17 + 12;
+    } else {
+      // A v2 phase with a long name or many workouts: the line goes under the band instead of off the page.
+      flow.y -= 17 + 4;
+      for (const line of wrap(regular, 9, meta, CONTENT_WIDTH - 16)) {
+        flow.need(13);
+        flow.text(line, MARGIN + 8, 9, regular, MUTED);
+        flow.y -= 13;
+      }
+      flow.y -= 8;
+    }
     for (const workout of phase.workouts) {
       flow.need(18 + (workout.exercises[0] ? exerciseHeight(workout.exercises[0], flow) : 16));
-      flow.text(`Treino ${workout.label}`, MARGIN, 11, bold, INK);
+      flow.text(workoutTitle(workout.label, workout.name), MARGIN, 11, bold, INK);
       flow.y -= 17;
       if (workout.exercises.length === 0) {
         flow.text("Nenhum exercício neste treino.", MARGIN + 18, 9.5, regular, MUTED);

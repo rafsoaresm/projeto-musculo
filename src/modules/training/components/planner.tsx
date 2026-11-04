@@ -3,16 +3,24 @@
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { ArrowRight, CalendarDays, Info, ListChecks, RotateCw } from "lucide-react";
-import { buildPeriodization } from "../periodization";
+import { buildPeriodization, convertV1ToV2, convertV2ToV1 } from "../periodization";
 import {
   EXERCISES_PER_SESSION_OPTIONS,
-  periodizationInputSchema,
+  isV2Input,
+  periodizationInputSchemaV1,
+  periodizationInputSchemaV2,
   phaseSchema,
   type PhaseInput,
+  type PhaseInputV2,
   type PeriodizationInput,
   type PeriodizationSchedule,
 } from "../contracts";
+import { PHASE_COUNT_OPTIONS, defaultPhaseV2, structureIssueMessage } from "../structure-draft";
+import { PhaseEditorV2 } from "./phase-editor-v2";
 import { ScheduleResult, ScheduleSummary } from "./schedule-view";
+
+/** "Divisão padrão" is the v1 structure (A, AB, ABC…); "Estrutura livre" is v2. */
+type Mode = "V1" | "V2";
 
 const defaultPhase = (): PhaseInput => ({
   weeks: 4,
@@ -55,10 +63,14 @@ export function Planner({
   newPlanHref?: string;
 }) {
   const [startDate, setStartDate] = useState(initial?.startDate ?? "");
+  const [mode, setMode] = useState<Mode>(initial && isV2Input(initial) ? "V2" : "V1");
   const [phases, setPhases] = useState<PhaseInput[]>(() =>
-    initial
+    initial && !isV2Input(initial)
       ? initial.phases.map((phase) => ({ ...phase }))
       : Array.from({ length: 3 }, defaultPhase),
+  );
+  const [phasesV2, setPhasesV2] = useState<PhaseInputV2[]>(() =>
+    initial && isV2Input(initial) ? initial.phases.map((phase) => ({ ...phase })) : [],
   );
   const [selected, setSelected] = useState(0);
   const [schedule, setSchedule] = useState<PeriodizationSchedule | null>(() =>
@@ -69,7 +81,8 @@ export function Planner({
   const [dirty, setDirty] = useState(false);
   const [status, setStatus] = useState("");
   const [saving, startSaving] = useTransition();
-  const phase = phases[selected];
+  const phase = phases[Math.min(selected, phases.length - 1)];
+  const count = mode === "V2" ? phasesV2.length : phases.length;
   useEffect(() => {
     onDirtyChange?.(dirty);
   }, [dirty, onDirtyChange]);
@@ -88,33 +101,70 @@ export function Planner({
     );
     invalidate();
   }
-  function changeCount(count: number) {
-    setPhases(
-      Array.from({ length: count }, (_, i) =>
-        phases[i] ? { ...phases[i] } : defaultPhase(),
-      ),
-    );
-    setSelected(Math.min(selected, count - 1));
+  function updatePhaseV2(next: PhaseInputV2) {
+    setPhasesV2(phasesV2.map((value, i) => (i === selected ? next : value)));
     invalidate();
+  }
+  function changeCount(next: number) {
+    if (mode === "V2")
+      setPhasesV2(Array.from({ length: next }, (_, i) => (phasesV2[i] ? { ...phasesV2[i] } : defaultPhaseV2())));
+    else
+      setPhases(
+        Array.from({ length: next }, (_, i) =>
+          phases[i] ? { ...phases[i] } : defaultPhase(),
+        ),
+      );
+    setSelected(Math.min(selected, next - 1));
+    invalidate();
+  }
+  /**
+   * Switching to the free structure keeps everything (labels, targets, rotation, so every prescribed exercise
+   * stays in its workout). Going back to the standard split only works when the free structure fits in it.
+   */
+  function changeMode(next: Mode) {
+    if (next === mode) return;
+    if (next === "V2") {
+      setPhasesV2(convertV1ToV2({ startDate, phases }).phases);
+    } else {
+      const parsed = periodizationInputSchemaV2.safeParse({ schemaVersion: 2, startDate: startDate || "2000-01-01", phases: phasesV2 });
+      const back = parsed.success ? convertV2ToV1(parsed.data) : null;
+      if (!back) {
+        setError(
+          "Esta estrutura usa recursos da estrutura livre (nomes, alvos diferentes, rótulos próprios, rotação, dias ou quantidades fora da divisão padrão) e não cabe na divisão padrão.",
+        );
+        return;
+      }
+      setPhases(back.phases);
+    }
+    setMode(next);
+    setSelected(0);
+    invalidate();
+  }
+  /** The structure as typed, validated; an error message otherwise. */
+  function validInput(action: "calcular" | "salvar"): PeriodizationInput | string {
+    if (mode === "V2") {
+      const result = periodizationInputSchemaV2.safeParse({ schemaVersion: 2, startDate, phases: phasesV2 });
+      return result.success ? result.data : structureIssueMessage(result.error);
+    }
+    const result = periodizationInputSchemaV1.safeParse({ startDate, phases });
+    return result.success
+      ? result.data
+      : `Confira a data inicial e os limites de cada fase antes de ${action}.`;
   }
   function calculate(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const result = periodizationInputSchema.safeParse({ startDate, phases });
-    if (!result.success) {
-      setError(
-        "Confira a data inicial e os limites de cada fase antes de calcular.",
-      );
+    const result = validInput("calcular");
+    if (typeof result === "string") {
+      setError(result);
       return;
     }
-    setSchedule(buildPeriodization(result.data));
+    setSchedule(buildPeriodization(result));
     setError("");
   }
   function persistNow() {
-    const result = periodizationInputSchema.safeParse({ startDate, phases });
-    if (!result.success) {
-      setError(
-        "Confira a data inicial e os limites de cada fase antes de salvar.",
-      );
+    const result = validInput("salvar");
+    if (typeof result === "string") {
+      setError(result);
       return;
     }
     if (persist?.askTitle && !title.trim()) {
@@ -125,13 +175,13 @@ export function Planner({
     startSaving(async () => {
       const outcome = await persist?.save({
         title: persist.askTitle ? title : undefined,
-        input: result.data,
+        input: result,
       });
       if (outcome?.error) {
         setError(outcome.error);
         return;
       }
-      setSchedule(buildPeriodization(result.data));
+      setSchedule(buildPeriodization(result));
       setDirty(false);
       setStatus("Rascunho salvo.");
     });
@@ -195,17 +245,38 @@ export function Planner({
               <label>
                 Quantidade de fases
                 <select
-                  value={phases.length}
+                  value={count}
                   onChange={(event) => changeCount(Number(event.target.value))}
                 >
-                  {[3, 6, 12].map((count) => (
-                    <option key={count} value={count}>
-                      {count} mesociclos
+                  {(mode === "V2" ? PHASE_COUNT_OPTIONS : [3, 6, 12]).map((n) => (
+                    <option key={n} value={n}>
+                      {mode === "V2" ? `${n} ${n === 1 ? "fase" : "fases"}` : `${n} mesociclos`}
                     </option>
                   ))}
                 </select>
               </label>
             </div>
+            <fieldset className="structure-mode">
+              <legend>Modelo da estrutura</legend>
+              <label className="check-row">
+                <input
+                  type="radio"
+                  name="modelo-estrutura"
+                  checked={mode === "V1"}
+                  onChange={() => changeMode("V1")}
+                />
+                Divisão padrão (A, AB, ABC…)
+              </label>
+              <label className="check-row">
+                <input
+                  type="radio"
+                  name="modelo-estrutura"
+                  checked={mode === "V2"}
+                  onChange={() => changeMode("V2")}
+                />
+                Estrutura livre: rótulos próprios, semanas e sessões à vontade, alvo por treino, rotação e dias
+              </label>
+            </fieldset>
             <p className="field-hint">
               Fases não são meses exatos. O calendário considera a quantidade
               real de semanas de cada mesociclo.
@@ -221,7 +292,7 @@ export function Planner({
               role="group"
               aria-label="Selecionar fase"
             >
-              {phases.map((_, i) => (
+              {Array.from({ length: count }, (_, i) => (
                 <button
                   key={i}
                   type="button"
@@ -239,6 +310,16 @@ export function Planner({
               <strong>Mesociclo {selected + 1}</strong>
               <span className="pill neutral">Edição independente</span>
             </div>
+            {mode === "V2" ? (
+              <PhaseEditorV2
+                key={selected}
+                phase={phasesV2[Math.min(selected, phasesV2.length - 1)]}
+                phaseNumber={selected + 1}
+                startDate={startDate}
+                onChange={updatePhaseV2}
+              />
+            ) : (
+            <>
             <div className="field-grid">
               <label>
                 Microciclos (semanas)
@@ -310,6 +391,8 @@ export function Planner({
                 resulta em A/B, C/A, B/C. Cada nova fase reinicia sua divisão.
               </p>
             </div>
+            </>
+            )}
           </section>
           <button
             className={
@@ -390,7 +473,7 @@ export function Planner({
           )}
         </aside>
       </div>
-      {schedule && <ScheduleResult schedule={schedule} selected={selected} />}
+      {schedule && <ScheduleResult schedule={schedule} selected={Math.min(selected, schedule.phases.length - 1)} />}
     </>
   );
 }

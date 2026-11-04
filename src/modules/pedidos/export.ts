@@ -105,9 +105,14 @@ export interface ExportPlan {
     endDate: string;
     weeks: number;
     sessionsPerWeek: number;
+    /** The division as written for people: the v1 split ("ABC") or the v2 labels. */
     split: string;
+    /** Free name of a v2 phase; absent or null for v1. */
+    name?: string | null;
     workouts: Array<{
       label: string;
+      /** Free name of a v2 workout; absent or null for v1. */
+      name?: string | null;
       exercises: Array<{
         name: string;
         videoUrl: string | null;
@@ -215,8 +220,11 @@ export function buildExport(source: ExportSource) {
           semanas: phase.weeks,
           sessoesPorSemana: phase.sessionsPerWeek,
           divisao: phase.split,
+          // v2 names only when there is one, so the file of a v1 plan keeps its keys.
+          ...(phase.name ? { nome: phase.name } : {}),
           treinos: phase.workouts.map((workout) => ({
             treino: workout.label,
+            ...(workout.name ? { nome: workout.name } : {}),
             exercicios: workout.exercises.map((exercise) => ({
               nome: exercise.name,
               video: exercise.videoUrl,

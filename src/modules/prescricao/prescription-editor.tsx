@@ -5,7 +5,8 @@ import { ArrowDown, ArrowUp, Copy, ListChecks, Pencil, Plus, Trash2 } from "luci
 import { Pill } from "@/components/ui";
 import type { PrescribedItem, Target } from "@/db/prescription";
 import type { PeriodizationSchedule } from "@/modules/training/contracts";
-import { workoutLabels } from "@/modules/training/periodization";
+import { phaseWorkoutLabels } from "@/modules/training/periodization";
+import { workoutTitle } from "@/modules/training/format";
 import { CATEGORIES } from "@/modules/biblioteca/contracts";
 import { videoLabel } from "@/modules/biblioteca/labels";
 import { describeDose } from "./describe";
@@ -33,6 +34,7 @@ const STATUS: Record<WorkoutProgress["status"], { text: string; tone: "warning" 
   BELOW: { text: "Abaixo do alvo", tone: "warning" },
   MET: { text: "Alvo atendido", tone: "success" },
   ABOVE: { text: "Acima do alvo", tone: "neutral" },
+  NO_TARGET: { text: "Sem alvo", tone: "neutral" },
 };
 
 /**
@@ -64,7 +66,7 @@ export function PrescriptionEditor({
   const current = schedule.phases[phase];
   // 0.93: a draft with no exercise yet says where to start, with the real names of the first phase and workout.
   const firstPhase = schedule.phases[0];
-  const firstWorkout = workoutLabels(firstPhase.split)[0];
+  const firstWorkout = phaseWorkoutLabels(firstPhase)[0];
   const firstStep = !readOnly && items.length === 0;
   const firstTarget = `adicionar-${firstPhase.index}-${firstWorkout.replace(/\s+/g, "-")}`;
 
@@ -90,7 +92,9 @@ export function PrescriptionEditor({
         <Pill tone={below ? "warning" : "success"}>
           {below
             ? `${below} de ${progress.length} treinos abaixo do alvo`
-            : "Todos os treinos atingiram o alvo"}
+            : progress.some((slot) => slot.status === "NO_TARGET")
+              ? "Nenhum treino abaixo do alvo"
+              : "Todos os treinos atingiram o alvo"}
         </Pill>
       </p>
       {firstStep && (
@@ -188,7 +192,7 @@ export function PrescriptionEditor({
         </div>
       )}
       <div className="workout-grid">
-        {workoutLabels(current.split).map((label) => (
+        {phaseWorkoutLabels(current).map((label) => (
           <WorkoutCard
             key={`${current.index}-${label}`}
             planId={planId}
@@ -258,9 +262,11 @@ function WorkoutCard({
   return (
     <section className="workout-card" aria-label={`Treino ${target.workoutLabel}`}>
       <header>
-        <h3>Treino {target.workoutLabel}</h3>
+        <h3>{workoutTitle(target.workoutLabel, progress.name)}</h3>
         <span className="small muted">
-          {progress.count} de {progress.target}
+          {progress.target === null
+            ? `${progress.count} ${progress.count === 1 ? "exercício" : "exercícios"}`
+            : `${progress.count} de ${progress.target}`}
         </span>
         <Pill tone={status.tone}>{status.text}</Pill>
       </header>
@@ -441,7 +447,7 @@ function WorkoutCard({
                 <select value={copyFrom} onChange={(e) => setCopyFrom(e.target.value)}>
                   <option value="">Escolha…</option>
                   {sources.map((slot) => (
-                    <option key={`${slot.phaseIndex}|${slot.label}`} value={`${slot.phaseIndex}|${slot.label}`}>
+                    <option key={JSON.stringify([slot.phaseIndex, slot.label])} value={JSON.stringify([slot.phaseIndex, slot.label])}>
                       Fase {slot.phaseIndex} · Treino {slot.label} ({slot.count})
                     </option>
                   ))}
@@ -452,10 +458,11 @@ function WorkoutCard({
                 className="button secondary small"
                 disabled={pending || !copyFrom}
                 onClick={() => {
-                  const [phaseIndex, workoutLabel] = copyFrom.split("|");
+                  // JSON, not "fase|rótulo": the source is read back exactly, whatever the label holds.
+                  const [phaseIndex, workoutLabel] = JSON.parse(copyFrom) as [number, string];
                   run(
                     () =>
-                      copyWorkout(planId, revisionId, { phaseIndex: Number(phaseIndex), workoutLabel }, target),
+                      copyWorkout(planId, revisionId, { phaseIndex, workoutLabel }, target),
                     () => setCopyFrom(""),
                   );
                 }}

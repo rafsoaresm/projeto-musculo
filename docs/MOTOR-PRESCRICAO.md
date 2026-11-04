@@ -94,6 +94,24 @@ Referências não verificadas não aparecem em traços nem na interface, e nenhu
 
 Em `motor/bounds.ts` (`TECHNICAL_LIMITS`), cada um com o motivo: 12 fases (CHECK 1..12 das tabelas 0006/0012; refazer não é aditivo), 14 sessões por semana, 30 exercícios por treino (`MAX_PER_WORKOUT` e `MAX_EXERCISES` da execução, até medição), tamanhos das colunas de traço (8000), alternativas (4000), chave do item (300) e textos de exibição (séries 20, repetições 40, carga 120, cadência 40, descanso 40, texto da dose 300). Acima do tamanho, o motor resume e avisa (`TRACE_TRUNCATED`, `DISPLAY_TRUNCATED`, `ISSUES_AGGREGATED`). Avisos: até 300 um a um (erros primeiro); o resto, inclusive erros, agrupado por severidade, código e fase com contagem (um erro agrupado continua ERROR). Teste: 12 fases × 4 semanas × 6 sessões com uma dose inválida em todos os itens dá resumo (sem as sessões) abaixo de 500000 caracteres. O teto de sessões totais e de unidades de trabalho por pedido será medido na S6 (`workerd` local).
 
+### Estrutura da periodização v2 (etapa S2)
+
+Em `src/modules/training/contracts.ts` (`STRUCTURE_LIMITS`), todos técnicos e não recomendação de treino:
+
+| Limite | Valor | Por quê |
+|---|---|---|
+| Fases | 1 a 12 | CHECK 1..12 de `prescribed_exercises.phase_index` (0006) e `workout_sessions.phase_index` (0012); refazer não é aditivo (Q4) |
+| Semanas por fase | a partir de 1 | sem teto próprio; o total de sessões e o fim do calendário (2100) limitam |
+| Sessões por semana | 1 a 14 | duas por dia em todos os dias |
+| Sessões no ciclo (Σ semanas × sessões) | até 504 | **provisório**: o maior total que a v1 já permitia (12 × 6 × 7). A S6 mede a aplicação no pior caso sob `workerd` e pode subir; nunca baixar, senão estruturas salvas deixam de ser lidas |
+| Rótulo do treino | 1 a 20 caracteres, sem `\|`, `/`, `\` nem controle | CHECK de `workout_label` (0006/0012); `\|` separava "fase\|rótulo" no editor; `/` e `\` vão no endereço de registro do aluno |
+| Alvo por treino | 1 a 20 ou "sem alvo" | 20 é a decisão do usuário na 0.93; 1 porque uma sessão de outra modalidade pode ter um só exercício |
+| Rotação | 1 a 504 posições, só rótulos da fase | posições além das sessões não são usadas; o teto só limita o que é gravado |
+| Dias de treino | um por sessão, 0 a 6, em ordem | dia 0 = primeiro dia de cada semana da fase; sem dias, a data prevista fica vazia (nunca presumida) |
+| Nome da fase / do treino / foco | 60 / 60 / 160 caracteres; minutos 1 a 600 | textos de exibição; o foco é anotação do profissional, nunca interpretado nem entregue ao aluno |
+
+A v1 (divisão por letras, 3–6 semanas, 3/6/12 fases, alvo 3–20) continua sendo lida e gravada como antes. A conversão v1 → v2 (`convertV1ToV2`) não move sessão, rótulo nem alvo; a volta (`convertV2ToV1`) só existe quando a estrutura cabe na v1.
+
 ## A completar (S10)
 
 Metadados da biblioteca, perguntas feitas e por quê, onde ficam os dados de saúde e como a exclusão afeta a reprodução, números medidos.

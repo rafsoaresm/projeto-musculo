@@ -1,5 +1,5 @@
 import { RECOVERY_LABELS } from "@/modules/checkin/contracts";
-import { formatCalendarDate } from "@/modules/training/format";
+import { formatCalendarDate, workoutTitle } from "@/modules/training/format";
 import { REQUEST_KIND_LABEL, outcomeLabel } from "./contracts";
 import {
   EXPORT_CHECKIN_LIMIT,
@@ -181,13 +181,13 @@ function planBlocks(plan: ExportPlan): ReadableBlock[] {
     blocks.push({
       kind: "text",
       text:
-        `Fase ${phase.index}: ${formatCalendarDate(phase.startDate)} a ${formatCalendarDate(phase.endDate)} · ` +
+        `Fase ${phase.index}${phase.name ? ` (${phase.name})` : ""}: ${formatCalendarDate(phase.startDate)} a ${formatCalendarDate(phase.endDate)} · ` +
         `${plural(phase.weeks, "semana", "semanas")} · ${plural(phase.sessionsPerWeek, "sessão", "sessões")} por semana · ` +
         `divisão ${phase.split}`,
     });
     for (const workout of phase.workouts) {
       // "Treino A", then "1.", "2." as the plan PDF numbers them.
-      blocks.push({ kind: "heading", text: `Treino ${workout.label}` });
+      blocks.push({ kind: "heading", text: workoutTitle(workout.label, workout.name) });
       if (workout.exercises.length === 0) {
         blocks.push({ kind: "text", text: "Nenhum exercício neste treino.", muted: true });
         continue;

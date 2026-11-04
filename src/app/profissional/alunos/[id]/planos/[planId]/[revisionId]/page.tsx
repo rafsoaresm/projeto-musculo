@@ -115,7 +115,7 @@ export default async function PlanRevision({
         <DraftWorkspace
           editor={editor}
           input={revision.input}
-          structureSummary={`${revision.schedule.phases.length} fases · ${revision.schedule.totalWeeks} semanas · ${formatCalendarDate(revision.schedule.startDate)} a ${formatCalendarDate(revision.schedule.endDate)}`}
+          structureSummary={`${revision.schedule.phases.length} ${revision.schedule.phases.length === 1 ? "fase" : "fases"} · ${revision.schedule.totalWeeks} ${revision.schedule.totalWeeks === 1 ? "semana" : "semanas"} · ${formatCalendarDate(revision.schedule.startDate)} a ${formatCalendarDate(revision.schedule.endDate)}`}
           save={saveDraft.bind(null, planId, revisionId)}
           markReady={markReady.bind(null, planId, revisionId)}
         />

@@ -1,6 +1,6 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import type { PeriodizationSchedule } from "@/modules/training/contracts";
-import { workoutLabels } from "@/modules/training/periodization";
+import { phaseDivisionText, phaseName, phaseWorkouts } from "@/modules/training/periodization";
 import type { VideoStatus } from "@/modules/biblioteca/contracts";
 import { activeUser } from "./students";
 
@@ -27,6 +27,8 @@ export interface StudentExercise {
 }
 export interface StudentWorkout {
   label: string;
+  /** Free name of a v2 workout ("Superior"); null (or absent) for v1. */
+  name?: string | null;
   exercises: StudentExercise[];
 }
 export interface StudentPhase {
@@ -35,7 +37,10 @@ export interface StudentPhase {
   endDate: string;
   weeks: number;
   sessionsPerWeek: number;
+  /** The division as written for people: the v1 split exactly ("ABC"), or the v2 labels ("Superior / Inferior"). */
   split: string;
+  /** Free name of a v2 phase ("Adaptação"); null (or absent) for v1. */
+  name?: string | null;
   workouts: StudentWorkout[];
 }
 export interface StudentTrainingPlan {
@@ -112,9 +117,11 @@ export async function assembleDelivered(
         endDate: phase.endDate,
         weeks: phase.weeks,
         sessionsPerWeek: phase.sessionsPerWeek,
-        split: phase.split,
-        workouts: workoutLabels(phase.split).map((label) => ({
+        split: phaseDivisionText(phase),
+        name: phaseName(phase),
+        workouts: phaseWorkouts(phase).map(({ label, name }) => ({
           label,
+          name,
           exercises: mine
             .filter((item) => item.phaseIndex === phase.index && item.workoutLabel === label)
             .map((item) => ({

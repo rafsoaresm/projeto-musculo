@@ -4,7 +4,7 @@ import { Pill, formatDate } from "@/components/ui";
 import { deliveredByText } from "@/modules/configuracoes/delivered-by";
 import type { StudentPhase, StudentTrainingPlan } from "@/db/student-plan";
 import { describeDose } from "@/modules/prescricao/describe";
-import { formatCalendarDate } from "@/modules/training/format";
+import { divisionSuffix, formatCalendarDate, phaseTitle, workoutTitle } from "@/modules/training/format";
 
 /** Today as a calendar date in the organization's usual zone, to mark the current phase. */
 export const todayInBrazil = () =>
@@ -72,12 +72,12 @@ export function StudentTraining({
             open={current ? phase.index === current.index : phase.index === 1}
           >
             <summary>
-              <strong>Fase {String(phase.index).padStart(2, "0")}</strong>
+              <strong>{phaseTitle(phase.index, phase.name)}</strong>
               <span className="small muted">
                 {formatCalendarDate(phase.startDate)} a {formatCalendarDate(phase.endDate)} ·{" "}
-                {phase.weeks} semanas · {phase.sessionsPerWeek}{" "}
+                {phase.weeks} {phase.weeks === 1 ? "semana" : "semanas"} · {phase.sessionsPerWeek}{" "}
                 {phase.sessionsPerWeek === 1 ? "sessão" : "sessões"} por semana
-                {phase.split === "Full Body" ? "" : ` · divisão ${phase.split}`}
+                {divisionSuffix(phase.split)}
               </span>
               {standing === "CURRENT" && <Pill tone="brand">Fase atual</Pill>}
               {standing === "PAST" && <Pill>Concluída</Pill>}
@@ -90,7 +90,7 @@ export function StudentTraining({
                   aria-label={`Treino ${workout.label}, fase ${phase.index}`}
                 >
                   <header>
-                    <h3>Treino {workout.label}</h3>
+                    <h3>{workoutTitle(workout.label, workout.name)}</h3>
                     {logBase && workout.exercises.length > 0 && (
                       <Link
                         className="button secondary small"

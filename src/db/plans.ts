@@ -1,11 +1,11 @@
 import type { D1Database, D1PreparedStatement } from "@cloudflare/workers-types";
 import {
-  periodizationInputSchema,
+  parsePeriodizationInput,
   type PeriodizationInput,
   type PeriodizationSchedule,
 } from "@/modules/training/contracts";
 import { buildPeriodization } from "@/modules/training/periodization";
-import { workoutSlots } from "@/modules/prescricao/summary";
+import { isBelowTarget, workoutSlots } from "@/modules/prescricao/summary";
 import { latestRecordedSql, screeningStanding, unreviewedAlertSql } from "./assessments";
 import {
   activeUser,
@@ -256,7 +256,7 @@ export function plansFor(
           ...row,
           exercises: slots.reduce((total, slot) => total + countOf(slot), 0),
           workouts: slots.length,
-          below: slots.filter((slot) => countOf(slot) < slot.target).length,
+          below: slots.filter((slot) => isBelowTarget(slot, countOf(slot))).length,
         };
       });
     },
@@ -336,7 +336,7 @@ export function plansFor(
           deliveredByName: row.deliveredByName,
           deliveredOrganizationName: row.deliveredOrganizationName,
           basedOnRevisionId: row.basedOnRevisionId,
-          input: periodizationInputSchema.parse(JSON.parse(row.inputJson)),
+          input: parsePeriodizationInput(JSON.parse(row.inputJson)),
           schedule: JSON.parse(row.scheduleJson) as PeriodizationSchedule,
         },
       };
@@ -350,7 +350,7 @@ export function plansFor(
     ): Promise<{ planId: string; revisionId: string } | null> {
       const title = cleanTitle(data.title);
       const schedule = buildPeriodization(data.input);
-      const input = periodizationInputSchema.parse(data.input);
+      const input = parsePeriodizationInput(data.input);
       const planId = crypto.randomUUID();
       const revisionId = crypto.randomUUID();
       const stamp = now.toISOString();
@@ -406,7 +406,7 @@ export function plansFor(
       now = new Date(),
     ): Promise<boolean> {
       const schedule = buildPeriodization(rawInput);
-      const input = periodizationInputSchema.parse(rawInput);
+      const input = parsePeriodizationInput(rawInput);
       const stamp = now.toISOString();
       const kept = workoutSlots(schedule);
       const current = await this.findRevision(planId, revisionId);
