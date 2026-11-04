@@ -7,7 +7,8 @@ import {
 import { workoutSlots } from "@/modules/prescricao/summary";
 import { parseVideoUrl, videoStatusFor, type VideoStatus } from "@/modules/biblioteca/contracts";
 import type { PeriodizationSchedule } from "@/modules/training/contracts";
-import { activeUser, assertContext, technicalAccessExists, type AuthenticatedContext } from "./students";
+import { revisionGate } from "./revision-gates";
+import { assertContext, type AuthenticatedContext } from "./students";
 
 /**
  * Exercises prescribed inside a plan revision, by hand. Every operation needs an
@@ -66,14 +67,9 @@ export function prescriptionFor(
   context: AuthenticatedContext | null,
 ) {
   const { userId, organizationId } = assertContext(context);
-  // Every statement binds ?1 organization, ?2 user, ?3 plan, ?4 revision, in that order.
-  const reach = (state: string) => `EXISTS (SELECT 1 FROM plan_revisions r
-    JOIN training_plans tp ON tp.organization_id = r.organization_id AND tp.id = r.plan_id
-    JOIN students s ON s.organization_id = tp.organization_id AND s.id = tp.student_id
-    WHERE r.organization_id = ?1 AND r.id = ?4 AND r.plan_id = ?3 ${state}
-      AND ${activeUser("?2")} AND ${technicalAccessExists("s", "?2")})`;
-  const seen = reach("");
-  const open = reach("AND r.state = 'DRAFT'");
+  // Every statement binds ?1 organization, ?2 user, ?3 plan, ?4 revision, in that order (the shared gate, revision-gates.ts).
+  const seen = revisionGate("ANY");
+  const open = revisionGate("DRAFT");
   const inWorkout = (alias: string, phase: string, label: string) =>
     `${alias}.revision_id = ?4 AND ${alias}.phase_index = ${phase} AND ${alias}.workout_label = ${label}`;
   const eventAfterChange = (

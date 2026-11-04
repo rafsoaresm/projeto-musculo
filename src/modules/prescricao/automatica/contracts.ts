@@ -93,7 +93,8 @@ export const weeklyProgressionSchema = z
   })
   .strict();
 
-const flagDecision = z.discriminatedUnion("kind", [
+/** The professional's decision about one alert (engine `FlagDecision`); used by the answers and by "Aceitar decisão" (S6). */
+export const flagDecisionSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("EXCLUDE_PATTERN"), pattern: codeOf(PATTERNS, "Padrão") }).strict(),
   z.object({ kind: z.literal("EXCLUDE_CAUTION_TAG"), tag: codeOf(CAUTION_TAGS, "Marcador") }).strict(),
   z.object({ kind: z.literal("EXCLUDE_EXERCISE"), exerciseId }).strict(),
@@ -165,7 +166,7 @@ export const generationAnswersSchema = z
       .refine((items) => unique(items.map((m) => m.exerciseId)), { message: "Uma medida por exercício." })
       .default([]),
     metadataTrust: z.enum(["REVIEWED_ONLY", "REVIEWED_AND_INFERRED"]).optional(),
-    acceptedFlagDecisions: list(z.object({ flagCode: z.string().trim().min(1).max(200), decision: flagDecision }).strict())
+    acceptedFlagDecisions: list(z.object({ flagCode: z.string().trim().min(1).max(200), decision: flagDecisionSchema }).strict())
       .refine((items) => unique(items.map((d) => d.flagCode)), { message: "Uma decisão por alerta." })
       .default([]),
   })

@@ -47,6 +47,18 @@ export function goalSuggestions(goal: string | null, rules: RuleSetRef = DEFAULT
   return out;
 }
 
+/**
+ * Codes of the assumptions this adapter adds (beyond the engine's own). The proposal service replaces them on every engine run
+ * with the current ones, so a stale assumption never survives a regeneration (S6).
+ */
+export const ADAPTER_ASSUMPTION_CODES = [
+  "DOSE_MODE_DEFAULT", "METADATA_TRUST_DEFAULT", "TIME_BUDGET_SOFT_DEFAULT", "ASSESSMENT_USED", "HISTORY_WINDOW", "HISTORY_TRUNCATED",
+  "HISTORY_CUSTOM_SKIPPED", "CATALOG_PENDING_EXCLUDED", "CAUTION_TAGS_PARTIAL", "STRUCTURE_V1", "EXISTING_PRESERVED", "FREE_TEXT_NOT_PARSED",
+  "CHECKINS_NOT_USED",
+] as const;
+/** Codes of the issues this adapter adds (facts in the records worth a look; never blocking). */
+export const ADAPTER_ISSUE_CODES = ["AVAILABILITY_BELOW_SESSIONS"] as const;
+
 export interface BuildOptions {
   scope?: EngineInput["scope"];
   locked?: ItemTarget[];
