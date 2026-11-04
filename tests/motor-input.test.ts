@@ -7,6 +7,7 @@ import type { StudentProfile } from "@/db/student-profile";
 import { emptyProfile } from "@/modules/ficha/contracts";
 import { EMPTY_SCREENING, type ScreeningPayload } from "@/modules/avaliacoes/v2/screening";
 import { EMPTY_POSTURE } from "@/modules/avaliacoes/v2/posture";
+import { FLEXITEST_LABEL } from "@/modules/avaliacoes/v2/flexitest";
 import { EMPTY_TESTS } from "@/modules/avaliacoes/v2/physical-tests";
 import { EMPTY_CONCLUSION } from "@/modules/avaliacoes/v2/conclusion";
 import { toExposureHistory, type ExposureRow } from "@/modules/execucao/exposures";
@@ -159,6 +160,12 @@ describe("mapping the real records", () => {
       "ASSESSMENT_CONTEXT:TEST:abdominal",
       "ASSESSMENT_CONTEXT:RESULT:body_fat_percent",
     ]);
+    const flex = found.find((f) => f.code === "FLEXITEST")!;
+    expect(flex.ref).toBe("assessment:as-1");
+    expect(flex.label).toContain(`${FLEXITEST_LABEL.hip_flexion}: nível 2`);
+    expect(flex.label).toContain(`${FLEXITEST_LABEL.elbow_flexion}: nível 3`);
+    expect(flex.label).toContain("2 de 15 movimentos avaliados");
+    expect(flex.label).toContain("não contraindicações automáticas");
     const result = found.find((f) => f.code === "RESULT:body_fat_percent")!;
     // Method and the formula's limitation travel with the number.
     expect(result.label).toContain("17,3%");
