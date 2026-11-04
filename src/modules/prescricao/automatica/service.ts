@@ -34,6 +34,7 @@ import { DEFAULT_RULESET, getRuleSet } from "@/modules/prescricao/motor/rules";
 import { STIMULUS_LABELS } from "@/modules/prescricao/motor/vocabulary";
 import { ruleLogFor, uniqueIssues } from "@/modules/prescricao/motor/trace";
 import { auditPlan, boundAudit } from "@/modules/prescricao/motor/audit";
+import { targetSuggestion, type TargetSuggestion, type TargetSuggestionOutcome } from "@/modules/prescricao/motor/targets";
 import { volumeFor } from "@/modules/prescricao/motor/volume";
 import type {
   AuditReport,
@@ -322,6 +323,35 @@ export interface GenerationScreen {
   rules: { id: string; version: string };
   library: Array<{ id: string; name: string; metadata: "REVIEWED" | "INFERRED" | "PENDING" }>;
   lastAnswers: { createdAt: string; answers: unknown } | null;
+  /**
+   * Suggested targets per phase (rule MICROCYCLE_TARGET_SUGGESTIONS of the default rule set; empty without it): one outcome per
+   * stimulus the form may choose, and the one with no stimulus answered. The suggestion depends on the stimulus, which the form
+   * picks on screen; the server recomputes it from the answers on "Gerar" and refuses anything else as "aceita".
+   */
+  targetSuggestions: PhaseTargetSuggestions[];
+}
+
+export interface PhaseTargetSuggestions {
+  phaseIndex: number;
+  /** No stimulus answered for the phase (the periodization's own, if any). */
+  asIs: TargetSuggestionOutcome;
+  byStimulus: Record<string, TargetSuggestionOutcome>;
+}
+
+/** The suggested targets of each phase the rule set can suggest for, as the form needs them (see `GenerationScreen`). */
+export function screenTargetSuggestions(input: EngineInput, rules: RuleSetRef = DEFAULT_RULESET): PhaseTargetSuggestions[] {
+  const table = getRuleSet(rules)?.rules.MICROCYCLE_TARGET_SUGGESTIONS?.value;
+  if (!table) return [];
+  return input.structure.phases.map((phase) => {
+    const others = input.parameters.stimulusByPhase.filter((s) => s.phaseIndex !== phase.index);
+    const asIs = targetSuggestion(rules, phase, { parameters: { ...input.parameters, stimulusByPhase: others } });
+    const byStimulus: Record<string, TargetSuggestionOutcome> = {};
+    for (const stimulus of Object.keys(table).sort())
+      byStimulus[stimulus] = targetSuggestion(rules, phase, {
+        parameters: { ...input.parameters, stimulusByPhase: [...others, { phaseIndex: phase.index, value: stimulus, basis: "PROFESSIONAL" }] },
+      });
+    return { phaseIndex: phase.index, asIs, byStimulus };
+  });
 }
 
 const PROFILE_TEXT: Array<[keyof NonNullable<GenerationContext["profile"]>, string]> = [
@@ -391,6 +421,7 @@ function screenOf(ctx: GenerationContext, built: Built | Extract<ReturnType<type
     policy: policyRows(rules),
     rules: { id: rules.id, version: rules.version },
     library: ctx.catalog.map((e) => ({ id: e.id, name: e.name, metadata: e.metadataStatus })).sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
+    targetSuggestions: screenTargetSuggestions(built.input),
   };
 }
 
@@ -522,19 +553,34 @@ async function prepare(
 }
 
 /**
- * `answersPatch` of a regeneration: the fields it sends replace the stored ones, the others stay. The alert decisions the
- * professional already recorded ("acceptFlagDecision") are merged by alert code, never dropped by a patch that omits them.
- * A patch that is not an object is passed on as is, so the strict parse refuses it.
+ * `answersPatch` of a regeneration: the fields it sends replace the stored ones, the others stay. Lists keyed by what they are
+ * about are merged by that key, never dropped by a patch that omits them: the alert decisions the professional already recorded
+ * ("acceptFlagDecision") by alert code, the coverage of a phase by phase (accepting the targets of phase 2 keeps those of phase 1)
+ * and the targets of a workout by phase and workout. A patch that is not an object is passed on as is, so the strict parse
+ * refuses it.
  */
-function patchAnswers(stored: unknown, patch: unknown): unknown {
+export function patchAnswers(stored: unknown, patch: unknown): unknown {
   if (!patch || typeof patch !== "object" || Array.isArray(patch)) return patch;
   const base = stored && typeof stored === "object" && !Array.isArray(stored) ? (stored as Record<string, unknown>) : {};
   const next = patch as Record<string, unknown>;
-  const decisions = (v: unknown) => (Array.isArray(v) ? (v as Array<{ flagCode?: unknown }>) : []);
-  const incoming = decisions(next.acceptedFlagDecisions);
-  const codes = new Set(incoming.map((d) => d?.flagCode));
-  const kept = decisions(base.acceptedFlagDecisions).filter((d) => !codes.has(d?.flagCode));
-  return { ...base, ...next, acceptedFlagDecisions: [...kept, ...incoming] };
+  const rows = (v: unknown) => (Array.isArray(v) ? (v as Array<Record<string, unknown> | null>) : []);
+  /** Stored rows whose key the patch does not send, then the patch's rows; absent from the patch = the stored list as is. */
+  const merge = (field: string, key: (row: Record<string, unknown> | null) => string) => {
+    if (!(field in next)) return {};
+    const incoming = rows(next[field]);
+    const keys = new Set(incoming.map(key));
+    return { [field]: [...rows(base[field]).filter((r) => !keys.has(key(r))), ...incoming] };
+  };
+  return {
+    ...base,
+    ...next,
+    acceptedFlagDecisions: [
+      ...rows(base.acceptedFlagDecisions).filter((d) => !new Set(rows(next.acceptedFlagDecisions).map((x) => x?.flagCode)).has(d?.flagCode)),
+      ...rows(next.acceptedFlagDecisions),
+    ],
+    ...merge("phaseCoverage", (r) => JSON.stringify(r?.phaseIndex ?? null)),
+    ...merge("coverageByWorkout", (r) => JSON.stringify([r?.phaseIndex ?? null, r?.label ?? null])),
+  };
 }
 
 /**
@@ -871,6 +917,39 @@ export function proposalService(
       // Remembered only when the content read is the version of the key (a write in between computes it again next time).
       if (snap.header.version === head.header.version) rememberViewAudit(key, audit);
       return { status: "ok", audit, source: "VIEW", rules: audit.rules };
+    },
+
+    /**
+     * The suggested targets of phases of an open proposal (design V3 §4.6, §7.4), for the card of a phase without targets. Only
+     * when the proposal's own rule set has the suggestion rule (a regeneration runs with it and would refuse anything else).
+     * Computed from the proposal's answers and the data read now through the same gated path as a regeneration, so "Aceitar"
+     * sends exactly what the server checks. Nothing is written.
+     */
+    async targetSuggestions(
+      planId: string,
+      revisionId: string,
+      proposalId: string,
+      phaseIndexes: number[],
+    ): Promise<{ status: "ok"; suggestions: Array<{ phaseIndex: number; suggestion: TargetSuggestion | null; reason: string | null }> } | { status: "not_found" }> {
+      const head = await repo.summary(planId, revisionId, proposalId);
+      if (!head || head.header.state !== "OPEN" || head.header.revisionState !== "DRAFT") return { status: "not_found" };
+      const rules = rulesOf(head.header);
+      if (!getRuleSet(rules)?.rules.MICROCYCLE_TARGET_SUGGESTIONS || !phaseIndexes.length) return { status: "ok", suggestions: [] };
+      const answers = parseAnswers(head.header.parameters);
+      if (!answers) return { status: "ok", suggestions: [] };
+      const prepared = await prepare(db, context, planId, revisionId, answers, [], clock(), rules);
+      if (!prepared.ok) return !prepared.outcome.ok && prepared.outcome.reason === "not_found" ? { status: "not_found" } : { status: "ok", suggestions: [] };
+      const { input } = prepared.built;
+      const wanted = new Set(phaseIndexes);
+      return {
+        status: "ok",
+        suggestions: input.structure.phases
+          .filter((p) => wanted.has(p.index))
+          .map((phase) => {
+            const out = targetSuggestion(rules, phase, { parameters: input.parameters });
+            return { phaseIndex: phase.index, suggestion: out.suggestion, reason: out.suggestion ? null : out.reason };
+          }),
+      };
     },
 
     /** What "Aplicar ao rascunho" would write and what it asks first. Null when the proposal is not reachable. */

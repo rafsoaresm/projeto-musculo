@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { Kpi, Notice, Pill } from "@/components/ui";
+import type { TargetSuggestion } from "@/modules/prescricao/motor/targets";
+import { TargetSuggestionCard } from "./target-suggestions";
 import {
   BASIS_LABELS,
   BASIS_TONES,
@@ -8,7 +10,18 @@ import {
   type AuditFindingView,
   type AuditGroupView,
   type AuditSource,
+  type CoverageAnswer,
+  type WorkoutCoverageAnswer,
 } from "./view";
+
+/** What the panel needs to draw the suggested-targets card of a finding "sem alvos" (design V3 §7.4). */
+export interface AuditTargets {
+  suggestions: ReadonlyArray<{ phaseIndex: number; suggestion: TargetSuggestion | null; reason: string | null }>;
+  labelsOf: (phaseIndex: number) => string[];
+  pending: boolean;
+  onAccept: (entry: CoverageAnswer) => void;
+  onApply: (phaseIndex: number, coverage: CoverageAnswer | null, byWorkout: WorkoutCoverageAnswer[]) => void;
+}
 
 /**
  * "Auditoria técnica do plano" (design V3 §7.1): the plan-wide reading of the proposal, drawn only from what `view.ts` returns.
@@ -21,6 +34,7 @@ export function AuditPanel({
   acceptSuggestions,
   phaseIndex,
   href,
+  targets,
 }: {
   audit: AuditSource;
   engineVersion: string;
@@ -28,6 +42,8 @@ export function AuditPanel({
   phaseIndex: number;
   /** Address of a phase (and week) of the proposal, relative to the mount, as the page builds it. */
   href: (phaseIndex: number, week?: number) => string;
+  /** The suggested-targets cards; absent = descriptions only. */
+  targets?: AuditTargets;
 }) {
   const view = auditView(audit, { engineVersion, acceptSuggestions });
   const rows = auditPhaseRows(audit.report, phaseIndex);
@@ -50,9 +66,9 @@ export function AuditPanel({
         <Kpi label="Observações" value={String(view.kpis.observations)} />
         <Kpi label="Fases auditadas" value={view.kpis.phases} />
       </div>
-      <FindingGroups title="Atenção" groups={view.attention} count={view.kpis.attention} open href={href} />
-      <FindingGroups title="Observações" groups={view.observations} count={view.kpis.observations} href={href} />
-      <FindingGroups title="Descrição do plano" groups={view.descriptive} count={descriptive} href={href} />
+      <FindingGroups title="Atenção" groups={view.attention} count={view.kpis.attention} open href={href} targets={targets} />
+      <FindingGroups title="Observações" groups={view.observations} count={view.kpis.observations} href={href} targets={targets} open={offersCard(view.observations, targets)} />
+      <FindingGroups title="Descrição do plano" groups={view.descriptive} count={descriptive} href={href} targets={targets} />
       {view.kpis.attention + view.kpis.observations + descriptive === 0 && <p className="small muted">Nenhum ponto a observar nas fases auditadas.</p>}
       {rows ? (
         <>
@@ -139,18 +155,25 @@ export function AuditPanel({
   );
 }
 
+/** Whether a group holds a finding whose card is offered (it then opens, so "Ver alvos sugeridos" lands on the card). */
+function offersCard(groups: AuditGroupView[], targets: AuditTargets | undefined): boolean {
+  return Boolean(targets && groups.some((g) => g.findings.some((f) => f.offerSuggestion && targets.suggestions.some((t) => t.phaseIndex === f.phaseIndex))));
+}
+
 function FindingGroups({
   title,
   groups,
   count,
   open = false,
   href,
+  targets,
 }: {
   title: string;
   groups: AuditGroupView[];
   count: number;
   open?: boolean;
   href: (phaseIndex: number, week?: number) => string;
+  targets?: AuditTargets;
 }) {
   if (!count) return null;
   return (
@@ -163,7 +186,7 @@ function FindingGroups({
           <h3 className="small-heading">{g.title}</h3>
           <ul className="auto-list">
             {g.findings.map((f) => (
-              <Finding key={f.key} f={f} href={href} />
+              <Finding key={f.key} f={f} href={href} targets={targets} />
             ))}
           </ul>
         </div>
@@ -172,7 +195,8 @@ function FindingGroups({
   );
 }
 
-function Finding({ f, href }: { f: AuditFindingView; href: (phaseIndex: number, week?: number) => string }) {
+function Finding({ f, href, targets }: { f: AuditFindingView; href: (phaseIndex: number, week?: number) => string; targets?: AuditTargets }) {
+  const card = f.offerSuggestion && f.phaseIndex !== null ? targets?.suggestions.find((t) => t.phaseIndex === f.phaseIndex) : undefined;
   return (
     <li className="audit-finding">
       <span className="pill-row">
@@ -210,6 +234,19 @@ function Finding({ f, href }: { f: AuditFindingView; href: (phaseIndex: number, 
             </Link>
           ))}
         </span>
+      )}
+      {card && targets && (
+        <TargetSuggestionCard
+          phaseIndex={card.phaseIndex}
+          suggestion={card.suggestion}
+          reason={card.reason}
+          labels={targets.labelsOf(card.phaseIndex)}
+          pending={targets.pending}
+          acceptText="Aceitar e regenerar a fase"
+          commitText="Nada é aplicado sem o seu aceite. Ao aceitar, a fase é regenerada; itens mantidos, travados e trocados por você continuam."
+          onAccept={targets.onAccept}
+          onApply={(coverage, byWorkout) => targets.onApply(card.phaseIndex, coverage, byWorkout)}
+        />
       )}
     </li>
   );

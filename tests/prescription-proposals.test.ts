@@ -8,7 +8,7 @@ import { ADAPTER_ASSUMPTION_CODES } from "@/modules/prescricao/automatica/build-
 import type { GenerationAnswersInput } from "@/modules/prescricao/automatica/contracts";
 import { AUDIT_RULESET, auditOfStored, proposalService, viewAuditMemoForTests, withAdapter, type ProposalOutcome } from "@/modules/prescricao/automatica/service";
 import { loadCatalogForPlan } from "@/modules/prescricao/automatica/context";
-import { auditView, canAcceptSuggestions, storedAudit } from "@/modules/prescricao/automatica/view";
+import { auditView, canAcceptSuggestions, phasesWithoutTargets, storedAudit, suggestionEntry } from "@/modules/prescricao/automatica/view";
 import { DEFAULT_RULESET, getRuleSet } from "@/modules/prescricao/motor/rules";
 import { LEGACY_RULES } from "./helpers/motor-fixtures";
 import { ENGINE_VERSION, canonicalJson, generate, sha256Hex, type EngineInput, type EngineResult } from "@/modules/prescricao/motor";
@@ -901,5 +901,58 @@ describe("Motor V3 S2: the plan audit with the proposal", () => {
     expect(viewAuditMemoForTests.size()).toBe(3);
     // Nothing of it was ever written to the proposal.
     expect((await snapshot(d, proposalId)).result.audit).toBeUndefined();
+  });
+  // ---------- Motor V3 S4: suggested targets on the proposal (design §4.6, §7.4, §8.7.6–7) ----------
+
+  it("S4: a 2026.11.4 proposal offers the card where the audit says a phase has no targets; acceptance regenerates the phase", async () => {
+    const d = await newDraft();
+    const out = await generated(d);
+    const head = await repo().summary(d.planId, d.revisionId, out.proposalId);
+    const audit = storedAudit(head!.summary);
+    const accept = canAcceptSuggestions(getRuleSet({ id: head!.header.rulesId, version: head!.header.rulesVersion }));
+    expect(accept).toBe(true);
+    expect(phasesWithoutTargets(audit, accept)).toEqual([1]);
+    const view = auditView(audit!, { engineVersion: head!.header.engineVersion, acceptSuggestions: accept });
+    expect([...view.attention, ...view.observations].flatMap((g) => g.findings).filter((f) => f.offerSuggestion).map((f) => f.phaseIndex)).toEqual([1]);
+    const sug = await service().targetSuggestions(d.planId, d.revisionId, out.proposalId, [1]);
+    if (sug.status !== "ok") throw new Error(sug.status);
+    const s = sug.suggestions[0].suggestion!;
+    expect(s).toMatchObject({ phaseIndex: 1, stimulus: "HYPERTROPHY", ruleId: "MICROCYCLE_TARGET_SUGGESTIONS", supply: 2 });
+    // AB twice a week: a minimum of 2 sessions would force every workout, so the suggestion leaves it out.
+    expect(s.weeklySets.some((w) => w.minDirectSessions !== undefined)).toBe(false);
+    // Nothing written by asking.
+    expect((await repo().summary(d.planId, d.revisionId, out.proposalId))!.header.version).toBe(1);
+    // Someone who does not reach the proposal gets nothing.
+    expect((await service("tech-b", "org-b").targetSuggestions(d.planId, d.revisionId, out.proposalId, [1])).status).toBe("not_found");
+    expect((await service("tech-rev").targetSuggestions(d.planId, d.revisionId, out.proposalId, [1])).status).toBe("not_found");
+
+    const regen = (version: number, answers: unknown, phaseIndex = 1) =>
+      service().regenerate(d.planId, d.revisionId, { proposalId: out.proposalId, idempotencyKey: id("regen"), ...cas(version), scope: { kind: "PHASE", phaseIndex }, answers });
+    // Forged: the suggestion with other numbers, or a subset, as "aceita" → refused, nothing written.
+    const forged = { ...suggestionEntry(s), weeklySets: s.weeklySets.map((w) => ({ ...w, minWeighted: 4 })) };
+    expect(failure(await regen(1, { phaseCoverage: [forged] }))).toBe("invalid");
+    const subset = { ...suggestionEntry(s), muscles: s.muscles.slice(0, 2), weeklySets: s.weeklySets.slice(0, 2) };
+    expect(failure(await regen(1, { phaseCoverage: [subset] }))).toBe("invalid");
+    expect((await repo().summary(d.planId, d.revisionId, out.proposalId))!.header.version).toBe(1);
+    // Accepted as is: the phase is regenerated with it, recorded as heurística aceita with its rule; the absence finding leaves.
+    const accepted = ok(await regen(1, { phaseCoverage: [suggestionEntry(s)] }));
+    expect(accepted.version).toBe(2);
+    const after = await fresh(d, out.proposalId);
+    expect(codesOf(after, 1)).not.toContain("AUDIT_NO_TARGETS");
+    expect(after.result.workouts.find((w) => w.phaseIndex === 1)?.coverage).toMatchObject({ basis: "HEURISTIC_ACCEPTED", ruleId: "MICROCYCLE_TARGET_SUGGESTIONS" });
+    expect(phasesWithoutTargets(storedAudit(after.result), true)).toEqual([]);
+    // The same subset as the professional's own targets is fine; merged by phase, phase 1's acceptance stays.
+    ok(await regen(2, { phaseCoverage: [{ phaseIndex: 2, basis: "PROFESSIONAL", patterns: ["SQUAT"] }] }, 2));
+    const params = (await repo().summary(d.planId, d.revisionId, out.proposalId))!.header.parameters as { phaseCoverage: Array<{ phaseIndex: number; basis: string }> };
+    expect(params.phaseCoverage.map((c) => [c.phaseIndex, c.basis])).toEqual([[1, "HEURISTIC_ACCEPTED"], [2, "PROFESSIONAL"]]);
+    ok(await regen(3, { phaseCoverage: [{ ...subset, basis: "PROFESSIONAL", ruleId: undefined }] }));
+  });
+
+  it("S4: proposals whose rules have no suggestion rule (2026.11.2) get no suggestions and no card", async () => {
+    const { d, proposalId } = await legacyProposal();
+    expect(await service().targetSuggestions(d.planId, d.revisionId, proposalId, [1])).toEqual({ status: "ok", suggestions: [] });
+    const out = await service().viewAudit(d.planId, d.revisionId, proposalId);
+    if (out.status !== "ok") throw new Error(out.status);
+    expect(phasesWithoutTargets({ report: out.audit, source: out.source, rules: out.rules }, true)).toEqual([]);
   });
 });

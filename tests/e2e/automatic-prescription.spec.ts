@@ -73,6 +73,14 @@ test("automatic prescription from the periodization to the student's log", async
   await progression.getByLabel("Parâmetro").selectOption("sets");
   await progression.getByLabel("Na semana 1").fill("3");
   await progression.getByLabel("Na semana 4").fill("4");
+  // Motor V3 S4: suggested targets per phase, offered for acceptance (nothing pre-selected); phase 1 accepted here as is.
+  await page.locator("summary").filter({ hasText: "Alvos por fase (opcional)" }).click();
+  const formCard = page.getByRole("group", { name: "Alvos sugeridos · Fase 1" });
+  await expect(formCard.getByText("Heurística operacional (editável)").first()).toBeVisible();
+  await expect(formCard.getByText(/≥ 2 de 3 sessões por semana que a estrutura oferece/)).toBeVisible();
+  await formCard.getByRole("button", { name: "Aceitar estes alvos" }).click();
+  const accepted = page.getByRole("group", { name: "Alvos da Fase 01" });
+  await expect(accepted.getByText("Heurística aceita por você")).toBeVisible();
   await noHorizontalOverflow(page);
   // 2. Processing, then 3. the whole proposal.
   await generate.click();
@@ -87,9 +95,11 @@ test("automatic prescription from the periodization to the student's log", async
   await expect(audit.locator(".kpi").filter({ hasText: "Sessões por semana (reais)" }).locator(".kpi-value")).toHaveText("3");
   await expect(audit.locator(".kpi").filter({ hasText: "Fases auditadas" }).locator(".kpi-value")).toHaveText("3 de 3");
   // Hypertrophy phases without structured targets: described, with a link to the phase that navigates (relative to the mount).
-  await audit.locator("details.audit-group summary").filter({ hasText: /^Observações/ }).click();
+  const observations = audit.locator("details.audit-group").filter({ has: page.locator("summary", { hasText: /^Observações/ }) });
+  if ((await observations.getAttribute("open")) === null) await observations.locator("summary").click();
   const noTargets = audit.locator(".audit-finding").filter({ hasText: "Fase sem alvos estruturados" });
-  await expect(noTargets.first()).toBeVisible();
+  // Phase 1's targets were accepted on the form: only phase 3 (hypertrophy, no targets) is described as without them.
+  await expect(noTargets).toHaveCount(1);
   await noTargets.getByRole("link", { name: "Ver a fase 3" }).click();
   await expect(page.getByRole("navigation", { name: "Fases da proposta" }).getByRole("link", { name: /^Fase 03/ })).toHaveAttribute("aria-current", "page");
   expect(new URL(page.url()).searchParams.get("fase")).toBe("3");
@@ -97,6 +107,18 @@ test("automatic prescription from the periodization to the student's log", async
   await audit.locator("summary").filter({ hasText: "Distribuição por músculo · Fase 3" }).click();
   await expect(audit.getByRole("region", { name: "Distribuição por músculo da fase 3, rolável para o lado" })).toBeVisible();
   await noHorizontalOverflow(page);
+  // The phase's "sem alvos" warning points at the one card, in the audit; accepting regenerates the phase with the suggestion.
+  await page.locator("summary").filter({ hasText: /^Avisos desta fase/ }).click();
+  await page.getByRole("link", { name: "Ver alvos sugeridos" }).first().click();
+  expect(new URL(page.url()).hash).toBe("#alvos-sugeridos-fase-3");
+  const card = audit.getByRole("group", { name: "Alvos sugeridos · Fase 3" });
+  await expect(card).toBeInViewport();
+  await expect(card.getByText("Nada é aplicado sem o seu aceite.", { exact: false })).toBeVisible();
+  await noHorizontalOverflow(page);
+  const versionBefore = Number(/Versão (\d+)/.exec(await page.locator(".proposal-pills").innerText())![1]);
+  await card.getByRole("button", { name: "Aceitar e regenerar a fase" }).click();
+  await expect(page.getByText(`Versão ${versionBefore + 1}`, { exact: true })).toBeVisible({ timeout: 60_000 });
+  await expect(audit.locator(".audit-finding").filter({ hasText: "Fase sem alvos estruturados" })).toHaveCount(0);
   await page.getByRole("navigation", { name: "Fases da proposta" }).getByRole("link", { name: /^Fase 01/ }).click();
   await expect(page.getByRole("navigation", { name: "Fases da proposta" }).getByRole("link", { name: /^Fase 01/ })).toHaveAttribute("aria-current", "page");
 
@@ -109,7 +131,9 @@ test("automatic prescription from the periodization to the student's log", async
   await session.locator(".why-details summary").first().click();
   await expect(session.locator(".why-details").first().getByText("Heurística operacional (editável)").first()).toBeVisible();
   // The item's part of the week's volume, with the week's total from the audit.
-  await expect(session.locator(".why-details").first().getByRole("heading", { name: "Contribuição na semana" })).toBeVisible();
+  const why = session.locator(".why-details").first();
+  for (const heading of ["Por que este exercício", "Contribuição na semana", /^Por que \d+ séries?$/, "Regras usadas", "O que mudaria esta escolha"])
+    await expect(why.getByRole("heading", { name: heading })).toBeVisible();
   await expect(session.locator(".why-details").first().getByText(/^Total da semana 2 na fase \(3 sessões\)/)).toBeVisible();
   // The weekly table gains the sessions with direct stimulus.
   await page.locator("summary").filter({ hasText: "Volume semanal por músculo · Semana 2" }).click();

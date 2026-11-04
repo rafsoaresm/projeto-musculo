@@ -8,6 +8,7 @@ import { CAUTION_TAGS, PATTERNS } from "@/modules/biblioteca/metadata/vocabulary
 import { ISSUE_LABELS, STIMULUS_LABELS } from "@/modules/prescricao/motor/vocabulary";
 import type { Flag, FlagDecision, HistorySuggestion, ItemOut, OccurrenceOut, RegenerationScope, RuleUse } from "@/modules/prescricao/motor/types";
 import type { ProposalSummary } from "@/db/prescription-proposals";
+import type { TargetSuggestion } from "@/modules/prescricao/motor/targets";
 import { workoutTitle } from "@/modules/training/format";
 import { formatCalendarDate } from "@/modules/training/format";
 import {
@@ -21,6 +22,7 @@ import {
 } from "./actions";
 import { AuditPanel } from "./audit-panel";
 import { SubstituteDialog, type SubstituteTarget } from "./substitute-dialog";
+import { suggestionAnchor } from "./target-suggestions";
 import { NETWORK_ERROR, useIntent } from "./use-intent";
 import {
   BASIS_LABELS,
@@ -43,7 +45,10 @@ import {
   traceValue,
   weekTableAudit,
   weekVolume,
+  whyView,
   type AuditSource,
+  type CoverageAnswer,
+  type WorkoutCoverageAnswer,
 } from "./view";
 
 /** The proposal header fields the screen needs (no answers, no ledger references). */
@@ -96,6 +101,7 @@ export function ProposalView({
   library,
   audit,
   acceptSuggestions,
+  targetSuggestions = [],
 }: {
   planId: string;
   revisionId: string;
@@ -110,6 +116,8 @@ export function ProposalView({
   audit: AuditSource | null;
   /** Whether the proposal's own rule set can back an accepted suggestion (design V3 §3.9). */
   acceptSuggestions: boolean;
+  /** Suggested targets of the phases the audit says have none (computed by the server for this proposal's rules). */
+  targetSuggestions?: Array<{ phaseIndex: number; suggestion: TargetSuggestion | null; reason: string | null }>;
 }) {
   const router = useRouter();
   const intent = useIntent();
@@ -145,6 +153,18 @@ export function ProposalView({
     run(`regen:${what}`, (ids) => regenerateScope(planId, revisionId, { ...cas, idempotencyKey: ids.key, writeId: ids.write, scope }));
   const lock = (item: ItemOut, locked: boolean) =>
     run(`lock:${item.slotKey}:${locked}`, (ids) => lockItems(planId, revisionId, { ...cas, writeId: ids.write, targets: [{ phaseIndex, slotKey: item.slotKey }], locked }));
+  /** Targets of a phase accepted or set on the card: the phase is regenerated with them (merged by phase into the answers). */
+  const setTargets = (phase: number, coverage: CoverageAnswer | null, byWorkout: WorkoutCoverageAnswer[]) =>
+    run(`targets:${phase}:${JSON.stringify([coverage, byWorkout])}`, (ids) =>
+      regenerateScope(planId, revisionId, {
+        ...cas,
+        idempotencyKey: ids.key,
+        writeId: ids.write,
+        scope: { kind: "PHASE", phaseIndex: phase },
+        answers: { ...(coverage ? { phaseCoverage: [coverage] } : {}), ...(byWorkout.length ? { coverageByWorkout: byWorkout } : {}) },
+      }),
+    );
+  const cardFor = new Set(acceptSuggestions && audit?.source === "STORED" ? targetSuggestions.map((t) => t.phaseIndex) : []);
   const decide = (flag: Flag, decision: FlagDecision) =>
     run(`flag:${flag.code}:${decision.kind}`, (ids) => acceptFlagDecision(planId, revisionId, { ...cas, writeId: ids.write, flagCode: flag.code, decision }));
 
@@ -276,6 +296,12 @@ export function ProposalView({
                     <Pill tone={SEVERITY_TONES[issue.severity]}>{ISSUE_LABELS[issue.code] ?? issue.code}</Pill> {issue.message}
                     {issue.suggestedAction && <span className="muted"> {issue.suggestedAction}</span>}
                     {issue.count && issue.count > 1 ? <span className="muted"> ({issue.count} ocorrências)</span> : null}
+                    {issue.code === "NO_TARGETS" && issue.phaseIndex && cardFor.has(issue.phaseIndex) ? (
+                      <>
+                        {" "}
+                        <a href={`#${suggestionAnchor(issue.phaseIndex)}`}>Ver alvos sugeridos</a>
+                      </>
+                    ) : null}
                     {at && issue.phaseIndex ? (
                       <>
                         {" "}
@@ -312,7 +338,22 @@ export function ProposalView({
         </details>
       </section>
 
-      {audit && <AuditPanel audit={audit} engineVersion={header.engineVersion} acceptSuggestions={acceptSuggestions} phaseIndex={phaseIndex} href={href} />}
+      {audit && (
+        <AuditPanel
+          audit={audit}
+          engineVersion={header.engineVersion}
+          acceptSuggestions={acceptSuggestions}
+          phaseIndex={phaseIndex}
+          href={href}
+          targets={{
+            suggestions: targetSuggestions,
+            labelsOf: (p: number) => summary.workouts.filter((w) => w.phaseIndex === p).map((w) => w.label),
+            pending,
+            onAccept: (entry) => setTargets(entry.phaseIndex, entry, []),
+            onApply: setTargets,
+          }}
+        />
+      )}
 
       <section className="panel" aria-labelledby="sessoes-titulo">
         <h2 id="sessoes-titulo">Fases, semanas e sessões</h2>
@@ -515,6 +556,7 @@ function ProposalItem({
   const meta = METADATA_LABELS[item.metadata];
   const history = historySuggestionText(suggestions, phaseIndex, item.slotKey);
   const preserved = item.origin === "PRESERVED";
+  const why = whyView(item, { rulesUsed, contribution });
   return (
     <li>
       <div className="exercise-main">
@@ -554,50 +596,62 @@ function ProposalItem({
         <summary>
           <HelpCircle size={15} aria-hidden="true" /> Por quê?
         </summary>
-        <ul className="auto-list">
-          {item.trace.selection.filter((t) => t.code !== "WEEKLY_CONTRIBUTION").map((t, n) => (
-            <li key={`${t.code}-${n}`} className="small">
-              <span title={t.ruleId ? `Regra: ${ruleLabel(rulesUsed, t.ruleId)}` : undefined}>
-                <Pill tone={BASIS_TONES[t.basis]}>{BASIS_LABELS[t.basis]}</Pill>
-              </span>{" "}
-              {t.detail}
-            </li>
-          ))}
-        </ul>
-        {item.trace.params.length > 0 && (
-          <div className="execution-scroll" tabIndex={0} role="region" aria-label={`Valores propostos para ${item.exerciseName}`}>
-            <table className="execution-table">
-              <thead>
-                <tr>
-                  <th scope="col">Valor</th>
-                  <th scope="col">Proposto</th>
-                  <th scope="col">Base</th>
-                </tr>
-              </thead>
-              <tbody>
-                {item.trace.params.map((p, n) => (
-                  <tr key={`${p.param}-${n}`}>
-                    <th scope="row">{traceParamLabel(p.param)}</th>
-                    <td>{traceValue(p.value, p.param)}</td>
-                    <td title={p.ruleId ? `Regra: ${ruleLabel(rulesUsed, p.ruleId)}` : undefined}>{BASIS_LABELS[p.basis]}</td>
-                  </tr>
+        {why.map((section) =>
+          section.key === "rules" ? (
+            <div key={section.key} className="why-block why-section">
+              <h4 className="small-heading">{section.title}</h4>
+              <ul className="auto-list">
+                {section.lines.map((line, n) => (
+                  <li key={n} className="small">
+                    {line.basis && <Pill tone={BASIS_TONES[line.basis]}>{BASIS_LABELS[line.basis]}</Pill>} {line.text}
+                  </li>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </ul>
+            </div>
+          ) : (
+            <div key={section.key} className="why-block why-section">
+              <h4 className="small-heading">{section.title}</h4>
+              <ul className="auto-list">
+                {section.lines.map((line, n) => (
+                  <li key={n} className={line.muted ? "small muted" : "small"}>
+                    {line.basis && (
+                      <>
+                        <span title={line.rule ? `Regra: ${line.rule}` : undefined}>
+                          <Pill tone={BASIS_TONES[line.basis]}>{BASIS_LABELS[line.basis]}</Pill>
+                        </span>{" "}
+                      </>
+                    )}
+                    {line.text}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ),
         )}
-        {contribution && (
-          <div className="why-block">
-            <h4 className="small-heading">Contribuição na semana</h4>
-            <ul className="auto-list">
-              {contribution.lines.map((line, n) => (
-                <li key={n} className="small">
-                  {line}
-                </li>
-              ))}
-              {contribution.weekTotal && <li className="small muted">{contribution.weekTotal}</li>}
-            </ul>
-          </div>
+        {item.trace.params.length > 0 && (
+          <details className="auto-details">
+            <summary>Todos os valores propostos e suas bases</summary>
+            <div className="execution-scroll" tabIndex={0} role="region" aria-label={`Valores propostos para ${item.exerciseName}`}>
+              <table className="execution-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Valor</th>
+                    <th scope="col">Proposto</th>
+                    <th scope="col">Base</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {item.trace.params.map((p, n) => (
+                    <tr key={`${p.param}-${n}`}>
+                      <th scope="row">{traceParamLabel(p.param)}</th>
+                      <td>{traceValue(p.value, p.param)}</td>
+                      <td title={p.ruleId ? `Regra: ${ruleLabel(rulesUsed, p.ruleId)}` : undefined}>{BASIS_LABELS[p.basis]}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
         )}
       </details>
       {!preserved && (

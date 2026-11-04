@@ -30,7 +30,9 @@ import type {
   RuleUse,
   VolumeRow,
   WeeklyProgression,
+  WeeklySetsTarget,
 } from "@/modules/prescricao/motor/types";
+import type { TargetSuggestion, TargetSuggestionOutcome } from "@/modules/prescricao/motor/targets";
 import {
   AUDIT_LABELS,
   DOSE_PARAM_LABELS,
@@ -247,11 +249,16 @@ export interface GenerationForm {
   excludedExerciseIds: string[];
   excludedPatterns: string[];
   excludedCautionTags: string[];
+  /** Targets of each phase: a suggestion accepted as is, or the professional's own (design V3 §7.4). Optional. */
+  coverage: CoverageAnswer[];
+  /** The professional's targets per workout (free splits). Optional. */
+  coverageByWorkout: WorkoutCoverageAnswer[];
 }
 
 export const EMPTY_FORM: GenerationForm = {
   stimulus: [], equipment: [], availableMinutes: "", timeBudget: "", counts: [], modalities: [], doseMode: null, metadataTrust: null,
   policy: {}, progression: [], preferredExerciseIds: [], excludedExerciseIds: [], excludedPatterns: [], excludedCautionTags: [],
+  coverage: [], coverageByWorkout: [],
 };
 
 /** Required questions the form has not answered yet (the "Gerar" button waits for none). */
@@ -341,6 +348,8 @@ export function answersFromForm(form: GenerationForm, rows: PolicyRow[]): { ok: 
   if (form.excludedExerciseIds.length) answers.excludedExerciseIds = [...new Set(form.excludedExerciseIds)];
   if (form.excludedPatterns.length) answers.excludedPatterns = [...new Set(form.excludedPatterns)];
   if (form.excludedCautionTags.length) answers.excludedCautionTags = [...new Set(form.excludedCautionTags)];
+  if (form.coverage.length) answers.phaseCoverage = form.coverage.map((c) => ({ ...c }));
+  if (form.coverageByWorkout.length) answers.coverageByWorkout = form.coverageByWorkout.map((c) => ({ ...c }));
   return errors.length ? { ok: false, errors } : { ok: true, answers };
 }
 
@@ -393,6 +402,10 @@ export function formFromAnswers(
   form.excludedExerciseIds = arr<string>(a.excludedExerciseIds);
   form.excludedPatterns = arr<string>(a.excludedPatterns);
   form.excludedCautionTags = arr<string>(a.excludedCautionTags);
+  // Targets: only the professional's own come back. A suggestion accepted then is checked against today's rule on "Gerar", so it
+  // is accepted again on screen rather than restored and possibly refused.
+  form.coverage = arr<CoverageAnswer>(a.phaseCoverage).filter((c) => phases.has(c?.phaseIndex) && c.basis === "PROFESSIONAL");
+  form.coverageByWorkout = arr<WorkoutCoverageAnswer>(a.coverageByWorkout).filter((c) => hasWorkout(c?.phaseIndex, c?.label));
   return form;
 }
 
@@ -635,6 +648,15 @@ export function canAcceptSuggestions(rules: Pick<RuleSet, "rules"> | null): bool
   return Boolean(rules && "MICROCYCLE_TARGET_SUGGESTIONS" in rules.rules);
 }
 
+/**
+ * Phases the recorded audit says have no targets (`AUDIT_NO_TARGETS`), when the proposal's own rules can back an acceptance:
+ * the only phases whose suggested-targets card is drawn. An audit computed now offers no card (its rules are not the proposal's).
+ */
+export function phasesWithoutTargets(audit: AuditSource | null, acceptSuggestions: boolean): number[] {
+  if (!audit || audit.source !== "STORED" || !acceptSuggestions) return [];
+  return [...new Set(audit.report.findings.filter((f) => f.code === "AUDIT_NO_TARGETS" && f.phaseIndex !== undefined).map((f) => f.phaseIndex!))].sort((a, b) => a - b);
+}
+
 const num = (n: number) => numberText(Math.round(n * 100) / 100);
 
 /** "4" / "3–4"; null stays null (the caller says what it means). */
@@ -672,6 +694,8 @@ export function auditTargetText(t: AuditTarget): string | null {
 
 export interface AuditFindingView {
   key: string;
+  /** The phase the finding is about (null for the plan as a whole). */
+  phaseIndex: number | null;
   code: string;
   label: string;
   severity: AuditFinding["severity"];
@@ -754,6 +778,7 @@ function findingView(f: AuditFinding, n: number, offer: boolean): AuditFindingVi
   }
   return {
     key: `${f.code}-${f.phaseIndex ?? "x"}-${f.week ?? "x"}-${f.label ?? ""}-${f.muscle ?? f.pattern ?? ""}-${n}`,
+    phaseIndex: f.phaseIndex ?? null,
     code: f.code,
     label: AUDIT_LABELS[f.code] ?? f.code,
     severity: f.severity,
@@ -939,4 +964,314 @@ export function contributionView(
       ? `Total da semana ${week} na fase (${sessions}): não calculado, há ${[row.unknownSetItems > 0 ? UNDEFINED_SETS : null, row.uncountedItems > 0 ? "item não contado (fora da biblioteca ou sem músculos)" : null].filter(Boolean).join(" e ")}.`
       : `Total da semana ${week} na fase (${sessions}): ${auditValueText("WEIGHTED_SETS", row.weighted)}.`;
   return { lines, weekTotal };
+}
+
+// ---------- "Por quê?" of an item (design V3 §5, §7.1) ----------
+
+/** One line of "Por quê?": the text, the basis it rests on and the rule it came from (null when there is none). */
+export interface WhyLine {
+  text: string;
+  basis: Basis | null;
+  rule: string | null;
+  muted?: boolean;
+}
+export type WhySectionKey = "choice" | "student" | "contribution" | "sets" | "rules" | "change";
+export interface WhySection {
+  key: WhySectionKey;
+  title: string;
+  lines: WhyLine[];
+}
+
+/** Entries derived after the selection: they answer their own questions, not "why this exercise". */
+const DERIVED_CODES: ReadonlySet<string> = new Set(["WEEKLY_CONTRIBUTION", "ASSESSMENT_OBSERVATION"]);
+
+/**
+ * What would justify changing an item, from the trace codes it actually carries (design V3 §5). A pure mapping: a condition
+ * appears only when its code is there (no history entry, no history condition), and nothing is invented beyond the code.
+ */
+const CHANGE_BY_CODE: Record<string, string> = {
+  ELIGIBLE: "Se as modalidades do treino ou as suas exclusões mudarem.",
+  EQUIPMENT: "Se o equipamento deixar de estar disponível (ou a lista de equipamentos mudar).",
+  PREFERRED: "Se você tirar o exercício dos preferidos.",
+  HISTORY_PAIN: "Se o aluno registrar dor ou não tolerar o exercício.",
+  HISTORY_CONTINUITY: "Se o aluno registrar dor ou não tolerar o exercício.",
+  USED_IN_PREVIOUS_PHASE: "Se a fase anterior mudar: a variação entre fases pesou na escolha.",
+  DIFFICULTY: "Se o nível de experiência do aluno na ficha mudar.",
+  INFERRED_METADATA: "Se os metadados do exercício forem revisados (hoje são inferidos) ou se você restringir a seleção a metadados revisados.",
+  COMPOUND: "Se o estímulo da fase mudar: o peso de multiarticular depende dele.",
+  NO_EXTERNAL_LOAD: "Se o estímulo da fase mudar: o peso de carga externa depende dele.",
+  TARGET_PRIMARY: "Se os alvos (músculos ou padrões) desta fase ou deste treino mudarem.",
+  TARGET_SECONDARY: "Se os alvos (músculos ou padrões) desta fase ou deste treino mudarem.",
+  TARGET_PATTERN: "Se os alvos (músculos ou padrões) desta fase ou deste treino mudarem.",
+  TARGET_PATTERN_REPEAT: "Se os alvos (músculos ou padrões) desta fase ou deste treino mudarem.",
+  MICRO_TARGET_AFFINITY: "Se os alvos (músculos ou padrões) desta fase ou deste treino mudarem.",
+  MICRO_TARGET_DEFICIT: "Se o alvo semanal citado acima mudar ou já estiver atendido por outro exercício.",
+  MICRO_TARGET_DEFICIT_SECONDARY: "Se o alvo semanal citado acima mudar ou já estiver atendido por outro exercício.",
+  MICRO_FREQUENCY: "Se o alvo semanal citado acima mudar ou já estiver atendido por outro exercício.",
+  MICRO_OVER_TARGET: "Se o alvo semanal citado acima mudar ou já estiver atendido por outro exercício.",
+  MICRO_PATTERN_NEW: "Se o padrão-alvo já tiver sessão na semana por outro exercício.",
+  MICRO_PATTERN_REPEAT: "Se o padrão-alvo já tiver sessão na semana por outro exercício.",
+  MICRO_REDUNDANCY: "Se outro exercício do mesmo padrão entrar ou sair da semana: a repetição do padrão pesou contra.",
+  NO_TARGETS_PATTERN_REPEAT: "Se outro exercício do mesmo padrão entrar ou sair do treino: a repetição do padrão pesou contra.",
+  MICRO_SAME_EXERCISE: "Se você preferir não repetir o exercício em outro treino da fase: troque um deles.",
+  USED_IN_PHASE: "Se você preferir não repetir o exercício em outro treino da fase: troque um deles.",
+  NO_TARGETS: "Se você definir alvos (músculos, padrões ou séries por semana) para esta fase.",
+  ASSESSMENT_OBSERVATION: "Se a observação na execução mostrar compensação, decida com o aluno (não é contraindicação).",
+  LOCKED: "Está mantido por você: só muda se você destravar.",
+  PRESERVED: "Já estava no rascunho: a ferramenta não o troca; mude no editor da revisão.",
+  PROFESSIONAL_SUBSTITUTION: "Foi trocado por você: muda só com outra troca sua.",
+  RESERVED_SUBSTITUTION: "Foi trocado por você: muda só com outra troca sua.",
+  ENGINE_REPLACEMENT: "Se você pedir outra troca ou escolher o exercício você mesmo.",
+};
+
+/** "O que mudaria esta escolha": conditions only for the codes and dose bases present in the item's trace. */
+export function changeConditions(item: Pick<ItemOut, "trace">): string[] {
+  const out: string[] = [];
+  const add = (text: string | undefined) => {
+    if (text && !out.includes(text)) out.push(text);
+  };
+  for (const t of item.trace.selection) add(CHANGE_BY_CODE[t.code]);
+  const sets = item.trace.params.find((p) => p.param === "sets");
+  if (sets?.basis === "PROFESSIONAL") add("A dose é sua: muda só se você a editar.");
+  else if (sets?.ruleId === "DOSE_DEFAULTS") add("Se a política de doses da geração mudar, ou se você editar a dose deste item depois de aplicar.");
+  else if (sets?.ruleId) add("Se a regra da dose ou a progressão da fase mudar, ou se você editar a dose deste item depois de aplicar.");
+  return out;
+}
+
+const setsWord = (v: unknown) => (typeof v === "number" ? `${numberText(v)} ${v === 1 ? "série" : "séries"}` : traceValue(v, "sets"));
+
+/**
+ * "Por quê?" of an item as the six answers of design V3 §5, in order: why this exercise, the student's data used, the
+ * contribution to the week, why N sets, the rules used, and what would change it. Built only from the item's trace (and the
+ * week total the audit read); a section with nothing to say is left out, never filled with "—".
+ */
+export function whyView(
+  item: Pick<ItemOut, "trace">,
+  options: { rulesUsed: readonly RuleUse[]; contribution: { lines: string[]; weekTotal: string | null } | null },
+): WhySection[] {
+  const rule = (id: string | undefined) => (id ? ruleLabel(options.rulesUsed, id) : null);
+  const sel = item.trace.selection;
+  const sections: WhySection[] = [
+    {
+      key: "choice",
+      title: "Por que este exercício",
+      lines: sel.filter((t) => !DERIVED_CODES.has(t.code) && t.basis !== "STUDENT_DATA").map((t) => ({ text: t.detail, basis: t.basis, rule: rule(t.ruleId) })),
+    },
+    {
+      key: "student",
+      title: "Dados do aluno usados",
+      lines: [
+        ...sel.filter((t) => t.basis === "STUDENT_DATA").map((t) => ({ text: t.detail, basis: t.basis, rule: rule(t.ruleId) })),
+        ...item.trace.params
+          .filter((p) => p.basis === "STUDENT_DATA")
+          .map((p) => ({ text: `${traceParamLabel(p.param)}: ${traceValue(p.value, p.param)}${p.refs?.length ? ` (${p.refs.join(", ")})` : ""}`, basis: p.basis, rule: rule(p.ruleId) })),
+      ],
+    },
+    {
+      key: "contribution",
+      title: "Contribuição na semana",
+      lines: options.contribution
+        ? [
+            ...options.contribution.lines.map((text) => ({ text, basis: null, rule: null })),
+            ...(options.contribution.weekTotal ? [{ text: options.contribution.weekTotal, basis: null, rule: null, muted: true }] : []),
+          ]
+        : [],
+    },
+  ];
+  const sets = item.trace.params.find((p) => p.param === "sets");
+  if (sets && sets.value !== null && sets.value !== undefined)
+    sections.push({
+      key: "sets",
+      title: `Por que ${setsWord(sets.value)}`,
+      lines: [
+        {
+          text:
+            sets.basis === "PROFESSIONAL"
+              ? `${setsWord(sets.value)}: valor seu (dose preservada, editada ou ajustada por você).`
+              : sets.ruleId === "DOSE_DEFAULTS"
+                ? `${setsWord(sets.value)}: política de doses da geração para o estímulo desta sessão.`
+                : `${setsWord(sets.value)} nesta sessão.`,
+          basis: sets.basis,
+          rule: rule(sets.ruleId),
+        },
+      ],
+    });
+  else sections.push({ key: "sets", title: "Por que N séries", lines: [] });
+  const ids = [...new Set([...sel.map((t) => t.ruleId), ...item.trace.params.map((p) => p.ruleId)].filter((x): x is string => Boolean(x)))];
+  sections.push({
+    key: "rules",
+    title: "Regras usadas",
+    lines: ids.map((id) => {
+      const use = options.rulesUsed.find((r) => r.ruleId === id);
+      return { text: `${use?.label ?? id} (${id})`, basis: use?.basis ?? null, rule: null };
+    }),
+  });
+  sections.push({ key: "change", title: "O que mudaria esta escolha", lines: changeConditions(item).map((text) => ({ text, basis: null, rule: null })) });
+  return sections.filter((s) => s.lines.length > 0);
+}
+
+// ---------- suggested targets (design V3 §4.6, §7.4) ----------
+
+/** One phase's coverage answer, as the server parses it. */
+export type CoverageAnswer = NonNullable<GenerationAnswersInput["phaseCoverage"]>[number];
+export type WorkoutCoverageAnswer = NonNullable<GenerationAnswersInput["coverageByWorkout"]>[number];
+
+/** The suggestion accepted exactly as the rule computed it: the only answer the server takes as "Heurística aceita". */
+export function suggestionEntry(s: TargetSuggestion): CoverageAnswer {
+  return {
+    phaseIndex: s.phaseIndex,
+    muscles: [...s.muscles],
+    patterns: [...s.patterns],
+    ...(s.weeklySets.length ? { weeklySets: s.weeklySets.map((w) => ({ ...w })) } : {}),
+    basis: "HEURISTIC_ACCEPTED",
+    ruleId: s.ruleId,
+  };
+}
+
+/** The suggestion card's texts (no numbers beyond the rule's own and the structure's sessions per week). */
+export interface TargetSuggestionView {
+  stimulus: string;
+  muscles: Array<{ code: string; label: string }>;
+  patterns: Array<{ code: string; label: string }>;
+  /** "≥ 2 de 4 sessões por semana que a estrutura oferece", or why no minimum is suggested. */
+  sessions: string;
+  /** "10–20 séries ponderadas por semana, por músculo sugerido"; null when the rule has no set range. */
+  sets: string | null;
+}
+
+export function targetSuggestionView(s: TargetSuggestion): TargetSuggestionView {
+  const supply = num(s.supply);
+  const offered = `${supply} ${s.supply === 1 ? "sessão" : "sessões"} por semana`;
+  const min = s.weeklySets.find((w) => w.minDirectSessions !== undefined)?.minDirectSessions;
+  const range = s.weeklySets.find((w) => w.minWeighted !== undefined || w.maxWeighted !== undefined);
+  const lo = range?.minWeighted;
+  const hi = range?.maxWeighted;
+  return {
+    stimulus: STIMULUS_LABELS[s.stimulus] ?? s.stimulus,
+    muscles: s.muscles.map((code) => ({ code, label: muscleName(code) })),
+    patterns: s.patterns.map((code) => ({ code, label: patternName(code) })),
+    sessions:
+      min !== undefined
+        ? `Sessões com estímulo direto por semana, por músculo: ≥ ${num(min)} de ${offered} que a estrutura oferece.`
+        : `A estrutura oferece ${offered} com treino de volume; frequência mínima não sugerida (forçaria o músculo em todos os treinos).`,
+    sets:
+      lo !== undefined && hi !== undefined
+        ? `Séries ponderadas por semana, por músculo sugerido: ${num(lo)}–${num(hi)}.`
+        : lo !== undefined
+          ? `Séries ponderadas por semana, por músculo sugerido: ≥ ${num(lo)}.`
+          : hi !== undefined
+            ? `Séries ponderadas por semana, por músculo sugerido: ≤ ${num(hi)}.`
+            : null,
+  };
+}
+
+/** Why a phase has no suggestion, as the card says it. */
+export function noSuggestionText(reason: string | null): string {
+  if (reason === "MODALITIES_CHOSEN")
+    return "Com modalidades escolhidas para os treinos desta fase, a sugestão é conferida depois de gerar, na proposta; aqui, defina os alvos manualmente se quiser.";
+  if (reason === "MIXED_STIMULI") return "Os estímulos variam nesta fase; defina os alvos manualmente.";
+  if (reason === "UNKNOWN_STIMULUS") return "Não há alvos sugeridos para o estímulo desta fase; defina os alvos manualmente, se quiser.";
+  return "As regras desta proposta não sugerem alvos; defina os alvos manualmente, se quiser.";
+}
+
+/** The card's editor: what the professional toggles and types (text fields, as typed). */
+export interface TargetEdit {
+  muscles: string[];
+  patterns: string[];
+  minWeighted: string;
+  maxWeighted: string;
+  minDirectSessions: string;
+  byWorkout: Array<{ label: string; muscles: string[] }>;
+}
+
+export function editFromSuggestion(s: TargetSuggestion | null, labels: readonly string[]): TargetEdit {
+  const range = s?.weeklySets.find((w) => w.minWeighted !== undefined || w.maxWeighted !== undefined);
+  const min = s?.weeklySets.find((w) => w.minDirectSessions !== undefined)?.minDirectSessions;
+  return {
+    muscles: [...(s?.muscles ?? [])],
+    patterns: [...(s?.patterns ?? [])],
+    minWeighted: range?.minWeighted !== undefined ? numberText(range.minWeighted) : "",
+    maxWeighted: range?.maxWeighted !== undefined ? numberText(range.maxWeighted) : "",
+    minDirectSessions: min !== undefined ? String(min) : "",
+    byWorkout: labels.map((label) => ({ label, muscles: [] })),
+  };
+}
+
+/**
+ * The editor turned into answers. Exactly the suggestion, with nothing per workout, stays "Heurística aceita"; any edit, removal
+ * or per-workout target is the professional's (`PROFESSIONAL`), so a changed suggestion is never passed off as the rule's. The
+ * set range and the sessions per week apply to each target muscle; empty fields are left out (never 0).
+ */
+export function coverageFromEdit(
+  phaseIndex: number,
+  edit: TargetEdit,
+  suggestion: TargetSuggestion | null,
+): { ok: true; coverage: CoverageAnswer | null; byWorkout: WorkoutCoverageAnswer[] } | { ok: false; errors: string[] } {
+  const errors: string[] = [];
+  const parse = (text: string, what: string, opts: { int?: boolean; min: number; max: number }) => {
+    if (!text.trim()) return undefined;
+    const n = numberOf(text);
+    if (n === null || n < opts.min || n > opts.max || (opts.int && !Number.isInteger(n))) {
+      errors.push(`${what}: ${opts.int ? "inteiro" : "número"} de ${opts.min} a ${opts.max}.`);
+      return undefined;
+    }
+    return n;
+  };
+  const minWeighted = parse(edit.minWeighted, "Séries ponderadas por semana (mínimo)", { min: 0, max: 60 });
+  const maxWeighted = parse(edit.maxWeighted, "Séries ponderadas por semana (máximo)", { min: 0, max: 60 });
+  const minDirectSessions = parse(edit.minDirectSessions, "Sessões com estímulo direto por semana", { int: true, min: 1, max: 14 });
+  if (minWeighted !== undefined && maxWeighted !== undefined && minWeighted > maxWeighted) errors.push("O mínimo de séries por semana não passa do máximo.");
+  if (errors.length) return { ok: false, errors };
+  const muscles = [...new Set(edit.muscles)].sort();
+  const patterns = [...new Set(edit.patterns)].sort();
+  const bounds = {
+    ...(minWeighted !== undefined ? { minWeighted } : {}),
+    ...(maxWeighted !== undefined ? { maxWeighted } : {}),
+    ...(minDirectSessions !== undefined ? { minDirectSessions } : {}),
+  };
+  const weeklySets = Object.keys(bounds).length ? muscles.map((muscle) => ({ muscle, ...bounds })) : [];
+  const byWorkout = edit.byWorkout.filter((w) => w.muscles.length).map((w) => ({ phaseIndex, label: w.label, muscles: [...new Set(w.muscles)].sort() }));
+  const candidate = { muscles, patterns, weeklySets };
+  if (suggestion && !byWorkout.length && sameCoverage(candidate, suggestion)) return { ok: true, coverage: suggestionEntry(suggestion), byWorkout: [] };
+  const coverage: CoverageAnswer | null =
+    muscles.length || patterns.length || weeklySets.length
+      ? { phaseIndex, ...(muscles.length ? { muscles } : {}), ...(patterns.length ? { patterns } : {}), ...(weeklySets.length ? { weeklySets } : {}), basis: "PROFESSIONAL" }
+      : null;
+  return { ok: true, coverage, byWorkout };
+}
+
+function sameCoverage(c: { muscles: string[]; patterns: string[]; weeklySets: WeeklySetsTarget[] }, s: TargetSuggestion): boolean {
+  const key = (w: WeeklySetsTarget) => `${w.muscle}|${w.minWeighted ?? ""}|${w.maxWeighted ?? ""}|${w.minDirectSessions ?? ""}`;
+  const same = (a: string[], b: string[]) => a.length === b.length && a.every((x, n) => x === b[n]);
+  return same(c.muscles, [...s.muscles].sort()) && same(c.patterns, [...s.patterns].sort()) && same(c.weeklySets.map(key).sort(), s.weeklySets.map(key).sort());
+}
+
+/** A phase's coverage answer as a short line ("Heurística aceita: 7 músculos, 7 padrões, 10–20 séries…"). */
+export function coverageSummary(c: CoverageAnswer, byWorkout: readonly WorkoutCoverageAnswer[] = []): string {
+  const parts: string[] = [];
+  if (c.muscles?.length) parts.push(`músculos: ${c.muscles.map(muscleName).join(", ")}`);
+  if (c.patterns?.length) parts.push(`padrões: ${c.patterns.map(patternName).join(", ")}`);
+  const w = c.weeklySets?.[0];
+  if (w?.minWeighted !== undefined || w?.maxWeighted !== undefined)
+    parts.push(`séries ponderadas por semana: ${w?.minWeighted !== undefined ? num(w.minWeighted) : "—"}–${w?.maxWeighted !== undefined ? num(w.maxWeighted) : "—"}`);
+  if (w?.minDirectSessions !== undefined) parts.push(`≥ ${num(w.minDirectSessions)} sessões com estímulo direto`);
+  for (const b of byWorkout) parts.push(`treino ${b.label}: ${(b.muscles ?? []).map(muscleName).join(", ")}`);
+  return parts.join(" · ");
+}
+
+/**
+ * The form's view of a phase's suggestion: the outcome for the stimulus chosen on screen (or the periodization's own when none
+ * is answered). Modalities typed for a workout of the phase change what the rule counts, so the form then offers editing only
+ * (the proposal, after generating, offers the exact suggestion).
+ */
+export function formSuggestionFor(
+  phase: { phaseIndex: number; asIs: TargetSuggestionOutcome; byStimulus: Record<string, TargetSuggestionOutcome> },
+  form: Pick<GenerationForm, "stimulus" | "modalities">,
+): { suggestion: TargetSuggestion | null; reason: string | null } {
+  if (form.modalities.some((m) => m.phaseIndex === phase.phaseIndex && m.modalities.length))
+    return { suggestion: null, reason: "MODALITIES_CHOSEN" };
+  const chosen = form.stimulus.find((s) => s.phaseIndex === phase.phaseIndex && s.value.trim());
+  const out = chosen ? phase.byStimulus[chosen.value.trim()] : phase.asIs;
+  if (!out) return { suggestion: null, reason: "UNKNOWN_STIMULUS" };
+  return out.suggestion ? { suggestion: out.suggestion, reason: null } : { suggestion: null, reason: out.reason };
 }

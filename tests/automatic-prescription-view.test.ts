@@ -19,6 +19,9 @@ import {
   auditView,
   canAcceptSuggestions,
   contributionView,
+  changeConditions,
+  phasesWithoutTargets,
+  whyView,
   rangeText,
   storedAudit,
   UNDEFINED_SETS,
@@ -577,5 +580,87 @@ describe("Motor V3 S2: the plan audit on the proposal screen", () => {
     const ec = contributionView(eItem, empty.audit!, 1, empty.occurrences[0].week)!;
     expect(ec.lines[0]).toContain("séries não definidas");
     expect(ec.weekTotal).toContain("não calculado");
+  });
+});
+
+describe("Motor V3 S4: 'Por quê?' answers the six questions (design §5, §7.1)", () => {
+  const xintus = generate(xintusInput());
+  const audit = xintus.audit!;
+  const occ = xintus.occurrences.find((o) => o.phaseIndex === 1 && o.week === 3)!;
+  const squat = occ.items.find((i) => i.trace.selection.some((t) => t.code === "ASSESSMENT_OBSERVATION"))!;
+
+  it("six sections in order, each from the item's own trace; empty ones are left out", () => {
+    const why = whyView(squat, { rulesUsed: xintus.rulesUsed, contribution: contributionView(squat, audit, 1, 3) });
+    expect(why.map((s) => s.key)).toEqual(["choice", "student", "contribution", "sets", "rules", "change"]);
+    const by = Object.fromEntries(why.map((s) => [s.key, s]));
+    // why this exercise: the selection entries (eligibility, equipment, microcycle terms, rank), never the derived ones
+    expect(by.choice.lines.map((l) => l.text).join(" ")).toMatch(/Elegível/);
+    expect(by.choice.lines.some((l) => /Não é contraindicação|sessões do treino/.test(l.text))).toBe(false);
+    // the student's data: the assessment reading with its reference, labelled as not a contraindication
+    const obs = by.student.lines.find((l) => l.text.includes("Não é contraindicação"))!;
+    expect(obs.basis).toBe("STUDENT_DATA");
+    expect(obs.text).toContain("assessment:as-xintus");
+    expect(obs.rule).toBeTruthy();
+    // weekly contribution with the week total, why N sets with its basis and rule
+    expect(by.contribution.lines[0].text).toMatch(/^Semana 3: 2 sessões do treino [AB] × 3 séries/);
+    expect(by.contribution.lines.at(-1)!.muted).toBe(true);
+    expect(by.sets.title).toBe("Por que 3 séries");
+    expect(by.sets.lines[0]).toMatchObject({ basis: "HEURISTIC" });
+    expect(by.sets.lines[0].text).toContain("política de doses");
+    // rules used: each rule id once, with its label
+    const ruleIds = by.rules.lines.map((l) => /\(([A-Z_]+)\)$/.exec(l.text)?.[1]);
+    expect(new Set(ruleIds).size).toBe(ruleIds.length);
+    expect(ruleIds).toContain("DOSE_DEFAULTS");
+    expect(ruleIds).toContain("FINDING_OBSERVATION_MAP");
+    // what would change it: from the codes present
+    expect(by.change.lines.map((l) => l.text)).toContain("Se a observação na execução mostrar compensação, decida com o aluno (não é contraindicação).");
+  });
+
+  it("'O que mudaria esta escolha' only for codes present: no history entry, no history condition", () => {
+    const item = (selection: Array<{ code: string; basis?: string }>, sets?: { basis: string; ruleId?: string }) =>
+      ({
+        trace: {
+          selection: selection.map((t) => ({ code: t.code, basis: t.basis ?? "HEURISTIC", detail: t.code })),
+          params: sets ? [{ param: "sets", value: 3, ...sets }] : [],
+        },
+      }) as unknown as ItemOut;
+    expect(changeConditions(item([{ code: "ELIGIBLE" }]))).toEqual(["Se as modalidades do treino ou as suas exclusões mudarem."]);
+    expect(changeConditions(item([{ code: "ELIGIBLE" }])).some((t) => t.includes("dor"))).toBe(false);
+    expect(changeConditions(item([{ code: "HISTORY_PAIN", basis: "STUDENT_DATA" }, { code: "HISTORY_CONTINUITY", basis: "STUDENT_DATA" }]))).toEqual([
+      "Se o aluno registrar dor ou não tolerar o exercício.",
+    ]);
+    expect(changeConditions(item([{ code: "MICRO_TARGET_DEFICIT" }]))[0]).toContain("alvo semanal");
+    expect(changeConditions(item([{ code: "LOCKED", basis: "PROFESSIONAL" }]))).toEqual(["Está mantido por você: só muda se você destravar."]);
+    expect(changeConditions(item([], { basis: "PROFESSIONAL" }))).toEqual(["A dose é sua: muda só se você a editar."]);
+    expect(changeConditions(item([], { basis: "HEURISTIC", ruleId: "DOSE_DEFAULTS" }))[0]).toContain("política de doses");
+    expect(changeConditions(item([{ code: "UNMAPPED_CODE" }]))).toEqual([]);
+  });
+
+  it("an item without sets, contribution or student data has only what it carries; a preserved row says it is the professional's", () => {
+    const legacy = generate(xintusInput(LEGACY_RULES));
+    const plain = legacy.occurrences[0].items[0];
+    const why = whyView(plain, { rulesUsed: legacy.rulesUsed, contribution: contributionView(plain, null, 1, 1) });
+    expect(why.map((s) => s.key)).not.toContain("contribution");
+    expect(why.map((s) => s.key)).not.toContain("student");
+    const empty = generate(xintusInput(DEFAULT_RULESET, { parameters: { ...xintusInput().parameters, doseMode: "LEAVE_EMPTY" } }));
+    const blank = empty.occurrences[0].items[0];
+    expect(whyView(blank, { rulesUsed: empty.rulesUsed, contribution: null }).map((s) => s.key)).not.toContain("sets");
+    const preserved = { trace: { selection: [{ code: "PRESERVED", basis: "PROFESSIONAL", detail: "Linha preservada." }], params: [] } } as unknown as ItemOut;
+    expect(whyView(preserved, { rulesUsed: [], contribution: null })).toEqual([
+      { key: "choice", title: "Por que este exercício", lines: [{ text: "Linha preservada.", basis: "PROFESSIONAL", rule: null }] },
+      { key: "change", title: "O que mudaria esta escolha", lines: [{ text: "Já estava no rascunho: a ferramenta não o troca; mude no editor da revisão.", basis: null, rule: null }] },
+    ]);
+  });
+
+  it("the suggested-targets card is drawn only for phases a recorded audit says have none, under rules that can back it", () => {
+    const stored = storedAudit(xintus)!;
+    expect(audit.findings.some((f) => f.code === "AUDIT_NO_TARGETS")).toBe(true);
+    expect(phasesWithoutTargets(stored, true)).toEqual([1, 2, 3]);
+    expect(phasesWithoutTargets(stored, false)).toEqual([]);
+    expect(phasesWithoutTargets({ ...stored, source: "VIEW" }, true)).toEqual([]);
+    expect(phasesWithoutTargets(null, true)).toEqual([]);
+    const view = auditView(stored, { engineVersion: xintus.engineVersion, acceptSuggestions: true });
+    const offered = [...view.observations, ...view.attention].flatMap((g) => g.findings).filter((f) => f.offerSuggestion);
+    expect(offered.map((f) => f.phaseIndex)).toEqual([1, 2, 3]);
   });
 });

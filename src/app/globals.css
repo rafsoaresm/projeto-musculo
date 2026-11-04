@@ -8307,3 +8307,35 @@ a.phase-tab[aria-current="page"] {
 .why-block .small-heading {
   margin-top: 4px;
 }
+
+/* Motor V3: alvos sugeridos (target-suggestions) e "Por quê?" em seções */
+.target-card {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-xs);
+}
+.target-card .chip-row {
+  min-width: 0;
+}
+.target-list {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.target-tag {
+  padding: 2px 10px;
+  border: 1px solid var(--color-line-strong);
+  border-radius: var(--radius-xs);
+  font-size: 0.875rem;
+}
+.target-editor {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.why-section + .why-section {
+  margin-top: 4px;
+}

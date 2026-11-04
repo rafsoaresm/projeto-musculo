@@ -15,7 +15,7 @@ import { ContextSummary } from "@/modules/prescricao/automatica/context-summary"
 import { GenerationForm } from "@/modules/prescricao/automatica/generation-form";
 import { ProposalView, type ProposalHeaderView } from "@/modules/prescricao/automatica/proposal-view";
 import { ApplyPanel } from "@/modules/prescricao/automatica/apply-panel";
-import { canAcceptSuggestions, pageAudit, pickPhase, pickWeek } from "@/modules/prescricao/automatica/view";
+import { canAcceptSuggestions, pageAudit, phasesWithoutTargets, pickPhase, pickWeek } from "@/modules/prescricao/automatica/view";
 import { getRuleSet } from "@/modules/prescricao/motor/rules";
 
 export const dynamic = "force-dynamic";
@@ -142,6 +142,11 @@ export default async function AutomaticPrescription({
   // The audit recorded with the proposal comes with the summary already read; only a proposal generated before the audit has
   // it computed now (design V3 §3.9), never written back.
   const audit = await pageAudit(page.summary, () => service.viewAudit(planId, revisionId, open.id));
+  // Suggested targets only where the recorded audit says a phase has none and the proposal's own rules can back an acceptance
+  // (design V3 §3.9, §7.4); computed by the server from the proposal's answers, nothing written.
+  const acceptSuggestions = canAcceptSuggestions(getRuleSet({ id: page.header.rulesId, version: page.header.rulesVersion }));
+  const without = phasesWithoutTargets(audit, acceptSuggestions);
+  const suggested = without.length ? await service.targetSuggestions(planId, revisionId, open.id, without) : null;
   // Sent to the screen once, as `audit`, not twice.
   const summaryWithoutAudit = { ...page.summary };
   delete summaryWithoutAudit.audit;
@@ -174,7 +179,8 @@ export default async function AutomaticPrescription({
         week={week}
         library={library.map((exercise) => ({ id: exercise.id, name: exercise.name }))}
         audit={audit}
-        acceptSuggestions={canAcceptSuggestions(getRuleSet({ id: page.header.rulesId, version: page.header.rulesVersion }))}
+        acceptSuggestions={acceptSuggestions}
+        targetSuggestions={suggested?.status === "ok" ? suggested.suggestions : []}
       />
       {preview && (
         <ApplyPanel
