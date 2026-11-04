@@ -328,7 +328,7 @@ export function planWorkout(ctx: EngineContext, phase: StructurePhase, workout: 
   const chosen = slots.map((s) => s.exercise).filter((e): e is CatalogExercise => e !== null);
   if (coverage) {
     for (const m of coverage.muscles)
-      if (!chosen.some((e) => e.primaryMuscles.includes(m)))
+      if (!chosen.some((e) => e.primaryMuscles.some((x) => codeOf(x) === codeOf(m))))
         issues.push({ severity: "WARNING", code: "MUSCLE_NOT_COVERED", path, ...at, message: `Treino ${workout.label}: ${m} sem exercício como músculo principal.` });
     for (const p of coverage.patterns)
       if (!chosen.some((e) => e.patterns.map(codeOf).includes(codeOf(p))))
@@ -520,7 +520,7 @@ export function finalize(ctx: EngineContext, result: EngineResult): EngineResult
         if (ids.has(item.exerciseId)) issues.push({ severity: "ERROR", code: "DUPLICATE_EXERCISE", path, ...at, message: `Semana ${o.week}, sessão ${o.slot}: ${item.exerciseName} aparece duas vezes.` });
         ids.add(item.exerciseId);
       }
-      if (item.origin === "SUBSTITUTED" && item.substitutesSlotKey && replaced.has(item.substitutesSlotKey))
+      if (item.substitutesSlotKey && replaced.has(item.substitutesSlotKey))
         issues.push({ severity: "WARNING", code: "EXISTING_ROW_REPLACED", path: `${path}.${item.slotKey}`, ...at, message: `${item.exerciseName} substitui uma linha que já estava na revisão; aplicar exige confirmação.` });
     }
     if (items.length > TECHNICAL_LIMITS.MAX_ITEMS_PER_WORKOUT)

@@ -165,12 +165,13 @@ export function buildDose(metric: Metric, d: DoseDraft): { dose: Dose | null; mi
       need(v.repeats, "repeats");
       need(workDuration ?? workDistance, "work");
       need(recovery, "recovery");
-      if (missing.length || v.blocks === undefined || v.repeats === undefined || !recovery) return { dose: null, missing };
+      need(d.extras.recoveryMode, "recoveryMode"); // passiva ou ativa: nunca suposta
+      if (missing.length || v.blocks === undefined || v.repeats === undefined || !recovery || !d.extras.recoveryMode) return { dose: null, missing };
       return {
         dose: {
           metric, blocks: v.blocks, repeats: v.repeats,
           work: { ...(workDuration ? { durationSeconds: workDuration } : {}), ...(workDistance ? { distanceMeters: workDistance } : {}), ...(intensity ? { intensity } : {}) },
-          recovery: { durationSeconds: recovery, mode: d.extras.recoveryMode ?? "PASSIVE" },
+          recovery: { durationSeconds: recovery, mode: d.extras.recoveryMode },
           restBetweenBlocksSeconds: v.restBetweenBlocks ?? null,
         },
         missing,

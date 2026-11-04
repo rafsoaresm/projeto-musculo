@@ -18,8 +18,8 @@ export function volumeFor(log: RuleLog, occurrences: OccurrenceOut[], byId: Map<
       const e = item.exerciseId ? byId.get(item.exerciseId) : undefined;
       const sets = setsOf(item.dose);
       if (!e || sets === null || !e.modality || !modalities.has(codeOf(e.modality))) continue;
-      const direct = new Set(e.primaryMuscles);
-      const indirect = new Set(e.secondaryMuscles.filter((m) => !direct.has(m)));
+      const direct = new Set(e.primaryMuscles.map(codeOf));
+      const indirect = new Set(e.secondaryMuscles.map(codeOf).filter((m) => !direct.has(m)));
       for (const muscle of [...direct, ...indirect]) {
         const key = `${o.phaseIndex}|${o.week}|${muscle}`;
         let row = rows.get(key);

@@ -171,3 +171,78 @@ describe("motor: substituição de exercícios (tópico 10)", () => {
     expect(a.items.map((i) => i.position)).toEqual(a.items.map((_, n) => n + 1));
   });
 });
+
+describe("motor: revisão nunca troca sozinho o que o profissional decidiu (tópicos 9–11)", () => {
+  const input = baseInput();
+  const existing: ExistingItem[] = [{ prescribedExerciseId: "pe-1", phaseIndex: 1, label: "A", exerciseId: "ex-squat", name: "Agachamento livre", position: 1, dose: null, display: toDisplayFields(null), origin: "PROFESSIONAL" }];
+  const withRows = { ...input, existing };
+  const base = generate(withRows);
+  const a = (r: EngineResult, week: number) => r.occurrences.find((o) => o.phaseIndex === 1 && o.label === "A" && o.week === week)!;
+
+  it("regenerar um item preservado é recusado; a linha continua igual", () => {
+    const row = a(base, 1).items.find((i) => i.origin === "PRESERVED")!;
+    expect(regenerate(withRows, base, { kind: "ITEM", phaseIndex: 1, week: 1, slot: 1, slotKey: row.slotKey })).toMatchObject({ ok: false, code: "TARGET_PRESERVED" });
+  });
+
+  it("regenerar ou substituir um item travado é recusado", () => {
+    const item = a(base, 1).items.find((i) => i.origin === "ENGINE")!;
+    const locked = { ...withRows, locked: [{ phaseIndex: 1, slotKey: item.slotKey }] };
+    expect(regenerate(locked, base, { kind: "ITEM", phaseIndex: 1, week: 1, slot: 1, slotKey: item.slotKey })).toMatchObject({ ok: false, code: "TARGET_LOCKED" });
+    expect(substitute(locked, base, { phaseIndex: 1, slotKey: item.slotKey, applies: { kind: "PHASE" } }, "ex-airsquat")).toMatchObject({ ok: false, code: "TARGET_LOCKED" });
+  });
+
+  it("troca do profissional dentro do escopo regenerado é mantida (dose recalculada)", () => {
+    const before = generate(input);
+    const lp = a(before, 1).items.find((i) => i.exerciseId === "ex-legpress")!;
+    const sub = ok(substitute(input, before, { phaseIndex: 1, slotKey: lp.slotKey, applies: { kind: "FROM_WEEK", week: 1 } }, "ex-airsquat"));
+    const r = ok(regenerate(changed(input), sub, { kind: "WEEK", phaseIndex: 1, week: 2 }));
+    for (const w of [1, 2, 3, 4]) {
+      const o = a(r, w);
+      expect(o.items.some((i) => i.exerciseId === "ex-legpress"), `semana ${w}`).toBe(false);
+      expect(o.items.find((i) => i.exerciseId === "ex-airsquat"), `semana ${w}`).toMatchObject({ origin: "SUBSTITUTED", substitutesSlotKey: lp.slotKey, position: lp.position });
+    }
+    const w2 = a(r, 2).items.find((i) => i.exerciseId === "ex-airsquat")!;
+    expect(w2.dose && "restSeconds" in w2.dose && w2.dose.restSeconds).toBe(150);
+    expect(codes(r)).not.toContain("SUBSTITUTION_DROPPED");
+  });
+
+  it("troca que deixou de ser elegível não volta calada: SUBSTITUTION_DROPPED", () => {
+    const before = generate(input);
+    const lp = a(before, 1).items.find((i) => i.exerciseId === "ex-legpress")!;
+    const sub = ok(substitute(input, before, { phaseIndex: 1, slotKey: lp.slotKey, applies: { kind: "PHASE" } }, "ex-goblet"));
+    const noDumbbell = { ...input, parameters: parameters({ availableEquipment: ["BARBELL", "RACK", "MACHINE", "BENCH", "CABLE"] }) };
+    const r = ok(regenerate(noDumbbell, sub, { kind: "PHASE", phaseIndex: 1 }));
+    expect(codes(r)).toContain("SUBSTITUTION_DROPPED");
+    expect(r.occurrences.flatMap((o) => o.items).some((i) => i.exerciseId === "ex-goblet")).toBe(false);
+  });
+
+  it("travar um item trocado numa só sessão não o espalha pelo treino ao regenerar a fase", () => {
+    const before = generate(input);
+    const lp = a(before, 1).items.find((i) => i.exerciseId === "ex-legpress")!;
+    const sub = ok(substitute(input, before, { phaseIndex: 1, slotKey: lp.slotKey, applies: { kind: "OCCURRENCE", week: 1, slot: 1 } }, "ex-goblet"));
+    const goblet = a(sub, 1).items.find((i) => i.exerciseId === "ex-goblet")!;
+    const r = ok(regenerate({ ...input, locked: [{ phaseIndex: 1, slotKey: goblet.slotKey }] }, sub, { kind: "PHASE", phaseIndex: 1 }));
+    expect(a(r, 1).items.find((i) => i.exerciseId === "ex-goblet")).toMatchObject({ origin: "LOCKED", position: lp.position });
+    for (const w of [2, 3, 4]) {
+      expect(a(r, w).items.some((i) => i.exerciseId === "ex-goblet"), `semana ${w}`).toBe(false);
+      expect(ids(a(r, w)), `semana ${w}`).toBe(ids(a(before, w)));
+    }
+  });
+
+  it("troca de uma troca sobre linha preservada ainda pede confirmação ao aplicar", () => {
+    const row = a(base, 1).items.find((i) => i.origin === "PRESERVED")!;
+    const s1 = ok(substitute(withRows, base, { phaseIndex: 1, slotKey: row.slotKey, applies: { kind: "PHASE" } }, "ex-goblet"));
+    const g = a(s1, 1).items.find((i) => i.exerciseId === "ex-goblet")!;
+    const s2 = ok(substitute(withRows, s1, { phaseIndex: 1, slotKey: g.slotKey, applies: { kind: "PHASE" } }, "ex-airsquat"));
+    expect(a(s2, 1).items.find((i) => i.exerciseId === "ex-airsquat")!.substitutesSlotKey).toBe(row.slotKey);
+    expect(codes(s2)).toContain("EXISTING_ROW_REPLACED");
+  });
+
+  it("rebase com linha nova acima da quantidade avisa EXISTING_EXCEEDS_TARGET (nada removido)", () => {
+    const before = generate(input);
+    const extra: ExistingItem[] = [{ prescribedExerciseId: "pe-7", phaseIndex: 1, label: "A", exerciseId: null, name: "Exercício novo do profissional", position: 9, dose: null, display: toDisplayFields(null), origin: "PROFESSIONAL" }];
+    const r = ok(rebase({ ...input, existing: extra }, before));
+    expect(a(r, 1).items).toHaveLength(5);
+    expect(r.issues.find((i) => i.code === "EXISTING_EXCEEDS_TARGET")).toMatchObject({ phaseIndex: 1, label: "A", severity: "WARNING" });
+  });
+});

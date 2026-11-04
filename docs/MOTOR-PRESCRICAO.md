@@ -8,8 +8,12 @@ Documento do motor de prescrição (pedido do usuário de 04/11/2026, PR #95). *
 - Gera **todas as sessões** de todas as fases e semanas (qualquer quantidade de fases, semanas e sessões por semana, dentro dos limites técnicos abaixo), com uma seleção de exercícios por treino da fase e uma dose por sessão.
 - Doses em **modelos por métrica**: repetições (séries, faixa, RIR/PSE/%1RM, descanso, cadência, método), tempo, distância, intervalado (blocos, repetições, estímulo, recuperação ativa/passiva) e contínuo. Força não é forçada em séries × repetições quando não cabe. **O motor nunca propõe quilos, zonas ou ritmos**: esses vêm do profissional.
 - Progressão semanal: rampa linear, degraus, sequência ondulatória (por semana ou dentro da semana), blocos, ajustes por semana e descarga; combináveis.
-- Histórico: continuidade pesa na seleção, dor relatada vira alerta e sugestão de exclusão; a progressão por histórico é **só sugestão** (nunca vira valor).
-- Revisão: regenerar item, sessão, semana, treino (a partir de uma semana), fase ou desta fase em diante; substituir em uma sessão, a partir de uma semana ou na fase; alternativas; trazer linhas novas da revisão (rebase). Linhas existentes são preservadas; itens travados ficam.
+- Histórico: continuidade pesa na seleção; dor relatada vira alerta e sugestão de exclusão (que só vale depois do clique do profissional) e **também baixa a pontuação** do exercício na seleção (`SELECTION_WEIGHTS.historyPain`, heurística editável, registrada no "Por quê?" com base `STUDENT_DATA`); nunca exclui sozinha. A progressão por histórico é **só sugestão** (nunca vira valor).
+- Revisão: regenerar item, sessão, semana, treino (a partir de uma semana), fase ou desta fase em diante; substituir em uma sessão, a partir de uma semana ou na fase; alternativas; trazer linhas novas da revisão (rebase). Regras da revisão:
+  - linhas que já estavam na revisão (preservadas) e itens travados nunca são trocados pelo motor: regenerar um deles devolve `TARGET_PRESERVED` / `TARGET_LOCKED`, e substituir um travado devolve `TARGET_LOCKED` (destravar antes). Substituir uma linha preservada é decisão do profissional e gera `EXISTING_ROW_REPLACED` (aplicar exige confirmação), mesmo numa troca de uma troca;
+  - trocas do profissional (`SUBSTITUTED`) dentro do escopo regenerado são mantidas, com a dose recalculada; se o exercício deixou de ser elegível ou o item original sumiu do treino, a troca cai com `SUBSTITUTION_DROPPED`, nunca calada;
+  - uma trava sobre um item que só existe em parte das sessões (trocado numa sessão e travado) vale só nessas sessões; `generate` trata travas como valendo para o treino inteiro da fase;
+  - o rebase recalcula `EXISTING_EXCEEDS_TARGET` quando linhas novas da revisão passam da quantidade (nada é removido).
 - Duração estimada por sessão (máximo das faixas) comparada com o tempo disponível (treino → geração → perfil): `SOFT` avisa, `HARD` torna a proposta INFEASIBLE. Exercícios nunca são trocados para caber.
 - Problemas viram avisos com código (lista em `motor/vocabulary.ts`, `ISSUE_LABELS`); qualquer ERROR torna a proposta `INFEASIBLE`, e o rascunho inteiro é devolvido mesmo assim.
 - Determinístico: mesma entrada → mesmos bytes (catálogo em qualquer ordem); sem acaso, relógio, rede, banco ou IA.
@@ -26,7 +30,7 @@ Todo número da proposta diz de onde veio: `EVIDENCE` (só com referência verif
 
 ## Regras
 
-A tabela abaixo é gerada de `src/modules/prescricao/motor/rules/gymgital-base.json` por `renderRulesTable`; um teste (`tests/motor-rules.test.ts`) falha se ela divergir. Para mudar um número, publique uma versão nova do conjunto (as gravadas continuam reproduzíveis).
+A tabela abaixo é gerada de `src/modules/prescricao/motor/rules/gymgital-base.json` por `renderRulesTable`; um teste (`tests/motor-rules.test.ts`) falha se ela divergir. Para mudar um número, publique uma versão nova do conjunto (as gravadas continuam reproduzíveis). O SHA-256 de cada conjunto publicado está fixado no teste: editar o JSON sob a mesma versão faz o teste falhar, e a correção é uma versão nova, não um hash novo.
 
 <!-- regras:inicio -->
 Conjunto `gymgital-base` versão `2026.11.1`.
@@ -88,7 +92,7 @@ Referências não verificadas não aparecem em traços nem na interface, e nenhu
 
 ## Limites técnicos
 
-Em `motor/bounds.ts` (`TECHNICAL_LIMITS`), cada um com o motivo: 12 fases (CHECK 1..12 das tabelas 0006/0012; refazer não é aditivo), 14 sessões por semana, 30 exercícios por treino (`MAX_PER_WORKOUT` e `MAX_EXERCISES` da execução, até medição), tamanhos das colunas de traço (8000), alternativas (4000), chave do item (300) e textos de exibição (séries 20, repetições 40, carga 120, cadência 40, descanso 40, texto da dose 300). Acima do tamanho, o motor resume e avisa (`TRACE_TRUNCATED`, `DISPLAY_TRUNCATED`, `ISSUES_AGGREGATED`). O teto de sessões totais e de unidades de trabalho por pedido será medido na S6 (`workerd` local).
+Em `motor/bounds.ts` (`TECHNICAL_LIMITS`), cada um com o motivo: 12 fases (CHECK 1..12 das tabelas 0006/0012; refazer não é aditivo), 14 sessões por semana, 30 exercícios por treino (`MAX_PER_WORKOUT` e `MAX_EXERCISES` da execução, até medição), tamanhos das colunas de traço (8000), alternativas (4000), chave do item (300) e textos de exibição (séries 20, repetições 40, carga 120, cadência 40, descanso 40, texto da dose 300). Acima do tamanho, o motor resume e avisa (`TRACE_TRUNCATED`, `DISPLAY_TRUNCATED`, `ISSUES_AGGREGATED`). Avisos: até 300 um a um (erros primeiro); o resto, inclusive erros, agrupado por severidade, código e fase com contagem (um erro agrupado continua ERROR). Teste: 12 fases × 4 semanas × 6 sessões com uma dose inválida em todos os itens dá resumo (sem as sessões) abaixo de 500000 caracteres. O teto de sessões totais e de unidades de trabalho por pedido será medido na S6 (`workerd` local).
 
 ## A completar (S10)
 

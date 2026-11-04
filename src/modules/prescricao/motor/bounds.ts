@@ -22,7 +22,7 @@ export const TECHNICAL_LIMITS = {
   MAX_ALTERNATIVES: 8,
   /** `slot_key` ≤ 300 caracteres. */
   MAX_SLOT_KEY: 300,
-  /** Avisos listados um a um; acima disso, agrupados por código com contagem (summary_json ≤ 500000). */
+  /** Avisos listados um a um (erros primeiro); acima disso, agrupados por código e fase com contagem (summary_json ≤ 500000). */
   MAX_ISSUES: 300,
   /** Colunas de exibição (0006/0041): sets 20, reps 40, load_instruction 120, cadence 40, rest_text 40, dose_text 300. */
   DISPLAY: { sets: 20, reps: 40, loadInstruction: 120, cadence: 40, restText: 40, doseText: 300 },
@@ -83,25 +83,35 @@ function boundItem(item: ItemOut, path: string, issues: Issue[]): ItemOut {
   return next;
 }
 
-/** Agrupa avisos acima do limite por código, com contagem, mantendo todos os ERROR individuais. */
+const SEVERITY_ORDER: Record<Issue["severity"], number> = { ERROR: 0, WARNING: 1, INFO: 2 };
+
+/**
+ * Acima do limite, os primeiros `MAX_ISSUES` (erros antes de alertas e informações) ficam um a um;
+ * o resto é agrupado por severidade, código, etapa e fase, com contagem. Erros agrupados continuam
+ * ERROR (o estado da proposta não muda) e a fase fica no grupo (regenerar a fase o substitui).
+ */
 export function boundIssues(issues: Issue[]): Issue[] {
   if (issues.length <= TECHNICAL_LIMITS.MAX_ISSUES) return issues;
-  const errors = issues.filter((i) => i.severity === "ERROR");
-  const room = Math.max(0, TECHNICAL_LIMITS.MAX_ISSUES - Math.min(errors.length, TECHNICAL_LIMITS.MAX_ISSUES));
-  const others = issues.filter((i) => i.severity !== "ERROR");
-  const kept = others.slice(0, room);
-  const rest = others.slice(room);
+  const ordered = issues.map((i, n) => ({ i, n })).sort((a, b) => SEVERITY_ORDER[a.i.severity] - SEVERITY_ORDER[b.i.severity] || a.n - b.n).map((x) => x.i);
+  const kept = ordered.slice(0, TECHNICAL_LIMITS.MAX_ISSUES);
+  const rest = ordered.slice(TECHNICAL_LIMITS.MAX_ISSUES);
   const groups = new Map<string, Issue>();
+  let total = 0;
   for (const i of rest) {
-    const key = `${i.severity}|${i.code}|${i.stage}`;
+    total += i.count ?? 1;
+    const key = `${i.severity}|${i.code}|${i.stage}|${i.phaseIndex ?? ""}`;
     const g = groups.get(key);
     if (g) g.count = (g.count ?? 1) + (i.count ?? 1);
-    else groups.set(key, { severity: i.severity, code: i.code, path: "*", message: `${i.message} (e outros iguais)`, count: i.count ?? 1, stage: i.stage });
+    else groups.set(key, {
+      severity: i.severity, code: i.code, path: i.phaseIndex === undefined ? "*" : `phases.${i.phaseIndex}`,
+      message: i.message.endsWith("(e outros iguais)") ? i.message : `${i.message} (e outros iguais)`, count: i.count ?? 1, stage: i.stage,
+      ...(i.phaseIndex !== undefined ? { phaseIndex: i.phaseIndex } : {}),
+    });
   }
-  const grouped = [...groups.values()].sort((a, b) => cmp(a.code, b.code));
-  return [...errors, ...kept, ...grouped, {
+  const grouped = [...groups.values()].sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] || cmp(a.code, b.code) || (a.phaseIndex ?? 0) - (b.phaseIndex ?? 0));
+  return [...kept, ...grouped, {
     severity: "INFO", code: "ISSUES_AGGREGATED", path: "*", stage: "VALIDATION",
-    message: `${rest.length} avisos agrupados por código pelo limite técnico.`, count: rest.length,
+    message: `${total} avisos agrupados por código pelo limite técnico.`, count: total,
   }];
 }
 

@@ -21,6 +21,17 @@ describe("motor: progressões semanais (tópico 8)", () => {
     expect(r.status).toBe("SUCCEEDED");
   });
 
+  it("rampa sobre um parâmetro que a dose não tem: ignorada com aviso, nada inventado", () => {
+    const st = structure("2026-11-09", [{ weeks: 3, sessionsPerWeek: 1, stimulus: "HYPERTROPHY", workouts: [{ label: "A", exerciseTarget: 1, focus: { muscles: ["ABS"] } }] }]);
+    const r = generate(baseInput({ structure: st, parameters: parameters({ progressionByPhase: [{ phaseIndex: 1, progression: { model: "LINEAR", ramps: [{ param: "rirMin", from: 3, to: 1 }, { param: "rirMax", from: 4, to: 2 }] } }] }) }));
+    const plank = r.occurrences[2].items[0];
+    expect(plank.exerciseId).toBe("ex-plank");
+    expect(plank.dose).toMatchObject({ metric: "TIME" });
+    expect(plank.dose && "intensity" in plank.dose).toBe(false);
+    expect(plank.trace.params.some((p) => p.param === "rirMin")).toBe(false);
+    expect(codes(r)).toContain("PROGRESSION_PARAM_MISSING");
+  });
+
   it("STEP com limite e descarga (séries × 0 → 0, regra citada)", () => {
     const r = run({ model: "STEP", steps: [{ param: "sets", delta: 1, everyWeeks: 1, limit: 5 }], deload: { weeks: [4], setsMultiplier: 0 } }, 4);
     const s = [1, 2, 3, 4].map((w) => { const d = firstDose(r, w); return d.metric === "REPS" ? d.sets : -1; });

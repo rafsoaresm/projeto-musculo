@@ -86,15 +86,15 @@ function score(log: RuleLog, e: CatalogExercise, chosen: CatalogExercise[], req:
   const covered = new Map<string, number>();
   const patterns = new Set<string>();
   for (const x of chosen) {
-    for (const m of x.primaryMuscles) covered.set(m, (covered.get(m) ?? 0) + 1);
+    for (const m of x.primaryMuscles.map(codeOf)) covered.set(m, (covered.get(m) ?? 0) + 1);
     for (const p of x.patterns) patterns.add(codeOf(p));
   }
   const targets = req.coverage;
-  const tm = new Set(targets?.muscles ?? []);
+  const tm = new Set((targets?.muscles ?? []).map(codeOf));
   const tp = new Set((targets?.patterns ?? []).map(codeOf));
-  for (const m of e.primaryMuscles)
+  for (const m of e.primaryMuscles.map(codeOf))
     if (tm.has(m)) add(W.primaryTarget / (1 + (covered.get(m) ?? 0) * W.primaryRepeatDivisor), "TARGET_PRIMARY", `Músculo-alvo ${label(m)} como principal`);
-  for (const m of e.secondaryMuscles)
+  for (const m of e.secondaryMuscles.map(codeOf))
     if (tm.has(m)) add(W.secondaryTarget / (1 + (covered.get(m) ?? 0)), "TARGET_SECONDARY", `Músculo-alvo ${label(m)} como secundário`);
   for (const p of e.patterns) {
     const c = codeOf(p);
@@ -158,7 +158,7 @@ export function rankAlternatives(
   if (!target) return [];
   const W = log.get("ALTERNATIVE_WEIGHTS");
   const curated = new Set(target.substitutes);
-  const primary = new Set(target.primaryMuscles);
+  const primary = new Set(target.primaryMuscles.map(codeOf));
   const patterns = new Set(target.patterns.map(codeOf));
   const out: Alternative[] = [];
   for (const e of pool) {
@@ -169,7 +169,7 @@ export function rankAlternatives(
       s += W.curated;
       reasons.push("Substituição indicada na biblioteca");
     }
-    const sharedM = e.primaryMuscles.filter((m) => primary.has(m));
+    const sharedM = e.primaryMuscles.map(codeOf).filter((m) => primary.has(m));
     if (sharedM.length) {
       s += W.sharedPrimary * sharedM.length;
       reasons.push(`Mesmo músculo principal: ${sharedM.map(label).join(", ")}`);

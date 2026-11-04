@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generate, type CatalogExercise } from "@/modules/prescricao/motor";
+import { TECHNICAL_LIMITS, canonicalJson, generate, type CatalogExercise } from "@/modules/prescricao/motor";
 import { baseInput, CATALOG, codes, exercise, parameters, structure } from "./helpers/motor-fixtures";
 
 const chosenIds = (r: ReturnType<typeof generate>) => new Set(r.occurrences.flatMap((o) => o.items.map((i) => i.exerciseId)));
@@ -210,5 +210,51 @@ describe("motor: dados ausentes (tópico 7)", () => {
     expect(item.exerciseId).toBe("ex-legpress");
     expect(item.dose).toBeNull(); // só séries: falta faixa de repetições
     expect(codes(r)).toContain("DOSE_POLICY_MISSING");
+    // séries e repetições, sem descanso: a dose existe, o descanso fica vazio (não 0) e a duração é parcial
+    const withReps = generate(baseInput({
+      parameters: parameters({ doseOverrides: [{ exerciseId: "ex-legpress", patch: { values: { sets: 3, repsMin: 8, repsMax: 12 } } }] }),
+      catalog: CATALOG.map((e) => (e.id === "ex-legpress" ? { ...e, modality: "CUSTOM_MOD" } : e)),
+      structure: structure("2026-11-09", [{ weeks: 1, sessionsPerWeek: 1, stimulus: "HYPERTROPHY", workouts: [{ label: "A", exerciseTarget: 1, focus: { modalities: ["CUSTOM_MOD"] } }] }]),
+    }));
+    const o = withReps.occurrences[0];
+    expect(o.items[0].dose).toMatchObject({ metric: "REPS", sets: 3, restSeconds: null });
+    expect(o.durationComplete).toBe(false);
+    expect(codes(withReps)).toContain("DURATION_UNKNOWN");
+  });
+
+  it("intervalado sem recuperação passiva/ativa informada: dose vazia, nunca suposta", () => {
+    const r = generate(baseInput({
+      parameters: parameters({ doseOverrides: [{ exerciseId: "ex-run-int", patch: { values: { blocks: 1, repeats: 6, workDurationMin: 30, workDurationMax: 30, recoveryMin: 60, recoveryMax: 60 } } }] }),
+      catalog: CATALOG.map((e) => (e.id === "ex-run-int" ? { ...e, modality: "CUSTOM_MOD" } : e)),
+      structure: structure("2026-11-09", [{ weeks: 1, sessionsPerWeek: 1, stimulus: "INTERVALS", workouts: [{ label: "A", exerciseTarget: 1, focus: { modalities: ["CUSTOM_MOD"] } }] }]),
+    }));
+    expect(r.occurrences[0].items[0]).toMatchObject({ exerciseId: "ex-run-int", dose: null });
+    expect(r.issues.find((i) => i.code === "DOSE_POLICY_MISSING")?.message).toMatch(/recoveryMode/);
+  });
+
+  it("músculos-alvo comparados pelo código, como os padrões (\"quadriceps\" = \"QUADRICEPS\")", () => {
+    const up = generate(baseInput());
+    const st = baseInput().structure;
+    const low = generate(baseInput({ structure: { ...st, phases: st.phases.map((p) => ({ ...p, workouts: p.workouts.map((w) => ({ ...w, focus: { ...w.focus, ...(w.focus.muscles ? { muscles: w.focus.muscles.map((m) => m.toLowerCase()) } : {}) } })) })) } }));
+    expect(low.occurrences.map((o) => o.items.map((i) => i.exerciseId))).toEqual(up.occurrences.map((o) => o.items.map((i) => i.exerciseId)));
+    expect(codes(low)).not.toContain("MUSCLE_NOT_COVERED");
+  });
+});
+
+describe("motor: limites técnicos do resumo", () => {
+  it("12 fases × 4 semanas × 6 sessões com uma dose inválida em toda parte: erros agrupados, resumo cabe em 500000", () => {
+    const st = structure("2026-11-09", Array.from({ length: 12 }, () => ({
+      weeks: 4, sessionsPerWeek: 6, stimulus: "HYPERTROPHY",
+      workouts: ["A", "B", "C", "D", "E", "F"].map((label) => ({ label, exerciseTarget: 20 })),
+    })));
+    const r = generate(baseInput({ structure: st, parameters: parameters({ doseOverrides: [{ patch: { values: { repsMin: 12, repsMax: 8 } } }] }) }));
+    expect(r.status).toBe("INFEASIBLE");
+    const agg = r.issues.find((i) => i.code === "ISSUES_AGGREGATED")!;
+    expect(agg.count!).toBeGreaterThan(1000);
+    const grouped = r.issues.filter((i) => i.code === "DOSE_INVALID" && (i.count ?? 1) > 1);
+    expect(grouped.length).toBeGreaterThan(0);
+    expect(grouped.every((g) => g.severity === "ERROR" && g.phaseIndex !== undefined)).toBe(true);
+    expect(r.issues.length).toBeLessThanOrEqual(TECHNICAL_LIMITS.MAX_ISSUES + 12 * 10 + 1);
+    expect(canonicalJson({ ...r, occurrences: [] }).length).toBeLessThanOrEqual(500000);
   });
 });

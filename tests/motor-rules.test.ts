@@ -1,13 +1,44 @@
-import { readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_RULESET, REFERENCES, RULESETS, TECHNICAL_LIMITS, canonicalJson, describeStructuredDose, generate, getRuleSet,
-  renderRulesTable, toDisplayFields, validateDose, validateRuleSet, type Basis, type Dose, type EngineResult,
+  renderRulesTable, sha256Hex, toDisplayFields, validateDose, validateRuleSet, type Basis, type Dose, type EngineResult,
 } from "@/modules/prescricao/motor";
 import { baseInput, parameters, structure } from "./helpers/motor-fixtures";
 
 const BASES: Basis[] = ["EVIDENCE", "HEURISTIC", "HEURISTIC_ACCEPTED", "PROFESSIONAL", "STUDENT_DATA"];
+
+/** Para cada valor da dose, os parâmetros do traço que podem tê-lo produzido (um basta). */
+function traceNeeds(dose: Dose): string[][] {
+  const out: string[][] = [];
+  const intensity = ["intensity", "rirMin", "rirMax", "rpeMin", "rpeMax"];
+  const opt = (v: unknown, names: string[]) => { if (v !== undefined && v !== null) out.push(names); };
+  switch (dose.metric) {
+    case "REPS":
+      out.push(["sets"], ["repsMin", "repsMax"], ["loadBasis"]);
+      opt(dose.restSeconds, ["restSeconds"]); opt(dose.intensity, intensity); opt(dose.tempo, ["tempo"]);
+      opt(dose.method, ["method"]); opt(dose.loadInstruction, ["loadInstruction"]);
+      break;
+    case "TIME":
+      out.push(["sets"], ["durationMin", "durationMax"]);
+      opt(dose.restSeconds, ["restSeconds"]); opt(dose.intensity, intensity); opt(dose.method, ["method"]);
+      break;
+    case "DISTANCE":
+      out.push(["sets"], ["distanceMin", "distanceMax"]);
+      opt(dose.restSeconds, ["restSeconds"]); opt(dose.intensity, intensity);
+      break;
+    case "INTERVALS":
+      out.push(["blocks"], ["repeats"], ["recoveryMin", "recoveryMax"], ["recoveryMode"]);
+      opt(dose.work.durationSeconds, ["workDurationMin", "workDurationMax"]); opt(dose.work.distanceMeters, ["workDistanceMin", "workDistanceMax"]);
+      opt(dose.work.intensity, intensity); opt(dose.restBetweenBlocksSeconds, ["restBetweenBlocks"]);
+      break;
+    case "CONTINUOUS":
+      opt(dose.durationSeconds, ["durationMin", "durationMax"]); opt(dose.distanceMeters, ["distanceMin", "distanceMax"]); opt(dose.intensity, intensity);
+      break;
+  }
+  return out;
+}
 
 function variety(): EngineResult[] {
   return [
@@ -54,6 +85,8 @@ describe("motor: regras, bases e referências", () => {
           if (item.dose && item.origin === "ENGINE") {
             const params = new Set(item.trace.params.map((p) => p.param));
             expect(params.has("metric")).toBe(true);
+            for (const need of traceNeeds(item.dose))
+              expect(need.some((p) => params.has(p)), `${item.exerciseName}: ${need.join("|")} sem traço`).toBe(true);
           }
         }
   });
@@ -81,16 +114,46 @@ describe("motor: regras, bases e referências", () => {
     expect(m![1].trim()).toBe(renderRulesTable(getRuleSet(DEFAULT_RULESET)!).trim());
   });
 
-  it("o motor não importa nada que aprove, entregue ou acesse o banco", () => {
-    const dir = join(process.cwd(), "src/modules/prescricao/motor");
-    const files = readdirSync(dir).filter((f) => f.endsWith(".ts")).map((f) => join(dir, f)).concat(join(dir, "rules/index.ts"));
-    for (const f of files) {
+  it("o motor não importa nada que aprove, entregue ou acesse o banco (grafo inteiro, além da pasta)", () => {
+    const root = join(process.cwd(), "src");
+    const resolve = (from: string, spec: string): string | null => {
+      const base = spec.startsWith("@/") ? join(root, spec.slice(2)) : spec.startsWith(".") ? join(dirname(from), spec) : null;
+      if (!base) return null;
+      for (const c of [base, `${base}.ts`, `${base}.tsx`, join(base, "index.ts")]) if (existsSync(c) && statSync(c).isFile()) return c;
+      throw new Error(`${from}: não resolvi ${spec}`);
+    };
+    const PACKAGES = new Set(["zod"]);
+    const seen = new Set<string>();
+    const queue = [join(root, "modules/prescricao/motor/index.ts")];
+    while (queue.length) {
+      const f = queue.pop()!;
+      if (seen.has(f)) continue;
+      seen.add(f);
       const src = readFileSync(f, "utf8");
-      for (const [, spec] of src.matchAll(/from "([^"]+)"/g)) {
-        const allowed = spec.startsWith("./") || spec.startsWith("../") || spec === "@/modules/prescricao/contracts";
-        expect(allowed, `${f} importa ${spec}`).toBe(true);
+      if (f.endsWith(".json")) continue;
+      expect(src, f).not.toMatch(/\bapprove\b|\bdeliver\b|planos\/actions|getCloudflareContext|env\.DB|"use server"|server-only/);
+      for (const [, spec] of src.matchAll(/(?:from|import)\s*\(?\s*"([^"]+)"/g)) {
+        const target = resolve(f, spec);
+        if (target === null) {
+          expect(PACKAGES.has(spec), `${f} importa o pacote ${spec}`).toBe(true);
+          continue;
+        }
+        expect(target.startsWith(join(root, "db")) || target.includes("/actions"), `${f} importa ${spec}`).toBe(false);
+        queue.push(target);
       }
-      expect(src).not.toMatch(/\bapprove\b|\bdeliver\b|planos\/actions/);
+    }
+    // o grafo sai da pasta do motor (contratos da prescrição e da biblioteca) e foi seguido
+    expect([...seen].some((f) => f.includes("modules/biblioteca/contracts"))).toBe(true);
+  });
+
+  it("um conjunto publicado nunca muda sob a mesma versão (SHA-256 fixado)", async () => {
+    // Mudou um número? Publique uma nova versão em rules/ e acrescente o hash dela aqui; nunca troque um hash existente.
+    const PUBLISHED: Record<string, string> = {
+      "gymgital-base@2026.11.1": "556661b43ccff6132af17ba773dcbfb5e43bdb077a0e41ca21df53ab0f798764",
+    };
+    for (const [id, rules] of Object.entries(RULESETS)) {
+      expect(PUBLISHED[id], `${id} sem hash fixado`).toBeDefined();
+      expect(await sha256Hex(canonicalJson(rules)), id).toBe(PUBLISHED[id]);
     }
   });
 });

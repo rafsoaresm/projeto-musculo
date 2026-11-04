@@ -20,6 +20,10 @@ import type {
 
 const fail = (code: string, message: string): EngineOutcome => ({ ok: false, code, message });
 
+function isLocked(ctx: EngineContext, phaseIndex: number, slotKey: string): boolean {
+  return ctx.input.locked.some((l) => l.phaseIndex === phaseIndex && l.slotKey === slotKey);
+}
+
 function locate(ctx: EngineContext, phaseIndex: number, label: string): { phase: StructurePhase; workout: StructureWorkout } | null {
   const phase = ctx.input.structure.phases.find((p) => p.index === phaseIndex);
   const workout = phase?.workouts.find((w) => w.label === label);
@@ -80,6 +84,8 @@ function substituteWith(
     o.items.some((i) => i.slotKey === target.slotKey);
   const hits = previous.occurrences.filter(affected);
   if (!hits.length) return fail("TARGET_NOT_FOUND", "Nenhuma sessão do escopo tem este item.");
+  if (isLocked(ctx, target.phaseIndex, target.slotKey) || hits.some((o) => o.items.some((i) => i.slotKey === target.slotKey && i.origin === "LOCKED")))
+    return fail("TARGET_LOCKED", "Este item está travado; destrave antes de trocar o exercício.");
   if (hits.some((o) => o.items.some((i) => i.exerciseId === next.id))) return fail("REPLACEMENT_DUPLICATE", `${next.name} já está numa das sessões escolhidas.`);
   const usedKeys = new Set(previous.occurrences.filter((o) => o.phaseIndex === target.phaseIndex && o.label === parsed.label).flatMap((o) => o.items.map((i) => i.slotKey)));
   let k = 0;
@@ -100,7 +106,9 @@ function substituteWith(
       alternatives: rankAlternatives(ctx.log, next, metricFor(next, ctx.input.parameters).metric, plan.pool, inOcc, ctx.log.get("ALTERNATIVES_LIMIT")).map((a) => a.exerciseId),
     };
     const item = itemFor(ctx, where, slot, old.position, asStructureOcc(o), o.stimulus, issues);
-    return { ...o, items: o.items.map((i) => (i.slotKey === target.slotKey ? { ...item, origin: by === "PROFESSIONAL" ? ("SUBSTITUTED" as const) : ("ENGINE" as const), substitutesSlotKey: target.slotKey } : i)) };
+    // a chave substituída é sempre a da linha original (troca de uma troca continua apontando para ela)
+    const root = old.substitutesSlotKey ?? target.slotKey;
+    return { ...o, items: o.items.map((i) => (i.slotKey === target.slotKey ? { ...item, origin: by === "PROFESSIONAL" ? ("SUBSTITUTED" as const) : ("ENGINE" as const), substitutesSlotKey: root } : i)) };
   });
   return { ok: true, result: finalize(ctx, { ...previous, occurrences, issues: uniqueIssues([...previous.issues, ...issues]) }) };
 }
@@ -146,6 +154,11 @@ export function regenerate(input: EngineInput, previous: EngineResult, scope: Re
     const occ = previous.occurrences.find((o) => o.phaseIndex === scope.phaseIndex && o.week === scope.week && o.slot === scope.slot);
     const item = occ?.items.find((i) => i.slotKey === scope.slotKey);
     if (!occ || !item) return fail("TARGET_NOT_FOUND", "Item não encontrado na sessão.");
+    // regenerar mantém preservados e travados: o motor nunca troca sozinho uma linha do profissional
+    if (item.origin === "LOCKED" || isLocked(ctx, scope.phaseIndex, scope.slotKey))
+      return fail("TARGET_LOCKED", "Este item está travado; destrave antes de pedir outro exercício.");
+    if (item.origin === "PRESERVED")
+      return fail("TARGET_PRESERVED", "Esta linha já estava na revisão e é mantida; para trocá-la, use a substituição (aplicar exige confirmação).");
     const where = locate(ctx, scope.phaseIndex, occ.label);
     if (!where) return fail("TARGET_NOT_FOUND", "Treino não encontrado na estrutura.");
     const alt = alternativesFor(input, previous, { phaseIndex: scope.phaseIndex, slotKey: scope.slotKey, week: scope.week, slot: scope.slot }, 1)[0];
@@ -165,10 +178,30 @@ export function regenerate(input: EngineInput, previous: EngineResult, scope: Re
   }
 
   const touched = touchedPhases(input, scope);
-  const fresh = generate({ ...input, scope: { kind: "PHASES", phaseIndexes: touched } });
+  // Trava de um item que só existe em parte das sessões (ex.: trocado numa sessão e travado) vale
+  // só onde estava; não entra na geração (que trava o treino inteiro) e é recolocada abaixo.
+  const partial = new Set<string>();
+  for (const l of input.locked) {
+    const parsed = parseSlotKey(l.slotKey);
+    if (!parsed) continue;
+    const occs = previous.occurrences.filter((o) => o.phaseIndex === l.phaseIndex && o.label === parsed.label);
+    const holders = occs.filter((o) => o.items.some((i) => i.slotKey === l.slotKey)).length;
+    if (holders > 0 && holders < occs.length) partial.add(`${l.phaseIndex}|${l.slotKey}`);
+  }
+  const fresh = generate({ ...input, locked: input.locked.filter((l) => !partial.has(`${l.phaseIndex}|${l.slotKey}`)), scope: { kind: "PHASES", phaseIndexes: touched } });
   const locked = new Set(input.locked.map((l) => `${l.phaseIndex}|${l.slotKey}`));
   const prevByKey = new Map(previous.occurrences.map((o) => [`${o.phaseIndex}|${o.week}|${o.slot}`, o]));
   const freshByKey = new Map(fresh.occurrences.map((o) => [`${o.phaseIndex}|${o.week}|${o.slot}`, o]));
+  const kept: Issue[] = [];
+  const plans = new Map<string, ReturnType<typeof planWorkout> | null>();
+  const planOf = (p: StructurePhase, label: string) => {
+    const k = `${p.index}|${label}`;
+    if (!plans.has(k)) {
+      const w = p.workouts.find((x) => x.label === label);
+      plans.set(k, w ? planWorkout(ctx, p, w, new Set(), new Set()) : null);
+    }
+    return plans.get(k) ?? null;
+  };
   const occurrences: OccurrenceOut[] = [];
   for (const p of input.structure.phases)
     for (const so of [...p.occurrences].sort((a, b) => a.week - b.week || a.slot - b.slot)) {
@@ -181,10 +214,40 @@ export function regenerate(input: EngineInput, previous: EngineResult, scope: Re
       const f = freshByKey.get(key);
       if (!f) continue;
       let items = f.items;
+      const place = (next: ItemOut, old: ItemOut): boolean => {
+        let at = items.findIndex((i) => i.slotKey === old.slotKey);
+        if (at < 0 && old.exerciseId) at = items.findIndex((i) => i.exerciseId === old.exerciseId && i.origin !== "LOCKED");
+        if (at < 0 && old.substitutesSlotKey) at = items.findIndex((i) => i.slotKey === old.substitutesSlotKey && i.origin !== "LOCKED");
+        if (at < 0) return false;
+        items = items.map((i, n) => (n === at ? { ...next, position: i.position } : i));
+        return true;
+      };
+      const path = `occurrences.${p.index}.${so.week}.${so.slot}`;
+      // travados: mantidos como estavam (dose antiga)
       for (const old of prev?.items ?? []) {
         if (!locked.has(`${p.index}|${old.slotKey}`)) continue;
-        const at = items.findIndex((i) => i.slotKey === old.slotKey);
-        items = at >= 0 ? items.map((i, n) => (n === at ? { ...old, position: i.position, origin: "LOCKED" as const } : i)) : [...items, { ...old, origin: "LOCKED" as const }];
+        const next = { ...old, origin: "LOCKED" as const };
+        if (!place(next, old)) items = [...items, next];
+      }
+      // trocas do profissional: decisão mantida; a dose é recalculada com os parâmetros atuais
+      for (const old of prev?.items ?? []) {
+        if (old.origin !== "SUBSTITUTED" || locked.has(`${p.index}|${old.slotKey}`)) continue;
+        const plan = planOf(p, so.label);
+        const exercise = old.exerciseId ? ctx.byId.get(old.exerciseId) : undefined;
+        const reason = exercise && plan
+          ? ineligibleReason(exercise, ctx.elig, plan.modalities ? new Set(plan.modalities.value) : null, new Set(plan.workout.focus.excludedExerciseIds ?? []), { ignoreMetadata: true })
+          : "ARCHIVED";
+        const drop = (why: string) => kept.push({
+          severity: "WARNING", code: "SUBSTITUTION_DROPPED", path: `${path}.${old.slotKey}`, phaseIndex: p.index, label: so.label, stage: "SELECTION",
+          message: `Semana ${so.week}, sessão ${so.slot}: a troca para ${old.exerciseName} não foi mantida (${why}); revise o item.`,
+        });
+        if (!exercise || !plan || reason) {
+          drop(reason ? INELIGIBLE_TEXT[reason] : "exercício fora da biblioteca");
+          continue;
+        }
+        const slot: SlotPlan = { slotKey: old.slotKey, exercise, existing: null, origin: "SUBSTITUTED", selection: old.trace.selection, alternatives: old.alternatives };
+        const next = { ...itemFor(ctx, plan, slot, old.position, so, f.stimulus, kept), substitutesSlotKey: old.substitutesSlotKey };
+        if (!place(next, old)) drop("o item original não está mais neste treino");
       }
       occurrences.push({ ...f, items: renumber(items) });
     }
@@ -193,6 +256,7 @@ export function regenerate(input: EngineInput, previous: EngineResult, scope: Re
     ...fresh.issues.filter((i) => i.stage === "INPUT"),
     ...previous.issues.filter((i) => i.stage === "SELECTION" && (i.phaseIndex === undefined || !touchedSet.has(i.phaseIndex))),
     ...fresh.issues.filter((i) => i.stage === "SELECTION"),
+    ...kept,
   ];
   const workouts = [
     ...previous.workouts.filter((w) => !touchedSet.has(w.phaseIndex)),
@@ -232,5 +296,14 @@ export function rebase(input: EngineInput, previous: EngineResult): EngineOutcom
     const rest = o.items.filter((i) => i.origin !== "PRESERVED" && !(i.exerciseId && ids.has(i.exerciseId)) && !keys.has(i.slotKey));
     return { ...o, items: renumber([...preserved, ...rest]) };
   });
-  return { ok: true, result: finalize(ctx, { ...previous, occurrences }) };
+  // linhas novas na revisão podem passar da quantidade pedida: avisa de novo (nada é removido)
+  const issues = previous.issues.filter((i) => i.code !== "EXISTING_EXCEEDS_TARGET");
+  for (const w of previous.workouts) {
+    if (!w.count) continue;
+    const most = Math.max(0, ...occurrences.filter((o) => o.phaseIndex === w.phaseIndex && o.label === w.label).map((o) => o.items.length));
+    if (most > w.count.value)
+      issues.push({ severity: "WARNING", code: "EXISTING_EXCEEDS_TARGET", path: `phases.${w.phaseIndex}.workouts.${w.label}`, phaseIndex: w.phaseIndex, label: w.label, stage: "SELECTION",
+        message: `Treino ${w.label}: ${most} itens com as linhas atuais da revisão para uma quantidade de ${w.count.value}; nada foi removido.` });
+  }
+  return { ok: true, result: finalize(ctx, { ...previous, occurrences, issues }) };
 }

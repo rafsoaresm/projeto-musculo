@@ -98,6 +98,10 @@ export function applyWeeklyProgression(
   if (validateProgression(p, phaseWeeks).length) return issues; // erros já registrados uma vez por fase
   for (const r of p.ramps ?? []) {
     if (!applies(r.metric)) continue;
+    if (draft.values[r.param] === undefined) {
+      issues.push({ severity: "INFO", code: "PROGRESSION_PARAM_MISSING", message: `Rampa sobre ${r.param}, que esta dose não tem; ignorada.` });
+      continue;
+    }
     const { decimals } = log.get("LINEAR_ROUNDING");
     const fraction = phaseWeeks <= 1 ? 0 : (week - 1) / (phaseWeeks - 1);
     draft.set(r.param, roundTo(r.from + (r.to - r.from) * fraction, decimals), t);
