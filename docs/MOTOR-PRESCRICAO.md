@@ -32,11 +32,15 @@ Fluxo, em uma linha: na revisão em rascunho, depois de salvar a periodização,
 - Não escolhe exercício com metadado "pendente de curadoria", nem equipamento pendente como "sem equipamento".
 - Não sugere aumento de carga pelo histórico: o incremento do equipamento não é guardado em lugar nenhum, então o máximo é "manter a carga" (B58).
 
+## Ajuste de qualidade e individualização (04/11/2026)
+
+O patch 2.0.1 (branch `fix/gymgital-prescription-assessment-progression-20261104`) mantém o contrato do motor e registra os **níveis individuais do Flexiteste** no contexto da avaliação, sem criar restrição automática. Corrige também a sugestão de progressão por histórico para inspecionar as **N exposições cronológicas mais recentes**, inclusive incompletas, antes de sugerir incremento. Testes foram adicionados, mas ainda não foram executados no checkout nesta revisão conectada. A arquitetura de auditoria semanal, equilíbrio por microciclo, doses específicas e revisão opcional com IA está especificada em [HANDOFF-MOTOR-PRESCRICAO-INDIVIDUALIZACAO-V3.md](HANDOFF-MOTOR-PRESCRICAO-INDIVIDUALIZACAO-V3.md), **ainda não implementada**.
+
 ## Versões
 
 | O quê | Versão | Onde | Gravada em |
 |---|---|---|---|
-| Motor | `2.0.0` (`ENGINE_VERSION`) | `motor/generate.ts` | `prescription_proposals.engine_version`, `prescription_generations` |
+| Motor | `2.0.1` (`ENGINE_VERSION`), somente propostas novas | `motor/generate.ts` | `prescription_proposals.engine_version`, `prescription_generations` |
 | Regras das gerações novas | `gymgital-base@2026.11.2` | `motor/rules/gymgital-base-2026.11.2.json` | `rules_id`, `rules_version` da proposta e de cada geração |
 | Regras anteriores (propostas gravadas com elas) | `gymgital-base@2026.11.1` | `motor/rules/gymgital-base.json` | idem; continua carregável e com o mesmo SHA-256 |
 | Vocabulário (códigos e rótulos) | `2026.11.1` (`VOCABULARY_VERSION`) | `motor/vocabulary.ts` | `prescription_generations` |
