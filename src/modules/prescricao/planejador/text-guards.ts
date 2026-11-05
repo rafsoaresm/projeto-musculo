@@ -29,6 +29,26 @@ export const DOSE_TEXT = new RegExp(
   "iu",
 );
 
+/**
+ * Extra dose-like prose that `DOSE_TEXT` (shared with the disabled V3 review contract, unchanged) does not cover: percent in words,
+ * 1RM, ranges followed by a repetition word or "por série", rest times, spelled-out kilos, and a bare year (an unverifiable citation
+ * such as "Schoenfeld 2017"). Planner prose only.
+ */
+const DOSE_PROSE_EXTRA = new RegExp(
+  [
+    String.raw`(?<![\p{L}\d])\d+(?:[.,]\d+)?\s*por\s+cento`,
+    String.raw`(?<![\p{L}\d])1\s*rm(?![\p{L}])`,
+    String.raw`(?<![\p{L}\d])\d+\s*(?:a|-|–|até)\s*\d+\s*(?:vezes(?!\s+(?:por|na|ao|no)\s+(?:semana|dia|m[eê]s))|por\s+s[ée]rie|reps?|repeti[çc])`,
+    String.raw`por\s+s[ée]rie`,
+    String.raw`(?<![\p{L}])${DOSE_WORD}\s+(?:kg|quilos?|por\s+cento)(?![\p{L}])`,
+    String.raw`(?<![\p{L}])(?:descans\p{L}*|pausa|intervalo)\s+(?:\p{L}+\s+){0,3}?\d`,
+    String.raw`(?<![\p{L}\d.,])(?:19|20)\d{2}(?![\d])`,
+  ].join("|"),
+  "iu",
+);
+/** Isolated findings never become diagnoses or contraindications (V4 handoff): the model may not state either. */
+const CLINICAL_TEXT = /contraindic|diagn[óo]stic|patolog|\bles(?:[ãa]o|[õo]es)\b|lesionad|\brisco\s+de\s+les|\bdoen[çc]a|\bs[íi]ndrome|\bproibid|\bn[ãa]o\s+(?:pode|deve)\s+(?:fazer|treinar|executar)/i;
+
 /** Links, e-mail-like handles, markdown links, HTML tags, template/backtick syntax. */
 const MARKUP_TEXT = /https?:|www\.|@|\[[^\]]*\]\([^)]*\)|<[^>]*>|[<>`]|\$\{|\{\{/i;
 /** Control, bidirectional and zero-width characters. */
@@ -46,17 +66,26 @@ export interface ProseContext {
 
 /**
  * Problems of one prose string, as codes (never the text). Empty = acceptable. The text is not changed.
- * Codes: REFERENCE_TEXT, DOSE_NUMBER, MARKUP, HIDDEN_CHARS, INSTRUCTION_TEXT, DENY_LIST, UNKNOWN_ALIAS.
+ * Codes: REFERENCE_TEXT, DOSE_NUMBER, CLINICAL_CLAIM, MARKUP, HIDDEN_CHARS, INSTRUCTION_TEXT, DENY_LIST, UNKNOWN_ALIAS.
  */
 export function proseProblems(text: string, context: ProseContext): string[] {
   const problems: string[] = [];
   if (REFERENCE_TEXT.test(text)) problems.push("REFERENCE_TEXT");
-  if (DOSE_TEXT.test(text)) problems.push("DOSE_NUMBER");
+  if (DOSE_TEXT.test(text) || DOSE_PROSE_EXTRA.test(text)) problems.push("DOSE_NUMBER");
+  if (CLINICAL_TEXT.test(text)) problems.push("CLINICAL_CLAIM");
   if (MARKUP_TEXT.test(text)) problems.push("MARKUP");
   if (HIDDEN_CHARS.test(text)) problems.push("HIDDEN_CHARS");
   if (INSTRUCTION_TEXT.test(text)) problems.push("INSTRUCTION_TEXT");
   const normal = ` ${normalizeText(text).replace(/[^a-z0-9]+/g, " ")} `;
-  if (context.denyTokens.some((token) => token.length > 0 && normal.includes(` ${normalizeText(token).replace(/[^a-z0-9]+/g, " ").trim()} `))) problems.push("DENY_LIST");
+  const digitsOfText = text.replace(/\D/g, "");
+  const denied = (entry: string): boolean => {
+    const word = normalizeText(entry).replace(/[^a-z0-9]+/g, " ").trim();
+    if (word.length === 0) return false;
+    // a phone or document written with spaces, dots or dashes: compare digit sequences, not words
+    if (/^\d{6,}$/.test(word)) return digitsOfText.includes(word) || normal.includes(` ${word} `);
+    return normal.includes(` ${word} `);
+  };
+  if (context.denyTokens.some(denied)) problems.push("DENY_LIST");
   for (const alias of text.match(ALIAS_TOKEN) ?? []) if (!context.aliases.has(alias)) { problems.push("UNKNOWN_ALIAS"); break; }
   return problems;
 }

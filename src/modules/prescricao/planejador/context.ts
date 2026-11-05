@@ -46,6 +46,8 @@ const EQUIPMENT_SET = new Set(EQUIPMENT_CODES);
 const STIMULUS_SET = new Set(STIMULUS_CODES);
 const CAUTION_SET = new Set(Object.keys(CAUTION_TAGS));
 /** Finding kinds that carry coded observations; anamnesis and assessment results are health detail not needed to choose a split. */
+/** Words of an ordinary plan title that say nothing about a person; never refused in prose. Other title words (a name) are. */
+const GENERIC_TITLE_WORDS = new Set(["plano", "treino", "treinos", "programa", "ciclo", "periodizacao", "prescricao", "fase", "semana", "semanas", "mensal", "individual", "personalizado"]);
 const SENT_FINDING_KINDS = new Set(["MOVEMENT", "POSTURE", "FLEXIBILITY"]);
 
 const keep = (list: readonly string[] | undefined, allowed: ReadonlySet<string>): string[] => [...new Set((list ?? []).filter((c) => allowed.has(c)))].sort(cmp);
@@ -218,7 +220,11 @@ export async function buildPlanningContext(gen: GenerationContext, options: Plan
       sessionsPerWeek: phase.sessionsPerWeek,
       stimulus: stimulus && STIMULUS_SET.has(stimulus) ? stimulus : null,
       weekdays: weekdays && weekdays.every((d): d is number => d !== null) ? weekdays : null,
-      weekSequence: week.map((x) => aliasOfLabel.get(x.label)!),
+      weekSequence: week.flatMap((x) => {
+        const a = aliasOfLabel.get(x.label);
+        if (a === undefined) { irregular = true; return []; }
+        return [a];
+      }),
       workouts: [...new Map(inputPhase.workouts.map((w) => [w.label, w])).values()].map((w) => {
         const perWeek = weeksOf(w.label);
         const min = Math.min(...perWeek), max = Math.max(...perWeek);
@@ -316,33 +322,53 @@ export async function buildPlanningContext(gen: GenerationContext, options: Plan
   // --- deny list: values that must never appear in a provider payload ---
   const values = new Set<string>();
   const tokens = new Set<string>();
+  // Prose deny list (what the model's TEXT may not contain): only real identifiers. The model never saw goal, level, phase or workout
+  // names, exercise names or free-text profile values, so ordinary pt-BR words ("hipertrofia", "Fase 1", "prancha", "treino") are not here.
+  const prose = new Set<string>();
+  const addProse = (raw: string | null | undefined, min = 3) => {
+    const v = raw ? normalizeText(raw).replace(/[^a-z0-9]+/g, " ").trim() : "";
+    if (v.length >= min) prose.add(v);
+  };
   const addValue = (raw: string | null | undefined) => {
     const v = raw ? normalizeText(raw) : "";
     if (v.length >= 3) values.add(v);
   };
   const addName = (raw: string | null | undefined) => {
     addValue(raw);
-    for (const t of normalizeText(raw ?? "").split(/[^a-z0-9]+/)) if (t.length >= 3) tokens.add(t);
+    addProse(raw);
+    for (const t of normalizeText(raw ?? "").split(/[^a-z0-9]+/)) if (t.length >= 3) { tokens.add(t); prose.add(t); }
   };
   for (const x of options.identifiers ?? []) addName(x);
   addValue(gen.plan.title);
-  for (const t of normalizeText(gen.plan.title).split(/[^a-z0-9]+/)) if (t.length >= 4) tokens.add(t);
-  for (const id of [gen.plan.id, gen.plan.studentId, gen.revision.id, options.organizationId]) addValue(id);
+  addProse(gen.plan.title, 4);
+  for (const t of normalizeText(gen.plan.title).split(/[^a-z0-9]+/))
+    if (t.length >= 4) {
+      tokens.add(t);
+      if (!GENERIC_TITLE_WORDS.has(t)) prose.add(t);
+    }
+  for (const id of [gen.plan.id, gen.plan.studentId, gen.revision.id, options.organizationId]) { addValue(id); addProse(id, 4); }
   for (const p of saved.phases) {
     addValue(p.name);
     for (const w of p.workouts) { addValue(w.label); addValue(w.name); }
   }
   if (profile) {
     addValue(profile.email);
-    if (profile.email) addValue(profile.email.split("@")[0]);
+    addProse(profile.email);
+    if (profile.email) { addValue(profile.email.split("@")[0]); addProse(profile.email.split("@")[0]); }
     addValue(profile.phone);
     const digits = (profile.phone ?? "").replace(/\D/g, "");
-    if (digits.length >= 6) values.add(digits);
+    if (digits.length >= 6) {
+      values.add(digits);
+      prose.add(digits);
+      // written without the country code (55) by whoever types it
+      if (digits.startsWith("55") && digits.length >= 12) { values.add(digits.slice(2)); prose.add(digits.slice(2)); }
+    }
     if (profile.birthDate) {
       values.add(profile.birthDate);
       const [y, m, d] = profile.birthDate.split("-");
       values.add(`${d}/${m}/${y}`);
       values.add(y);
+      prose.add(`${d} ${m} ${y}`);
     }
     for (const text of [
       profile.goal, profile.level, profile.location, profile.equipment, profile.experience, profile.injuries, profile.surgeries, profile.pains, profile.limitations,
@@ -367,7 +393,7 @@ export async function buildPlanningContext(gen: GenerationContext, options: Plan
     },
     aliases,
     omitted,
-    denyList: { values: [...values].sort(cmp), tokens: [...tokens].sort(cmp) } satisfies DenyList,
+    denyList: { values: [...values].sort(cmp), tokens: [...tokens].sort(cmp), prose: [...prose].sort(cmp) } satisfies DenyList,
     minor: age.minor,
     contextHash: await contextHash(context),
   };

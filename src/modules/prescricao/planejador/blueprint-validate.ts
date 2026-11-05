@@ -14,7 +14,7 @@ import {
   BLUEPRINT_LABEL, plannerResponseSchema, type PlannerResponse, type PlannerStrategy, type StoredPhase, type StoredStrategy, type StoredWorkout, type TrainingBlueprint,
   type BlueprintProducer,
 } from "./blueprint";
-import type { PlanningContextBundle, PlanningPhase, PlanningWorkout } from "./context-types";
+import type { PlanningCandidate, PlanningContextBundle, PlanningPhase, PlanningWorkout } from "./context-types";
 import { DELTA_KEYS, deltaSize, expandFocus, isEmptyDelta, type FocusDelta } from "./focus";
 import type { RoleFocusTable } from "./role-focus";
 import {
@@ -80,6 +80,22 @@ function regionsOf(role: WorkoutRole, table: RoleFocusTable): Set<Region> {
   if (role === "FULL_BODY" || role === "CUSTOM") return new Set(REGION_KEYS);
   const f = table[role];
   return new Set([...f.dominantMuscles, ...f.supportingMuscles].map(regionOfMuscle));
+}
+
+/**
+ * Whether a shortlisted exercise belongs in a workout of this role: a non-volume role takes only exercises of its own modality;
+ * a volume role takes resistance exercises that train a muscle (primary or secondary) or a pattern of the expanded focus
+ * (target or allowed spillover). FULL_BODY and CUSTOM without any listed focus accept any resistance exercise.
+ */
+function candidateFilter(role: WorkoutRole, delta: FocusDelta | null, table: RoleFocusTable): (c: PlanningCandidate) => boolean {
+  if (isNonVolumeRole(role)) return (c) => c.modality === role;
+  const f = expandFocus(role, delta, table);
+  const muscles = new Set([...f.dominantMuscles, ...f.supportingMuscles]);
+  const patterns = new Set([...f.targetPatterns, ...f.allowedSpilloverPatterns]);
+  if (muscles.size === 0 && patterns.size === 0) return (c) => c.modality === null || c.modality === "RESISTANCE";
+  return (c) =>
+    (c.modality === null || c.modality === "RESISTANCE") &&
+    (c.primaryMuscles.some((m) => muscles.has(m)) || c.secondaryMuscles.some((m) => muscles.has(m)) || c.patterns.some((x) => patterns.has(x)));
 }
 
 function checkWorkout(
@@ -171,6 +187,8 @@ function validateStrategy(
   const done = new Map<number, StoredPhase>();
   const info: InfoNote[] = [];
   const usedAliasesPerPhase = new Map<number, Set<string>>();
+  /** The model's own delta per `phase|label`, before a saved focus replaced it: a copied phase repeats what the model said, not what was stored. */
+  const modelDeltas = new Map<string, FocusDelta | null>();
   for (const p of ordered) {
     const ctxPhase = ctxPhases.get(p.phase);
     if (!ctxPhase) continue;
@@ -193,7 +211,7 @@ function validateStrategy(
         workouts = from.workouts.map((w) => {
           copiedCandidates.set(w.label, w.candidateExerciseIds);
           const alias = [...bundle.aliases.workouts].find(([, l]) => l === w.label)?.[0] ?? "";
-          return { workout: alias, role: w.role, delta: w.focusDelta, candidateAliases: [] as string[] };
+          return { workout: alias, role: w.role, delta: modelDeltas.get(`${p.sameAsPhase}|${w.label}`) ?? w.focusDelta, candidateAliases: [] as string[] };
         });
       }
     } else {
@@ -215,12 +233,16 @@ function validateStrategy(
         const allowed = FAMILY_ROLES[s.splitFamily];
         if (allowed && !allowed.has(w.role)) problems.push(problem("ROLE_NOT_IN_FAMILY", here));
       }
+      modelDeltas.set(`${p.phase}|${label}`, w.delta && !isEmptyDelta(w.delta) ? w.delta : null);
       const ids: string[] = [];
+      const fit = candidateFilter(w.role, w.delta, table);
       if (new Set(w.candidateAliases).size !== w.candidateAliases.length) problems.push(problem("CANDIDATE_DUPLICATE", here));
       if (w.candidateAliases.length > PLANNER_MAX_CANDIDATES_PER_WORKOUT) problems.push(problem("CANDIDATE_COUNT", here));
       for (const a of w.candidateAliases) {
         const real = bundle.aliases.exercises.get(a as `X${number}`);
-        if (real === undefined) problems.push(problem("CANDIDATE_NOT_IN_SHORTLIST", `${here}.${a}`));
+        const candidate = bundle.context.library.candidates.find((c) => c.alias === a);
+        if (real === undefined || candidate === undefined) problems.push(problem("CANDIDATE_NOT_IN_SHORTLIST", `${here}.${a}`));
+        else if (!fit(candidate)) problems.push(problem("CANDIDATE_NOT_FIT_WORKOUT", `${here}.${a}`));
         else if (!candidatesSeen.has(`${w.workout}|${a}`)) { ids.push(real); candidatesSeen.add(`${w.workout}|${a}`); }
       }
       if (p.sameAsPhase !== null) ids.push(...(copiedCandidates.get(label) ?? []));
@@ -289,7 +311,7 @@ export function validatePlannerResponse(raw: unknown, bundle: PlanningContextBun
 
   // global faults refuse the whole response
   const prose: ProseContext = {
-    denyTokens: [...bundle.denyList.values, ...bundle.denyList.tokens],
+    denyTokens: bundle.denyList.prose,
     aliases: new Set<string>([...bundle.aliases.exercises.keys(), ...bundle.aliases.workouts.keys(), ...bundle.context.observations.map((o) => o.alias)]),
   };
   const refs = new Set(allowedRefs(bundle));

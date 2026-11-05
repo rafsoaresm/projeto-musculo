@@ -161,7 +161,7 @@ export function upperLowerResponse(over: { candidates?: string[] } = {}): Planne
     confidence: "MEDIUM", evidenceRefs: ["S.days", "S.minutes"],
     phases: [
       { phase: 1, splitType: "UPPER_LOWER", sameAsPhase: null, workouts: [
-        { workout: "T1", role: "UPPER", delta: null, candidateAliases: over.candidates ?? ["X1"] },
+        { workout: "T1", role: "UPPER", delta: null, candidateAliases: over.candidates ?? ["X2"] },
         { workout: "T2", role: "LOWER", delta: null, candidateAliases: [] },
       ] },
       { phase: 2, splitType: "UPPER_LOWER", sameAsPhase: 1, workouts: [] },

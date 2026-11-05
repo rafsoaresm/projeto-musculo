@@ -93,7 +93,7 @@ describe("binding validator: accepted shapes", () => {
     expect(s1).toMatchObject({ strategyId: "S1", splitFamily: "UPPER_LOWER", displayName: "Superior / Inferior", provenance: "AI_SUGGESTED", requiresScheduleChange: false, supportedByContext: "YES" });
     expect(s1.phases.map((p) => p.phaseIndex)).toEqual([1, 2, 3]);
     for (const phase of s1.phases) expect(phase.workouts.map((w) => [w.label, w.role, w.source])).toEqual([["A", "UPPER", "AI_SUGGESTED"], ["B", "LOWER", "AI_SUGGESTED"]]);
-    const realX1 = bundle.aliases.exercises.get("X1")!;
+    const realX1 = bundle.aliases.exercises.get("X2")!;
     expect(s1.phases[0].workouts[0].candidateExerciseIds).toEqual([realX1]);
     expect(s1.phases[2].workouts[0].candidateExerciseIds).toEqual([realX1]);
     expect(s1.dosingIntent).toEqual([{ exerciseClass: "COMPOUND_LOWER", profileCode: "COMPOUND_HEAVY" }]);
@@ -383,5 +383,67 @@ describe("stored blueprint reader and hashes", () => {
       expect(await plannerCacheKey({ ...parts, ...change })).not.toBe(key);
     const acc = { runBlueprintHash: "e".repeat(64), strategyId: "S1", phases: [], dosing: { byClass: [], progression: [] } };
     expect(await acceptanceHash(acc)).not.toBe(await acceptanceHash({ ...acc, strategyId: "S2" }));
+  });
+});
+
+describe("review fixes (1.1)", () => {
+  it("ordinary pt-BR prose that repeats the goal, level, phase, exercise or plan words is not a deny-list hit", async () => {
+    const bundle = await xintusBundle();
+    for (const text of [
+      "Foco em hipertrofia.", "Nível intermediário.", "Fase 1 com volume moderado.", "Inclui prancha e afundo.", "Plano com divisão superior e inferior.",
+      "Desenvolvimento de ombros.", "Hipertrofia com treino dividido em semanas para o plano de treino.",
+    ]) {
+      const out = run(mutate((r) => { r.global.rationale = text; r.strategies[0].explanation = text; }), bundle);
+      expect(out.ok, text).toBe(true);
+    }
+  });
+
+  it("real identifiers stay refused: the plan title as a phrase, a name inside it, phone digits with separators", async () => {
+    const bundle = await canaryBundle();
+    const twoPhases = (r: PlannerResponse) => {
+      r.strategies[0].phases = [1, 2].map((phase) => ({ phase, splitType: "UPPER_LOWER" as const, sameAsPhase: null, workouts: [
+        { workout: "T1", role: "UPPER" as const, delta: null, candidateAliases: [] }, { workout: "T2", role: "LOWER" as const, delta: null, candidateAliases: [] },
+      ] }));
+      r.strategies[0].progressionIntent = [];
+      r.strategies[1].phases = [1, 2].map((phase) => ({ phase, splitType: "FULL_BODY" as const, sameAsPhase: null, workouts: ["T1", "T2"].map((workout) => ({ workout, role: "FULL_BODY" as const, delta: null, candidateAliases: [] })) }));
+    };
+    const refusedWith = (text: string) => refused(run(mutate((r) => { twoPhases(r); r.global.rationale = text; }), bundle)).join();
+    expect(refusedWith("Estrutura do Plano da Zélia — hipertrofia segue.")).toMatch(/PROSE_DENY_LIST/);
+    expect(refusedWith("Contato 11 98888 7766 para dúvidas.")).toMatch(/PROSE_DENY_LIST/);
+    expect(refusedWith("Contato +55 (11) 98888-7766.")).toMatch(/PROSE_DENY_LIST/);
+    expect(refusedWith("Nascido em 14/03/1991.")).toMatch(/PROSE_DENY_LIST/);
+  });
+
+  it("prose cannot state contraindications, diagnoses, dose-like numbers or a citation", async () => {
+    const bundle = await xintusBundle();
+    for (const text of [
+      "A dorsiflexão limitada contraindica o agachamento.", "O aluno tem diagnóstico de encurtamento.", "Evitar agachamento por risco de lesão.",
+      "Aumentar 5 por cento por semana.", "Descansar 2 minutos entre blocos.", "Fazer 10 a 12 por série.", "Carga de vinte quilos.", "Treinar 8-12 vezes.",
+      "Use 80 por cento de 1RM.", "Veja Schoenfeld 2017.",
+    ]) expect(refused(run(mutate((r) => { r.global.rationale = text; }), bundle))[0], text).toMatch(/^PROSE_(CLINICAL_CLAIM|DOSE_NUMBER|REFERENCE_TEXT)/);
+    expect(run(mutate((r) => { r.global.rationale = "Duas vezes por semana para cada região, em 4 sessões."; }), bundle).ok).toBe(true);
+  });
+
+  it("a candidate must fit the workout it is assigned to (role focus or modality)", async () => {
+    const bundle = await xintusBundle();
+    // X1 is a squat: not an UPPER exercise
+    expect(refused(run(upperLowerResponse({ candidates: ["X1"] }), bundle))[0]).toMatch(/^CANDIDATE_NOT_FIT_WORKOUT/);
+    // X2 (bench) fits UPPER; X4 (calf raise) is lower-body work and does not
+    expect(run(upperLowerResponse({ candidates: ["X2", "X3", "X17"] }), bundle).ok).toBe(true);
+    expect(refused(run(upperLowerResponse({ candidates: ["X4"] }), bundle))[0]).toMatch(/^CANDIDATE_NOT_FIT_WORKOUT/);
+    // a resistance exercise on a CARDIO workout
+    const raw = mutate((r) => { r.strategies[0].phases[0].workouts[0] = { workout: "T1", role: "CARDIO", delta: null, candidateAliases: ["X2"] }; });
+    expect(refused(run(raw, bundle)).join()).toMatch(/CANDIDATE_NOT_FIT_WORKOUT|ROLE_MODALITY_MISMATCH/);
+  });
+
+  it("a copied phase repeats the model's focus change even when the earlier phase had a saved focus", async () => {
+    const bundle = await xintusBundle({}, {}, { ...XINTUS_ANSWERS, coverageByWorkout: [{ phaseIndex: 1, label: "A", muscles: ["CHEST", "TRICEPS"] }] });
+    const delta = { ...emptyDelta(), removeDominant: ["BICEPS"] };
+    const out = run(mutate((r) => { r.strategies[0].phases[0].workouts[0].delta = delta; }), bundle);
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    const [p1, p2] = out.blueprint.strategies[0].phases;
+    expect(p1.workouts[0]).toMatchObject({ source: "STRUCTURE", focusDelta: null });
+    expect(p2.workouts[0]).toMatchObject({ source: "AI_SUGGESTED", focusDelta: delta });
   });
 });

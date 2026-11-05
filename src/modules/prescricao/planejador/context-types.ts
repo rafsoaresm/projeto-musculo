@@ -115,6 +115,12 @@ export interface OmittedRecord {
 export interface DenyList {
   values: string[];
   tokens: string[];
+  /**
+   * Only for the model's PROSE (validator): real identifiers (names, e-mail, phone digits, birth date, ids, plan title as a phrase).
+   * Never goal, level, phase/workout names, exercise names or free-text profile values: ordinary words must not refuse an answer.
+   * Normalised (`normalizeText`, non-alphanumerics collapsed to one space); digit-only entries are compared against the digits of the text.
+   */
+  prose: string[];
 }
 
 export interface PlanningContextBundle {
