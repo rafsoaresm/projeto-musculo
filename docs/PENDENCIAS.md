@@ -24,6 +24,14 @@ Estado conhecido em 28/10/2026: a 0.25.0 está no ar, com as migrations até a 0
 - **Código:** AP refeita fiel ao Figma (ver VALIDACAO): falta comparar visualmente os 10 frames e rodar os e2e (`delivery`, `plans`, `plans-new`, `prescription`, `assessments*`, `execution`, `automatic-prescription`) nos dois projetos; os helpers ganharam `openFullPrescription`. Destrava: quem fizer a conferência visual e a rodada e2e.
 - **Responsável:** "Baixar prévia em PDF" do menu AP-09/10 não existe (o PDF só é da revisão entregue); decidir se haverá prévia antes da entrega.
 
+## Motor de prescrição híbrido V4 — especificação e telas em 05/11/2026
+
+- **Código / produto:** o novo [handoff V4](HANDOFF-MOTOR-PRESCRICAO-HIBRIDO-V4.md) foi documentado com contratos de IA planejadora, compilação no motor já existente, estratégia e foco por fase, doses adaptativas, custo e testes. **Ainda não implementado** em runtime, API, banco ou produção.
+- **Design / Figma:** oito wireframes editáveis foram criados no arquivo [Trainer Prescription — UX Redesign](https://www.figma.com/design/RRHeYHC01jSd0hnrRzzBxP/Trainer-Prescription-UX-Redesign-Wireframes-V1), sem remover as telas anteriores; exigem validação UX antes de implementar no app.
+- **Responsável:** escolher provedor, teto de custo por organização, política de privacidade e habilitação de IA; decidir rollout gradual.
+- **Advogado / Técnico de Educação Física:** avaliar tratamento e envio de dados de saúde, evidências, parâmetros e critérios de segurança antes de uso real.
+- **Código:** implementar F1–F6 em PRs separados, manter modo por regras, testes e2e em dois mounts, registrar validação e não realizar merge/deploy sem autorização.
+
 ## 1. Depende do Responsável (conta, domínio, decisão)
 
 | # | O que falta | Por que importa | Onde está |
