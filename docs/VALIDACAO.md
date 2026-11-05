@@ -2,6 +2,25 @@
 
 Tudo abaixo foi executado **localmente** em 23/10/2026, as fatias 0.31 a 0.35 em 27/10/2026 e a 0.36, a 0.37, a 0.38, a 0.38.1, a 0.39, a 0.40, a 0.41, a 0.42, a 0.43, a 0.44, a 0.45, a 0.46, a 0.47, a 0.48, a 0.49, a 0.50, a 0.51, a 0.51.1 e a 0.52 em 28, 29 e 30/10/2026 (Node 22, SQLite local do Wrangler, Worker workerd via OpenNext, Chromium). Nenhum item comprova deploy, banco, domínio ou envio de e-mail no Webflow. As migrations 0001 a 0003 permanecem inalteradas; as 0004 a 0029 são aditivas (as 0.28, 0.29, 0.35, 0.37, 0.38, 0.38.1, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44, 0.45, 0.46, 0.48, 0.49, 0.51 e 0.51.1 não têm migration; a 0.47 tem a 0026, a 0.50 tem a 0027 e a 0028 e a 0.52 tem a 0029).
 
+## Família AP refeita fiel ao Figma (AP-01..10) — 05/11/2026 (branch `claude/figma-fiel-ap-gen-rx`, não publicada)
+
+Refeita a partir das medidas de `get_design_context` de cada frame (arquivo `RRHeYHC01jSd0hnrRzzBxP`). **Sem migration, sem mudança de regra.**
+
+- **Feito:** cabeçalho/trilha, barra de status por estado, abas de fase (`role="tablist"`), cartões de treino com "Ver sessão completa" (abre a sessão do treino na página), doses da semana, bloco de registros (só quando há proposta aplicada), aviso de acesso na revisão entregue, rodapé fixo do celular, menu "Mais ações" (suspenso do botão no computador, bottom sheet no celular) e a confirmação (modal/bottom sheet). Estilos em `src/styles/fig-ap.css`; `Sheet` mantém a API (ganhou `anchorRef`, opcional).
+- **Decisões:** a caixa "Notificar" é desenhada desabilitada e desmarcada com texto honesto (o produto não avisa o aluno); "Baixar PDF" não aparece como ação nas revisões não entregues (o PDF só existe após a entrega): na aprovada o lugar do botão é de "Mais ações", e no menu o item fica desabilitado com o motivo; "Criar nova revisão" e a prescrição completa (com doses por sessão) continuam acessíveis (menu e bloco recolhido "Prescrição completa e estrutura do ciclo").
+- **Não verificado:** nenhuma comparação visual lado a lado com o Figma nem e2e após esta mudança (só `tsc`, `eslint` e `tests/approval.test.ts`); leitor de tela; mount `/treinador`.
+
+## Figma fiel: AP, GEN e RX refeitos a partir dos frames (0.96.1) — 05/11/2026
+
+A 0.96.0 foi feita sem consultar os frames (só AP-01) e o usuário apontou que não seguia o Figma. A 0.96.1 refaz AP-01..10, GEN-01..08 e RX-01..11 a partir de `get_screenshot` + `get_design_context` de cada frame. Sem migration.
+
+- **Testes executados (local):** vitest **155 arquivos, 2529 testes passaram (1 pulado)**; `tsc --noEmit` e `eslint .` limpos; `build:cloud` passou; e2e (Chromium, desktop e celular) `automatic-prescription`, `delivery`, `plans`, `plans-new`, `prescription`, `execution`, `assessments`, `assessment-finalize`, `planner`, `structure-v2`, `export`: **36 passaram**.
+- **Defeitos achados na verificação e corrigidos:** (1) o botão "Continuar para progressão" virava `submit` no meio do clique (mesmo elemento trocava de tipo) e **gerava a proposta sozinho**: `key` distintas; (2) revisão fechada no celular passava da largura com "Prescrição completa" aberta; (3) proposta a 1280 px passava da largura (pílulas de sessão); (4) caixas de marcação do modal de entrega saíam gigantes (campo global `input`) e o rodapé do modal ficava fora da tela.
+- **Comparado a olho com o Figma:** AP-01 (estrutura), AP-02 (modal, capturado a 1280 e comparado com o frame), AP-04/AP-08 (estado aprovada, desktop e 390 px), GEN-04 (cabeçalho e etapa 1 no celular) e RX-01 (resumo, abas, lista, painel e rodapé). **Não comparados lado a lado:** os demais frames; as medidas vieram do `get_design_context` dos agentes, sem captura da implementação para cada um.
+- **Cobertura de e2e:** o caminho do profissional em `automatic-prescription` roda a 1440 px também no projeto de celular (as telas de celular de GEN/RX têm outros rótulos); as telas de celular de GEN e RX **não têm teste de navegador próprio** (só captura). A aprovação no celular é coberta por `delivery`.
+- **Não verificado:** a suíte e2e inteira e o mount `/treinador`; leitor de tela; navegação por teclado nas abas; Webflow Cloud (o deploy da 0.96.0 foi confirmado como `success`; o da 0.96.1 só depois do merge).
+- **Diferenças assumidas em relação ao Figma:** caixa "Notificar" desabilitada com texto honesto (não há aviso ao aluno); botões sem capacidade real omitidos (ver relatórios no PR); alvos de toque de 44 px no celular; cores de texto de aviso pelo token do projeto (contraste).
+
 ## Aprovar e entregar, geração em etapas e aplicação em prévia (0.96.0) — 05/11/2026
 
 Fatia do handoff unificado do Figma (04/11/2026); inventário e o que ficou de fora em [`implementation-audit.md`](implementation-audit.md). **Sem migration.**

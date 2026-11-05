@@ -4,6 +4,9 @@ import "@fontsource/figtree/latin-700.css";
 import "@fontsource/roboto/latin-500.css";
 import "@fontsource/roboto/latin-700.css";
 import "./globals.css";
+import "../styles/fig-ap.css";
+import "../styles/fig-gen.css";
+import "../styles/fig-rx.css";
 
 export const metadata: Metadata = {
   title: {

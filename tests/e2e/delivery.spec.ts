@@ -81,7 +81,7 @@ test("a plan reaches the client only after the professional approves and deliver
   await page.goto(revisionURL);
   const confirmation = await openDeliverDialog(page);
   await expect(confirmation.getByText("Triagem não registrada.")).toBeVisible();
-  await expect(confirmation.getByText("Esta ação não envia aviso ao aluno.")).toBeVisible();
+  await expect(confirmation.getByText(/Aviso ao aluno ainda não disponível/)).toBeVisible();
   const confirm = confirmation.getByRole("button", { name: "Confirmar e entregar" });
   await expect(confirm).toBeDisabled();
   // Cancelling changes nothing: the client still sees nothing.
@@ -92,7 +92,7 @@ test("a plan reaches the client only after the professional approves and deliver
 
   // One confirmation approves and delivers the same revision.
   await approveAndDeliver(page);
-  await expect(page.getByText("Revisão entregue ao aluno. Ela não muda mais.")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Entregue ao aluno" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Aprovar e entregar" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Editar|Remover|Duplicar|Adicionar/ })).toHaveCount(0);
 

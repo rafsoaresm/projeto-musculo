@@ -57,7 +57,7 @@ test("a professional saves, revisits and revises a plan; nobody else reaches it"
 
   // Approve without delivering (the exception, under "Mais ações"): the revision closes, is approved and the student does not get it.
   await approveWithoutDelivering(page);
-  await expect(page.getByText("O aluno ainda não vê este plano", { exact: false })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Aprovada, não entregue" }).getByText("O aluno ainda não vê esta revisão", { exact: false }).filter({ visible: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Salvar alterações" })).toHaveCount(0);
   await expect(page.getByLabel("Data de início")).toHaveCount(0);
 

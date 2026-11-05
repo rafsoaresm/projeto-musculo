@@ -206,7 +206,7 @@ export function policyOverrides(rows: PolicyRow[], edits: PolicyEdits): { ok: tr
   return invalid.length ? { ok: false, invalid: [...new Set(invalid)] } : { ok: true, overrides };
 }
 
-const RANGE_PAIRS: Array<[DoseParam, DoseParam]> = [
+export const RANGE_PAIRS: Array<[DoseParam, DoseParam]> = [
   ["repsMin", "repsMax"], ["durationMin", "durationMax"], ["distanceMin", "distanceMax"], ["rirMin", "rirMax"], ["rpeMin", "rpeMax"],
   ["workDurationMin", "workDurationMax"], ["workDistanceMin", "workDistanceMax"], ["recoveryMin", "recoveryMax"],
 ];
@@ -274,7 +274,7 @@ export function openRequired(questions: GenerationQuestion[], form: GenerationFo
   });
 }
 
-const countOf = (text: string): number | null => {
+export const countOf = (text: string): number | null => {
   const n = numberOf(text);
   return n !== null && Number.isInteger(n) && n >= 1 && n <= 30 ? n : null;
 };

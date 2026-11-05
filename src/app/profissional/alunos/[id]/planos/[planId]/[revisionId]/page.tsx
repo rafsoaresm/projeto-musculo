@@ -11,6 +11,7 @@ import { studentAccessFor } from "@/db/student-access";
 import { prescriptionFor } from "@/db/prescription";
 import { assessmentsFor } from "@/db/assessments";
 import { Notice, PageHeading, Pill } from "@/components/ui";
+import { RevisionOverview } from "@/modules/planos/revision-overview";
 import { proposalsFor } from "@/db/prescription-proposals";
 import { AppliedProposalNotes, AutoPrescriptionCard } from "@/modules/prescricao/automatica/auto-card";
 import { formatCalendarDate } from "@/modules/training/format";
@@ -93,6 +94,7 @@ export default async function PlanRevision({
     revisionNumber: revision.revisionNumber,
     below: progress.filter((slot) => slot.status === "BELOW").length,
     workouts: progress.length,
+    exercises: items.length,
     approvedAt: revision.approvedAt,
     deliveredAt: revision.deliveredAt,
     deliveredByName: revision.deliveredByName,
@@ -103,6 +105,12 @@ export default async function PlanRevision({
     pdfHref: `/profissional/alunos/${student.id}/planos/${planId}/${revisionId}/pdf`,
     automatic: automatic.total ? automatic : null,
     historyHref: perSession ? `${selfHref}/automatica` : null,
+    // The notes the applied proposal recorded (alerts, warnings, assumptions): the same count the folded notes of a draft show.
+    records: applied
+      ? applied.summary.flags.length +
+        applied.summary.issues.filter((issue) => issue.severity !== "INFO").length +
+        applied.summary.assumptions.length
+      : 0,
     openProposal: Boolean(openProposal),
   } as const;
   const decision =
@@ -139,18 +147,36 @@ export default async function PlanRevision({
   ) : null;
   return (
     <>
-      <PageHeading
-        eyebrow={`${student.displayName} · Revisão ${revision.revisionNumber}`}
-        title={detail.plan.title}
-        description={
-          revision.state === "DRAFT"
-            ? "Rascunho em edição. Prescreva os exercícios de cada treino; a estrutura do ciclo fica logo abaixo. Quando estiver certo, use Aprovar e entregar: depois disso a revisão não aceita mais edição."
-            : revision.state === "DELIVERED"
-              ? "Revisão entregue ao aluno. Ela não muda mais."
-              : "Revisão fechada para edição."
-        }
-        aside={<Pill tone={label.tone}>{label.text}</Pill>}
-      />
+      {revision.state === "DRAFT" ? (
+        <PageHeading
+          eyebrow={`${student.displayName} · Revisão ${revision.revisionNumber}`}
+          title={detail.plan.title}
+          description="Rascunho em edição. Prescreva os exercícios de cada treino; a estrutura do ciclo fica logo abaixo. Quando estiver certo, use Aprovar e entregar: depois disso a revisão não aceita mais edição."
+          aside={<Pill tone={label.tone}>{label.text}</Pill>}
+        />
+      ) : (
+        <header className="fa-head">
+          <Link className="fa-back fa-n" href="/profissional/planos">
+            <span aria-hidden="true">‹</span> Planos e treinos
+          </Link>
+          <nav className="fa-crumbs fa-w" aria-label="Trilha">
+            <Link href={`/profissional/alunos/${student.id}`}>{student.displayName}</Link>
+            <span aria-hidden="true">/</span>
+            <span aria-current="page">Revisão {revision.revisionNumber}</span>
+          </nav>
+          <h1>{detail.plan.title}</h1>
+          <p className="fa-head-line fa-w">
+            {revision.state === "READY"
+              ? "Revisão pronta para aprovação e entrega"
+              : revision.state === "APPROVED"
+                ? "Aprovada, aguardando entrega"
+                : "Revisão entregue · somente leitura"}
+          </p>
+          <p className="fa-head-line fa-n">
+            Revisão {revision.revisionNumber} · {revision.state === "READY" ? "pronta para aprovação" : revision.state === "APPROVED" ? "aprovada, não entregue" : "entregue"}
+          </p>
+        </header>
+      )}
       {one("aplicada") === "1" && revision.state === "DRAFT" && (
         <Notice>Proposta aplicada ao rascunho. Revise, edite e use Aprovar e entregar quando estiver certo.</Notice>
       )}
@@ -172,9 +198,48 @@ export default async function PlanRevision({
       ) : (
         <>
           {decision}
-          {notes}
-          {editor}
-          <PlanReadOnly schedule={revision.schedule} />
+          <RevisionOverview
+            state={revision.state as "READY" | "APPROVED" | "DELIVERED"}
+            schedule={revision.schedule}
+            progress={progress}
+            items={items.map((item) => ({
+              id: item.id,
+              phaseIndex: item.phaseIndex,
+              workoutLabel: item.workoutLabel,
+              position: item.position,
+              name: item.name,
+              sets: item.sets,
+              reps: item.reps,
+              loadInstruction: item.loadInstruction,
+              cadence: item.cadence,
+              restSeconds: item.restSeconds,
+              restText: item.restText,
+              rirMin: item.rirMin,
+              rirMax: item.rirMax,
+              notes: item.notes,
+              doseText: item.doseText ?? null,
+            }))}
+            perSession={perSession}
+            records={approval.records > 0 ? { count: approval.records, href: `${selfHref}/automatica` } : null}
+            access={
+              revision.state === "DELIVERED" && approval.portal !== "ACTIVE"
+                ? {
+                    text:
+                      approval.portal === "INVITED"
+                        ? "O convite do aluno ainda está pendente. A revisão ficará visível quando o acesso for habilitado."
+                        : "Acesso do aluno ainda inativo. A revisão ficará visível quando o acesso for habilitado.",
+                    href: approval.studentHref,
+                  }
+                : null
+            }
+            full={
+              <>
+                {notes}
+                {editor}
+                <PlanReadOnly schedule={revision.schedule} />
+              </>
+            }
+          />
         </>
       )}
       <Link href={`/profissional/alunos/${student.id}?aba=periodizacao`} className="button secondary">

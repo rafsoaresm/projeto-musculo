@@ -1,0 +1,1437 @@
+/*
+ * Figma AP: aprovação e entrega (frames AP-01..AP-10, arquivo RRHeYHC01jSd0hnrRzzBxP).
+ * As medidas (px) são as do get_design_context de cada frame: o Figma desenha em 11, 12, 13 px etc., fora da escala do kit, e aqui
+ * seguem o desenho. Cores vêm dos tokens do projeto (src/styles/tokens.css). Desvios de cor por contraste estão no relatório da fatia.
+ * Largura: acima de 860px valem os frames de desktop (1440); até 860px, os de celular (390). `.fa-w` e `.fa-n` mostram uma só das
+ * duas redações de um texto (o Figma usa textos diferentes em cada tamanho).
+ */
+
+@media (min-width: 861px) {
+  .fa-n {
+    display: none !important;
+  }
+}
+@media (max-width: 860px) {
+  .fa-w {
+    display: none !important;
+  }
+}
+
+/* ---------- Cabeçalho da revisão fechada (AP-01/03/04 e AP-05/07/08) ---------- */
+.fa-head {
+  display: grid;
+  margin-bottom: 16px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid var(--color-line);
+}
+.fa-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-bottom: 7px;
+  font-size: 10px;
+  line-height: 12px;
+  font-weight: 600;
+  color: var(--color-primary);
+  text-transform: uppercase;
+}
+.fa-crumbs a {
+  color: inherit;
+}
+.fa-crumbs a:hover {
+  text-decoration: underline;
+}
+.fa-head h1 {
+  margin: 0;
+  font-family: var(--font-family-heading);
+  font-size: 28px;
+  line-height: 33px;
+  font-weight: 700;
+  color: var(--color-ink);
+  overflow-wrap: anywhere;
+}
+.fa-head-line {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 14px;
+  color: var(--color-muted);
+}
+.fa-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+/* ---------- Chips ---------- */
+.fa-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  padding: 0 30px;
+  border-radius: 13px;
+  font-size: 11px;
+  line-height: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--color-bg-subtle);
+  color: var(--color-text);
+}
+.fa-chip-upper {
+  text-transform: uppercase;
+}
+.fa-chip-sm {
+  padding: 0 19px;
+}
+.fa-chip-brand {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+.fa-chip-success {
+  background: var(--color-success-soft);
+  color: var(--color-success-text);
+}
+.fa-chip-warning {
+  background: var(--color-warning-soft);
+  color: var(--color-warning-text);
+}
+.fa-chip-neutral {
+  background: var(--color-bg-subtle);
+  color: var(--color-text);
+}
+.fa-chip-row2 {
+  padding: 0 33px;
+}
+
+/* ---------- Botões ---------- */
+.fa-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 0 24px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  line-height: 14px;
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.fa-btn-secondary {
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
+.fa-btn-secondary:hover:not(:disabled) {
+  background: var(--color-primary-soft);
+  border-color: var(--color-primary);
+}
+.fa-btn-primary {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-on-primary);
+}
+.fa-btn-primary:hover:not(:disabled) {
+  background: var(--color-primary-strong);
+  border-color: var(--color-primary-strong);
+}
+.fa-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+@media (pointer: coarse) {
+  .fa-btn {
+    min-height: 44px;
+  }
+}
+
+/* ---------- Barra principal de status (AP-01/03/04) e cartão de estado (AP-05/07/08) ---------- */
+.fa-bar-wrap {
+  margin-bottom: 15px;
+}
+.fa-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px 24px;
+  min-height: 92px;
+  padding: 14px 17px 14px 16px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 11px;
+}
+.fa-bar-text {
+  display: grid;
+  gap: 11px;
+  min-width: 0;
+}
+.fa-bar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 17px;
+  min-width: 0;
+}
+.fa-bar-line,
+.fa-bar-sub,
+.fa-bar-hint {
+  margin: 0;
+  min-width: 0;
+}
+.fa-bar-line {
+  font-size: 12px;
+  line-height: 14px;
+  color: var(--color-ink);
+  overflow-wrap: anywhere;
+}
+.fa-bar-sub {
+  font-size: 12px;
+  line-height: 14px;
+  color: var(--color-muted);
+}
+.fa-bar-hint {
+  font-size: 11px;
+  line-height: 13px;
+  color: var(--color-muted);
+}
+.fa-bar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex: none;
+}
+.fa-bar-actions .fa-btn-secondary {
+  min-width: 141px;
+}
+.fa-bar-actions .fa-btn-primary {
+  min-height: 43px;
+  min-width: 181px;
+}
+.fa-state-delivered .fa-bar-actions .fa-btn-secondary {
+  min-width: 143px;
+}
+.fa-state-delivered .fa-bar-actions .fa-btn-primary {
+  min-width: 193px;
+}
+.fa-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.fa-note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-muted);
+}
+.fa-bar-wrap > .notice {
+  margin: 10px 0 0;
+}
+
+/* Rodapé de ação do celular (AP-05/07/08): as mesmas ações, sempre à mão. */
+.fa-sticky {
+  display: none;
+}
+
+/* ---------- Prescrição: título, fases, cartões de treino ---------- */
+.fa-presc-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px 24px;
+}
+.fa-presc-title {
+  min-width: 0;
+}
+.fa-presc-title h2 {
+  margin: 0;
+  font-family: var(--font-family-body);
+  font-size: 18px;
+  line-height: 22px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+.fa-presc-title p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 14px;
+  color: var(--color-muted);
+}
+.fa-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  max-width: 100%;
+  padding: 4px 6px 3px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 18px;
+}
+.fa-tab {
+  min-width: 96px;
+  min-height: 27px;
+  padding: 0 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 13.5px;
+  font-size: 12px;
+  line-height: 14px;
+  font-weight: 600;
+  color: var(--color-ink);
+  white-space: nowrap;
+}
+.fa-tab:hover {
+  border-color: var(--color-primary);
+}
+.fa-tab-on {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-on-primary);
+}
+@media (pointer: coarse) {
+  .fa-tab {
+    min-height: 44px;
+  }
+}
+.fa-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr));
+  gap: 23px;
+  margin-top: 28px;
+}
+.fa-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 334px;
+  min-width: 0;
+  padding: 14px 15px 13px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 11px;
+}
+.fa-card-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 9px;
+}
+.fa-card-head h3 {
+  flex: 1 1 100px;
+  min-width: 0;
+  margin: 0;
+  font-family: var(--font-family-body);
+  font-size: 18px;
+  line-height: 22px;
+  font-weight: 600;
+  color: var(--color-ink);
+  overflow-wrap: anywhere;
+}
+.fa-card-sub {
+  margin: 12px 0 0;
+  font-size: 11px;
+  line-height: 13px;
+  color: var(--color-muted);
+}
+.fa-card-empty {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--color-muted);
+}
+.fa-card-list {
+  margin: 11px 0 0;
+  padding: 13px 0 0;
+  list-style: none;
+  border-top: 1px solid var(--color-line);
+}
+.fa-card-list:has(+ .fa-card-more) {
+  border-bottom: 1px solid var(--color-line);
+}
+.fa-card-list li {
+  padding-bottom: 16px;
+  font-size: 12px;
+  line-height: 14px;
+  font-weight: 600;
+  color: var(--color-ink);
+  overflow-wrap: anywhere;
+}
+.fa-card-list li + li {
+  padding-top: 7px;
+  border-top: 1px solid var(--color-line);
+}
+.fa-card-n {
+  display: inline-block;
+  min-width: 1.25em;
+}
+.fa-card-more {
+  align-self: flex-start;
+  margin: 20px 0 0;
+  padding: 0;
+  background: none;
+  font-size: 11px;
+  line-height: 13px;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+.fa-card-more:hover {
+  text-decoration: underline;
+}
+.fa-card-open {
+  width: 100%;
+  min-height: 31px;
+  margin-top: auto;
+}
+.fa-card-list,
+.fa-card-more {
+  margin-bottom: 12px;
+}
+.fa-card-list ~ .fa-card-open,
+.fa-card-more ~ .fa-card-open {
+  margin-top: auto;
+}
+.fa-row {
+  display: none;
+}
+
+/* Sessão completa de um treino, aberta pelo botão do cartão. */
+.fa-session {
+  margin-top: 14px;
+  padding: 16px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 11px;
+}
+.fa-session:focus {
+  outline: none;
+}
+.fa-session:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 3px;
+}
+.fa-session-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+}
+.fa-session-head h3 {
+  margin: 0;
+  font-family: var(--font-family-body);
+  font-size: 14px;
+  line-height: 17px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+.fa-session-list {
+  display: grid;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.fa-session-list li {
+  display: grid;
+  gap: 4px;
+  padding: 10px 0;
+  border-top: 1px solid var(--color-line);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-muted);
+}
+.fa-session-list strong {
+  font-weight: 600;
+  color: var(--color-ink);
+}
+.fa-session-note {
+  font-size: 11px;
+}
+
+/* ---------- Doses da semana, registros, aviso de acesso ---------- */
+.fa-week {
+  display: grid;
+  grid-template-columns: minmax(0, 436px) minmax(0, 1fr);
+  column-gap: 16px;
+  margin-top: 14px;
+  padding: 13px 16px 11px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 11px;
+}
+.fa-week-text h3 {
+  margin: 0;
+  font-family: var(--font-family-body);
+  font-size: 16px;
+  line-height: 19px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+.fa-week-text p {
+  margin: 9px 0 0;
+  font-size: 12px;
+  line-height: 14px;
+  color: var(--color-muted);
+}
+.fa-doses {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 218px));
+  gap: 9px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.fa-dose {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-height: 69px;
+  padding: 11px;
+  background: var(--color-background);
+  border-radius: 9px;
+}
+.fa-dose strong {
+  font-size: 12px;
+  line-height: 14px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+.fa-dose span {
+  font-size: 11px;
+  line-height: 13px;
+  color: var(--color-muted);
+}
+.fa-records {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+  min-height: 80px;
+  margin-top: 14px;
+  padding: 15px 17px 24px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 11px;
+}
+.fa-records h3 {
+  margin: 0;
+  font-family: var(--font-family-body);
+  font-size: 14px;
+  line-height: 17px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+.fa-records p {
+  margin: 10px 0 0;
+  font-size: 11px;
+  line-height: 13px;
+  color: var(--color-muted);
+}
+.fa-records .fa-btn {
+  min-height: 36px;
+  min-width: 199px;
+}
+.fa-access {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 24px;
+  margin-top: 7px;
+  padding: 13px 14px;
+  background: var(--color-primary-soft);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 14px;
+}
+.fa-access p {
+  margin: 0;
+  color: var(--color-ink);
+}
+.fa-access a {
+  font-weight: 600;
+  color: var(--color-primary-strong);
+}
+.fa-access a:hover {
+  text-decoration: underline;
+}
+.fa-full-body > * {
+  min-width: 0;
+  max-width: 100%;
+}
+.fa-full {
+  margin-top: 14px;
+  margin-bottom: 16px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 11px;
+}
+.fa-full > summary {
+  min-height: 44px;
+  padding: 14px 16px;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  color: var(--color-ink);
+  cursor: pointer;
+}
+.fa-full-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  padding: 0 16px 16px;
+}
+
+/* ---------- Caixas de aviso (confirmação e página do celular) ---------- */
+.fa-warnbox {
+  min-height: 85px;
+  padding: 12px 14px;
+  background: var(--color-warning-soft);
+  border-radius: 9px;
+}
+.fa-warnbox strong {
+  display: block;
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 600;
+  color: var(--color-warning-text);
+}
+.fa-warnbox p {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 14px;
+  color: var(--color-ink);
+}
+
+/* ---------- Confirmação (AP-02 modal, AP-06 sheet) ---------- */
+.fa-confirm {
+  position: relative;
+  padding: 23px 24px 24px;
+}
+.fa-confirm-chip {
+  margin: 0;
+}
+.fa-confirm-title {
+  margin: 18px 0 0;
+  font-family: var(--font-family-heading);
+  font-size: 24px;
+  line-height: 28px;
+  font-weight: 700;
+  color: var(--color-ink);
+}
+.fa-confirm-sub {
+  margin: 13px 0 0;
+  font-size: 12px;
+  line-height: 14px;
+  color: var(--color-muted);
+}
+.fa-rule {
+  height: 0;
+  margin: 21px 0 0;
+  border: 0;
+  border-top: 1px solid var(--color-line);
+}
+.fa-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 21px;
+}
+.fa-metric {
+  min-height: 73px;
+  padding: 10px 12px;
+  background: var(--color-background);
+  border: 1px solid var(--color-line);
+  border-radius: 9px;
+}
+.fa-metric strong {
+  display: block;
+  font-size: 23px;
+  line-height: 28px;
+  font-weight: 700;
+  color: var(--color-ink);
+}
+.fa-metric span {
+  display: block;
+  margin-top: 8px;
+  font-size: 11px;
+  line-height: 13px;
+  color: var(--color-muted);
+}
+.fa-confirm > .fa-warnbox,
+.fa-confirm > .fa-notify,
+.fa-confirm > .fa-ack {
+  margin-top: 15px;
+}
+.fa-confirm > .notice {
+  margin: 15px 0 0;
+}
+.fa-confirm > .fa-note {
+  margin-top: 12px;
+}
+.fa-ack {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 44px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-line);
+  border-radius: 9px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-ink);
+  cursor: pointer;
+}
+.fa-ack input {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  accent-color: var(--color-primary);
+}
+.fa-notify {
+  padding: 13px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 9px;
+}
+.fa-notify-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  font-size: 12px;
+  line-height: 14px;
+  font-weight: 600;
+  color: var(--color-muted);
+}
+.fa-notify-row input {
+  appearance: none;
+  flex: none;
+  width: 19px;
+  height: 19px;
+  margin: 0;
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-line-strong);
+  border-radius: 4px;
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+.fa-notify .fa-rule {
+  margin-top: 17px;
+}
+.fa-notify-text {
+  margin: 24px 0 0;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--color-muted);
+}
+.fa-notes {
+  display: grid;
+  gap: 6px;
+  margin: 15px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--color-muted);
+}
+.fa-confirm > .error-message {
+  margin: 12px 0 0;
+}
+.fa-confirm-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 15px;
+}
+.fa-confirm-footer .fa-btn {
+  min-height: 42px;
+}
+.fa-confirm-footer .fa-btn-secondary {
+  min-width: 150px;
+}
+.fa-confirm-footer .fa-btn-primary {
+  min-width: 236px;
+}
+.fa-confirm .fa-rule-foot {
+  margin-top: 15px;
+}
+
+/* ---------- Menu Mais ações (AP-09 menu, AP-10 bottom sheet) ---------- */
+.fa-menu {
+  padding: 13px 6px 17px;
+}
+.fa-menu-title {
+  margin: 0 0 8px;
+  padding: 0 10px;
+  font-family: var(--font-family-body);
+  font-size: 10px;
+  line-height: 12px;
+  font-weight: 600;
+  color: var(--color-muted);
+  text-transform: uppercase;
+}
+.fa-menu-list {
+  display: grid;
+  gap: 11px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.fa-menu-item {
+  display: block;
+  width: 100%;
+  min-height: 59px;
+  padding: 9px 13px;
+  background: var(--color-surface);
+  border: 0;
+  border-radius: 7px;
+  text-align: left;
+  color: var(--color-ink);
+  cursor: pointer;
+}
+.fa-menu-item strong {
+  display: block;
+  font-size: 12px;
+  line-height: 14px;
+  font-weight: 600;
+}
+.fa-menu-item span {
+  display: block;
+  margin-top: 9px;
+  font-size: 10px;
+  line-height: 12px;
+  color: var(--color-muted);
+}
+.fa-menu-item:hover:not(:disabled) {
+  background: var(--color-primary-soft);
+}
+.fa-menu-item:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+/* ---------- Sheet (Sheet de src/components/sheet.tsx; também usado pela aplicação da proposta, família RX) ---------- */
+.sheet {
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  padding: 0;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  box-shadow: 0 12px 40px rgb(15 23 32 / 0.24);
+  background: var(--color-surface);
+  color: var(--color-text);
+  overflow: auto;
+}
+.sheet::backdrop {
+  background: rgb(15 23 32 / 0.45);
+}
+.sheet-body {
+  display: grid;
+  gap: 14px;
+  padding: 24px;
+}
+.sheet-title {
+  margin: 0;
+  font-size: var(--font-size-lg);
+}
+.sheet-body > p {
+  margin: 0;
+}
+.sheet-body > .notice {
+  margin: 0;
+}
+.sheet-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-left: 20px;
+  font-size: var(--font-size-sm);
+}
+.sheet-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.sheet-footer .button,
+.sheet-close {
+  min-height: 48px;
+}
+.sheet-actions {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sheet-action {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-height: 56px;
+  padding: 12px 14px;
+  text-align: left;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  cursor: pointer;
+  color: var(--color-text);
+}
+.sheet-action:hover {
+  background: var(--color-primary-soft);
+  border-color: var(--color-primary);
+}
+.sheet-menu {
+  width: min(420px, calc(100vw - 32px));
+}
+@media (max-width: 640px) {
+  /* Phone: the dialog is a sheet that rises from the bottom edge, with room for the safe area. */
+  .sheet {
+    width: 100vw;
+    max-width: 100vw;
+    margin: auto 0 0;
+    border-radius: var(--radius-panel) var(--radius-panel) 0 0;
+    border-bottom: 0;
+    max-height: 90dvh;
+  }
+  .sheet-body {
+    padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+  }
+  .sheet-footer {
+    flex-direction: column-reverse;
+  }
+  .sheet-footer .button {
+    width: 100%;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .sheet[open] {
+    animation: sheet-in 0.16s ease-out;
+  }
+  @keyframes sheet-in {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+  }
+}
+
+/* O corpo das folhas de aprovação (confirmação e menu) traz o próprio espaçamento. */
+.sheet-body:has(> .fa-confirm),
+.sheet-body:has(> .fa-menu) {
+  display: block;
+  padding: 0;
+}
+.sheet:has(.fa-confirm) {
+  width: min(744px, calc(100vw - 32px));
+  border-radius: 14px;
+}
+.sheet:has(.fa-menu) {
+  width: 293px;
+  max-width: calc(100vw - 16px);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgb(46 52 56 / 0.14);
+}
+.sheet-menu::backdrop {
+  background: transparent;
+}
+@media (min-width: 861px) {
+  /* Wide: the modal is centred in the area to the right of the sidebar, as in AP-02. */
+  .sheet:has(.fa-confirm) {
+    inset-inline-start: var(--sidebar-width);
+  }
+}
+
+/* ---------- Celular (390 px), até 860 px ---------- */
+@media (max-width: 860px) {
+  body:has(.fa-sticky) {
+    padding-bottom: 112px;
+  }
+  .fa-head {
+    margin-bottom: 14px;
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
+  .fa-head h1 {
+    margin-top: 2px;
+    font-size: 23px;
+    line-height: 27px;
+  }
+  .fa-head-line {
+    margin-top: 7px;
+    font-size: 11px;
+    line-height: 13px;
+  }
+  .fa-chip {
+    height: 25px;
+    padding: 0 29px;
+  }
+  .fa-chip-sm {
+    padding: 0 19px;
+  }
+  .fa-bar-wrap {
+    margin-bottom: 0;
+  }
+  .fa-bar {
+    display: block;
+    min-height: 123px;
+    padding: 11px 11px 6px;
+  }
+  .fa-bar-text {
+    gap: 12px;
+  }
+  .fa-bar-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 11px;
+  }
+  .fa-bar-row2 {
+    gap: 4px;
+  }
+  .fa-bar-row .fa-chip {
+    margin-bottom: 0;
+  }
+  .fa-bar-line {
+    font-size: 13px;
+    line-height: 16px;
+    font-weight: 600;
+  }
+  .fa-bar-line strong {
+    font-weight: 600;
+  }
+  .fa-bar-sub {
+    font-size: 11px;
+    line-height: 13px;
+  }
+  .fa-bar-row2 .fa-chip {
+    margin-top: 0;
+    margin-bottom: 5px;
+  }
+  .fa-bar-actions {
+    display: none;
+  }
+  .fa-context {
+    margin-top: 12px;
+  }
+  .fa-sticky {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 30;
+    display: block;
+    padding: 9px 17px calc(10px + env(safe-area-inset-bottom));
+    background: var(--color-surface);
+    border-top: 1px solid var(--color-line);
+  }
+  .fa-sticky p {
+    margin: 0 0 7px;
+    font-size: 10px;
+    line-height: 12px;
+    color: var(--color-muted);
+  }
+  .fa-sticky-actions {
+    display: flex;
+    gap: 10px;
+  }
+  .fa-sticky-actions .fa-btn {
+    min-height: 44px;
+    padding: 0 12px;
+    border-radius: 22px;
+  }
+  .fa-sticky-actions .fa-btn:first-child {
+    flex: 0 0 116px;
+    min-width: 0;
+  }
+  .fa-sticky-actions .fa-btn:last-child {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .fa-sticky-actions .fa-btn-more span {
+    display: none;
+  }
+  .fa-overview {
+    margin-top: 20px;
+  }
+  .fa-presc-head {
+    align-items: baseline;
+    gap: 0 12px;
+  }
+  .fa-presc-title {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+  }
+  .fa-presc-title h2 {
+    font-size: 17px;
+    line-height: 20px;
+  }
+  .fa-presc-title p.fa-presc-meta {
+    margin: 0;
+    font-size: 11px;
+    line-height: 13px;
+    text-align: right;
+  }
+  .fa-tabs {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 7px;
+    width: 100%;
+    margin-top: 8px;
+    padding: 4px 5px;
+    border-radius: 11px;
+  }
+  .fa-tab {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 44px;
+    padding: 0 6px;
+    border-radius: 16.5px;
+  }
+  .fa-cards {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+    margin-top: 11px;
+    padding: 10px 9px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: 11px;
+  }
+  .fa-card {
+    display: block;
+    min-height: 0;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+  }
+  .fa-card > :not(.fa-row) {
+    display: none;
+  }
+  .fa-row {
+    position: relative;
+    display: block;
+    width: 100%;
+    min-height: 67px;
+    padding: 9px 40px 9px 10px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: 8px;
+    text-align: left;
+    cursor: pointer;
+  }
+  .fa-card-on .fa-row {
+    background: var(--color-primary-soft);
+    border-color: var(--color-primary);
+  }
+  .fa-row-title {
+    display: block;
+    font-size: 14px;
+    line-height: 17px;
+    font-weight: 600;
+    color: var(--color-ink);
+  }
+  .fa-row-sub {
+    display: block;
+    margin-top: 9px;
+    font-size: 11px;
+    line-height: 13px;
+    color: var(--color-muted);
+  }
+  .fa-row-below {
+    color: var(--color-warning-text);
+  }
+  .fa-row-go {
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    transform: translateY(-50%);
+    font-size: 19px;
+    line-height: 1;
+    font-weight: 700;
+    color: var(--color-primary);
+  }
+  .fa-session {
+    margin-top: 11px;
+  }
+  .fa-week,
+  .fa-records {
+    display: none;
+  }
+  .fa-page-warn,
+  .fa-access.fa-n {
+    min-height: 76px;
+    margin-top: 13px;
+    padding: 10px 12px;
+    border-radius: 10px;
+  }
+  .fa-page-warn strong {
+    font-size: 12px;
+    line-height: 14px;
+  }
+  .fa-page-warn p {
+    margin: 8px 0 0;
+    font-size: 11px;
+    line-height: 13px;
+  }
+  .fa-access.fa-n {
+    display: block;
+  }
+  .fa-access.fa-n strong {
+    display: block;
+    font-size: 12px;
+    line-height: 14px;
+    font-weight: 600;
+    color: var(--color-primary);
+  }
+  .fa-access.fa-n p {
+    margin: 8px 0 0;
+    font-size: 11px;
+    line-height: 13px;
+  }
+  .fa-access.fa-n a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    font-size: 11px;
+  }
+  .fa-records-link {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    margin-top: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-muted);
+  }
+
+  /* Confirmação como folha que sobe da borda (AP-06) e menu como bottom sheet (AP-10). */
+  .sheet:has(.fa-confirm),
+  .sheet:has(.fa-menu) {
+    width: 100vw;
+    max-width: 100vw;
+    margin: auto 0 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-right: 0;
+    max-height: 92dvh;
+  }
+  .sheet:has(.fa-confirm) {
+    border-radius: 19px 19px 0 0;
+  }
+  .sheet:has(.fa-menu) {
+    border-radius: 17px 17px 0 0;
+    box-shadow: 0 -8px 24px rgb(46 52 56 / 0.14);
+  }
+  .sheet-menu::backdrop {
+    background: rgb(15 23 32 / 0.45);
+  }
+  .fa-confirm {
+    padding: 31px 18px calc(49px + env(safe-area-inset-bottom));
+  }
+  .fa-confirm::before {
+    content: "";
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    width: 46px;
+    height: 4px;
+    margin-left: -23px;
+    border-radius: 2px;
+    background: var(--color-line);
+  }
+  .fa-confirm-chip {
+    display: none;
+  }
+  .fa-confirm-title {
+    margin-top: 0;
+    font-size: 22px;
+    line-height: 26px;
+  }
+  .fa-confirm-sub {
+    margin-top: 8px;
+  }
+  .fa-rule {
+    margin-top: 22px;
+  }
+  .fa-metrics {
+    gap: 10px;
+    margin-top: 17px;
+  }
+  .fa-metric {
+    min-height: 71px;
+    padding: 9px 10px;
+    background: var(--color-surface);
+    border-radius: 11px;
+  }
+  .fa-metric strong {
+    font-size: 22px;
+    line-height: 26px;
+  }
+  .fa-metric span {
+    margin-top: 8px;
+    font-size: 10px;
+    line-height: 12px;
+  }
+  .fa-confirm > .fa-warnbox {
+    min-height: 92px;
+    margin-top: 16px;
+    border-radius: 10px;
+  }
+  .fa-confirm > .fa-warnbox p {
+    margin-top: 14px;
+  }
+  .fa-confirm > .fa-notify {
+    margin-top: 13px;
+    padding: 14px 11px 11px;
+    border-radius: 11px;
+  }
+  .fa-notify-row input {
+    width: 20px;
+    height: 20px;
+    border-radius: 5px;
+  }
+  .fa-notify .fa-rule {
+    margin-top: 17px;
+  }
+  .fa-notify-text {
+    margin-top: 10px;
+  }
+  .fa-notes {
+    margin-top: 18px;
+  }
+  .fa-confirm .fa-rule-foot {
+    margin-top: 24px;
+  }
+  .fa-confirm-footer {
+    gap: 12px;
+    margin-top: 22px;
+  }
+  .fa-confirm-footer .fa-btn {
+    min-height: 44px;
+  }
+  .fa-confirm-footer .fa-btn-secondary {
+    flex: 0 0 125px;
+    min-width: 0;
+  }
+  .fa-confirm-footer .fa-btn-primary {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .fa-menu {
+    position: relative;
+    padding: 34px 18px calc(48px + env(safe-area-inset-bottom));
+  }
+  .fa-menu::before {
+    content: "";
+    position: absolute;
+    top: 11px;
+    left: 50%;
+    width: 42px;
+    height: 4px;
+    margin-left: -21px;
+    border-radius: 2px;
+    background: var(--color-line);
+  }
+  .fa-menu-title {
+    margin: 0 0 17px;
+    padding: 0;
+    font-size: 17px;
+    line-height: 20px;
+    color: var(--color-ink);
+    text-transform: none;
+  }
+  .fa-menu-list {
+    gap: 0;
+  }
+  .fa-menu-list li + li {
+    padding-top: 5px;
+    border-top: 1px solid var(--color-line);
+  }
+  .fa-menu-item {
+    min-height: 44px;
+    padding: 0 0 22px;
+    border-radius: 0;
+    background: transparent;
+  }
+  .fa-menu-list li:last-child .fa-menu-item {
+    padding-bottom: 0;
+  }
+  .fa-menu-item strong {
+    font-size: 13px;
+    line-height: 16px;
+  }
+  .fa-menu-item span {
+    margin-top: 12px;
+    font-size: 11px;
+    line-height: 13px;
+  }
+}
+
+/* Correção: os campos globais (input: 100% de largura, 50px de altura, 22px de respiro) não valem para as caixas de marcação do modal. */
+.fa-ack input,
+.fa-notify-row input {
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  min-height: 0;
+  padding: 0;
+  border-radius: 4px;
+}
+.fa-ack {
+  align-items: center;
+}
+.fa-notify-text {
+  margin: 10px 0 0 29px;
+}
+.fa-notify .fa-rule {
+  display: none;
+}
+/* O rodapé do modal fica sempre à vista, mesmo em tela baixa: o conteúdo rola por baixo dele. */
+.fa-confirm-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin: 15px -24px -24px;
+  padding: 12px 24px 16px;
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-line);
+}
+@media (max-width: 860px) {
+  .fa-confirm-footer {
+    margin: 15px -16px -20px;
+    padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
+  }
+}
+
+/* Caixas de marcação do modal: caixa à esquerda, texto ao lado (AP-02/AP-06), vencendo as regras genéricas de label/campo. */
+.sheet .fa-ack,
+.sheet .fa-notify-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  text-align: left;
+  gap: 11px;
+}
+.sheet .fa-ack > span,
+.sheet .fa-notify-row > span {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+}
+.sheet .fa-notify-text {
+  text-align: left;
+  margin: 10px 0 0 29px;
+}

@@ -84,6 +84,10 @@ describe("the generation form's data (UI items 1 and 6)", () => {
     expect(s.freeText).toContainEqual({ label: "Lesões", text: "Dor no ombro direito" });
     expect(s.considered.find((f) => f.label === "Objetivo")).toMatchObject({ value: "Hipertrofia", source: "Ficha" });
     expect(s.considered.find((f) => f.label === "Triagem (PAR-Q)")?.value).toBe("Não feita");
+    // The compact summary (Figma GEN-01) is data of the screen, not parsed from the texts above.
+    expect(s.summary).toMatchObject({ phases: 2, parq: "NOT_DONE", goal: "Hipertrofia", assessedOn: null });
+    expect(s.summary.weeks).toBe(s.structure.reduce((n, p) => n + p.weeks, 0));
+    expect(s.summary.catalogTotal).toBe(s.library.length);
     // Q1: the policy table is the rule set's; the defaults decided on 04/11/2026 are assumptions until the professional chooses.
     expect(s.policy.length).toBeGreaterThan(5);
     expect(s.assumptions.map((a) => a.code)).toEqual(expect.arrayContaining(["DOSE_MODE_DEFAULT", "METADATA_TRUST_DEFAULT", "FREE_TEXT_NOT_PARSED"]));
