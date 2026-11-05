@@ -432,11 +432,11 @@ export function GenerationForm({ planId, revisionId, screen, header }: { planId:
           </p>
         </div>
         {step === 2 ? (
-          <button type="submit" className={`fig-gen-btn wide${desktop.primary ? " primary" : ""}`} disabled={pending || desktop.disabled}>
+          <button key="generate-d" type="submit" className={`fig-gen-btn wide${desktop.primary ? " primary" : ""}`} disabled={pending || desktop.disabled}>
             {pending ? "Gerando…" : desktop.action}
           </button>
         ) : (
-          <button type="button" className={`fig-gen-btn wide${desktop.primary ? " primary" : ""}`} disabled={desktop.disabled} onClick={() => goStep((step + 1) as Step)}>
+          <button key="next-d" type="button" className={`fig-gen-btn wide${desktop.primary ? " primary" : ""}`} disabled={desktop.disabled} onClick={() => goStep((step + 1) as Step)}>
             {desktop.action}
           </button>
         )}
@@ -446,11 +446,11 @@ export function GenerationForm({ planId, revisionId, screen, header }: { planId:
           {status || mobile.hint}
         </p>
         {mobile.kind === "generate" ? (
-          <button type="submit" className={`fig-gen-btn wide${mobile.primary ? " primary" : ""}`} disabled={pending || mobile.disabled}>
+          <button key="generate-m" type="submit" className={`fig-gen-btn wide${mobile.primary ? " primary" : ""}`} disabled={pending || mobile.disabled}>
             {pending ? "Gerando…" : mobile.action}
           </button>
         ) : (
-          <button type="button" className={`fig-gen-btn wide${mobile.primary ? " primary" : ""}`} disabled={mobile.disabled} onClick={runMobile}>
+          <button key="next-m" type="button" className={`fig-gen-btn wide${mobile.primary ? " primary" : ""}`} disabled={mobile.disabled} onClick={runMobile}>
             {mobile.action}
           </button>
         )}

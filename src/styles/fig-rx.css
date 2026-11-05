@@ -1292,3 +1292,24 @@
     transition: none !important;
   }
 }
+
+/* Colunas de grade que podem encolher: sem isso o conteúdo largo (pílulas de sessão, ações) empurra a página além da tela. */
+.rx-split > *,
+.rx-list,
+.rx-session,
+.rx-card-head,
+.rx-card-head-row,
+.rx-head-actions,
+.rx-sessionpills {
+  min-width: 0;
+  max-width: 100%;
+}
+.rx-list,
+.rx-session {
+  grid-template-columns: minmax(0, 1fr);
+}
+.rx-sessionpills {
+  overflow-x: auto;
+  flex-wrap: nowrap;
+  scrollbar-width: thin;
+}

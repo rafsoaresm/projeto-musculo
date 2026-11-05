@@ -564,8 +564,13 @@
 .fa-access a:hover {
   text-decoration: underline;
 }
+.fa-full-body > * {
+  min-width: 0;
+  max-width: 100%;
+}
 .fa-full {
   margin-top: 14px;
+  margin-bottom: 16px;
   background: var(--color-surface);
   border: 1px solid var(--color-line);
   border-radius: 11px;
@@ -581,6 +586,7 @@
 }
 .fa-full-body {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   padding: 0 16px 16px;
 }
@@ -1371,4 +1377,61 @@
     font-size: 11px;
     line-height: 13px;
   }
+}
+
+/* Correção: os campos globais (input: 100% de largura, 50px de altura, 22px de respiro) não valem para as caixas de marcação do modal. */
+.fa-ack input,
+.fa-notify-row input {
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  min-height: 0;
+  padding: 0;
+  border-radius: 4px;
+}
+.fa-ack {
+  align-items: center;
+}
+.fa-notify-text {
+  margin: 10px 0 0 29px;
+}
+.fa-notify .fa-rule {
+  display: none;
+}
+/* O rodapé do modal fica sempre à vista, mesmo em tela baixa: o conteúdo rola por baixo dele. */
+.fa-confirm-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin: 15px -24px -24px;
+  padding: 12px 24px 16px;
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-line);
+}
+@media (max-width: 860px) {
+  .fa-confirm-footer {
+    margin: 15px -16px -20px;
+    padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
+  }
+}
+
+/* Caixas de marcação do modal: caixa à esquerda, texto ao lado (AP-02/AP-06), vencendo as regras genéricas de label/campo. */
+.sheet .fa-ack,
+.sheet .fa-notify-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  text-align: left;
+  gap: 11px;
+}
+.sheet .fa-ack > span,
+.sheet .fa-notify-row > span {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+}
+.sheet .fa-notify-text {
+  text-align: left;
+  margin: 10px 0 0 29px;
 }

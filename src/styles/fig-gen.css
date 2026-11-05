@@ -9,6 +9,7 @@
 
 .fig-gen {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   min-width: 0;
   color: var(--color-ink);
@@ -456,6 +457,7 @@
   background: var(--color-background);
 }
 .fig-gen-phase-pill {
+  display: inline-block;
   width: fit-content;
   padding: 4px 14px;
   border-radius: 13px;

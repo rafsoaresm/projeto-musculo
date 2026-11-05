@@ -50,29 +50,70 @@ test("automatic prescription from the periodization to the student's log", async
   const revisionURL = page.url();
 
   // 1. The way in, on the draft after the structure is saved.
+  // The professional path below is the desktop composition (GEN-01..03, RX-01..03); the phone composition (GEN-04..08, RX-04..11) has other labels and
+  // its own screens. The phone run walks this path at a desktop width; the phone screens are checked by capture and the approval path by delivery.spec.
+  const phoneSize = page.viewportSize();
+  const onPhone = Boolean(phoneSize && phoneSize.width < 861);
+  if (onPhone) await page.setViewportSize({ width: 1440, height: 900 });
   await page.getByRole("link", { name: "Gerar prescrição automática" }).click();
-  await expect(page.getByRole("heading", { name: "Prescrição automática", level: 1 })).toBeVisible();
+  // Figma GEN-01..08: one header, the compact base, the three steps and the persistent footer.
+  await expect(page.getByRole("heading", { name: /^Gerar prescrição/, level: 1 })).toBeVisible();
   const autoURL = page.url();
-  await expect(page.getByRole("heading", { name: "Dados considerados" })).toBeVisible();
-  // Nothing pre-selected: the button waits for the required answers.
-  const generate = page.getByRole("button", { name: "Gerar prescrição automática" });
-  await expect(generate).toBeDisabled();
-  await page.getByLabel("Estímulo da fase 1").selectOption("HYPERTROPHY");
-  await page.getByLabel("Estímulo da fase 2").selectOption("STRENGTH");
-  await expect(generate).toBeDisabled();
-  await page.getByLabel("Estímulo da fase 3").selectOption("HYPERTROPHY");
-  await page.getByRole("group", { name: "Equipamentos disponíveis" }).getByRole("button", { name: "Marcar todos" }).click();
-  // 0.96: three steps. The defaults of the engine are read in the second one and nothing there has to be edited; the third has the progression.
-  await page.getByRole("button", { name: /Políticas de dose/ }).click();
-  await expect(page.getByText("Os valores padrão desta ferramenta não são recomendação universal.").first()).toBeVisible();
+  await expect(page.getByRole("region", { name: "Base utilizada" })).toContainText("3 fases · 12 semanas");
+  await expect(page.getByRole("heading", { name: "Dados do aluno" })).toBeVisible();
+  // Nothing pre-selected: the footer says exactly what is missing and the way on waits for it.
+  const next = page.getByRole("button", { name: "Continuar para doses" });
+  await expect(next).toBeDisabled();
+  await expect(page.getByText("4 respostas faltam: 3 estímulos e equipamentos")).toBeVisible();
+  // The exact list of pending answers is on the third step, each one a link to its field (which keeps what was chosen).
+  await page.getByRole("button", { name: /Progressão/ }).first().click();
+  await expect(page.locator(".fig-gen-pill", { hasText: "4 RESPOSTAS PENDENTES" })).toBeVisible();
+  await page.getByRole("button", { name: "Estímulo da fase 02" }).click();
+  await expect(page.getByLabel("Estímulo principal da fase 2")).toBeFocused();
+  await page.getByLabel("Estímulo principal da fase 1").selectOption("HYPERTROPHY");
+  await page.getByLabel("Estímulo principal da fase 2").selectOption("STRENGTH");
+  await expect(next).toBeDisabled();
+  await page.getByLabel("Estímulo principal da fase 3").selectOption("HYPERTROPHY");
+  await expect(page.getByText("1 resposta falta: equipamentos")).toBeVisible();
+  // "Sem equipamento" is exclusive; the full list opens under "Ver lista completa".
+  const equipment = page.getByRole("group", { name: "Equipamentos disponíveis" });
+  await equipment.getByLabel("Sem equipamento").check();
+  await equipment.getByLabel("Barra", { exact: true }).check();
+  await expect(equipment.getByLabel("Sem equipamento")).not.toBeChecked();
+  await equipment.getByRole("button", { name: "Ver lista completa de equipamentos" }).click();
+  await equipment.getByRole("button", { name: "Marcar todos" }).click();
+  await expect(next).toBeEnabled();
+  // Second step: the catalogue of the engine's policies, one line each. Nothing has to be edited; editing is by the side panel and is checked.
+  await next.click();
+  await expect(page.getByRole("heading", { name: "Política de doses" })).toBeVisible();
+  await expect(page.getByText("3 × 8–12 • RIR 1–3 • 90 s")).toBeVisible();
+  await page.getByRole("tab", { name: "Cardiorrespiratório" }).click();
+  await expect(page.getByRole("button", { name: "Editar Resistência aeróbia" })).toBeVisible();
+  await page.getByRole("tab", { name: "Treino resistido" }).click();
+  await page.getByRole("button", { name: "Editar Hipertrofia" }).click();
+  const editor = page.getByLabel("Editar política: Hipertrofia");
+  await expect(editor.getByText("Heurística operacional editável")).toBeVisible();
+  await editor.getByLabel("Séries").fill("4");
+  await expect(editor.getByText("Há ajustes não salvos nesta política.")).toBeVisible();
+  await editor.getByLabel("Reps mín.").fill("15");
+  await editor.getByRole("button", { name: "Salvar ajustes" }).click();
+  await expect(editor.getByText("O mínimo não pode passar do máximo.")).toBeVisible();
+  await editor.getByLabel("Reps mín.").fill("8");
+  await editor.getByRole("button", { name: "Salvar ajustes" }).click();
+  await expect(page.getByText("4 × 8–12 • RIR 1–3 • 90 s")).toBeVisible();
+  await editor.getByRole("button", { name: "Restaurar padrão" }).click();
+  await expect(page.getByText("3 × 8–12 • RIR 1–3 • 90 s")).toBeVisible();
+  await page.getByRole("button", { name: "Continuar para progressão" }).click();
+  // Third step: the progression of each phase, with the optional adjustments closed.
+  const generate = page.getByRole("button", { name: "Gerar prescrição", exact: true });
   await expect(generate).toBeEnabled();
-  await page.getByRole("button", { name: /Progressão/ }).click();
   const progression = page.getByRole("group", { name: /Progressão da Fase 01/ });
   await progression.getByLabel("Modelo").selectOption("LINEAR");
   await progression.getByLabel("Parâmetro").selectOption("sets");
   await progression.getByLabel("Na semana 1").fill("3");
   await progression.getByLabel("Na semana 4").fill("4");
-  // Motor V3 S4: suggested targets per phase, offered for acceptance (nothing pre-selected); phase 1 accepted here as is.
+  // Motor V3 S4: suggested targets per phase (inside the closed "Ajustes opcionais"), offered for acceptance (nothing pre-selected); phase 1 accepted here as is.
+  await page.locator("summary").filter({ hasText: "Ajustes opcionais (avançado)" }).click();
   await page.locator("summary").filter({ hasText: "Alvos por fase (opcional)" }).click();
   const formCard = page.getByRole("group", { name: "Alvos sugeridos · Fase 1" });
   await expect(formCard.getByText("Heurística operacional (editável)").first()).toBeVisible();
@@ -84,7 +125,7 @@ test("automatic prescription from the periodization to the student's log", async
   // 2. Processing, then 3. the whole proposal.
   await generate.click();
   // 0.96 (Figma RX): the proposal is a workbench: status and counts on top, the tabs Sessões, Alertas, Premissas and Regras.
-  await expect(page.getByText("Proposta • para revisão")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("region", { name: "Resumo da proposta" })).toBeVisible({ timeout: 60_000 });
   await expect(page.getByRole("tablist", { name: "Revisão da proposta" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Sessões" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByText(/^3 \/ 3\s+fases$/)).toBeVisible();
