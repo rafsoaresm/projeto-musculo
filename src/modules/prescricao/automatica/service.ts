@@ -300,9 +300,29 @@ export interface ConsideredFact {
   source: "Ficha" | "Avaliação" | "Periodização" | "Biblioteca" | "Histórico" | "Rascunho";
 }
 
+/** The few counts and facts the compact "Base utilizada" strip and the student card read, as data (never parsed from the texts above). */
+export interface GenerationSummary {
+  phases: number;
+  weeks: number;
+  catalogTotal: number;
+  catalogInferred: number;
+  catalogPending: number;
+  /** ISO date (yyyy-mm-dd) of the most recent assessment, or null when none is recorded. */
+  assessedOn: string | null;
+  parq: "CLEAR" | "POSITIVE" | "NOT_DONE";
+  findings: number;
+  /** Exercises already in the draft, which the generation preserves. */
+  preserved: number;
+  level: string | null;
+  goal: string | null;
+  daysPerWeek: number | null;
+  sessionMinutes: number | null;
+}
+
 /** Everything the generation form needs, read again on every visit through the gated repositories. */
 export interface GenerationScreen {
   contentVersion: number;
+  summary: GenerationSummary;
   structure: Array<{
     index: number;
     name: string | null;
@@ -409,8 +429,24 @@ function screenOf(ctx: GenerationContext, built: Built | Extract<ReturnType<type
     sessionsPerWeek: ph.sessionsPerWeek,
     workouts: ph.workouts.map((wk) => ({ label: wk.label, name: wk.name, target: wk.exerciseTarget })),
   }));
+  const summary: GenerationSummary = {
+    phases: ctx.revision.schedule.phases.length,
+    weeks: ctx.revision.schedule.totalWeeks,
+    catalogTotal: ctx.catalog.length,
+    catalogInferred: counts.INFERRED,
+    catalogPending: counts.PENDING,
+    assessedOn: ctx.assessment ? ctx.assessment.assessedOn.slice(0, 10) : null,
+    parq: student.screening.parq,
+    findings: student.findings.length,
+    preserved: ctx.existing.length,
+    level: p?.level ?? null,
+    goal: student.goal?.value ?? null,
+    daysPerWeek: p?.daysPerWeek ?? null,
+    sessionMinutes: p?.sessionMinutes ?? null,
+  };
   return {
     contentVersion: ctx.revision.contentVersion,
+    summary,
     structure,
     questions: built.questions,
     assumptions: built.assumptions,

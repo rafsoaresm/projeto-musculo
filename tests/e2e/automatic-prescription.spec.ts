@@ -9,6 +9,7 @@ import {
   newActor,
   noHorizontalOverflow,
   openDeliverDialog,
+  openFullPrescription,
   readyPlan,
   showStudentTab,
   signIn,
@@ -82,10 +83,20 @@ test("automatic prescription from the periodization to the student's log", async
   await noHorizontalOverflow(page);
   // 2. Processing, then 3. the whole proposal.
   await generate.click();
-  await expect(page.getByRole("heading", { name: "Proposta de prescrição" })).toBeVisible({ timeout: 60_000 });
-  await expect(page.getByText("Fases geradas")).toBeVisible();
+  // 0.96 (Figma RX): the proposal is a workbench: status and counts on top, the tabs Sessões, Alertas, Premissas and Regras.
+  await expect(page.getByText("Proposta • para revisão")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("tablist", { name: "Revisão da proposta" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Sessões" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByText(/^3 \/ 3\s+fases$/)).toBeVisible();
+  const alertsTab = page.getByRole("tab", { name: /^Alertas \(\d+\)$/ });
+  const sessionsTab = page.getByRole("tab", { name: "Sessões" });
+  await expect(page.getByRole("tab", { name: /^Premissas \(\d+\)$/ })).toBeVisible();
+  await expect(page.getByRole("tab", { name: /^Regras \(\d+\)$/ })).toBeVisible();
 
   // Motor V3: the plan audit, recorded with the proposal (rules 2026.11.3), read from the real sessions of each week.
+  // The audit is part of the Alertas tab.
+  await alertsTab.click();
+  await expect.poll(() => new URL(page.url()).searchParams.get("aba")).toBe("alertas");
   const audit = page.locator("section.audit-panel");
   await expect(page.getByRole("heading", { name: "Auditoria técnica do plano" })).toBeVisible();
   await expect(page.getByText(/· auditoria 1\.0\.0\. /)).toBeVisible();
@@ -101,13 +112,19 @@ test("automatic prescription from the periodization to the student's log", async
   await noTargets.getByRole("link", { name: "Ver a fase 3" }).click();
   await expect(page.getByRole("navigation", { name: "Fases da proposta" }).getByRole("link", { name: /^Fase 03/ })).toHaveAttribute("aria-current", "page");
   expect(new URL(page.url()).searchParams.get("fase")).toBe("3");
+  // The link goes to the phase's sessions; the audit is one tab away.
+  await alertsTab.click();
   await expect(page.getByRole("heading", { name: "Auditoria técnica do plano" })).toBeVisible();
   await audit.locator("summary").filter({ hasText: "Distribuição por músculo · Fase 3" }).click();
   await expect(audit.getByRole("region", { name: "Distribuição por músculo da fase 3, rolável para o lado" })).toBeVisible();
   await noHorizontalOverflow(page);
   // The phase's "sem alvos" warning points at the one card, in the audit; accepting regenerates the phase with the suggestion.
-  await page.locator("summary").filter({ hasText: /^Avisos desta fase/ }).click();
-  await page.getByRole("link", { name: "Ver alvos sugeridos" }).first().click();
+  // The warning is a record of the alerts table (filter "Fase 03"); its panel has the link to the card.
+  await page.getByRole("group", { name: "Filtrar alertas" }).getByRole("button", { name: "Fase 03" }).click();
+  const records = page.getByRole("button", { name: /^Revisar registro \d+:/ });
+  const toTargets = page.getByRole("link", { name: "Ver alvos sugeridos" });
+  for (let n = 0, total = await records.count(); n < total && !(await toTargets.isVisible()); n++) await records.nth(n).click();
+  await toTargets.click();
   expect(new URL(page.url()).hash).toBe("#alvos-sugeridos-fase-3");
   const card = audit.getByRole("group", { name: "Alvos sugeridos · Fase 3" });
   await expect(card).toBeInViewport();
@@ -117,6 +134,7 @@ test("automatic prescription from the periodization to the student's log", async
   await card.getByRole("button", { name: "Aceitar e regenerar a fase" }).click();
   await expect(page.getByText(`Versão ${versionBefore + 1}`, { exact: true })).toBeVisible({ timeout: 60_000 });
   await expect(audit.locator(".audit-finding").filter({ hasText: "Fase sem alvos estruturados" })).toHaveCount(0);
+  await sessionsTab.click();
   await page.getByRole("navigation", { name: "Fases da proposta" }).getByRole("link", { name: /^Fase 01/ }).click();
   await expect(page.getByRole("navigation", { name: "Fases da proposta" }).getByRole("link", { name: /^Fase 01/ })).toHaveAttribute("aria-current", "page");
 
@@ -124,44 +142,59 @@ test("automatic prescription from the periodization to the student's log", async
   const weeks = page.getByRole("navigation", { name: "Semanas da fase 1" });
   await weeks.getByRole("link", { name: "Semana 2" }).click();
   await expect(weeks.getByRole("link", { name: "Semana 2" })).toHaveAttribute("aria-current", "page");
+  // The week is kept in the address, without a new page.
+  await expect.poll(() => new URL(page.url()).searchParams.get("semana")).toBe("2");
   const session = page.getByRole("region", { name: /^Semana 2, sessão 1, treino Full Body$/ });
-  await expect(session.locator(".exercise-list > li")).toHaveCount(3);
-  await session.locator(".why-details summary").first().click();
-  await expect(session.locator(".why-details").first().getByText("Heurística operacional (editável)").first()).toBeVisible();
+  await expect(session.locator("tbody tr")).toHaveCount(3);
+  // The panel of the selected exercise (the first one by default) holds the dose, the origin and "Por quê?".
+  const panel = page.locator("aside.rx-exercise");
+  await expect(panel.getByRole("button", { name: /^Manter / })).toBeVisible();
+  await expect(panel.getByRole("button", { name: /^Substituir / })).toBeVisible();
+  await expect(panel.getByRole("button", { name: /^Trocar .* por outro$/ })).toBeVisible();
+  await panel.locator(".why-details summary").first().click();
+  await expect(panel.locator(".why-details").first().getByText("Heurística operacional (editável)").first()).toBeVisible();
   // The item's part of the week's volume, with the week's total from the audit.
-  const why = session.locator(".why-details").first();
+  const why = panel.locator(".why-details").first();
   for (const heading of ["Por que este exercício", "Contribuição na semana", /^Por que \d+ séries?$/, "Regras usadas", "O que mudaria esta escolha"])
     await expect(why.getByRole("heading", { name: heading })).toBeVisible();
-  await expect(session.locator(".why-details").first().getByText(/^Total da semana 2 na fase \(3 sessões\)/)).toBeVisible();
+  await expect(why.getByText(/^Total da semana 2 na fase \(3 sessões\)/)).toBeVisible();
   // The weekly table gains the sessions with direct stimulus.
   await page.locator("summary").filter({ hasText: "Volume semanal por músculo · Semana 2" }).click();
   await expect(page.getByRole("columnheader", { name: "Sessões c/ estímulo direto" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Alertas, premissas e avisos" })).toBeVisible();
+  await expect(alertsTab).toBeVisible();
   await noHorizontalOverflow(page);
 
   // 8. Substitute the first exercise in the whole phase, with an alternative the tool offers.
-  const firstName = (await session.locator(".exercise-list > li strong").first().innerText()).trim();
-  await session.getByRole("button", { name: `Substituir ${firstName}` }).click();
-  const dialog = page.getByRole("dialog", { name: `Substituir ${firstName}` });
+  const firstName = (await panel.locator(".rx-panel-title").innerText()).trim();
+  await panel.getByRole("button", { name: `Substituir ${firstName}` }).click();
+  const dialog = page.getByRole("dialog", { name: "Substituir exercício" });
   // The tool's alternatives (reviewed or inferred), or, when none fits the equipment, any exercise of the library.
   const radios = dialog.locator('input[name="alternativa"]');
   await expect(radios.first().or(dialog.getByText("Nenhuma alternativa compatível", { exact: false }))).toBeVisible({ timeout: 30_000 });
   if (await radios.count()) await radios.first().check();
-  else await dialog.getByLabel("Ou outro exercício da biblioteca").selectOption({ index: 1 });
+  else {
+    await dialog.getByRole("searchbox", { name: "Buscar nome ou grupo muscular" }).fill("a");
+    await dialog.locator('input[name="alternativa"]').first().check();
+  }
   await dialog.getByLabel("Na fase inteira").check();
-  await dialog.getByRole("button", { name: "Substituir", exact: true }).click();
+  await dialog.getByRole("button", { name: "Confirmar substituição" }).click();
   await expect(dialog).toBeHidden();
   await expect(session.getByText("Trocado por você").first()).toBeVisible({ timeout: 30_000 });
 
   // 9. Regenerate one session.
-  await session.getByRole("button", { name: "Regenerar esta sessão" }).click();
+  await page.getByRole("button", { name: "Mais ações" }).click();
+  await page.getByRole("dialog", { name: "Mais ações" }).getByRole("button", { name: /^Regenerar esta sessão/ }).click();
   await expect(page.getByRole("status").filter({ hasText: /Proposta atualizada|mudaram/ })).toBeVisible({ timeout: 30_000 });
 
   // 10. Apply to the draft: the existing flow continues on the revision page.
-  await page.getByRole("button", { name: "Aplicar ao rascunho", exact: true }).click();
-  const applyDialog = page.getByRole("dialog", { name: "Aplicar ao rascunho" });
-  await expect(applyDialog.getByText("Repetir o pedido não duplica sessões.")).toBeVisible();
-  await applyDialog.getByRole("button", { name: "Confirmar e aplicar" }).click();
+  await page.getByRole("button", { name: /^Aplicar \d+ sessões ao rascunho$/ }).click();
+  const applyDialog = page.getByRole("dialog", { name: "Aplicar proposta ao rascunho" });
+  await expect(applyDialog.getByText("A aprovação e a entrega para o aluno permanecem separadas", { exact: false })).toBeVisible();
+  // The confirmation waits for the explicit acknowledgement that applying does not publish.
+  const confirmApply = applyDialog.getByRole("button", { name: "Confirmar aplicação ao rascunho" });
+  await expect(confirmApply).toBeDisabled();
+  await applyDialog.getByLabel("Entendi que aplicar ao rascunho não publica os treinos").check();
+  await confirmApply.click();
   await expect(page.getByText("Proposta aplicada ao rascunho.")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("heading", { name: "Doses por sessão" })).toBeVisible();
   await expect(page.getByText("Proposta automática").first()).toBeVisible();
@@ -206,6 +239,7 @@ test("automatic prescription from the periodization to the student's log", async
 
   // The legacy plan is unchanged for the professional: no sessions, no proposal.
   await page.goto(legacyURL);
+  await openFullPrescription(page);
   await expect(page.getByRole("region", { name: "Treino Full Body" }).getByText("Agachamento da triagem")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Doses por sessão" })).toHaveCount(0);
 

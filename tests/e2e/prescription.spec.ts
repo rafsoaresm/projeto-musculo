@@ -5,7 +5,7 @@ import {
   createNewRevision,
   createProfessional,
   localIP,
-  noHorizontalOverflow, openStructure, showStudentTab
+  noHorizontalOverflow, openFullPrescription, openStructure, showStudentTab
 } from "./helpers";
 
 // The page has two sets of phase tabs: the planner's and the prescription's.
@@ -114,6 +114,7 @@ test("a professional prescribes by hand, reorders, copies and revises without lo
 
   // Approve it without delivering (the exception): it becomes read-only, exercises included.
   await approveWithoutDelivering(page);
+  await openFullPrescription(page);
   const frozen = workout(page, "A");
   await expect(frozen.getByText("Meu exercício")).toBeVisible();
   await expect(frozen.getByRole("button", { name: /Editar|Remover|Duplicar|Adicionar/ })).toHaveCount(0);
@@ -128,6 +129,7 @@ test("a professional prescribes by hand, reorders, copies and revises without lo
   await copy.getByRole("button", { name: "Confirmar remoção" }).click();
   await expect(copy.getByText("Meu exercício")).toHaveCount(0);
   await page.goto(revisionURL);
+  await openFullPrescription(page);
   await expect(workout(page, "A").getByText("Meu exercício")).toBeVisible();
 
   // The "Planos e treinos" screen lists the newest revision of the plan and what is still pending.

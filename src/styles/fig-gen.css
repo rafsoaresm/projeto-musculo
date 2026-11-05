@@ -1,1 +1,1318 @@
 /* Figma GEN: estilos desta família, escritos a partir dos frames. */
+/*
+ * Geração automática (frames GEN-01..08, fileKey RRHeYHC01jSd0hnrRzzBxP). As medidas vêm de get_design_context: desktop 1440 (conteúdo de
+ * 1168 px: coluna principal de 754 e lateral de 400, gap de 14), celular 390 (gutter de 17 px). Cores e raios são os tokens do projeto
+ * (borda neutra, fundo da página, azul #0078B8, aviso em tom suave). Duas exceções nomeadas, ambas do DESIGN-SYSTEM: o texto de aviso usa
+ * o degrau -800 (o -700 do frame dá 4,2:1 sobre branco) e os alvos de toque têm 44 px no celular (o frame desenha 30 a 42 px).
+ * O mesmo markup serve aos dois layouts: .fig-gen-d aparece só no desktop, .fig-gen-m só no celular (até 860 px, como o shell do app).
+ */
+
+.fig-gen {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  color: var(--color-ink);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.fig-gen [hidden] {
+  display: none !important;
+}
+.fig-gen .fig-gen-m {
+  display: none;
+}
+.fig-gen h1,
+.fig-gen h2,
+.fig-gen h3,
+.fig-gen p {
+  margin: 0;
+}
+
+/* ---------- Controles ---------- */
+.fig-gen label {
+  display: block;
+  gap: 0;
+  font-size: inherit;
+  font-weight: 400;
+  color: inherit;
+}
+.fig-gen input:not([type="checkbox"]),
+.fig-gen select {
+  min-height: 36px;
+  padding: 0 9px;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-ink);
+  font-size: 12px;
+  font-weight: 400;
+}
+.fig-gen select {
+  appearance: none;
+  padding-right: 32px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%230078B8' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+}
+.fig-gen select:has(option[value=""]:checked) {
+  color: var(--color-muted);
+}
+.fig-gen input[aria-invalid="true"],
+.fig-gen select[aria-invalid="true"] {
+  border-color: var(--color-error);
+}
+.fig-gen input::placeholder {
+  color: var(--color-muted);
+  opacity: 1;
+}
+.fig-gen input[type="checkbox"] {
+  flex: none;
+  width: 14px;
+  min-width: 14px;
+  height: 14px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--color-primary);
+}
+.fig-gen-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 18px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-button);
+  background: var(--color-surface);
+  color: var(--color-primary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+  text-align: center;
+  cursor: pointer;
+}
+.fig-gen-btn:hover {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+.fig-gen-btn.small {
+  min-height: 34px;
+  padding: 0 16px;
+}
+.fig-gen-btn.wide {
+  width: 100%;
+  min-height: 37px;
+}
+.fig-gen-btn.primary {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+.fig-gen-btn.primary:hover {
+  background: var(--color-primary-strong);
+}
+.fig-gen-btn:disabled {
+  border-color: var(--color-bg-subtle);
+  background: var(--color-bg-subtle);
+  color: var(--color-ink);
+  cursor: not-allowed;
+}
+.fig-gen-link {
+  min-height: 0;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--color-primary-strong);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.fig-gen-pill {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 26px;
+  padding: 0 16px;
+  border-radius: 13px;
+  background: var(--color-bg-subtle);
+  color: var(--color-ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+.fig-gen-pill.brand {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+.fig-gen-pill.ok {
+  background: var(--color-success-soft);
+  color: var(--color-success-text);
+}
+.fig-gen .warn {
+  color: var(--color-warning-text);
+}
+.fig-gen-muted,
+.fig-gen-sub {
+  color: var(--color-muted);
+  font-size: 12px;
+}
+.fig-gen-hint {
+  color: var(--color-muted);
+  font-size: 11px;
+}
+.fig-gen-note {
+  min-height: 18px;
+  color: var(--color-muted);
+  font-size: 11px;
+}
+.fig-gen-strong {
+  color: var(--color-ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+.fig-gen-rule {
+  width: 100%;
+  height: 1px;
+  margin: 2px 0;
+  border: 0;
+  background: var(--color-line);
+}
+.fig-gen-error {
+  color: var(--color-error);
+  font-size: 11px;
+  font-weight: 600;
+}
+.fig-gen-errors {
+  padding: 12px 16px;
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-card);
+  background: var(--color-error-soft);
+  color: var(--color-error);
+  font-size: 12px;
+  font-weight: 600;
+}
+.fig-gen-field {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  min-width: 0;
+}
+.fig-gen .fig-gen-field-label {
+  color: var(--color-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+.fig-gen-field-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+.fig-gen-input {
+  position: relative;
+}
+.fig-gen-input input {
+  width: 100%;
+}
+.fig-gen-suffix {
+  position: absolute;
+  top: 50%;
+  right: 9px;
+  transform: translateY(-50%);
+  color: var(--color-muted);
+  font-size: 10px;
+  pointer-events: none;
+}
+.fig-gen .fig-gen-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  font-size: 12px;
+}
+.fig-gen-checks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 2px 16px;
+}
+.fig-gen-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.fig-gen-chip {
+  min-height: 34px;
+  padding: 4px 12px;
+  border: 1px dashed var(--color-line-strong);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+.fig-gen-chip[aria-pressed="true"] {
+  border-style: solid;
+  border-color: var(--color-primary-strong);
+  background: var(--color-primary-soft);
+  color: var(--color-primary-strong);
+  font-weight: 700;
+}
+.fig-gen-tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0 8px;
+  border-radius: 9px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary-strong);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 18px;
+}
+.fig-gen-tag.warn {
+  background: var(--color-warning-soft);
+  color: var(--color-warning-text);
+}
+
+/* ---------- Cabeçalho (GEN-01, 75:869..75:874) ---------- */
+.fig-gen-dhead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--color-line);
+}
+.fig-gen-crumb {
+  color: var(--color-primary);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+.fig-gen-dhead h1 {
+  margin: 2px 0 4px;
+  color: var(--color-ink);
+  font-family: var(--font-family-heading);
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.fig-gen-dhead .fig-gen-btn {
+  flex: none;
+  min-width: 168px;
+  margin-top: 3px;
+}
+
+/* ---------- Base utilizada (75:875) ---------- */
+.fig-gen-base {
+  display: grid;
+  gap: 4px;
+  padding: 11px 14px 10px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+}
+.fig-gen-base-title {
+  color: var(--color-muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+.fig-gen-base-cells {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 6px 12px;
+  margin: 0;
+}
+.fig-gen-base-cells > div {
+  display: flex;
+  flex-direction: column-reverse;
+  min-width: 0;
+}
+.fig-gen-base-cells dt,
+.fig-gen-base-cells dd {
+  margin: 0;
+}
+.fig-gen-base-value {
+  color: var(--color-ink);
+  font-size: 15px;
+  font-weight: 600;
+}
+.fig-gen-base-label {
+  color: var(--color-muted);
+  font-size: 10px;
+  font-weight: 400;
+}
+
+/* ---------- Etapas (75:887) ---------- */
+.fig-gen-steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+}
+.fig-gen-steps ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.fig-gen-steps button {
+  min-width: 200px;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--color-line);
+  border-radius: 17px;
+  background: var(--color-surface);
+  color: var(--color-muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: pre;
+  cursor: pointer;
+}
+.fig-gen-steps button[data-current="true"] {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+.fig-gen-steps button:hover {
+  border-color: var(--color-primary);
+}
+.fig-gen-pending-count {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: right;
+}
+
+/* ---------- Colunas e cartões ---------- */
+.fig-gen-body {
+  min-width: 0;
+  container-type: inline-size;
+}
+.fig-gen-cols {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+@container (min-width: 960px) {
+  .fig-gen-cols {
+    grid-template-columns: minmax(0, 1fr) 400px;
+    align-items: stretch;
+  }
+}
+.fig-gen-main,
+.fig-gen-aside {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-width: 0;
+}
+.fig-gen-card {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-width: 0;
+  padding: 15px 17px 17px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+}
+.fig-gen-card-title {
+  color: var(--color-ink);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+/* ---------- GEN-01: estímulos do ciclo ---------- */
+.fig-gen-phase-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(176px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+.fig-gen-phase {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--color-background);
+}
+.fig-gen-phase-pill {
+  width: fit-content;
+  padding: 4px 14px;
+  border-radius: 13px;
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+}
+.fig-gen-phase-weeks {
+  margin-top: 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.fig-gen-phase-meta {
+  color: var(--color-muted);
+  font-size: 11px;
+}
+.fig-gen-phase .fig-gen-field-label {
+  margin-top: 12px;
+  color: var(--color-ink);
+}
+.fig-gen-select select {
+  width: 100%;
+}
+.fig-gen-phase .fig-gen-select select {
+  min-height: 39px;
+  border-radius: 9px;
+}
+.fig-gen-orient {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 14px 16px 16px;
+  border-radius: 10px;
+  background: var(--color-primary-soft);
+  font-size: 12px;
+}
+.fig-gen-orient-title {
+  color: var(--color-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+.fig-gen-early {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+}
+.fig-gen-early > p {
+  justify-self: start;
+}
+.fig-gen-early-title {
+  color: var(--color-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+.fig-gen-question {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--color-background);
+}
+
+/* ---------- Equipamentos (75:933 e GEN-05) ---------- */
+.fig-gen-eq-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.fig-gen .fig-gen-tile {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 9px;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  background: var(--color-background);
+  font-size: 11px;
+  cursor: pointer;
+}
+.fig-gen .fig-gen-tile:has(input:checked) {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+.fig-gen .fig-gen-tile:has(input:focus-visible) {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
+}
+.fig-gen .fig-gen-eq:not([data-expanded="true"]) .fig-gen-tile[data-extra] {
+  display: none;
+}
+.fig-gen-tools {
+  display: none;
+  gap: 16px;
+}
+.fig-gen-eq[data-expanded="true"] .fig-gen-tools {
+  display: flex;
+}
+.fig-gen-eq .fig-gen-btn.wide {
+  margin-top: 4px;
+}
+.fig-gen-eq-status {
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: var(--color-primary-soft);
+}
+.fig-gen-eq-status strong {
+  display: block;
+  color: var(--color-primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+.fig-gen-eq-status span {
+  color: var(--color-muted);
+  font-size: 11px;
+}
+
+/* ---------- Dados do aluno (75:974) ---------- */
+.fig-gen-student {
+  gap: 6px;
+  padding: 12px 14px 14px;
+}
+.fig-gen-student-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.fig-gen-student-head h2 {
+  font-size: 16px;
+  font-weight: 600;
+}
+.fig-gen-student .fig-gen-note {
+  min-height: 0;
+  color: var(--color-ink);
+}
+.fig-gen-student .fig-gen-btn {
+  justify-self: end;
+  min-height: 24px;
+  padding: 0 16px;
+}
+.fig-gen-origin {
+  display: grid;
+  gap: 10px;
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-line);
+}
+.fig-gen-facts {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+.fig-gen-facts dt {
+  color: var(--color-muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+.fig-gen-facts dd {
+  margin: 0;
+  font-size: 12px;
+}
+
+/* ---------- GEN-02: catálogo de políticas e editor ---------- */
+.fig-gen-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 8px 0 4px;
+}
+.fig-gen-tab {
+  min-height: 31px;
+  padding: 0 18px;
+  border: 1px solid var(--color-line);
+  border-radius: 16px;
+  background: var(--color-surface);
+  color: var(--color-primary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.fig-gen-tab[aria-selected="true"] {
+  border-color: var(--color-primary-soft);
+  background: var(--color-primary-soft);
+}
+.fig-gen-panel {
+  display: grid;
+  gap: 6px;
+}
+.fig-gen-thead,
+.fig-gen-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.2fr) 82px;
+  align-items: center;
+  gap: 10px;
+}
+.fig-gen-thead {
+  padding: 0 11px;
+  min-height: 33px;
+  border-radius: 7px;
+  background: var(--color-bg-subtle);
+  color: var(--color-muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+.fig-gen-rows {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.fig-gen-row {
+  position: relative;
+  min-height: 50px;
+  padding: 0 10px;
+  border: 1px solid var(--color-line);
+  border-radius: 7px;
+  background: var(--color-surface);
+}
+.fig-gen-row[data-selected="true"] {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+.fig-gen-row-title {
+  font-size: 12px;
+  font-weight: 600;
+}
+.fig-gen-row-dose {
+  color: var(--color-muted);
+  font-size: 11px;
+}
+.fig-gen-row-edit {
+  min-height: 34px;
+  padding: 0;
+}
+.fig-gen-editor {
+  gap: 10px;
+}
+.fig-gen-editor-title {
+  margin-top: 4px;
+  color: var(--color-ink);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.fig-gen-fields {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.fig-gen-field-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px 12px;
+  margin-top: 6px;
+}
+.fig-gen-warn-box {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 13px;
+  border-radius: 9px;
+  background: var(--color-warning-soft);
+  font-size: 12px;
+}
+.fig-gen-warn-title {
+  color: var(--color-warning-text);
+  font-size: 13px;
+  font-weight: 600;
+}
+.fig-gen-editor-actions {
+  display: flex;
+  gap: 12px;
+}
+.fig-gen-editor-actions .fig-gen-btn {
+  flex: 1 1 0;
+  min-height: 33px;
+}
+
+/* ---------- GEN-03: progressão e revisão ---------- */
+.fig-gen-prog {
+  gap: 12px;
+}
+.fig-gen-prog > .fig-gen-sub {
+  margin-top: -4px;
+}
+.fig-gen-pcard {
+  display: grid;
+  gap: 10px;
+  padding: 13px;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--color-background);
+}
+.fig-gen-pcard h3 {
+  font-size: 14px;
+  font-weight: 600;
+}
+.fig-gen-pgrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr);
+  gap: 14px;
+}
+.fig-gen-pgrid.more {
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+.fig-gen-adv {
+  border: 1px solid var(--color-line);
+  border-radius: 9px;
+  background: var(--color-surface);
+}
+.fig-gen-adv > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 45px;
+  padding: 0 14px;
+  color: var(--color-ink);
+  font-size: 13px;
+  font-weight: 600;
+  list-style: none;
+  cursor: pointer;
+}
+.fig-gen-adv > summary::-webkit-details-marker {
+  display: none;
+}
+.fig-gen-adv-state {
+  color: var(--color-muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+.fig-gen-caret {
+  display: inline-block;
+  font-size: 10px;
+}
+.fig-gen-adv[open] .fig-gen-caret {
+  transform: rotate(90deg);
+}
+.fig-gen-adv-body {
+  display: grid;
+  gap: 14px;
+  padding: 4px 14px 16px;
+  min-width: 0;
+}
+.fig-gen-sub-details > summary {
+  min-height: 34px;
+  color: var(--color-ink);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.fig-gen-fieldset {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.fig-gen-fieldset legend {
+  padding: 0;
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.fig-gen-picker {
+  display: grid;
+  gap: 8px;
+}
+.fig-gen-picker-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+.fig-gen-picker-row .fig-gen-field {
+  flex: 1 1 240px;
+}
+.fig-gen-ready {
+  gap: 10px;
+  padding: 16px 15px;
+}
+.fig-gen-ready .fig-gen-card-title {
+  font-size: 19px;
+}
+.fig-gen-pending {
+  display: grid;
+  gap: 8px;
+  margin: 6px 0 14px;
+  padding: 0;
+  list-style: none;
+}
+.fig-gen-pending button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 38px;
+  padding: 0 11px;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  background: var(--color-background);
+  color: var(--color-ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.fig-gen-pending button:hover {
+  border-color: var(--color-primary);
+}
+.fig-gen-dot {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--color-warning-700);
+  border-radius: 7px;
+  background: var(--color-warning-soft);
+}
+.fig-gen-ready .fig-gen-strong {
+  margin-top: 6px;
+  font-size: 13px;
+}
+.fig-gen-ready .fig-gen-strong.small {
+  margin-top: 12px;
+  font-size: 11px;
+}
+.fig-gen-banner {
+  min-height: 43px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--color-warning-soft);
+  color: var(--color-warning-text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* ---------- Rodapé persistente (75:984) ---------- */
+.fig-gen-bar {
+  position: sticky;
+  bottom: 8px;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 252px;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 15px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+}
+.fig-gen-bar-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+.fig-gen-bar-sub,
+.fig-gen-bar-hint {
+  color: var(--color-muted);
+  font-size: 11px;
+}
+
+/* ---------- Celular (GEN-04..08): o shell troca o menu lateral por gaveta a partir daqui ---------- */
+@media (max-width: 860px) {
+  .fig-gen {
+    gap: 12px;
+    padding-bottom: calc(112px + env(safe-area-inset-bottom));
+  }
+  .fig-gen .fig-gen-d {
+    display: none;
+  }
+  .fig-gen .fig-gen-m {
+    display: block;
+  }
+  .fig-gen span.fig-gen-m {
+    display: inline;
+  }
+  .fig-gen input:not([type="checkbox"]),
+  .fig-gen select {
+    min-height: 44px;
+    padding: 0 10px;
+  }
+  .fig-gen-btn,
+  .fig-gen-btn.small,
+  .fig-gen-btn.wide {
+    min-height: 44px;
+  }
+  .fig-gen-link {
+    min-height: 44px;
+    padding: 0 4px;
+  }
+  .fig-gen .fig-gen-check,
+  .fig-gen-chip {
+    min-height: 44px;
+  }
+  .fig-gen-card {
+    padding: 12px;
+  }
+  .fig-gen-card-title {
+    font-size: 16px;
+  }
+
+  .fig-gen .fig-gen-mhead {
+    display: grid;
+    gap: 2px;
+  }
+  .fig-gen-backlink {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    min-height: 44px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--color-primary);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .fig-gen-mhead h1 {
+    color: var(--color-ink);
+    font-family: var(--font-family-heading);
+    font-size: 21px;
+    font-weight: 700;
+    line-height: 1.3;
+  }
+  .fig-gen-mhead h1:focus {
+    outline: none;
+  }
+  .fig-gen-mhead .fig-gen-sub {
+    font-size: 11px;
+  }
+  .fig-gen .fig-gen-state.fig-gen-m {
+    display: grid;
+    gap: 2px;
+    padding: 9px 11px 10px;
+    border: 1px solid var(--color-line);
+    border-radius: 10px;
+    background: var(--color-surface);
+  }
+  .fig-gen-state strong {
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .fig-gen-state span {
+    color: var(--color-muted);
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .fig-gen-state span.warn {
+    color: var(--color-warning-text);
+  }
+
+  .fig-gen-steps {
+    padding: 4px;
+    border-radius: 10px;
+  }
+  .fig-gen-steps ol {
+    display: grid;
+    flex: 1;
+    grid-template-columns: 1.07fr 1fr 1.3fr;
+    gap: 4px;
+  }
+  .fig-gen-steps button {
+    width: 100%;
+    min-width: 0;
+    min-height: 44px;
+    padding: 0 4px;
+    border-radius: 22px;
+    color: var(--color-primary);
+    white-space: normal;
+  }
+  .fig-gen-steps button:not([data-current="true"]) {
+    color: var(--color-primary);
+  }
+  .fig-gen-steps button[data-current="true"] {
+    border-color: var(--color-primary-soft);
+  }
+
+  /* GEN-04 */
+  .fig-gen .fig-gen-phases {
+    padding: 0;
+    border: 0;
+    background: none;
+    gap: 2px;
+  }
+  .fig-gen-phases .fig-gen-sub {
+    font-size: 11px;
+  }
+  .fig-gen-phase-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    margin-top: 8px;
+  }
+  .fig-gen-phase {
+    gap: 3px;
+    padding: 10px 11px;
+    border-radius: 10px;
+    background: var(--color-surface);
+  }
+  .fig-gen-phase-name {
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .fig-gen-phase-meta {
+    font-size: 10px;
+  }
+  .fig-gen-phase .fig-gen-select {
+    margin-top: 6px;
+  }
+  .fig-gen-phase .fig-gen-select select {
+    min-height: 44px;
+    border-radius: 8px;
+    background-color: var(--color-background);
+    font-size: 11px;
+  }
+  .fig-gen .fig-gen-eqsum.fig-gen-m {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 6px 12px;
+    padding: 11px;
+    border-radius: 10px;
+  }
+  .fig-gen-eqsum > strong {
+    flex: 1 0 100%;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .fig-gen-eqsum > p {
+    flex: 1 1 120px;
+    font-size: 11px;
+  }
+
+  /* GEN-05 */
+  .fig-gen:not([data-sub="equipment"]) .fig-gen-eq {
+    display: none;
+  }
+  .fig-gen[data-sub="equipment"] .fig-gen-phases,
+  .fig-gen[data-sub="equipment"] .fig-gen-questions,
+  .fig-gen[data-sub="equipment"] .fig-gen-eqsum,
+  .fig-gen[data-sub="equipment"] .fig-gen-student-slot {
+    display: none;
+  }
+  .fig-gen-eq {
+    gap: 10px;
+    padding: 10px;
+    border-radius: 11px;
+  }
+  .fig-gen-eq-grid {
+    margin-top: 0;
+    gap: 8px;
+  }
+  .fig-gen .fig-gen-tile {
+    min-height: 44px;
+    font-size: 12px;
+  }
+  .fig-gen .fig-gen-eq:not([data-expanded="true"]) .fig-gen-tile[data-extra] {
+    display: flex;
+  }
+  .fig-gen-eq .fig-gen-tools {
+    display: flex;
+  }
+  .fig-gen .fig-gen-eq-status.fig-gen-m {
+    display: block;
+  }
+
+  /* GEN-06 / GEN-07 */
+  .fig-gen-catalog {
+    gap: 8px;
+  }
+  .fig-gen-tabs {
+    flex-wrap: nowrap;
+    margin: 0;
+    gap: 6px;
+  }
+  .fig-gen-tab {
+    flex: 1 1 0;
+    min-height: 44px;
+    padding: 0 6px;
+    border-radius: 22px;
+  }
+  .fig-gen-thead {
+    display: block;
+    min-height: 0;
+    padding: 4px 2px 0;
+    background: none;
+    font-size: 11px;
+  }
+  .fig-gen-row {
+    display: block;
+    min-height: 53px;
+    padding: 7px 40px 7px 11px;
+    border-radius: 8px;
+  }
+  .fig-gen-row-title {
+    display: block;
+    font-size: 13px;
+  }
+  .fig-gen-row-dose {
+    display: block;
+    font-size: 11px;
+  }
+  .fig-gen-row .fig-gen-row-edit {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    min-height: 0;
+    border: 0;
+    border-radius: 8px;
+    background: none;
+    color: transparent;
+  }
+  .fig-gen-row-edit span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+  }
+  .fig-gen-row-edit::after {
+    content: "›";
+    position: absolute;
+    top: 50%;
+    right: 14px;
+    transform: translateY(-50%);
+    color: var(--color-primary);
+    font-size: 20px;
+    font-weight: 700;
+  }
+  .fig-gen:not([data-sub="policy"]) .fig-gen-editor {
+    display: none;
+  }
+  .fig-gen[data-sub="policy"] .fig-gen-catalog {
+    display: none;
+  }
+  .fig-gen .fig-gen-editor {
+    padding: 0;
+    border: 0;
+    background: none;
+    gap: 12px;
+  }
+  .fig-gen .fig-gen-default-box.fig-gen-m {
+    display: grid;
+    gap: 4px;
+    padding: 11px 13px 12px;
+    border-radius: 10px;
+    background: var(--color-primary-soft);
+  }
+  .fig-gen-default-box strong {
+    color: var(--color-primary);
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .fig-gen-default-box span {
+    color: var(--color-muted);
+    font-size: 11px;
+  }
+  .fig-gen-fields {
+    padding: 12px;
+    border: 1px solid var(--color-line);
+    border-radius: 11px;
+    background: var(--color-surface);
+  }
+  .fig-gen-fields legend {
+    padding: 0;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .fig-gen-field-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 14px;
+    margin-top: 10px;
+  }
+  .fig-gen .fig-gen-field-label {
+    font-size: 10px;
+  }
+  .fig-gen .fig-gen-warn-box.fig-gen-m {
+    display: grid;
+    margin-top: 0;
+    padding: 13px 12px;
+    border-radius: 10px;
+  }
+  .fig-gen-editor-actions {
+    display: block;
+  }
+  .fig-gen-editor-actions .fig-gen-btn {
+    width: 100%;
+  }
+
+  /* GEN-08 */
+  .fig-gen-prog {
+    padding: 0;
+    border: 0;
+    background: none;
+    gap: 10px;
+  }
+  .fig-gen-pcard {
+    gap: 6px;
+    padding: 10px 11px 12px;
+    background: var(--color-surface);
+  }
+  .fig-gen-pgrid {
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    gap: 10px;
+  }
+  .fig-gen-adv > summary {
+    min-height: 44px;
+    padding: 0 12px;
+    font-size: 12px;
+  }
+  .fig-gen-adv-body {
+    padding: 4px 12px 14px;
+  }
+  .fig-gen .fig-gen-banner.fig-gen-m {
+    display: block;
+    width: 100%;
+    min-height: 44px;
+  }
+
+  /* Rodapé: faixa fixa da largura da tela, com a área segura do aparelho (75:972 / 77:972) */
+  .fig-gen .fig-gen-bar.fig-gen-m {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 20;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+    padding: 9px 17px calc(10px + env(safe-area-inset-bottom));
+    border: 0;
+    border-top: 1px solid var(--color-line);
+    border-radius: 0;
+  }
+}
+@media (max-width: 360px) {
+  .fig-gen-steps button {
+    font-size: 11px;
+  }
+  .fig-gen-field-grid {
+    gap: 10px 8px;
+  }
+}

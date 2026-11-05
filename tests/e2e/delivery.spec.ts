@@ -92,7 +92,7 @@ test("a plan reaches the client only after the professional approves and deliver
 
   // One confirmation approves and delivers the same revision.
   await approveAndDeliver(page);
-  await expect(page.getByText("Revisão entregue ao aluno. Ela não muda mais.")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Entregue ao aluno" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Aprovar e entregar" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Editar|Remover|Duplicar|Adicionar/ })).toHaveCount(0);
 

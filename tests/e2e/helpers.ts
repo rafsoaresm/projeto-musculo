@@ -291,6 +291,17 @@ export async function openStructure(page: Page) {
   await expect(details.getByLabel("Data de início")).toBeVisible();
 }
 
+/**
+ * A closed revision (ready, approved or delivered) shows the overview of the Figma AP frames: cards per workout and the doses of the week.
+ * The full read-only prescription (every row, notes, per-session doses) is one step further, folded; this opens it.
+ */
+export async function openFullPrescription(page: Page) {
+  const details = page.locator("details.fa-full");
+  await expect(details).toHaveCount(1);
+  if (!(await details.evaluate((node) => (node as HTMLDetailsElement).open))) await details.locator("summary").click();
+  await expect(details.getByRole("heading", { name: "Prescrição dos exercícios" })).toBeVisible();
+}
+
 /** 0.96: opens the one confirmation of "Aprovar e entregar" (or "Entregar ao aluno" on an approved revision) and returns the dialog. */
 export async function openDeliverDialog(page: Page, name = "Aprovar e entregar") {
   await page.getByRole("button", { name, exact: true }).click();

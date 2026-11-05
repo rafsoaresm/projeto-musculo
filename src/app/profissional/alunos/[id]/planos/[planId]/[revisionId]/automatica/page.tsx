@@ -11,11 +11,10 @@ import { recordStudentRead } from "@/db/student-reads";
 import { PageHeading, Pill, formatDateTime } from "@/components/ui";
 import { stateLabel } from "@/modules/planos/labels";
 import { proposalService } from "@/modules/prescricao/automatica/service";
-import { ContextSummary } from "@/modules/prescricao/automatica/context-summary";
 import { GenerationForm } from "@/modules/prescricao/automatica/generation-form";
 import { ProposalView, type ProposalHeaderView } from "@/modules/prescricao/automatica/proposal-view";
-import { ApplyPanel } from "@/modules/prescricao/automatica/apply-panel";
 import { canAcceptSuggestions, pageAudit, phasesWithoutTargets, pickPhase, pickWeek } from "@/modules/prescricao/automatica/view";
+import { pickTab } from "@/modules/prescricao/automatica/workbench";
 import { getRuleSet } from "@/modules/prescricao/motor/rules";
 
 export const dynamic = "force-dynamic";
@@ -118,13 +117,14 @@ export default async function AutomaticPrescription({
     const loaded = await service.screen(planId, revisionId);
     if (loaded.status !== "ok") notFound();
     const { screen } = loaded;
+    // Figma GEN-01..08: the generation draws its own header (breadcrumb, title, "Voltar ao plano") and its compact summaries.
     return (
-      <>
-        {heading}
-        <ContextSummary considered={screen.considered} freeText={screen.freeText} assumptions={screen.assumptions} />
-        <GenerationForm planId={planId} revisionId={revisionId} screen={screen} />
-        {back}
-      </>
+      <GenerationForm
+        planId={planId}
+        revisionId={revisionId}
+        screen={screen}
+        header={{ studentName: student.displayName, planTitle: detail.plan.title, revisionNumber: revision.revisionNumber, backHref: revisionHref }}
+      />
     );
   }
 
@@ -165,38 +165,37 @@ export default async function AutomaticPrescription({
     createdAt: page.header.createdAt,
     updatedAt: page.header.updatedAt,
   };
+  const tab = pickTab(one("aba"));
   return (
-    <>
-      {heading}
-      <ProposalView
-        planId={planId}
-        revisionId={revisionId}
-        selfHref={selfHref}
-        header={header}
-        summary={summaryWithoutAudit}
-        occurrences={page.occurrences}
-        phaseIndex={phaseIndex}
-        week={week}
-        library={library.map((exercise) => ({ id: exercise.id, name: exercise.name }))}
-        audit={audit}
-        acceptSuggestions={acceptSuggestions}
-        targetSuggestions={suggested?.status === "ok" ? suggested.suggestions : []}
-      />
-      {preview && (
-        <ApplyPanel
-          planId={planId}
-          revisionId={revisionId}
-          proposalId={open.id}
-          version={page.header.version}
-          counts={preview.counts}
-          manualWorkouts={preview.manualWorkouts}
-          phasesMissing={preview.phasesMissing}
-          infeasible={preview.infeasible}
-          catalogChanged={preview.catalogChanged.length}
-          stale={page.header.contentVersion !== page.header.baseContentVersion}
-        />
-      )}
-      {back}
-    </>
+    <ProposalView
+      planId={planId}
+      revisionId={revisionId}
+      selfHref={selfHref}
+      revisionHref={revisionHref}
+      studentHref={`/profissional/alunos/${student.id}`}
+      crumb={{ student: student.displayName, plan: detail.plan.title, revision: revision.revisionNumber }}
+      header={header}
+      summary={summaryWithoutAudit}
+      occurrences={page.occurrences}
+      phaseIndex={phaseIndex}
+      week={week}
+      initial={{ tab, slot: one("sessao"), item: one("item") }}
+      library={library.map((exercise) => ({ id: exercise.id, name: exercise.name, category: exercise.category }))}
+      audit={audit}
+      acceptSuggestions={acceptSuggestions}
+      targetSuggestions={suggested?.status === "ok" ? suggested.suggestions : []}
+      apply={
+        preview
+          ? {
+              counts: preview.counts,
+              manualWorkouts: preview.manualWorkouts,
+              phasesMissing: preview.phasesMissing,
+              infeasible: preview.infeasible,
+              catalogChanged: preview.catalogChanged.length,
+              stale: page.header.contentVersion !== page.header.baseContentVersion,
+            }
+          : null
+      }
+    />
   );
 }

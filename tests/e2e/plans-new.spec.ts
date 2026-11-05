@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { addStudent, approveWithoutDelivering, createProfessional, localIP, newActor, noHorizontalOverflow } from "./helpers";
+import { addStudent, approveWithoutDelivering, createProfessional, localIP, newActor, noHorizontalOverflow, openFullPrescription } from "./helpers";
 
 // 0.93 (user, 03/11/2026): "Novo plano" from Planos e treinos asks for the student, and saving the structure goes straight to the prescription.
 const workout = (page: Page, label: string) => page.getByRole("region", { name: `Treino ${label}` });
@@ -108,6 +108,7 @@ test("Planos e treinos → Novo plano → choose the student → structure → p
   await expect(page.getByRole("button", { name: "Aprovar e entregar", exact: true })).toBeEnabled();
   await approveWithoutDelivering(page);
   await expect(page.getByRole("region", { name: "Aprovada, não entregue" })).toBeVisible();
+  await openFullPrescription(page);
   await expect(workout(page, "A").getByText("Agachamento goblet")).toBeVisible();
 
   // Another organization sees none of these students in its picker.

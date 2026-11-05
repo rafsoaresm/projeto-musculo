@@ -21,6 +21,8 @@ Estado conhecido em 28/10/2026: a 0.25.0 está no ar, com as migrations até a 0
 - **Código:** AV-01..06 não comparados com a tela atual; frames móveis de AV não existem no Figma.
 - **Responsável:** a caixa "notificar o aluno" do modal AP-02 **não existe**, porque o produto não tem envio de aviso de entrega. Decidir se haverá (exige serviço de e-mail/notificação e outbox). Hoje a tela afirma que nada é enviado.
 - **Código:** conferir a 0.96.0 com a suíte e2e inteira nos dois mounts antes do merge.
+- **Código:** AP refeita fiel ao Figma (ver VALIDACAO): falta comparar visualmente os 10 frames e rodar os e2e (`delivery`, `plans`, `plans-new`, `prescription`, `assessments*`, `execution`, `automatic-prescription`) nos dois projetos; os helpers ganharam `openFullPrescription`. Destrava: quem fizer a conferência visual e a rodada e2e.
+- **Responsável:** "Baixar prévia em PDF" do menu AP-09/10 não existe (o PDF só é da revisão entregue); decidir se haverá prévia antes da entrega.
 
 ## 1. Depende do Responsável (conta, domínio, decisão)
 
