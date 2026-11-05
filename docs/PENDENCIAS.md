@@ -22,6 +22,14 @@ Estado conhecido em 28/10/2026: a 0.25.0 está no ar, com as migrations até a 0
 - **Responsável:** a caixa "notificar o aluno" do modal AP-02 **não existe**, porque o produto não tem envio de aviso de entrega. Decidir se haverá (exige serviço de e-mail/notificação e outbox). Hoje a tela afirma que nada é enviado.
 - **Código:** conferir a 0.96.0 com a suíte e2e inteira nos dois mounts antes do merge.
 
+## Motor de prescrição híbrido V4 — especificação e telas em 05/11/2026
+
+- **Código / produto:** o novo [handoff V4](HANDOFF-MOTOR-PRESCRICAO-HIBRIDO-V4.md) foi documentado com contratos de IA planejadora, compilação no motor já existente, estratégia e foco por fase, doses adaptativas, custo e testes. **Ainda não implementado** em runtime, API, banco ou produção.
+- **Design / Figma:** oito wireframes editáveis foram criados no arquivo [Trainer Prescription — UX Redesign](https://www.figma.com/design/RRHeYHC01jSd0hnrRzzBxP/Trainer-Prescription-UX-Redesign-Wireframes-V1), sem remover as telas anteriores; exigem validação UX antes de implementar no app.
+- **Responsável:** escolher provedor, teto de custo por organização, política de privacidade e habilitação de IA; decidir rollout gradual.
+- **Advogado / Técnico de Educação Física:** avaliar tratamento e envio de dados de saúde, evidências, parâmetros e critérios de segurança antes de uso real.
+- **Código:** implementar F1–F6 em PRs separados, manter modo por regras, testes e2e em dois mounts, registrar validação e não realizar merge/deploy sem autorização.
+
 ## 1. Depende do Responsável (conta, domínio, decisão)
 
 | # | O que falta | Por que importa | Onde está |
