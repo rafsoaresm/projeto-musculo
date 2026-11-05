@@ -53,10 +53,14 @@ const SENT_FINDING_KINDS = new Set(["MOVEMENT", "POSTURE", "FLEXIBILITY"]);
 const keep = (list: readonly string[] | undefined, allowed: ReadonlySet<string>): string[] => [...new Set((list ?? []).filter((c) => allowed.has(c)))].sort(cmp);
 const band = (n: number): Band => (n <= 0 ? "NONE" : n <= HISTORY_BAND_FEW_MAX ? "FEW" : "MANY");
 
+/**
+ * `minor` means "not confirmed as an adult": a missing or invalid birth date blocks the provider exactly like a known age under 18 (fail closed;
+ * rules mode still works). The gate message says both cases.
+ */
 export function ageBandOf(birthDate: string | null | undefined, asOf: string): { band: AgeBand | null; minor: boolean } {
-  if (!birthDate || !/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) return { band: null, minor: false };
+  if (!birthDate || !/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) return { band: null, minor: true };
   const age = ageOn(birthDate, asOf);
-  if (!Number.isFinite(age) || age < 0) return { band: null, minor: false };
+  if (!Number.isFinite(age) || age < 0) return { band: null, minor: true };
   if (age < 18) return { band: null, minor: true };
   return { band: age < 30 ? "18_29" : age < 40 ? "30_39" : age < 50 ? "40_49" : age < 60 ? "50_59" : "60_PLUS", minor: false };
 }

@@ -131,11 +131,11 @@ function messageFor(reason: PlanFailure, detail: string | null = null): string {
   return (PLAN_MESSAGE as Record<string, string>)[reason] ?? PLAN_MESSAGE.invalid_response;
 }
 
-const fail = (reason: PlanFailure, extra: { detail?: string | null; runId?: string; questions?: GenerationQuestion[]; message?: string } = {}): PlanningOutcome => ({
+const fail = (reason: PlanFailure, extra: { detail?: string | null; runId?: string; questions?: GenerationQuestion[]; message?: string; rulesOk?: boolean } = {}): PlanningOutcome => ({
   ok: false,
   reason,
   message: extra.message ?? messageFor(reason, extra.detail ?? null),
-  canContinueByRules: RULES_IS_THE_WAY_OUT.has(reason),
+  canContinueByRules: RULES_IS_THE_WAY_OUT.has(reason) || extra.rulesOk === true,
   ...(extra.runId ? { runId: extra.runId } : {}),
   ...(extra.questions ? { questions: extra.questions } : {}),
 });
@@ -317,7 +317,7 @@ export function plannerService(db: D1Database, context: AuthenticatedContext, de
       const blocker = await repo.runningByCacheKey(p.planId, p.revisionId, cacheKey);
       return fail("in_progress", { ...(blocker ? { runId: blocker.id } : {}) });
     }
-    if (reason === "busy") return fail("in_progress");
+    if (reason === "busy") return fail("in_progress", { rulesOk: true });
     return fail("not_found");
   }
 
@@ -371,7 +371,7 @@ export function plannerService(db: D1Database, context: AuthenticatedContext, de
       runId, planId: p.planId, revisionId: p.revisionId, idempotencyKey: p.idempotencyKey, requestHash: p.requestHash, mode: "AI" as const,
       baseContentVersion: p.baseContentVersion, structureFingerprint: bundle.refs.structureFingerprint, contextHash: bundle.contextHash,
       aliasesHash: bundle.aliases.aliasMapHash, cacheKey, providerKind: kind, modelId, promptVersion: PLANNER_PROMPT_VERSION, schemaVersion: BLUEPRINT_VERSION,
-      templatesVersion: null, omittedJson: omittedJsonOf(bundle), now,
+      templatesVersion: null, omittedJson: omittedJsonOf(bundle), now, staleBefore: new Date(now.getTime() - staleMs),
     });
     const cached = takeover ? null : await repo.cacheGet(p.planId, p.revisionId, cacheKey, now);
     if (cached) {

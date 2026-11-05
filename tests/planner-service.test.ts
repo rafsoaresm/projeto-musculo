@@ -303,7 +303,7 @@ describe("the gates: every closed gate has its own state, calls nothing, writes 
     const d = await t.newDraft("st-2");
     const { provider, calls } = t.spy();
     const before = await counts();
-    expect(await plan(d, "AI", t.service("tech-a", "org-a", { providers: { mock: provider } }))).toMatchObject({ ok: false, reason: "minor_blocked", message: "Para alunos menores de idade a montagem é por regras.", canContinueByRules: true });
+    expect(await plan(d, "AI", t.service("tech-a", "org-a", { providers: { mock: provider } }))).toMatchObject({ ok: false, reason: "minor_blocked", message: "Para alunos menores de idade, ou sem data de nascimento cadastrada, a montagem é por regras.", canContinueByRules: true });
     expect(calls).toHaveLength(0);
     expect(await counts()).toEqual(before);
     expect(ok(await plan(d, "RULES")).producer).toBe("RULES");
@@ -593,6 +593,40 @@ describe("idempotent re-execution, single flight, stale takeover", () => {
     expect(await later.plan(d.planId, d.revisionId, payload as never)).toMatchObject({ ok: false, reason: "stale", canContinueByRules: true, message: "A tentativa anterior não terminou. Tente de novo ou continue por regras." });
     expect(await t.first("SELECT status, failure_code FROM planning_runs WHERE id = ?1", runId)).toEqual({ status: "FAILED", failure_code: "STALE" });
     expect(ok(await plan(d, "RULES", later)).producer).toBe("RULES");
+  });
+
+  it("AI runs left RUNNING by a dead Worker do not count against the per-organization ceiling once they are stale; a busy answer still offers rules", async () => {
+    const d = await t.newDraft("st-1");
+    const repo = aiPlanningFor(t.db, t.org("tech-a"));
+    const old = new Date(NOW.getTime() - 6 * 3_600_000);
+    for (const k of ["zombie-1", "zombie-2"]) {
+      const started = await repo.runStart({
+        runId: t.id("run"), planId: d.planId, revisionId: d.revisionId, idempotencyKey: `${k}-idempotency-key`, requestHash: "h".repeat(64), mode: "AI",
+        baseContentVersion: 1, structureFingerprint: "f".repeat(32), contextHash: "c".repeat(64), aliasesHash: "a".repeat(64), cacheKey: `${k}-cache`, providerKind: "mock",
+        modelId: "mock-ul", promptVersion: "p", schemaVersion: 1, templatesVersion: null, omittedJson: "[]", now: old,
+      });
+      expect(started).toEqual({ ok: true });
+    }
+    expect(await t.n("SELECT COUNT(*) AS n FROM planning_runs WHERE status = 'RUNNING' AND mode = 'AI'")).toBe(2);
+    const { provider, calls } = t.spy();
+    const svc = t.service("tech-a", "org-a", { providers: { mock: provider } });
+    const outcome = await plan(d, "AI", svc, { answers: uniqueAnswers() });
+    expect(ok(outcome)).toMatchObject({ producer: "AI", cache: "MISS" });
+    expect(calls).toHaveLength(1);
+    await t.run("UPDATE planning_runs SET status = 'FAILED', failure_code = 'STALE', finished_at = ?1 WHERE idempotency_key LIKE 'zombie-%' AND status = 'RUNNING'", NOW.toISOString());
+  });
+
+  it("a student without a birth date is treated like a minor: no provider call, rules works", async () => {
+    await t.run("UPDATE student_profiles SET birth_date = NULL WHERE student_id = 'st-2'");
+    try {
+      const d = await t.newDraft("st-2");
+      const { provider, calls } = t.spy();
+      expect(await plan(d, "AI", t.service("tech-a", "org-a", { providers: { mock: provider } }))).toMatchObject({ ok: false, reason: "minor_blocked", canContinueByRules: true });
+      expect(calls).toHaveLength(0);
+      expect(ok(await plan(d, "RULES")).producer).toBe("RULES");
+    } finally {
+      await t.run("UPDATE student_profiles SET birth_date = '2014-05-05' WHERE student_id = 'st-2'");
+    }
   });
 });
 

@@ -278,8 +278,8 @@ describe("planning context: hashes", () => {
 describe("planning context: ages, minutes, history, structure", () => {
   it("bands the age and flags a minor", async () => {
     expect(ageBandOf("2012-05-01", "2026-11-05")).toEqual({ band: null, minor: true });
-    expect(ageBandOf(null, "2026-11-05")).toEqual({ band: null, minor: false });
-    expect(ageBandOf("not-a-date", "2026-11-05")).toEqual({ band: null, minor: false });
+    expect(ageBandOf(null, "2026-11-05")).toEqual({ band: null, minor: true });
+    expect(ageBandOf("not-a-date", "2026-11-05")).toEqual({ band: null, minor: true });
     expect(ageBandOf("2008-11-05", "2026-11-05")).toEqual({ band: "18_29", minor: false });
     expect(ageBandOf("2008-11-06", "2026-11-05")).toEqual({ band: null, minor: true });
     expect(ageBandOf("1996-01-01", "2026-11-05").band).toBe("30_39");

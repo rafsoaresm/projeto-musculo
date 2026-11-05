@@ -167,6 +167,8 @@ export interface RunStartInput {
   templatesVersion: string | null;
   omittedJson: string;
   now: Date;
+  /** Runs started before this instant no longer count against the per-organization AI ceiling (a dead Worker must not lock the organization out). */
+  staleBefore?: Date;
 }
 export type RunStartResult =
   | { ok: true }
@@ -614,12 +616,12 @@ export function aiPlanningFor(db: D1Database, context: AuthenticatedContext | nu
             `INSERT INTO planning_runs (id, organization_id, plan_id, revision_id, idempotency_key, request_hash, attempt, mode, status, base_content_version, structure_fingerprint,
                context_hash, aliases_hash, cache_key, provider_kind, model_id, prompt_version, schema_version, templates_version, omitted_json, requested_by_user_id, started_at)
              SELECT ?5, ?1, ?3, ?4, ?6, ?7, 1, ?8, 'RUNNING', ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?2, ?20
-              WHERE ${gate} AND (?8 = 'RULES' OR (SELECT COUNT(*) FROM planning_runs WHERE organization_id = ?1 AND status = 'RUNNING' AND mode = 'AI') < ${AI_MAX_RUNNING_PER_ORG})`,
+              WHERE ${gate} AND (?8 = 'RULES' OR (SELECT COUNT(*) FROM planning_runs WHERE organization_id = ?1 AND status = 'RUNNING' AND mode = 'AI' AND (?21 IS NULL OR started_at >= ?21)) < ${AI_MAX_RUNNING_PER_ORG})`,
           )
           .bind(
             organizationId, userId, input.planId, input.revisionId, input.runId, input.idempotencyKey, input.requestHash, input.mode, input.baseContentVersion,
             input.structureFingerprint, input.contextHash, input.aliasesHash, input.cacheKey, input.providerKind, input.modelId, input.promptVersion, input.schemaVersion,
-            input.templatesVersion, input.omittedJson, iso(input.now),
+            input.templatesVersion, input.omittedJson, iso(input.now), input.staleBefore ? iso(input.staleBefore) : null,
           )
           .run();
         if (changesOf(result) === 1) return { ok: true };

@@ -19,7 +19,7 @@ export const GATE_MESSAGE: Record<GateReason, string> = {
   ALLOWANCE_EXHAUSTED: "Limite do plano atingido neste mês.",
   COST_CURRENCY_MISMATCH: "IA não incluída no plano.",
   CIRCUIT_OPEN: "O serviço de IA está instável. Tente mais tarde ou continue por regras.",
-  MINOR_BLOCKED: "Para alunos menores de idade a montagem é por regras.",
+  MINOR_BLOCKED: "Para alunos menores de idade, ou sem data de nascimento cadastrada, a montagem é por regras.",
   REQUEST_TOO_LARGE: "O resumo passou do limite por pedido do plano.",
 };
 
@@ -55,7 +55,7 @@ export const GESTOR_GATE_MESSAGE: Record<GateReason, string> = {
   ALLOWANCE_EXHAUSTED: "Limite do plano atingido neste mês.",
   COST_CURRENCY_MISMATCH: "A moeda do limite de custo difere da moeda dos preços digitados.",
   CIRCUIT_OPEN: "Disjuntor aberto para este provedor e modelo.",
-  MINOR_BLOCKED: "Aluno menor de idade: apenas por regras.",
+  MINOR_BLOCKED: "Aluno menor de idade ou sem data de nascimento: apenas por regras.",
   REQUEST_TOO_LARGE: "O pedido passa do limite por pedido do plano ou do teto de saída.",
 };
 
