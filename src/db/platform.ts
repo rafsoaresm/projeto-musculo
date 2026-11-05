@@ -27,6 +27,20 @@ export const PLATFORM_AUDIT_ACTIONS = [
   "PLATFORM_ADMIN_INVITE_REVOKED",
   "PLATFORM_ADMIN_GRANTED",
   "PLATFORM_ADMIN_REVOKED",
+  // AI layer (motor V4, 1.2): the gestor panel writes these through `db/ai-platform.ts`; subject_id is a provider kind, task, plan id or organization id, never a key.
+  "AI_PROVIDER_CONNECTED",
+  "AI_PROVIDER_ROTATED",
+  "AI_PROVIDER_REMOVED",
+  "AI_PROVIDER_TESTED",
+  "AI_MODEL_TESTED",
+  "AI_TASK_CONFIGURED",
+  "AI_KILL_SWITCH_ON",
+  "AI_KILL_SWITCH_OFF",
+  "AI_PLAN_SAVED",
+  "AI_PLAN_ARCHIVED",
+  "AI_ORG_ENABLED",
+  "AI_ORG_DISABLED",
+  "AI_ORG_PLAN_ASSIGNED",
 ] as const;
 
 /** How long an invitation to be a manager lives. The link is shown once and works once. */

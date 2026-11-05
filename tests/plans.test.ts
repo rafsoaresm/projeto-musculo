@@ -364,8 +364,9 @@ describe("access that ends", () => {
   });
 
   it("keeps plans out of every other table a student or manager can read", async () => {
-    // The only places that mention plans are the plan tables themselves and the student's log of a
-    // delivered revision, which points at it and copies nothing back.
+    // The only places that mention plans are the plan tables themselves, the student's log of a
+    // delivered revision, which points at it and copies nothing back, and (motor V4, 0047) the AI planning runs:
+    // ids, hashes, counts and failure codes of a planning call on a draft revision, never plan or health content.
     const tables = await db
       .prepare(
         `SELECT name FROM sqlite_master WHERE type = 'table'
@@ -375,6 +376,7 @@ describe("access that ends", () => {
     expect(tables.results.map((t) => t.name)).toEqual([
       "plan_revisions",
       "plan_session_occurrences",
+      "planning_runs",
       "prescribed_exercise_occurrences",
       "prescribed_exercises",
       "prescription_applications",
