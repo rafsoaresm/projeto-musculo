@@ -3,15 +3,19 @@
  * (semana × sessão) recebe a sua dose (estímulo da ocorrência + progressão semanal). Puro,
  * síncrono e determinístico: mesma entrada → mesma saída, byte a byte.
  */
+import { auditPlan, boundAudit } from "./audit";
 import { applyBounds } from "./bounds";
 import { TECHNICAL_LIMITS } from "./bounds";
 import { resolveDose, toDisplayFields, validateDose, metricFor } from "./dose";
 import { occurrenceMinutes } from "./duration";
 import { eligibilityContext, ineligibleReason, INELIGIBLE_TEXT, type EligibilityContext, type IneligibleReason } from "./eligibility";
-import { buildFlags } from "./flags";
+import { assessmentObservations, buildFlags } from "./flags";
 import { proposeProgression } from "./progression";
-import { stimulusFromProgression } from "./progress-week";
-import { existingFor, metadataOf, nameKeyOf, parseSlotKey, rankAlternatives, selectExercises, slotKeyOf, type Coverage } from "./select";
+import { indexInWeek, occurrencesOf, occurrenceStimulus, progressionFor } from "./occurrence";
+export { occurrenceStimulus, progressionFor } from "./occurrence";
+import { existingFor, metadataOf, nameKeyOf, parseSlotKey, rankAlternatives, selectExercises, slotKeyOf, type Coverage, type SelectionRequest } from "./select";
+import { targetSuggestion } from "./targets";
+import { planPhaseMicrocycle, type GenerateOptions, type ReservedSubstitution } from "./microcycle";
 import { ruleLogFor, RuleLog, uniqueIssues } from "./trace";
 import { validateInput } from "./validate";
 import { volumeFor } from "./volume";
@@ -35,11 +39,10 @@ import type {
   StructureWorkout,
   Suggestion,
   TraceEntry,
-  WeeklyProgression,
   WorkoutSummary,
 } from "./types";
 
-export const ENGINE_VERSION = "2.0.0";
+export const ENGINE_VERSION = "2.2.0";
 
 // ---------- contexto ----------
 
@@ -83,37 +86,6 @@ export function unknownRules(input: EngineInput): EngineResult {
 
 // ---------- fatos por fase / treino / ocorrência ----------
 
-export function progressionFor(input: EngineInput, phase: StructurePhase): Fact<WeeklyProgression> | null {
-  const p = input.parameters.progressionByPhase.find((x) => x.phaseIndex === phase.index);
-  if (p) return { value: p.progression, source: "PROFESSIONAL", basis: "PROFESSIONAL" };
-  return phase.progression ?? null;
-}
-
-function stimulusFact(value: string, from: Omit<Fact<string>, "value">): Fact<string> {
-  return { ...from, value: codeOf(value) };
-}
-
-/** Estímulo de uma ocorrência: treino → progressão (sequência/bloco) → fase → resposta da geração. */
-export function occurrenceStimulus(input: EngineInput, phase: StructurePhase, workout: StructureWorkout, week: number, indexInWeek: number): Fact<string> | null {
-  if (workout.focus.stimulus) return stimulusFact(workout.focus.stimulus.value, workout.focus.stimulus);
-  const prog = progressionFor(input, phase);
-  const fromProg = prog ? stimulusFromProgression(prog.value, week, indexInWeek) : null;
-  if (fromProg) return { value: codeOf(fromProg), source: prog!.source, basis: prog!.basis, ...(prog!.ruleId ? { ruleId: prog!.ruleId } : {}) };
-  if (phase.stimulus) return stimulusFact(phase.stimulus.value, phase.stimulus);
-  const answer = input.parameters.stimulusByPhase.find((s) => s.phaseIndex === phase.index);
-  if (answer) return { value: codeOf(answer.value), source: "PROFESSIONAL", basis: answer.basis, ...(answer.ruleId ? { ruleId: answer.ruleId } : {}) };
-  return null;
-}
-
-/** Posição (1, 2…) desta ocorrência entre as do mesmo treino na mesma semana. */
-function indexInWeek(phase: StructurePhase, occ: StructureOccurrence): number {
-  return phase.occurrences.filter((o) => o.week === occ.week && o.label === occ.label && o.slot <= occ.slot).length;
-}
-
-function occurrencesOf(phase: StructurePhase, label?: string): StructureOccurrence[] {
-  return phase.occurrences.filter((o) => label === undefined || o.label === label).sort((a, b) => a.week - b.week || a.slot - b.slot);
-}
-
 export function budgetFor(input: EngineInput, workout: StructureWorkout | undefined): { minutes: number; source: "WORKOUT" | "PARAMETERS" | "PROFILE" } | null {
   if (workout?.focus.minutes) return { minutes: workout.focus.minutes, source: "WORKOUT" };
   if (input.parameters.availableMinutes) return { minutes: input.parameters.availableMinutes, source: "PARAMETERS" };
@@ -155,12 +127,21 @@ function countFor(input: EngineInput, phase: StructurePhase, workout: StructureW
   return { value: c.count, source: "PROFESSIONAL", basis: "PROFESSIONAL" };
 }
 
-function coverageFor(input: EngineInput, phase: StructurePhase, workout: StructureWorkout): Coverage | null {
-  if (workout.focus.muscles?.length || workout.focus.patterns?.length)
-    return { muscles: workout.focus.muscles ?? [], patterns: workout.focus.patterns ?? [], basis: "PROFESSIONAL" };
+/**
+ * Alvos de cobertura do treino: o foco do treino vence o alvo da fase. Com as regras da auditoria (2026.11.3+) o objeto também
+ * grava de onde veio (`origin`) e os alvos semanais da fase (`weeklySets`, com a base da entrada); versões anteriores, como antes.
+ */
+function coverageFor(ctx: EngineContext, phase: StructurePhase, workout: StructureWorkout): Coverage | null {
+  const { input, log } = ctx;
+  const audited = log.optional("AUDIT_THRESHOLDS") !== undefined;
   const c = input.parameters.phaseCoverage.find((x) => x.phaseIndex === phase.index);
-  if (c && (c.muscles?.length || c.patterns?.length))
-    return { muscles: c.muscles ?? [], patterns: c.patterns ?? [], basis: c.basis, ...(c.ruleId ? { ruleId: c.ruleId } : {}) };
+  const weeklySets = audited && c?.weeklySets?.length
+    ? { weeklySets: c.weeklySets.map((w) => ({ ...w, muscle: codeOf(w.muscle), basis: c.basis, ...(c.ruleId ? { ruleId: c.ruleId } : {}) })) }
+    : {};
+  if (workout.focus.muscles?.length || workout.focus.patterns?.length)
+    return { muscles: workout.focus.muscles ?? [], patterns: workout.focus.patterns ?? [], basis: "PROFESSIONAL", ...(audited ? { origin: "WORKOUT_FOCUS" as const } : {}), ...weeklySets };
+  if (c && (c.muscles?.length || c.patterns?.length || "weeklySets" in weeklySets))
+    return { muscles: c.muscles ?? [], patterns: c.patterns ?? [], basis: c.basis, ...(c.ruleId ? { ruleId: c.ruleId } : {}), ...(audited ? { origin: "PHASE_COVERAGE" as const } : {}), ...weeklySets };
   return null;
 }
 
@@ -173,6 +154,30 @@ export interface SlotPlan {
   origin: ItemOut["origin"];
   selection: TraceEntry[];
   alternatives: string[];
+}
+
+/** O treino antes da seleção: o que ele pode receber e o que já está fixo nele. */
+export interface WorkoutDraft {
+  phase: StructurePhase;
+  workout: StructureWorkout;
+  stimulus: Fact<string> | null;
+  modalities: Fact<string[]> | null;
+  pool: CatalogExercise[];
+  excluded: Partial<Record<IneligibleReason, number>>;
+  /** Preservados, travados (e, no microciclo, trocas do profissional mantidas numa regeneração). */
+  slots: SlotPlan[];
+  preserved: ExistingItem[];
+  /** Exercícios que já ocupam lugar no treino (não entram na seleção). */
+  taken: Set<string>;
+  /** Exercícios que uma troca mantida tirou do treino: a seleção não os traz de volta. */
+  blocked: Set<string>;
+  count: Fact<number> | "BY_TIME" | null;
+  budget: { minutes: number; source: "WORKOUT" | "PARAMETERS" | "PROFILE" } | null;
+  runnable: boolean;
+  coverage: Coverage | null;
+  occs: StructureOccurrence[];
+  issues: Issue[];
+  nextKey: (exerciseId: string | null, nameKey: string) => string;
 }
 
 export interface WorkoutPlan {
@@ -201,7 +206,7 @@ export function eligiblePool(ctx: EngineContext, modalities: Fact<string[]> | nu
   return { pool, excluded };
 }
 
-function dosePreview(ctx: EngineContext, plan: { phase: StructurePhase; workout: StructureWorkout }, exercises: CatalogExercise[], fixedExisting: ExistingItem[]): number | null {
+export function dosePreview(ctx: EngineContext, plan: { phase: StructurePhase; workout: StructureWorkout }, exercises: CatalogExercise[], fixedExisting: ExistingItem[]): number | null {
   const occ = occurrencesOf(plan.phase, plan.workout.label)[0];
   if (!occ) return null;
   const stim = occurrenceStimulus(ctx.input, plan.phase, plan.workout, occ.week, indexInWeek(plan.phase, occ));
@@ -218,8 +223,13 @@ function dosePreview(ctx: EngineContext, plan: { phase: StructurePhase; workout:
   return r.complete ? r.minutes : null;
 }
 
-export function planWorkout(ctx: EngineContext, phase: StructurePhase, workout: StructureWorkout, usedInPhase: ReadonlySet<string>, usedInPreviousPhase: ReadonlySet<string>): WorkoutPlan {
-  const { input, log } = ctx;
+/**
+ * Primeira parte do plano de um treino: estímulo, modalidades, biblioteca elegível, linhas existentes (preservadas), travados,
+ * quantidade e tempo. Não escolhe nada: a seleção (por treino ou pela fase inteira) vem depois. Os avisos saem na mesma
+ * ordem da seleção antiga.
+ */
+export function prepareWorkout(ctx: EngineContext, phase: StructurePhase, workout: StructureWorkout, reserved: readonly ReservedSubstitution[] = []): WorkoutDraft {
+  const { input } = ctx;
   const issues: Issue[] = [];
   const path = `phases.${phase.index}.workouts.${workout.label}`;
   const at = { phaseIndex: phase.index, label: workout.label, stage: "SELECTION" as const };
@@ -268,83 +278,132 @@ export function planWorkout(ctx: EngineContext, phase: StructurePhase, workout: 
     slots.push({ slotKey: nextKey(e.id, nameKeyOf(e.name, e.nameKey)), exercise: e, existing: null, origin: "LOCKED",
       selection: [{ code: "LOCKED", basis: "PROFESSIONAL", detail: "Travado pelo profissional na proposta." }], alternatives: [] });
   }
-  // 3. seleção do motor
+  // 2b. trocas do profissional mantidas numa regeneração (só no microciclo): ocupam a vaga; o exercício trocado não volta
+  const blocked = new Set<string>();
+  for (const r of [...reserved].sort((a, b) => cmp(a.exerciseId, b.exerciseId))) {
+    const e = ctx.byId.get(r.exerciseId);
+    if (!e || taken.has(e.id)) continue;
+    if (ineligibleReason(e, ctx.elig, modalities ? new Set(modalities.value) : null, new Set(workout.focus.excludedExerciseIds ?? []), { ignoreMetadata: true })) continue;
+    taken.add(e.id);
+    if (r.replaces) blocked.add(r.replaces);
+    slots.push({ slotKey: nextKey(e.id, nameKeyOf(e.name, e.nameKey)), exercise: e, existing: null, origin: "ENGINE",
+      selection: [{ code: "RESERVED_SUBSTITUTION", basis: "PROFESSIONAL", detail: "Troca do profissional mantida nesta regeneração: ocupa a vaga e conta no volume da semana." }], alternatives: [] });
+  }
+  // 3. quantidade e tempo
   const count = countFor(input, phase, workout);
   const budget = budgetFor(input, workout);
-  let countFact: Fact<number> | null = count === "BY_TIME" ? null : count;
   if (count === null)
     issues.push({ severity: "ERROR", code: "EXERCISE_COUNT_MISSING", path, ...at,
       message: `Treino ${workout.label}: quantos exercícios? Informe a quantidade ou escolha "pelo tempo disponível".`,
       suggestions: [{ value: "BY_TIME", ruleId: "COUNT_FROM_TIME", label: "Pelo tempo disponível" }] });
   if (count === "BY_TIME" && !budget)
     issues.push({ severity: "ERROR", code: "COUNT_BY_TIME_NEEDS_BUDGET", path, ...at, message: `Treino ${workout.label}: quantidade pelo tempo, mas o tempo disponível não foi informado.` });
-  const fixed = slots.map((s) => s.exercise).filter((e): e is CatalogExercise => e !== null);
   const runnable = count !== null && !(count === "BY_TIME" && !budget) && modalities !== null;
-  const picks = runnable
-    ? selectExercises(log, {
-        stimulus: stimulus?.value ?? null,
-        pool: pool.filter((e) => !taken.has(e.id)),
-        count: count === "BY_TIME" ? "BY_TIME" : count.value,
-        estimate: (list) => dosePreview(ctx, { phase, workout }, list, preserved),
-        budgetMinutes: budget?.minutes ?? null,
-        coverage: coverageFor(input, phase, workout),
-        fixed, fixedCount: slots.length,
-        preferred: new Set(input.parameters.preferredExerciseIds),
-        experience: ctx.experience, history: ctx.history, usedInPhase, usedInPreviousPhase,
-        avoid: new Set(), maxItems: TECHNICAL_LIMITS.MAX_ITEMS_PER_WORKOUT,
-      })
-    : [];
+  return {
+    phase, workout, stimulus, modalities, pool, excluded, slots, preserved, taken, blocked, count, budget, runnable,
+    coverage: coverageFor(ctx, phase, workout), occs, issues, nextKey,
+  };
+}
+
+/** Quantos itens a seleção ainda pode escolher para o treino (a regra da seleção antiga). */
+export function openSlots(draft: WorkoutDraft): number {
+  if (!draft.runnable || draft.count === null) return 0;
+  return draft.count === "BY_TIME" ? TECHNICAL_LIMITS.MAX_ITEMS_PER_WORKOUT - draft.slots.length : Math.min(draft.count.value, TECHNICAL_LIMITS.MAX_ITEMS_PER_WORKOUT) - draft.slots.length;
+}
+
+export function selectionRequest(ctx: EngineContext, draft: WorkoutDraft, usedInPhase: ReadonlySet<string>, usedInPreviousPhase: ReadonlySet<string>): SelectionRequest {
+  const { input } = ctx;
+  const { phase, workout, count } = draft;
+  return {
+    stimulus: draft.stimulus?.value ?? null,
+    pool: draft.pool.filter((e) => !draft.taken.has(e.id) && !draft.blocked.has(e.id)),
+    count: count === "BY_TIME" || count === null ? "BY_TIME" : count.value,
+    estimate: (list) => dosePreview(ctx, { phase, workout }, list, draft.preserved),
+    budgetMinutes: draft.budget?.minutes ?? null,
+    coverage: draft.coverage,
+    fixed: draft.slots.map((s) => s.exercise).filter((e): e is CatalogExercise => e !== null), fixedCount: draft.slots.length,
+    preferred: new Set(input.parameters.preferredExerciseIds),
+    experience: ctx.experience, history: ctx.history, usedInPhase, usedInPreviousPhase,
+    avoid: new Set(), maxItems: TECHNICAL_LIMITS.MAX_ITEMS_PER_WORKOUT,
+  };
+}
+
+/** Entradas de traço comuns a toda escolha do motor: elegibilidade e equipamento. */
+export function choiceEntries(ctx: EngineContext, draft: WorkoutDraft, e: CatalogExercise): TraceEntry[] {
+  const { modalities } = draft;
   const eligibilityEntry: TraceEntry = {
     code: "ELIGIBLE", basis: modalities?.basis ?? "PROFESSIONAL", ...(modalities?.ruleId ? { ruleId: modalities.ruleId } : {}),
     detail: `Elegível: modalidade ${modalities ? labelsOf(MODALITY_LABELS, modalities.value) : "—"}, sem exclusões do profissional.`,
   };
-  const equipmentEntry = (e: CatalogExercise): TraceEntry =>
-    input.parameters.availableEquipment === null
+  const equipmentEntry: TraceEntry =
+    ctx.input.parameters.availableEquipment === null
       ? { code: "EQUIPMENT", basis: "HEURISTIC", detail: "Equipamentos disponíveis não informados: entrou por não precisar de equipamento." }
       : !e.equipment.length
         ? { code: "EQUIPMENT", basis: "PROFESSIONAL", detail: "Não precisa de equipamento." }
         : { code: "EQUIPMENT", basis: "PROFESSIONAL", detail: "Equipamento entre os informados como disponíveis." };
-  for (const [rank, p] of picks.entries())
-    slots.push({
-      slotKey: nextKey(p.exercise.id, nameKeyOf(p.exercise.name, p.exercise.nameKey)), exercise: p.exercise, existing: null, origin: "ENGINE",
-      selection: [eligibilityEntry, equipmentEntry(p.exercise), ...p.trace, { code: "RANK", basis: log.basis("SELECTION_WEIGHTS"), ruleId: "SELECTION_WEIGHTS", detail: `Escolha ${rank + 1} pela pontuação ${numberText(p.score)}${p.tie ? "; empate desfeito pelo código do exercício" : ""}.` }],
-      alternatives: [],
-    });
+  return [eligibilityEntry, equipmentEntry];
+}
+
+export interface CompleteOptions {
+  /** CHECK (seleção antiga): todo alvo é conferido no treino. SKIP (microciclo): só os alvos do próprio treino (WORKOUT_FOCUS). */
+  phaseTargets: "CHECK" | "SKIP";
+  /** A seleção parou no limite técnico de passos: a falta de itens sai como MICROCYCLE_STEP_LIMIT, não como biblioteca insuficiente. */
+  stepLimited?: boolean;
+  /** Treino mantido como está numa regeneração parcial (microciclo): sem avisos de quantidade nem de cobertura. */
+  fixed?: boolean;
+}
+
+/** Segunda parte: escolhas no lugar, avisos de quantidade e cobertura, alternativas e resumo do treino. */
+export function completeWorkout(ctx: EngineContext, draft: WorkoutDraft, chosenSlots: Array<{ exercise: CatalogExercise; selection: TraceEntry[] }>, options: CompleteOptions): WorkoutPlan {
+  const { input, log } = ctx;
+  const { phase, workout, pool, excluded, count, runnable, modalities, occs, coverage } = draft;
+  const issues = [...draft.issues];
+  const slots = [...draft.slots];
+  const path = `phases.${phase.index}.workouts.${workout.label}`;
+  const at = { phaseIndex: phase.index, label: workout.label, stage: "SELECTION" as const };
+  let countFact: Fact<number> | null = count === "BY_TIME" ? null : count;
+  for (const c of chosenSlots)
+    slots.push({ slotKey: draft.nextKey(c.exercise.id, nameKeyOf(c.exercise.name, c.exercise.nameKey)), exercise: c.exercise, existing: null, origin: "ENGINE", selection: c.selection, alternatives: [] });
   if (count === "BY_TIME" && runnable) {
     log.get("COUNT_FROM_TIME");
     countFact = { value: slots.length, source: "PROFESSIONAL", basis: "HEURISTIC_ACCEPTED", ruleId: "COUNT_FROM_TIME" };
   }
-  if (runnable && count !== "BY_TIME" && count !== null) {
-    const needed = Math.min(count.value, TECHNICAL_LIMITS.MAX_ITEMS_PER_WORKOUT);
-    if (slots.length > count.value)
-      issues.push({ severity: "WARNING", code: "EXISTING_EXCEEDS_TARGET", path, ...at, message: `Treino ${workout.label}: ${slots.length} linhas já existentes ou travadas para uma quantidade de ${count.value}; nada foi removido.` });
-    else if (slots.length < needed) {
-      const reasons = Object.entries(excluded).map(([r, n]) => `${n} ${INELIGIBLE_TEXT[r as IneligibleReason]}`).join("; ");
-      issues.push({ severity: "ERROR", code: "CATALOG_INSUFFICIENT", path, ...at,
-        message: `Treino ${workout.label}: pedidos ${count.value} exercícios, ${slots.length} possíveis. Fora da seleção: ${reasons || "nenhum exercício na biblioteca"}.`,
-        suggestedAction: "Completar metadados na biblioteca, rever equipamentos e exclusões ou reduzir a quantidade. Nada é inventado." });
+  if (!options.fixed) {
+    if (runnable && count !== "BY_TIME" && count !== null) {
+      const needed = Math.min(count.value, TECHNICAL_LIMITS.MAX_ITEMS_PER_WORKOUT);
+      if (slots.length > count.value)
+        issues.push({ severity: "WARNING", code: "EXISTING_EXCEEDS_TARGET", path, ...at, message: `Treino ${workout.label}: ${slots.length} linhas já existentes ou travadas para uma quantidade de ${count.value}; nada foi removido.` });
+      else if (slots.length < needed && options.stepLimited)
+        issues.push({ severity: "WARNING", code: "MICROCYCLE_STEP_LIMIT", path, ...at,
+          message: `Treino ${workout.label}: a seleção parou no limite técnico de passos com ${needed - slots.length} vaga(s) aberta(s).`,
+          suggestedAction: "Gerar a fase de novo em partes (por treino) ou reduzir a quantidade. Nada é inventado." });
+      else if (slots.length < needed) {
+        const reasons = Object.entries(excluded).map(([r, n]) => `${n} ${INELIGIBLE_TEXT[r as IneligibleReason]}`).join("; ");
+        issues.push({ severity: "ERROR", code: "CATALOG_INSUFFICIENT", path, ...at,
+          message: `Treino ${workout.label}: pedidos ${count.value} exercícios, ${slots.length} possíveis. Fora da seleção: ${reasons || "nenhum exercício na biblioteca"}.`,
+          suggestedAction: "Completar metadados na biblioteca, rever equipamentos e exclusões ou reduzir a quantidade. Nada é inventado." });
+      }
+      if (count.value > TECHNICAL_LIMITS.MAX_ITEMS_PER_WORKOUT)
+        issues.push({ severity: "ERROR", code: "WORKOUT_OVER_TECHNICAL_LIMIT", path, ...at, message: `Treino ${workout.label}: ${count.value} exercícios; o limite técnico por treino é ${TECHNICAL_LIMITS.MAX_ITEMS_PER_WORKOUT}.` });
     }
-    if (count.value > TECHNICAL_LIMITS.MAX_ITEMS_PER_WORKOUT)
-      issues.push({ severity: "ERROR", code: "WORKOUT_OVER_TECHNICAL_LIMIT", path, ...at, message: `Treino ${workout.label}: ${count.value} exercícios; o limite técnico por treino é ${TECHNICAL_LIMITS.MAX_ITEMS_PER_WORKOUT}.` });
+    if (count === "BY_TIME" && runnable && !chosenSlots.length && !slots.length)
+      issues.push({ severity: "ERROR", code: "CATALOG_INSUFFICIENT", path, ...at, message: `Treino ${workout.label}: nenhum exercício elegível para preencher pelo tempo.` });
   }
-  if (count === "BY_TIME" && runnable && !picks.length && !slots.length)
-    issues.push({ severity: "ERROR", code: "CATALOG_INSUFFICIENT", path, ...at, message: `Treino ${workout.label}: nenhum exercício elegível para preencher pelo tempo.` });
   // cobertura
-  const coverage = coverageFor(input, phase, workout);
   const chosen = slots.map((s) => s.exercise).filter((e): e is CatalogExercise => e !== null);
-  if (coverage) {
-    for (const m of coverage.muscles)
-      if (!chosen.some((e) => e.primaryMuscles.some((x) => codeOf(x) === codeOf(m))))
-        issues.push({ severity: "WARNING", code: "MUSCLE_NOT_COVERED", path, ...at, message: `Treino ${workout.label}: ${MUSCLE_LABELS[codeOf(m)] ?? m} sem exercício como músculo principal.` });
-    for (const p of coverage.patterns)
-      if (!chosen.some((e) => e.patterns.map(codeOf).includes(codeOf(p))))
-        issues.push({ severity: "WARNING", code: "PATTERN_NOT_COVERED", path, ...at, message: `Treino ${workout.label}: padrão ${PATTERN_LABELS[codeOf(p)] ?? p} sem exercício.` });
-  } else if (occs.length && runnable) {
-    const def = log.get("DEFAULT_COVERAGE");
-    const patterns = [...new Set((modalities?.value ?? []).flatMap((m) => def[m] ?? []))];
-    issues.push({ severity: "WARNING", code: "NO_TARGETS", path, ...at,
-      message: `Treino ${workout.label}: sem músculos ou padrões-alvo; a seleção seguiu a elegibilidade e a variação entre treinos.`,
-      suggestions: patterns.map((p) => ({ value: p, ruleId: "DEFAULT_COVERAGE", label: PATTERN_LABELS[p] ?? p })) });
+  // Só `weeklySets` (sem músculos nem padrões) não orienta a seleção: o aviso NO_TARGETS continua.
+  if (coverage && (coverage.muscles.length || coverage.patterns.length)) {
+    // Na seleção por microciclo, o alvo da fase é conferido uma vez na fase (planPhaseMicrocycle), não em cada treino.
+    if (!options.fixed && (options.phaseTargets === "CHECK" || coverage.origin === "WORKOUT_FOCUS")) {
+      for (const m of coverage.muscles)
+        if (!chosen.some((e) => e.primaryMuscles.some((x) => codeOf(x) === codeOf(m))))
+          issues.push({ severity: "WARNING", code: "MUSCLE_NOT_COVERED", path, ...at, message: `Treino ${workout.label}: ${MUSCLE_LABELS[codeOf(m)] ?? m} sem exercício como músculo principal.` });
+      for (const p of coverage.patterns)
+        if (!chosen.some((e) => e.patterns.map(codeOf).includes(codeOf(p))))
+          issues.push({ severity: "WARNING", code: "PATTERN_NOT_COVERED", path, ...at, message: `Treino ${workout.label}: padrão ${PATTERN_LABELS[codeOf(p)] ?? p} sem exercício.` });
+    }
+  } else if (occs.length && runnable && !options.fixed) {
+    issues.push(noTargetsIssue(ctx, draft));
   }
   // alternativas
   const limit = log.get("ALTERNATIVES_LIMIT");
@@ -354,10 +413,54 @@ export function planWorkout(ctx: EngineContext, phase: StructurePhase, workout: 
     s.alternatives = rankAlternatives(log, s.exercise, metricFor(s.exercise, input.parameters).metric, pool, inWorkout, limit).map((a) => a.exerciseId);
   }
   const summary: WorkoutSummary = {
-    phaseIndex: phase.index, label: workout.label, name: workout.name, stimulus, modalities, count: countFact,
+    phaseIndex: phase.index, label: workout.label, name: workout.name, stimulus: draft.stimulus, modalities, count: countFact,
     coverage: coverage ? { ...coverage } : null, eligible: pool.length, excluded: { ...excluded },
   };
-  return { phase, workout, stimulus, modalities, pool, excluded, slots, summary, issues };
+  return { phase, workout, stimulus: draft.stimulus, modalities, pool, excluded, slots, summary, issues };
+}
+
+/**
+ * Treino sem alvos: com a regra de alvos sugeridos (2026.11.4+), o aviso traz a sugestão da fase (aceite do profissional);
+ * sem ela, os padrões de DEFAULT_COVERAGE, como antes.
+ */
+function noTargetsIssue(ctx: EngineContext, draft: WorkoutDraft): Issue {
+  const { log } = ctx;
+  const { phase, workout, modalities } = draft;
+  const path = `phases.${phase.index}.workouts.${workout.label}`;
+  const at = { phaseIndex: phase.index, label: workout.label, stage: "SELECTION" as const };
+  const message = `Treino ${workout.label}: sem músculos ou padrões-alvo; a seleção seguiu a elegibilidade e a variação entre treinos.`;
+  if (log.optional("MICROCYCLE_TARGET_SUGGESTIONS")) {
+    // Treino sem modalidade de volume (cardio, mobilidade) numa fase de hipertrofia: os alvos sugeridos são de volume e não
+    // valem para ele; o aviso fica sem sugestão.
+    const vol = new Set(log.get("VOLUME_MODALITIES").map(codeOf));
+    if (!modalities?.value.some((m) => vol.has(codeOf(m)))) return { severity: "WARNING", code: "NO_TARGETS", path, ...at, message, suggestions: [] };
+    const s = targetSuggestion(log, phase, ctx.input);
+    if (!s.suggestion)
+      return { severity: "WARNING", code: "NO_TARGETS", path, ...at,
+        message: `${message}${s.reason === "MIXED_STIMULI" ? " Os estímulos variam nesta fase; defina os alvos manualmente." : ""}`, suggestions: [] };
+    return { severity: "WARNING", code: "NO_TARGETS", path, ...at, message,
+      suggestions: [{ value: s.suggestion.stimulus, ruleId: "MICROCYCLE_TARGET_SUGGESTIONS", label: `Alvos sugeridos para ${STIMULUS_LABELS[s.suggestion.stimulus] ?? s.suggestion.stimulus} (heurística operacional, editável)` }] };
+  }
+  const def = log.get("DEFAULT_COVERAGE");
+  const patterns = [...new Set((modalities?.value ?? []).flatMap((m) => def[m] ?? []))];
+  return { severity: "WARNING", code: "NO_TARGETS", path, ...at, message,
+    suggestions: patterns.map((p) => ({ value: p, ruleId: "DEFAULT_COVERAGE", label: PATTERN_LABELS[p] ?? p })) };
+}
+
+/** Seleção antiga: um treino de cada vez (preparar → escolher → completar). */
+export function planWorkout(ctx: EngineContext, phase: StructurePhase, workout: StructureWorkout, usedInPhase: ReadonlySet<string>, usedInPreviousPhase: ReadonlySet<string>): WorkoutPlan {
+  const draft = prepareWorkout(ctx, phase, workout);
+  return completeWorkout(ctx, draft, legacyPicks(ctx, draft, usedInPhase, usedInPreviousPhase), { phaseTargets: "CHECK" });
+}
+
+/** A seleção gulosa por treino (antiga), com o traço de cada escolha. */
+export function legacyPicks(ctx: EngineContext, draft: WorkoutDraft, usedInPhase: ReadonlySet<string>, usedInPreviousPhase: ReadonlySet<string>): Array<{ exercise: CatalogExercise; selection: TraceEntry[] }> {
+  const { log } = ctx;
+  const picks = draft.runnable ? selectExercises(log, selectionRequest(ctx, draft, usedInPhase, usedInPreviousPhase)) : [];
+  return picks.map((p, rank) => ({
+    exercise: p.exercise,
+    selection: [...choiceEntries(ctx, draft, p.exercise), ...p.trace, { code: "RANK", basis: log.basis("SELECTION_WEIGHTS"), ruleId: "SELECTION_WEIGHTS", detail: `Escolha ${rank + 1} pela pontuação ${numberText(p.score)}${p.tie ? "; empate desfeito pelo código do exercício" : ""}.` }],
+  }));
 }
 
 // ---------- itens de uma ocorrência ----------
@@ -391,7 +494,7 @@ export function occurrenceFor(ctx: EngineContext, plan: WorkoutPlan, occ: Struct
   };
 }
 
-/** Planos de todos os treinos, fase a fase (a fase anterior influencia a variação da seguinte). */
+/** Planos de todos os treinos, fase a fase (a fase anterior influencia a variação da seguinte). Seleção antiga. */
 export function planAll(ctx: EngineContext): Map<number, WorkoutPlan[]> {
   const plans = new Map<number, WorkoutPlan[]>();
   let previous = new Set<string>();
@@ -407,6 +510,34 @@ export function planAll(ctx: EngineContext): Map<number, WorkoutPlan[]> {
     previous = usedInPhase;
   }
   return plans;
+}
+
+/**
+ * Com MICROCYCLE_SELECTION (2026.11.4+): só as fases do escopo são planejadas, cada uma inteira de uma vez. A variação da
+ * fase seguinte usa a fase anterior desta chamada ou, se ela não foi planejada agora, a fase gravada
+ * (`options.previousPhaseExercises`, com as trocas do profissional). Sem a regra: a seleção antiga (todas as fases).
+ */
+export function planPhases(ctx: EngineContext, options: GenerateOptions = {}): { plans: Map<number, WorkoutPlan[]>; phaseIssues: Map<number, Issue[]> } {
+  const phaseIssues = new Map<number, Issue[]>();
+  if (!ctx.log.optional("MICROCYCLE_SELECTION")) return { plans: planAll(ctx), phaseIssues };
+  const plans = new Map<number, WorkoutPlan[]>();
+  let previous: { index: number; ids: Set<string> } | null = null;
+  let predecessor: number | null = null;
+  for (const phase of ctx.input.structure.phases) {
+    const pred = predecessor;
+    predecessor = phase.index;
+    if (!inScope(ctx.input, phase.index)) continue;
+    const used = previous && previous.index === pred ? previous.ids : new Set(pred === null ? [] : options.previousPhaseExercises?.get(pred) ?? []);
+    const planned = planPhaseMicrocycle(ctx, phase, used, options);
+    plans.set(phase.index, planned.plans);
+    phaseIssues.set(phase.index, planned.issues);
+    const ids = new Set<string>();
+    for (const p of planned.plans) for (const sl of p.slots) if (sl.exercise) ids.add(sl.exercise.id);
+    // Um treino mantido (regeneração parcial) não tem escolhas aqui: os exercícios gravados dele contam.
+    for (const [key, f] of options.fixedWorkouts ?? []) if (key.startsWith(`${phase.index}|`)) for (const id of Object.keys(f.exercises)) ids.add(id);
+    previous = { index: phase.index, ids };
+  }
+  return { plans, phaseIssues };
 }
 
 function inScope(input: EngineInput, phaseIndex: number): boolean {
@@ -442,13 +573,13 @@ export function phaseSummaries(input: EngineInput): PhaseSummary[] {
 }
 
 /** Gera a proposta. Nunca lança: problemas viram avisos; INFEASIBLE devolve o rascunho completo. */
-export function generate(input: EngineInput): EngineResult {
+export function generate(input: EngineInput, options: GenerateOptions = {}): EngineResult {
   const ctx = prepare(input);
   if (!ctx) return unknownRules(input);
   const issues: Issue[] = validateInput(input);
   if (input.parameters.availableEquipment === null)
     issues.push({ severity: "WARNING", code: "EQUIPMENT_UNKNOWN", path: "parameters.availableEquipment", stage: "INPUT", message: "Equipamentos disponíveis não informados: só exercícios sem equipamento entram. Informe os equipamentos para ampliar." });
-  const plans = planAll(ctx);
+  const { plans, phaseIssues } = planPhases(ctx, options);
   const occurrences: OccurrenceOut[] = [];
   const workouts: WorkoutSummary[] = [];
   for (const phase of input.structure.phases) {
@@ -457,6 +588,7 @@ export function generate(input: EngineInput): EngineResult {
     if (!inScope(input, phase.index)) continue;
     const byLabel = new Map(list.map((p) => [p.workout.label, p]));
     for (const p of list) issues.push(...p.issues);
+    issues.push(...(phaseIssues.get(phase.index) ?? []));
     for (const occ of occurrencesOf(phase)) {
       const plan = byLabel.get(occ.label);
       if (plan) occurrences.push(occurrenceFor(ctx, plan, occ, issues));
@@ -509,16 +641,61 @@ function historySuggestions(ctx: EngineContext, occurrences: OccurrenceOut[]): H
   return out;
 }
 
+/**
+ * Contribuição do item no volume da semana (regras com auditoria): só números do próprio item (séries × sessões do treino na
+ * semana), para que uma mudança em outro treino não reescreva este item. Os totais da semana ficam na leitura (view).
+ */
+function weeklyContribution(ctx: EngineContext, o: OccurrenceOut, item: ItemOut): TraceEntry | null {
+  const { log } = ctx;
+  const e = item.exerciseId ? ctx.byId.get(item.exerciseId) : undefined;
+  const modalities = new Set(log.get("VOLUME_MODALITIES").map(codeOf));
+  if (!e?.modality || !modalities.has(codeOf(e.modality))) return null;
+  const direct = [...new Set(e.primaryMuscles.map(codeOf))];
+  const indirect = [...new Set(e.secondaryMuscles.map(codeOf))].filter((m) => !direct.includes(m));
+  if (!direct.length && !indirect.length) return null;
+  const phase = ctx.input.structure.phases.find((p) => p.index === o.phaseIndex);
+  const sessions = phase ? phase.occurrences.filter((x) => x.week === o.week && x.label === o.label).length : 0;
+  const sets = item.dose && (item.dose.metric === "REPS" || item.dose.metric === "TIME" || item.dose.metric === "DISTANCE") ? item.dose.sets : null;
+  const factor = log.get("INDIRECT_VOLUME_FACTOR");
+  if (sets === null)
+    return log.entry("INDIRECT_VOLUME_FACTOR", "WEEKLY_CONTRIBUTION", `Semana ${o.week}: séries não definidas; contribuição no volume não calculada.`);
+  const total = sets * sessions;
+  const parts = [
+    direct.length ? `${numberText(total)} séries diretas de ${labelsOf(MUSCLE_LABELS, direct)}` : null,
+    indirect.length ? `${numberText(total)} indiretas de ${labelsOf(MUSCLE_LABELS, indirect)} (peso ${numberText(factor)})` : null,
+  ].filter(Boolean);
+  return log.entry("INDIRECT_VOLUME_FACTOR", "WEEKLY_CONTRIBUTION",
+    `Semana ${o.week}: ${sessions} ${sessions === 1 ? "sessão" : "sessões"} do treino ${o.label} × ${numberText(sets)} séries = ${parts.join("; ")}.`);
+}
+
 /** Recalcula duração, avisos de validação, volume, alertas e estado sobre um resultado inteiro. */
 export function finalize(ctx: EngineContext, result: EngineResult): EngineResult {
   const { input, log } = ctx;
   const issues: Issue[] = result.issues.filter((i) => i.stage !== "VALIDATION");
   const replaced = existingSlotKeys(ctx);
   const workoutOf = (phaseIndex: number, label: string) => input.structure.phases.find((p) => p.index === phaseIndex)?.workouts.find((w) => w.label === label);
+  const audited = log.optional("AUDIT_THRESHOLDS") !== undefined;
+  const observations = assessmentObservations(log, input);
+  const observationOf = (item: ItemOut): TraceEntry[] => {
+    const e = item.exerciseId ? ctx.byId.get(item.exerciseId) : undefined;
+    if (!e || !observations.length) return [];
+    const patterns = new Set(e.patterns.map(codeOf));
+    return observations.filter((x) => x.patterns.some((p) => patterns.has(p))).map((x) => log.entry("FINDING_OBSERVATION_MAP", "ASSESSMENT_OBSERVATION",
+      `${x.label}: nível ${numberText(x.level)} (mediana das leituras do aluno: ${numberText(x.median)}); ${x.text}${x.ref ? ` (avaliação ${x.ref})` : ""}. Não é contraindicação; não mudou a escolha.`))
+      .map((t) => ({ ...t, basis: "STUDENT_DATA" as const }));
+  };
+  const derived = audited || log.optional("FINDING_OBSERVATION_MAP") !== undefined;
   const occurrences = result.occurrences.map((o) => {
     const path = `occurrences.${o.phaseIndex}.${o.week}.${o.slot}`;
     const at = { phaseIndex: o.phaseIndex, label: o.label, stage: "VALIDATION" as const };
-    const items = o.items.map((item) => (item.origin === "PRESERVED" ? item : { ...item, display: toDisplayFields(item.dose) }));
+    const items = o.items.map((item) => {
+      const next = item.origin === "PRESERVED" ? item : { ...item, display: toDisplayFields(item.dose) };
+      if (!derived) return next;
+      // derivados: recalculados a cada operação (os anteriores saem), depois das entradas da seleção
+      const contribution = audited ? weeklyContribution(ctx, o, next) : null;
+      const selection = next.trace.selection.filter((t) => t.code !== "WEEKLY_CONTRIBUTION" && t.code !== "ASSESSMENT_OBSERVATION");
+      return { ...next, trace: { ...next.trace, selection: [...selection, ...(contribution ? [contribution] : []), ...observationOf(next)] } };
+    });
     const ids = new Set<string>();
     for (const item of items) {
       if (item.dose) for (const i of validateDose(item.dose)) issues.push({ ...i, path: `${path}.${item.slotKey}`, ...at, message: `${item.exerciseName}: ${i.message}.` });
@@ -549,16 +726,24 @@ export function finalize(ctx: EngineContext, result: EngineResult): EngineResult
   const all = uniqueIssues(issues);
   const errors = all.some((i) => i.severity === "ERROR");
   const warnings = all.some((i) => i.severity === "WARNING");
+  const volume = volumeFor(log, occurrences, ctx.byId);
+  // A auditoria (regras 2026.11.3+) é recalculada aqui em toda operação: nenhum achado antigo sobrevive.
+  const audit = log.optional("AUDIT_THRESHOLDS")
+    ? boundAudit(log, auditPlan({ log, phases: result.phases, structure: input.structure.phases, workouts: result.workouts, occurrences, volume, byId: ctx.byId }))
+    : undefined;
+  const rest: EngineResult = { ...result };
+  delete rest.audit;
   const next: EngineResult = {
-    ...result,
+    ...rest,
     occurrences,
     issues: all,
     flags: buildFlags(log, input),
-    volume: volumeFor(log, occurrences, ctx.byId),
+    volume,
     historySuggestions: historySuggestions(ctx, occurrences),
     status: errors ? "INFEASIBLE" : "SUCCEEDED",
     validation: errors ? "BLOCKED" : warnings ? "WARNINGS" : "PASSED",
     requiresProfessionalReview: true,
+    ...(audit ? { audit } : {}),
   };
   next.rulesUsed = log.rulesUsed(result.rulesUsed);
   const bounded = applyBounds(next);

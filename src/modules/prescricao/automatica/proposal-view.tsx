@@ -8,6 +8,7 @@ import { CAUTION_TAGS, PATTERNS } from "@/modules/biblioteca/metadata/vocabulary
 import { ISSUE_LABELS, STIMULUS_LABELS } from "@/modules/prescricao/motor/vocabulary";
 import type { Flag, FlagDecision, HistorySuggestion, ItemOut, OccurrenceOut, RegenerationScope, RuleUse } from "@/modules/prescricao/motor/types";
 import type { ProposalSummary } from "@/db/prescription-proposals";
+import type { TargetSuggestion } from "@/modules/prescricao/motor/targets";
 import { workoutTitle } from "@/modules/training/format";
 import { formatCalendarDate } from "@/modules/training/format";
 import {
@@ -19,7 +20,9 @@ import {
   regenerateScope,
   type ProposalActionResult,
 } from "./actions";
+import { AuditPanel } from "./audit-panel";
 import { SubstituteDialog, type SubstituteTarget } from "./substitute-dialog";
+import { suggestionAnchor } from "./target-suggestions";
 import { NETWORK_ERROR, useIntent } from "./use-intent";
 import {
   BASIS_LABELS,
@@ -29,6 +32,7 @@ import {
   PROPOSAL_ORIGIN_LABELS,
   SEVERITY_LABELS,
   SEVERITY_TONES,
+  contributionView,
   durationText,
   historySuggestionText,
   issuesOfPhase,
@@ -39,7 +43,12 @@ import {
   ruleLabel,
   traceParamLabel,
   traceValue,
+  weekTableAudit,
   weekVolume,
+  whyView,
+  type AuditSource,
+  type CoverageAnswer,
+  type WorkoutCoverageAnswer,
 } from "./view";
 
 /** The proposal header fields the screen needs (no answers, no ledger references). */
@@ -90,6 +99,9 @@ export function ProposalView({
   phaseIndex,
   week,
   library,
+  audit,
+  acceptSuggestions,
+  targetSuggestions = [],
 }: {
   planId: string;
   revisionId: string;
@@ -100,6 +112,12 @@ export function ProposalView({
   phaseIndex: number;
   week: number;
   library: Array<{ id: string; name: string }>;
+  /** The plan audit: recorded with the proposal, or computed now for one generated before it; null when there is none. */
+  audit: AuditSource | null;
+  /** Whether the proposal's own rule set can back an accepted suggestion (design V3 §3.9). */
+  acceptSuggestions: boolean;
+  /** Suggested targets of the phases the audit says have none (computed by the server for this proposal's rules). */
+  targetSuggestions?: Array<{ phaseIndex: number; suggestion: TargetSuggestion | null; reason: string | null }>;
 }) {
   const router = useRouter();
   const intent = useIntent();
@@ -135,6 +153,19 @@ export function ProposalView({
     run(`regen:${what}`, (ids) => regenerateScope(planId, revisionId, { ...cas, idempotencyKey: ids.key, writeId: ids.write, scope }));
   const lock = (item: ItemOut, locked: boolean) =>
     run(`lock:${item.slotKey}:${locked}`, (ids) => lockItems(planId, revisionId, { ...cas, writeId: ids.write, targets: [{ phaseIndex, slotKey: item.slotKey }], locked }));
+  /** Targets of a phase accepted or set on the card: the phase is regenerated with them (merged by phase into the answers). */
+  const setTargets = (phase: number, coverage: CoverageAnswer | null, byWorkout: WorkoutCoverageAnswer[]) =>
+    run(`targets:${phase}:${JSON.stringify([coverage, byWorkout])}`, (ids) =>
+      regenerateScope(planId, revisionId, {
+        ...cas,
+        idempotencyKey: ids.key,
+        writeId: ids.write,
+        scope: { kind: "PHASE", phaseIndex: phase },
+        answers: { ...(coverage ? { phaseCoverage: [coverage] } : {}), ...(byWorkout.length ? { coverageByWorkout: byWorkout } : {}) },
+      }),
+    );
+  const experienceUnknown = summary.assumptions.some((a) => a.code === "EXPERIENCE_UNKNOWN");
+  const cardFor = new Set(acceptSuggestions && audit?.source === "STORED" ? targetSuggestions.map((t) => t.phaseIndex) : []);
   const decide = (flag: Flag, decision: FlagDecision) =>
     run(`flag:${flag.code}:${decision.kind}`, (ids) => acceptFlagDecision(planId, revisionId, { ...cas, writeId: ids.write, flagCode: flag.code, decision }));
 
@@ -155,7 +186,8 @@ export function ProposalView({
           <Kpi label="Alertas" value={String(summary.flags.length)} />
         </div>
         <p className="small muted">
-          Motor {header.engineVersion} · regras {header.rulesId} {header.rulesVersion}. {NOT_UNIVERSAL} Nada aqui está no rascunho até você
+          Motor {header.engineVersion} · regras {header.rulesId} {header.rulesVersion}
+          {audit ? ` · auditoria ${audit.report.auditVersion}${audit.source === "VIEW" ? " (calculada agora)" : ""}` : ""}. {NOT_UNIVERSAL} Nada aqui está no rascunho até você
           aplicar; a aprovação continua sendo sua.
         </p>
         {stale && (
@@ -265,6 +297,12 @@ export function ProposalView({
                     <Pill tone={SEVERITY_TONES[issue.severity]}>{ISSUE_LABELS[issue.code] ?? issue.code}</Pill> {issue.message}
                     {issue.suggestedAction && <span className="muted"> {issue.suggestedAction}</span>}
                     {issue.count && issue.count > 1 ? <span className="muted"> ({issue.count} ocorrências)</span> : null}
+                    {issue.code === "NO_TARGETS" && issue.phaseIndex && cardFor.has(issue.phaseIndex) ? (
+                      <>
+                        {" "}
+                        <a href={`#${suggestionAnchor(issue.phaseIndex)}`}>Ver alvos sugeridos</a>
+                      </>
+                    ) : null}
                     {at && issue.phaseIndex ? (
                       <>
                         {" "}
@@ -300,6 +338,23 @@ export function ProposalView({
           </ul>
         </details>
       </section>
+
+      {audit && (
+        <AuditPanel
+          audit={audit}
+          engineVersion={header.engineVersion}
+          acceptSuggestions={acceptSuggestions}
+          phaseIndex={phaseIndex}
+          href={href}
+          targets={{
+            suggestions: targetSuggestions,
+            labelsOf: (p: number) => summary.workouts.filter((w) => w.phaseIndex === p).map((w) => w.label),
+            pending,
+            onAccept: (entry) => setTargets(entry.phaseIndex, entry, []),
+            onApply: setTargets,
+          }}
+        />
+      )}
 
       <section className="panel" aria-labelledby="sessoes-titulo">
         <h2 id="sessoes-titulo">Fases, semanas e sessões</h2>
@@ -396,6 +451,9 @@ export function ProposalView({
                           key={item.slotKey}
                           item={item}
                           phaseIndex={phaseIndex}
+                          week={o.week}
+                          experienceUnknown={experienceUnknown}
+                          contribution={contributionView(item, audit?.report ?? null, phaseIndex, o.week)}
                           suggestions={summary.historySuggestions ?? []}
                           rulesUsed={summary.rulesUsed}
                           locked={lockedKeys.has(item.slotKey) || item.origin === "LOCKED"}
@@ -414,7 +472,7 @@ export function ProposalView({
             })}
           </div>
         )}
-        <WeekVolume rows={weekVolume(summary.volume ?? [], phaseIndex, week)} week={week} />
+        <WeekVolume rows={weekVolume(summary.volume ?? [], phaseIndex, week, weekTableAudit(audit))} week={week} audited={weekTableAudit(audit) !== null} />
         {phase.weeks > 1 &&
           labels.map((label) => {
             const rows = proposalProgression(occurrences, phaseIndex, phase.weeks, label);
@@ -477,6 +535,9 @@ export function ProposalView({
 function ProposalItem({
   item,
   phaseIndex,
+  week,
+  experienceUnknown,
+  contribution,
   suggestions,
   rulesUsed,
   locked,
@@ -487,6 +548,9 @@ function ProposalItem({
 }: {
   item: ItemOut;
   phaseIndex: number;
+  week: number;
+  experienceUnknown: boolean;
+  contribution: ReturnType<typeof contributionView>;
   suggestions: readonly HistorySuggestion[];
   rulesUsed: readonly RuleUse[];
   locked: boolean;
@@ -499,6 +563,7 @@ function ProposalItem({
   const meta = METADATA_LABELS[item.metadata];
   const history = historySuggestionText(suggestions, phaseIndex, item.slotKey);
   const preserved = item.origin === "PRESERVED";
+  const why = whyView(item, { rulesUsed, contribution, week, experienceUnknown });
   return (
     <li>
       <div className="exercise-main">
@@ -538,37 +603,62 @@ function ProposalItem({
         <summary>
           <HelpCircle size={15} aria-hidden="true" /> Por quê?
         </summary>
-        <ul className="auto-list">
-          {item.trace.selection.map((t, n) => (
-            <li key={`${t.code}-${n}`} className="small">
-              <span title={t.ruleId ? `Regra: ${ruleLabel(rulesUsed, t.ruleId)}` : undefined}>
-                <Pill tone={BASIS_TONES[t.basis]}>{BASIS_LABELS[t.basis]}</Pill>
-              </span>{" "}
-              {t.detail}
-            </li>
-          ))}
-        </ul>
-        {item.trace.params.length > 0 && (
-          <div className="execution-scroll" tabIndex={0} role="region" aria-label={`Valores propostos para ${item.exerciseName}`}>
-            <table className="execution-table">
-              <thead>
-                <tr>
-                  <th scope="col">Valor</th>
-                  <th scope="col">Proposto</th>
-                  <th scope="col">Base</th>
-                </tr>
-              </thead>
-              <tbody>
-                {item.trace.params.map((p, n) => (
-                  <tr key={`${p.param}-${n}`}>
-                    <th scope="row">{traceParamLabel(p.param)}</th>
-                    <td>{traceValue(p.value, p.param)}</td>
-                    <td title={p.ruleId ? `Regra: ${ruleLabel(rulesUsed, p.ruleId)}` : undefined}>{BASIS_LABELS[p.basis]}</td>
-                  </tr>
+        {why.map((section) =>
+          section.key === "rules" ? (
+            <div key={section.key} className="why-block why-section">
+              <h4 className="small-heading">{section.title}</h4>
+              <ul className="auto-list">
+                {section.lines.map((line, n) => (
+                  <li key={n} className="small">
+                    {line.basis && <Pill tone={BASIS_TONES[line.basis]}>{BASIS_LABELS[line.basis]}</Pill>} {line.text}
+                  </li>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </ul>
+            </div>
+          ) : (
+            <div key={section.key} className="why-block why-section">
+              <h4 className="small-heading">{section.title}</h4>
+              <ul className="auto-list">
+                {section.lines.map((line, n) => (
+                  <li key={n} className={line.muted ? "small muted" : "small"}>
+                    {line.basis && (
+                      <>
+                        <span title={line.rule ? `Regra: ${line.rule}` : undefined}>
+                          <Pill tone={BASIS_TONES[line.basis]}>{BASIS_LABELS[line.basis]}</Pill>
+                        </span>{" "}
+                      </>
+                    )}
+                    {line.text}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ),
+        )}
+        {item.trace.params.length > 0 && (
+          <details className="auto-details">
+            <summary>Todos os valores propostos e suas bases</summary>
+            <div className="execution-scroll" tabIndex={0} role="region" aria-label={`Valores propostos para ${item.exerciseName}`}>
+              <table className="execution-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Valor</th>
+                    <th scope="col">Proposto</th>
+                    <th scope="col">Base</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {item.trace.params.map((p, n) => (
+                    <tr key={`${p.param}-${n}`}>
+                      <th scope="row">{traceParamLabel(p.param)}</th>
+                      <td>{traceValue(p.value, p.param)}</td>
+                      <td title={p.ruleId ? `Regra: ${ruleLabel(rulesUsed, p.ruleId)}` : undefined}>{BASIS_LABELS[p.basis]}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
         )}
       </details>
       {!preserved && (
@@ -591,7 +681,7 @@ function ProposalItem({
 }
 
 /** Weekly sets per muscle of the selected week (engine volume: direct = principal muscle, indirect = secondary). */
-function WeekVolume({ rows, week }: { rows: ReturnType<typeof weekVolume>; week: number }) {
+function WeekVolume({ rows, week, audited }: { rows: ReturnType<typeof weekVolume>; week: number; audited: boolean }) {
   if (!rows.length) return null;
   return (
     <details className="progression-details">
@@ -610,6 +700,8 @@ function WeekVolume({ rows, week }: { rows: ReturnType<typeof weekVolume>; week:
               <th scope="col">Indiretas</th>
               <th scope="col">Ponderadas</th>
               <th scope="col">Sessões</th>
+              {audited && <th scope="col">Sessões c/ estímulo direto</th>}
+              {audited && <th scope="col">Alvo</th>}
             </tr>
           </thead>
           <tbody>
@@ -620,6 +712,8 @@ function WeekVolume({ rows, week }: { rows: ReturnType<typeof weekVolume>; week:
                 <td>{r.indirect}</td>
                 <td>{r.weighted}</td>
                 <td>{r.sessions}</td>
+                {audited && <td>{r.directSessions}</td>}
+                {audited && <td>{r.target ?? "—"}</td>}
               </tr>
             ))}
           </tbody>

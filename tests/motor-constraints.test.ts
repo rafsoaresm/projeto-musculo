@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { TECHNICAL_LIMITS, canonicalJson, generate, substitute, type CatalogExercise } from "@/modules/prescricao/motor";
-import { baseInput, CATALOG, codes, exercise, parameters, structure } from "./helpers/motor-fixtures";
+import { DEFAULT_RULESET, TECHNICAL_LIMITS, canonicalJson, generate, substitute, type CatalogExercise } from "@/modules/prescricao/motor";
+import { AUDIT_RULES, baseInput, CATALOG, codes, exercise, parameters, structure } from "./helpers/motor-fixtures";
 
 const chosenIds = (r: ReturnType<typeof generate>) => new Set(r.occurrences.flatMap((o) => o.items.map((i) => i.exerciseId)));
 const byId = new Map(CATALOG.map((e) => [e.id, e]));
@@ -261,14 +261,17 @@ describe("motor: limites técnicos do resumo", () => {
 
 describe("revisão final: textos em português, seleção sem alvos, equipamento pendente", () => {
   it("o \"Por quê?\" e as alternativas usam rótulos (sem códigos) e vírgula decimal; empate só quando houve", () => {
-    const r = generate(baseInput());
-    const details = r.occurrences.flatMap((o) => o.items).flatMap((i) => i.trace.selection.map((t) => t.detail));
-    expect(details.some((d) => d.includes("Músculo-alvo Quadríceps como principal"))).toBe(true);
-    expect(details.some((d) => /(Músculo|Padrão)-alvo [a-z]/.test(d) || /[A-Z]{3,}_[A-Z]/.test(d))).toBe(false);
-    expect(details.some((d) => d.includes("equipamento disponível"))).toBe(false);
-    expect(details.some((d) => /\d\.\d/.test(d))).toBe(false);
-    const rank = details.filter((d) => d.startsWith("Escolha "));
-    expect(rank.some((d) => !d.includes("empate"))).toBe(true);
+    // Seleção por treino (2026.11.3) e seleção por microciclo (padrão, 2026.11.4+): os mesmos cuidados de texto.
+    for (const [rules, expected] of [[AUDIT_RULES, "Músculo-alvo Quadríceps como principal"], [DEFAULT_RULESET, "Quadríceps: faltava 1 sessão semanal com estímulo direto"]] as const) {
+      const r = generate(baseInput({ rules }));
+      const details = r.occurrences.flatMap((o) => o.items).flatMap((i) => i.trace.selection.map((t) => t.detail));
+      expect(details.some((d) => d.includes(expected)), rules.version).toBe(true);
+      expect(details.some((d) => /(Músculo|Padrão)-alvo [a-z]/.test(d) || /[A-Z]{3,}_[A-Z]/.test(d))).toBe(false);
+      expect(details.some((d) => d.includes("equipamento disponível"))).toBe(false);
+      expect(details.some((d) => /\d\.\d/.test(d))).toBe(false);
+      const rank = details.filter((d) => d.startsWith("Escolha "));
+      expect(rank.some((d) => !d.includes("empate"))).toBe(true);
+    }
     const noEquipment = generate(baseInput({ parameters: parameters({ availableEquipment: null }) }));
     expect(noEquipment.occurrences.flatMap((o) => o.items).flatMap((i) => i.trace.selection.map((t) => t.detail)))
       .toContain("Equipamentos disponíveis não informados: entrou por não precisar de equipamento.");

@@ -209,6 +209,11 @@ export interface FindingFact {
   /** Grau do achado (ex.: teste de movimento MODERATE, STOPPED_BY_PAIN). */
   grade?: string;
   ref?: string;
+  /**
+   * Leituras estruturadas (Flexiteste: código do movimento e nível). O adaptador só as envia quando o conjunto de regras tem
+   * FINDING_OBSERVATION_MAP (2026.11.4+), para que a entrada das versões anteriores fique igual byte a byte.
+   */
+  readings?: Array<{ code: string; label: string; level: number }>;
 }
 
 export interface StudentFacts {
@@ -355,6 +360,8 @@ export interface GenerationParameters {
     phaseIndex: number;
     muscles?: string[];
     patterns?: string[];
+    /** Alvos semanais por músculo (séries ponderadas e sessões com estímulo direto). Só lidos com as regras da auditoria (2026.11.3+). */
+    weeklySets?: WeeklySetsTarget[];
     basis: "PROFESSIONAL" | "HEURISTIC_ACCEPTED";
     ruleId?: string;
   }>;
@@ -496,6 +503,28 @@ export interface VolumeRow {
   occurrences: number;
 }
 
+/** Alvo semanal de um músculo: ausente = sem limite naquele sentido. Nunca é inferido de texto livre. */
+export interface WeeklySetsTarget {
+  muscle: string;
+  minWeighted?: number;
+  maxWeighted?: number;
+  minDirectSessions?: number;
+}
+
+/**
+ * Alvos de cobertura de um treino. `origin` e `weeklySets` só existem com as regras da auditoria (2026.11.3+): versões
+ * anteriores gravam o objeto como antes. `weeklySets` traz a base da entrada da fase de onde veio.
+ */
+export interface CoverageTargets {
+  muscles: string[];
+  patterns: string[];
+  basis: Basis;
+  ruleId?: string;
+  /** WORKOUT_FOCUS: alvo do treino (vale nas sessões dele); PHASE_COVERAGE: alvo da fase (vale na fase inteira). */
+  origin?: "WORKOUT_FOCUS" | "PHASE_COVERAGE";
+  weeklySets?: Array<WeeklySetsTarget & { basis: "PROFESSIONAL" | "HEURISTIC_ACCEPTED"; ruleId?: string }>;
+}
+
 export interface WorkoutSummary {
   phaseIndex: number;
   label: string;
@@ -503,7 +532,7 @@ export interface WorkoutSummary {
   stimulus: Fact<string> | null;
   modalities: Fact<string[]> | null;
   count: Fact<number> | null;
-  coverage: { muscles: string[]; patterns: string[]; basis: Basis; ruleId?: string } | null;
+  coverage: CoverageTargets | null;
   eligible: number;
   excluded: Record<string, number>;
 }
@@ -554,6 +583,169 @@ export interface EngineResult {
   volume: VolumeRow[];
   historySuggestions: HistorySuggestion[];
   rulesUsed: RuleUse[];
+  /**
+   * Auditoria técnica do plano inteiro (regras 2026.11.3+), recalculada em toda operação. Campo separado de `issues`: nunca muda
+   * `status`, `validation` nem bloqueia. Ausente nas versões de regras sem auditoria.
+   */
+  audit?: AuditReport;
+}
+
+// ---------- auditoria técnica do plano (fatia B) ----------
+
+/** Nunca ERROR: a auditoria não bloqueia. */
+export type AuditSeverity = "WARNING" | "INFO";
+/** BY_DESIGN = coerente com uma escolha explícita do profissional; DESCRIPTIVE = descrição neutra, não um ponto a agir. */
+export type AuditStatus = "OPEN" | "BY_DESIGN" | "DESCRIPTIVE";
+export type AuditUnit = "DIRECT_SETS" | "INDIRECT_SETS" | "WEIGHTED_SETS" | "SESSIONS" | "SHARE" | "MINUTES" | "ITEMS" | "RATIO";
+
+export type AuditCode =
+  | "AUDIT_TARGET_MUSCLE_UNMET"
+  | "AUDIT_TARGET_MUSCLE_ABOVE"
+  | "AUDIT_TARGET_PATTERN_UNMET"
+  | "AUDIT_INDIRECT_ONLY"
+  | "AUDIT_NON_TARGET_OMITTED"
+  | "AUDIT_NO_DIRECT_STIMULUS"
+  | "AUDIT_NO_TARGETS"
+  | "AUDIT_UNCOUNTED_ITEMS"
+  | "AUDIT_DOSE_STIMULUS_MISMATCH"
+  | "AUDIT_PATTERN_IMBALANCE"
+  | "AUDIT_REGION_CONCENTRATION"
+  | "AUDIT_WORKOUT_SHARE"
+  | "AUDIT_EXERCISE_REPEATED"
+  | "AUDIT_PATTERN_REPEATED_IN_SESSION"
+  | "AUDIT_WEEK_VOLUME_JUMP"
+  | "AUDIT_PHASE_VOLUME_JUMP"
+  | "AUDIT_UNIFORM_SET_STEP"
+  | "AUDIT_DOSE_UNIFORM"
+  | "AUDIT_INTENSITY_MISSING"
+  | "AUDIT_DURATION_UNDERUSED"
+  | "AUDIT_PARTIAL_WEEK"
+  | "AUDIT_PHASES_NOT_GENERATED"
+  | "AUDIT_AGGREGATED";
+
+export interface AuditMeasure {
+  unit: AuditUnit;
+  value: number;
+  from?: number;
+  detail?: Record<string, number>;
+}
+
+/** Só existe quando há um alvo válido: do profissional, uma heurística aceita ou a disponibilidade informada. Nunca HEURISTIC puro. */
+export interface AuditTarget {
+  unit: AuditUnit;
+  min?: number;
+  max?: number;
+  basis: Basis;
+  ruleId?: string;
+  /** AVAILABILITY: o tempo disponível (treino, parâmetros da geração ou perfil do aluno). */
+  origin: "WORKOUT_FOCUS" | "PHASE_COVERAGE" | "AVAILABILITY";
+}
+
+export interface AuditFinding {
+  code: AuditCode;
+  severity: AuditSeverity;
+  status: AuditStatus;
+  stage: "VALIDATION";
+  phaseIndex?: number;
+  week?: number;
+  toPhaseIndex?: number;
+  toWeek?: number;
+  label?: string;
+  muscle?: string;
+  pattern?: string;
+  measured?: AuditMeasure;
+  target?: AuditTarget;
+  /** "rule:<ID>", "volume:<p>:<w>:<MUSCLE>", "occurrence:<p>:<w>:<slot>", "coverage:<p>:<label>", "item:<p>:<slotKey>". */
+  sourceRefs: string[];
+  /** pt-BR, feito só dos números medidos e da regra. */
+  rationale: string;
+  suggestedAction: string | null;
+  /** Linhas agregadas pelo limite técnico. */
+  count?: number;
+}
+
+/** Mínimo e máximo entre as semanas da fase. */
+export interface AuditRange {
+  min: number;
+  max: number;
+}
+
+export interface AuditMuscleRow {
+  muscle: string;
+  isTarget: boolean;
+  /** null quando alguma semana da fase tem itens de volume sem séries definidas: vazio nunca é 0. */
+  direct: AuditRange | null;
+  indirect: AuditRange | null;
+  weighted: AuditRange | null;
+  /** Presença: sessões com um item que tem o músculo como principal, com ou sem séries definidas. */
+  directSessions: AuditRange;
+  /** UNKNOWN: nenhum item o cita, mas a fase tem itens que não puderam ser contados. */
+  classification: "DIRECT" | "INDIRECT_ONLY" | "NONE" | "UNKNOWN";
+  target?: AuditTarget;
+}
+
+export interface AuditPatternRow {
+  pattern: string;
+  isTarget: boolean;
+  sets: AuditRange | null;
+  sessions: AuditRange;
+}
+
+export interface AuditWorkoutRow {
+  label: string;
+  /** Sessões do treino por semana completa (inteiros, mín.–máx.). */
+  exposuresPerWeek: AuditRange;
+  /** Tem itens das modalidades de volume. */
+  volumeWorkout: boolean;
+  /** null para treinos sem volume ou quando as séries não estão definidas. */
+  weightedShare: number | null;
+  /** Regiões (AUDIT_REGIONS) com estímulo direto neste treino. */
+  regions: string[];
+  minutes: AuditRange | null;
+  budgetMinutes: number | null;
+}
+
+export interface AuditWeek {
+  week: number;
+  occurrences: number;
+  full: boolean;
+  /** Itens das modalidades de volume sem séries (dose vazia). */
+  unknownSetItems: number;
+  /** Itens sem exercício da biblioteca, fora da biblioteca, ou de volume sem músculos. */
+  uncountedItems: number;
+  /** músculo → sessões com um item que o tem como principal (presença). */
+  directSessions: Record<string, number>;
+  /** null quando unknownSetItems > 0. */
+  weighted: number | null;
+}
+
+export interface AuditPhase {
+  phaseIndex: number;
+  weeks: number;
+  sessionsPerWeek: number;
+  occurrencesPerWeek: AuditRange;
+  partialWeeks: number[];
+  stimuli: string[];
+  comprehensive: boolean;
+  hasTargets: boolean;
+  /** Descritivo, a partir das regiões dos treinos com volume; os nomes dos treinos nunca mudam. */
+  splitShape: "FULL_BODY" | "UPPER_LOWER" | "SINGLE" | "OTHER" | null;
+  /** Índice = semana − 1. */
+  weekRows: AuditWeek[];
+  muscles: AuditMuscleRow[];
+  patterns: AuditPatternRow[];
+  workouts: AuditWorkoutRow[];
+}
+
+export interface AuditReport {
+  auditVersion: string;
+  rules: RuleSetRef;
+  phasesAudited: number[];
+  phasesMissing: number[];
+  occurrences: number;
+  datesMissing: number;
+  phases: AuditPhase[];
+  findings: AuditFinding[];
 }
 
 /** Operações de revisão devolvem um resultado ou um motivo; nunca lançam exceção. */

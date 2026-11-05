@@ -8,9 +8,10 @@ import { TECHNICAL_LIMITS } from "./bounds";
 import { metricFor } from "./dose";
 import { ineligibleReason, INELIGIBLE_TEXT } from "./eligibility";
 import {
-  finalize, generate, itemFor, phaseSummaries, planWorkout, prepare, unknownRules,
+  finalize, generate, itemFor, phaseSummaries, planWorkout, prepare, prepareWorkout, unknownRules,
   type EngineContext, type SlotPlan,
 } from "./generate";
+import { fixedWorkoutFrom, laneKey, type FixedWorkout, type GenerateOptions, type ReservedSubstitution } from "./microcycle";
 import { existingFor, metadataOf, nameKeyOf, parseSlotKey, rankAlternatives, selectExercises, slotKeyOf } from "./select";
 import { uniqueIssues } from "./trace";
 import type {
@@ -28,6 +29,22 @@ function locate(ctx: EngineContext, phaseIndex: number, label: string): { phase:
   const phase = ctx.input.structure.phases.find((p) => p.index === phaseIndex);
   const workout = phase?.workouts.find((w) => w.label === label);
   return phase && workout ? { phase, workout } : null;
+}
+
+/** Seleção por microciclo (2026.11.4+) nesta proposta: muda só o que a seleção recebe e o que uma regeneração refaz. */
+const microcycle = (ctx: EngineContext) => ctx.log.optional("MICROCYCLE_SELECTION") !== undefined;
+
+/**
+ * O que as operações sem seleção usam de um treino (biblioteca elegível, modalidades, cobertura). No microciclo, só a
+ * preparação (nenhuma seleção é feita para isso); na seleção antiga, o plano inteiro, como antes (reprodução byte a byte).
+ */
+function poolOf(ctx: EngineContext, phase: StructurePhase, workout: StructureWorkout) {
+  if (microcycle(ctx)) {
+    const d = prepareWorkout(ctx, phase, workout);
+    return { phase, workout, pool: d.pool, modalities: d.modalities, coverage: d.coverage };
+  }
+  const p = planWorkout(ctx, phase, workout, new Set(), new Set());
+  return { phase, workout, pool: p.pool, modalities: p.modalities, coverage: p.summary.coverage };
 }
 
 function renumber(items: ItemOut[]): ItemOut[] {
@@ -75,7 +92,7 @@ function substituteWith(
   if (!where) return fail("TARGET_NOT_FOUND", "Treino não encontrado na estrutura.");
   const next = ctx.byId.get(nextExerciseId);
   if (!next) return fail("EXERCISE_NOT_IN_CATALOG", "O exercício escolhido não está na biblioteca visível.");
-  const plan = planWorkout(ctx, where.phase, where.workout, new Set(), new Set());
+  const plan = poolOf(ctx, where.phase, where.workout);
   const reason = ineligibleReason(next, ctx.elig, plan.modalities ? new Set(plan.modalities.value) : null, new Set(where.workout.focus.excludedExerciseIds ?? []), { ignoreMetadata: true });
   if (reason) return fail("REPLACEMENT_INELIGIBLE", `${next.name} não é elegível para este treino: ${INELIGIBLE_TEXT[reason]}.`);
   const affected = (o: OccurrenceOut) =>
@@ -134,7 +151,7 @@ export function alternativesFor(input: EngineInput, previous: EngineResult, targ
   const item = occs[0]?.items.find((i) => i.slotKey === target.slotKey);
   const exercise = item?.exerciseId ? ctx.byId.get(item.exerciseId) ?? null : null;
   const exclude = new Set(occs.flatMap((o) => o.items.map((i) => i.exerciseId)).filter((id): id is string => Boolean(id)));
-  const plan = planWorkout(ctx, where.phase, where.workout, new Set(), new Set());
+  const plan = poolOf(ctx, where.phase, where.workout);
   return rankAlternatives(ctx.log, exercise, exercise ? metricFor(exercise, input.parameters).metric : null, plan.pool, exclude, Math.min(limit, TECHNICAL_LIMITS.MAX_ALTERNATIVES));
 }
 
@@ -164,11 +181,11 @@ export function regenerate(input: EngineInput, previous: EngineResult, scope: Re
     const alt = alternativesFor(input, previous, { phaseIndex: scope.phaseIndex, slotKey: scope.slotKey, week: scope.week, slot: scope.slot }, 1)[0];
     let nextId = alt?.exerciseId ?? null;
     if (!nextId) {
-      const plan = planWorkout(ctx, where.phase, where.workout, new Set(), new Set());
+      const plan = poolOf(ctx, where.phase, where.workout);
       const inOcc = new Set(occ.items.map((i) => i.exerciseId).filter((id): id is string => Boolean(id)));
       const others = occ.items.filter((i) => i.slotKey !== scope.slotKey).map((i) => (i.exerciseId ? ctx.byId.get(i.exerciseId) : undefined)).filter((e) => e !== undefined);
       nextId = selectExercises(ctx.log, {
-        stimulus: occ.stimulus?.value ?? null, pool: plan.pool.filter((e) => !inOcc.has(e.id)), count: others.length + 1, coverage: plan.summary.coverage,
+        stimulus: occ.stimulus?.value ?? null, pool: plan.pool.filter((e) => !inOcc.has(e.id)), count: others.length + 1, coverage: plan.coverage,
         fixed: others, fixedCount: others.length, preferred: new Set(input.parameters.preferredExerciseIds), experience: ctx.experience,
         history: ctx.history, usedInPhase: new Set(), usedInPreviousPhase: new Set(), avoid: new Set(item.exerciseId ? [item.exerciseId] : []), maxItems: TECHNICAL_LIMITS.MAX_ITEMS_PER_WORKOUT,
       })[0]?.exercise.id ?? null;
@@ -188,17 +205,20 @@ export function regenerate(input: EngineInput, previous: EngineResult, scope: Re
     const holders = occs.filter((o) => o.items.some((i) => i.slotKey === l.slotKey)).length;
     if (holders > 0 && holders < occs.length) partial.add(`${l.phaseIndex}|${l.slotKey}`);
   }
-  const fresh = generate({ ...input, locked: input.locked.filter((l) => !partial.has(`${l.phaseIndex}|${l.slotKey}`)), scope: { kind: "PHASES", phaseIndexes: touched } });
+  const micro = microcycle(ctx);
+  const options = micro ? microcycleOptions(ctx, previous, scope, touched) : {};
+  const fixedKeys = new Set(options.fixedWorkouts?.keys() ?? []);
+  const fresh = generate({ ...input, locked: input.locked.filter((l) => !partial.has(`${l.phaseIndex}|${l.slotKey}`)), scope: { kind: "PHASES", phaseIndexes: touched } }, options);
   const locked = new Set(input.locked.map((l) => `${l.phaseIndex}|${l.slotKey}`));
   const prevByKey = new Map(previous.occurrences.map((o) => [`${o.phaseIndex}|${o.week}|${o.slot}`, o]));
   const freshByKey = new Map(fresh.occurrences.map((o) => [`${o.phaseIndex}|${o.week}|${o.slot}`, o]));
   const kept: Issue[] = [];
-  const plans = new Map<string, ReturnType<typeof planWorkout> | null>();
+  const plans = new Map<string, ReturnType<typeof poolOf> | null>();
   const planOf = (p: StructurePhase, label: string) => {
     const k = `${p.index}|${label}`;
     if (!plans.has(k)) {
       const w = p.workouts.find((x) => x.label === label);
-      plans.set(k, w ? planWorkout(ctx, p, w, new Set(), new Set()) : null);
+      plans.set(k, w ? poolOf(ctx, p, w) : null);
     }
     return plans.get(k) ?? null;
   };
@@ -252,21 +272,68 @@ export function regenerate(input: EngineInput, previous: EngineResult, scope: Re
       occurrences.push({ ...f, items: renumber(items) });
     }
   const touchedSet = new Set(touched);
+  // Microciclo: um treino mantido inteiro (regeneração de outro treino ou de uma sessão) guarda os avisos e o resumo gravados.
+  const isFixed = (i: { phaseIndex?: number; label?: string }) => i.phaseIndex !== undefined && i.label !== undefined && fixedKeys.has(laneKey(i.phaseIndex, i.label));
   const issues = [
     ...fresh.issues.filter((i) => i.stage === "INPUT"),
-    ...previous.issues.filter((i) => i.stage === "SELECTION" && (i.phaseIndex === undefined || !touchedSet.has(i.phaseIndex))),
-    ...fresh.issues.filter((i) => i.stage === "SELECTION"),
+    ...previous.issues.filter((i) => i.stage === "SELECTION" && (i.phaseIndex === undefined || !touchedSet.has(i.phaseIndex) || isFixed(i))),
+    ...fresh.issues.filter((i) => i.stage === "SELECTION" && !isFixed(i)),
     ...kept,
   ];
   const workouts = [
-    ...previous.workouts.filter((w) => !touchedSet.has(w.phaseIndex)),
-    ...fresh.workouts.filter((w) => touchedSet.has(w.phaseIndex)),
+    ...previous.workouts.filter((w) => !touchedSet.has(w.phaseIndex) || isFixed(w)),
+    ...fresh.workouts.filter((w) => touchedSet.has(w.phaseIndex) && !isFixed(w)),
   ].sort((a, b) => input.structure.phases.findIndex((p) => p.index === a.phaseIndex) - input.structure.phases.findIndex((p) => p.index === b.phaseIndex));
   const merged: EngineResult = {
     ...fresh, phases: phaseSummaries(input), workouts, occurrences, issues: uniqueIssues(issues),
     rulesUsed: [...previous.rulesUsed, ...fresh.rulesUsed.filter((r) => !previous.rulesUsed.some((p) => p.ruleId === r.ruleId))],
   };
   return { ok: true, result: finalize(ctx, merged) };
+}
+
+/**
+ * Opções da seleção por microciclo numa regeneração: a fase anterior gravada (variação), os treinos fora do escopo como
+ * estado fixo (regenerar um treino ou uma sessão) e as trocas do profissional presentes em todas as sessões do escopo.
+ */
+function microcycleOptions(ctx: EngineContext, previous: EngineResult, scope: RegenerationScope, touched: number[]): GenerateOptions {
+  const order = ctx.input.structure.phases;
+  const touchedSet = new Set(touched);
+  const previousPhaseExercises = new Map<number, string[]>();
+  for (const t of touched) {
+    const at = order.findIndex((p) => p.index === t);
+    const pred = at > 0 ? order[at - 1] : null;
+    if (!pred || touchedSet.has(pred.index)) continue;
+    const ids = new Set<string>();
+    for (const o of previous.occurrences) if (o.phaseIndex === pred.index) for (const i of o.items) if (i.exerciseId) ids.add(i.exerciseId);
+    previousPhaseExercises.set(pred.index, [...ids].sort());
+  }
+  const fixedWorkouts = new Map<string, FixedWorkout>();
+  const reserved = new Map<string, ReservedSubstitution[]>();
+  for (const phase of order) {
+    if (!touchedSet.has(phase.index)) continue;
+    const labelsInScope = new Set(phase.occurrences.filter((o) => inRegenScope(scope, { phaseIndex: phase.index, week: o.week, slot: o.slot, label: o.label }, touched)).map((o) => o.label));
+    for (const w of phase.workouts) {
+      const key = laneKey(phase.index, w.label);
+      if (!labelsInScope.has(w.label)) {
+        fixedWorkouts.set(key, fixedWorkoutFrom(ctx, phase, w.label, previous.occurrences));
+        continue;
+      }
+      // Trocas do profissional presentes em TODAS as sessões do escopo deste treino: ocupam a vaga na seleção nova.
+      // Uma troca parcial (uma sessão, a partir de uma semana) segue o caminho antigo (recolocada onde estava).
+      const occs = previous.occurrences.filter((o) => o.phaseIndex === phase.index && o.label === w.label && inRegenScope(scope, o, touched));
+      if (!occs.length) continue;
+      const locked = new Set(ctx.input.locked.filter((l) => l.phaseIndex === phase.index).map((l) => l.slotKey));
+      const subs = new Map<string, ReservedSubstitution>();
+      for (const item of occs[0].items) {
+        if (item.origin !== "SUBSTITUTED" || !item.exerciseId || locked.has(item.slotKey)) continue;
+        if (!occs.every((o) => o.items.some((i) => i.origin === "SUBSTITUTED" && i.exerciseId === item.exerciseId))) continue;
+        const root = item.substitutesSlotKey ? parseSlotKey(item.substitutesSlotKey) : null;
+        subs.set(item.exerciseId, { exerciseId: item.exerciseId, replaces: root?.exerciseId ?? null });
+      }
+      if (subs.size) reserved.set(key, [...subs.values()]);
+    }
+  }
+  return { previousPhaseExercises, fixedWorkouts, reserved };
 }
 
 // ---------- rebase ----------

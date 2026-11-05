@@ -27,22 +27,29 @@ import {
   type ProposalHeader,
 } from "@/db/prescription-proposals";
 import type { AuthenticatedContext } from "@/db/students";
-import { generate, phaseSummaries, workUnits } from "@/modules/prescricao/motor/generate";
+import { generate, workUnits } from "@/modules/prescricao/motor/generate";
 import { canonicalInput, canonicalJson, canonicalRequest, sha256Hex } from "@/modules/prescricao/motor/hash";
 import { alternativesFor, rebase, regenerate, substitute } from "@/modules/prescricao/motor/regenerate";
 import { DEFAULT_RULESET, getRuleSet } from "@/modules/prescricao/motor/rules";
 import { STIMULUS_LABELS } from "@/modules/prescricao/motor/vocabulary";
-import { uniqueIssues } from "@/modules/prescricao/motor/trace";
+import { ruleLogFor, uniqueIssues } from "@/modules/prescricao/motor/trace";
+import { auditPlan, boundAudit } from "@/modules/prescricao/motor/audit";
+import { targetSuggestion, type TargetSuggestion, type TargetSuggestionOutcome } from "@/modules/prescricao/motor/targets";
+import { volumeFor } from "@/modules/prescricao/motor/volume";
 import type {
+  AuditReport,
+  CatalogExercise,
   EngineInput,
   EngineOutcome,
   EngineResult,
   ItemTarget,
   RegenerationScope,
+  RuleSetRef,
+  StructureFacts,
   SubstitutionTarget,
 } from "@/modules/prescricao/motor/types";
-import { ADAPTER_ASSUMPTION_CODES, ADAPTER_ISSUE_CODES, buildEngineInput, goalSuggestions } from "./build-input";
-import { loadGenerationContext } from "./context";
+import { ADAPTER_ASSUMPTION_CODES, ADAPTER_ISSUE_CODES, buildEngineInput, goalSuggestions, suggestedTargets } from "./build-input";
+import { loadCatalogForPlan, loadGenerationContext, loadScheduleForPlan } from "./context";
 import {
   flagCodeSchema,
   flagDecisionSchema,
@@ -51,7 +58,7 @@ import {
   type GenerationFactRefs,
   type GenerationQuestion,
 } from "./contracts";
-import { studentFacts, type GenerationContext } from "./facts";
+import { structureFacts, studentFacts, type GenerationContext } from "./facts";
 import { policyRows, type PolicyRow } from "./view";
 import { WORK_UNITS_PER_REQUEST } from "./limits";
 
@@ -317,6 +324,35 @@ export interface GenerationScreen {
   rules: { id: string; version: string };
   library: Array<{ id: string; name: string; metadata: "REVIEWED" | "INFERRED" | "PENDING" }>;
   lastAnswers: { createdAt: string; answers: unknown } | null;
+  /**
+   * Suggested targets per phase (rule MICROCYCLE_TARGET_SUGGESTIONS of the default rule set; empty without it): one outcome per
+   * stimulus the form may choose, and the one with no stimulus answered. The suggestion depends on the stimulus, which the form
+   * picks on screen; the server recomputes it from the answers on "Gerar" and refuses anything else as "aceita".
+   */
+  targetSuggestions: PhaseTargetSuggestions[];
+}
+
+export interface PhaseTargetSuggestions {
+  phaseIndex: number;
+  /** No stimulus answered for the phase (the periodization's own, if any). */
+  asIs: TargetSuggestionOutcome;
+  byStimulus: Record<string, TargetSuggestionOutcome>;
+}
+
+/** The suggested targets of each phase the rule set can suggest for, as the form needs them (see `GenerationScreen`). */
+export function screenTargetSuggestions(input: EngineInput, rules: RuleSetRef = DEFAULT_RULESET): PhaseTargetSuggestions[] {
+  const table = getRuleSet(rules)?.rules.MICROCYCLE_TARGET_SUGGESTIONS?.value;
+  if (!table) return [];
+  return input.structure.phases.map((phase) => {
+    const others = input.parameters.stimulusByPhase.filter((s) => s.phaseIndex !== phase.index);
+    const asIs = targetSuggestion(rules, phase, { parameters: { ...input.parameters, stimulusByPhase: others } });
+    const byStimulus: Record<string, TargetSuggestionOutcome> = {};
+    for (const stimulus of Object.keys(table).sort())
+      byStimulus[stimulus] = targetSuggestion(rules, phase, {
+        parameters: { ...input.parameters, stimulusByPhase: [...others, { phaseIndex: phase.index, value: stimulus, basis: "PROFESSIONAL" }] },
+      });
+    return { phaseIndex: phase.index, asIs, byStimulus };
+  });
 }
 
 const PROFILE_TEXT: Array<[keyof NonNullable<GenerationContext["profile"]>, string]> = [
@@ -386,6 +422,7 @@ function screenOf(ctx: GenerationContext, built: Built | Extract<ReturnType<type
     policy: policyRows(rules),
     rules: { id: rules.id, version: rules.version },
     library: ctx.catalog.map((e) => ({ id: e.id, name: e.name, metadata: e.metadataStatus })).sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
+    targetSuggestions: screenTargetSuggestions(built.input),
   };
 }
 
@@ -482,7 +519,15 @@ function parseAnswers(raw: unknown): GenerationAnswers | null {
 
 type Built = Extract<ReturnType<typeof buildEngineInput>, { ok: true }>;
 
-/** Reads the real data again and builds the engine input; any failure is an outcome. */
+const RULES_GONE = "As regras com que esta proposta foi gerada não estão mais disponíveis. Descarte e gere de novo.";
+
+/** The rule set a proposal was born with: every later change of it runs with the same one (docs/MOTOR-PRESCRICAO.md). */
+const rulesOf = (header: Pick<ProposalHeader, "rulesId" | "rulesVersion">): RuleSetRef => ({ id: header.rulesId, version: header.rulesVersion });
+
+/**
+ * Reads the real data again and builds the engine input; any failure is an outcome. `rules`: the default for a new proposal, the
+ * proposal's own rule set for every change of an open one (continue, regenerate, substitute, rebase, alternatives).
+ */
 async function prepare(
   db: D1Database,
   context: AuthenticatedContext,
@@ -491,34 +536,59 @@ async function prepare(
   answers: GenerationAnswers,
   locked: ItemTarget[],
   now: Date,
-): Promise<{ ok: true; ctx: GenerationContext; built: Built } | { ok: false; outcome: ProposalOutcome }> {
-  const loaded = await loadGenerationContext(db, context, planId, revisionId, { now });
+  rules: RuleSetRef = DEFAULT_RULESET,
+): Promise<{ ok: true; ctx: GenerationContext; built: Built } | { ok: false; outcome: ProposalOutcome; ctx?: GenerationContext }> {
+  // A proposal recorded with rules this code no longer has cannot be changed: never run it with other rules.
+  if (!getRuleSet(rules)) return { ok: false, outcome: fail("invalid", { message: RULES_GONE }) };
+  const loaded = await loadGenerationContext(db, context, planId, revisionId, { now, rules });
   if (loaded.status === "not_found") return { ok: false, outcome: fail("not_found") };
   if (loaded.status === "not_open") return { ok: false, outcome: fail("not_open") };
-  const built = buildEngineInput(loaded.context, answers, { locked });
+  const built = buildEngineInput(loaded.context, answers, { locked, rules });
   if (!built.ok) {
     if (built.code === "UNKNOWN_EXERCISE") return { ok: false, outcome: fail("unknown_exercise") };
     if (built.code === "UNKNOWN_TARGET") return { ok: false, outcome: fail("invalid_target", { message: "Alguma resposta cita uma fase ou um treino que não existe na periodização salva." }) };
-    return { ok: false, outcome: fail("invalid", { message: "Uma resposta marcada como sugestão aceita não corresponde a uma sugestão da regra. Escolha de novo." }) };
+    // The context goes back with this refusal: a change checks first whether the revision moved (see `change`).
+    return { ok: false, ctx: loaded.context, outcome: fail("invalid", { message: "Uma resposta marcada como sugestão aceita não corresponde a uma sugestão da regra. Escolha de novo." }) };
   }
   if (!built.ready) return { ok: false, outcome: fail("questions", { questions: built.questions }) };
   return { ok: true, ctx: loaded.context, built };
 }
 
 /**
- * `answersPatch` of a regeneration: the fields it sends replace the stored ones, the others stay. The alert decisions the
- * professional already recorded ("acceptFlagDecision") are merged by alert code, never dropped by a patch that omits them.
- * A patch that is not an object is passed on as is, so the strict parse refuses it.
+ * `answersPatch` of a regeneration: the fields it sends replace the stored ones, the others stay. Lists keyed by what they are
+ * about are merged by that key, never dropped by a patch that omits them: the alert decisions the professional already recorded
+ * ("acceptFlagDecision") by alert code, the coverage of a phase by phase (accepting the targets of phase 2 keeps those of phase 1)
+ * and the targets of a workout by phase and workout. A patch that is not an object is passed on as is, so the strict parse
+ * refuses it.
  */
-function patchAnswers(stored: unknown, patch: unknown): unknown {
+export function patchAnswers(stored: unknown, patch: unknown): unknown {
   if (!patch || typeof patch !== "object" || Array.isArray(patch)) return patch;
   const base = stored && typeof stored === "object" && !Array.isArray(stored) ? (stored as Record<string, unknown>) : {};
   const next = patch as Record<string, unknown>;
-  const decisions = (v: unknown) => (Array.isArray(v) ? (v as Array<{ flagCode?: unknown }>) : []);
-  const incoming = decisions(next.acceptedFlagDecisions);
-  const codes = new Set(incoming.map((d) => d?.flagCode));
-  const kept = decisions(base.acceptedFlagDecisions).filter((d) => !codes.has(d?.flagCode));
-  return { ...base, ...next, acceptedFlagDecisions: [...kept, ...incoming] };
+  const rows = (v: unknown) => (Array.isArray(v) ? (v as Array<Record<string, unknown> | null>) : []);
+  /**
+   * Stored rows whose key the patch does not send, then the patch's rows; absent from the patch = the stored list as is. A field
+   * the patch sends as something other than a list is passed on as sent, so the strict parse refuses it (never read as "keep
+   * the stored list").
+   */
+  const merge = (field: string, key: (row: Record<string, unknown> | null) => string) => {
+    if (!(field in next)) return {};
+    if (!Array.isArray(next[field])) return { [field]: next[field] };
+    const incoming = rows(next[field]);
+    const keys = new Set(incoming.map(key));
+    return { [field]: [...rows(base[field]).filter((r) => !keys.has(key(r))), ...incoming] };
+  };
+  return {
+    ...base,
+    ...next,
+    acceptedFlagDecisions: [
+      ...rows(base.acceptedFlagDecisions).filter((d) => !new Set(rows(next.acceptedFlagDecisions).map((x) => x?.flagCode)).has(d?.flagCode)),
+      ...rows(next.acceptedFlagDecisions),
+    ],
+    ...("acceptedFlagDecisions" in next && !Array.isArray(next.acceptedFlagDecisions) ? { acceptedFlagDecisions: next.acceptedFlagDecisions } : {}),
+    ...merge("phaseCoverage", (r) => JSON.stringify(r?.phaseIndex ?? null)),
+    ...merge("coverageByWorkout", (r) => JSON.stringify([r?.phaseIndex ?? null, r?.label ?? null])),
+  };
 }
 
 /**
@@ -526,15 +596,15 @@ function patchAnswers(stored: unknown, patch: unknown): unknown {
  * still has exactly the same phases (order, index, name, weeks, sessions per week) and, in every generated phase, exactly the same sessions (week, slot,
  * label, week start and planned date), in both directions: no session gone, moved or renamed, and none added.
  */
-function sameShape(input: EngineInput, previous: EngineResult, phasesGenerated: number[]): boolean {
+function sameShape(structure: StructureFacts, previous: EngineResult, phasesGenerated: number[]): boolean {
   const phase = (p: { phaseIndex: number; name: string | null; weeks: number; sessionsPerWeek: number }) => `${p.phaseIndex}|${p.name ?? ""}|${p.weeks}|${p.sessionsPerWeek}`;
-  const now = phaseSummaries(input).map(phase);
+  const now = structure.phases.map((p) => phase({ phaseIndex: p.index, name: p.name, weeks: p.weeks, sessionsPerWeek: p.sessionsPerWeek }));
   const before = previous.phases.map(phase);
   if (now.length !== before.length || now.some((k, n) => before[n] !== k)) return false;
   const generated = new Set(phasesGenerated);
   const sig = (phaseIndex: number, o: { week: number; slot: number; label: string; weekStart: string; plannedDate: string | null }) =>
     `${phaseIndex}|${o.week}|${o.slot}|${o.label}|${o.weekStart}|${o.plannedDate ?? ""}`;
-  const want = input.structure.phases.filter((ph) => generated.has(ph.index)).flatMap((ph) => ph.occurrences.map((o) => sig(ph.index, o))).sort();
+  const want = structure.phases.filter((ph) => generated.has(ph.index)).flatMap((ph) => ph.occurrences.map((o) => sig(ph.index, o))).sort();
   const have = previous.occurrences.map((o) => sig(o.phaseIndex, o)).sort();
   return want.length === have.length && want.every((k, n) => have[n] === k);
 }
@@ -544,6 +614,52 @@ function engineOk(out: EngineOutcome): { ok: true; result: EngineResult } | { ok
   if (out.code === "TARGET_NOT_FOUND" || out.code === "SCOPE_NOT_FOUND") return { ok: false, outcome: fail("invalid_target", { message: out.message }) };
   return { ok: false, outcome: fail("engine_refused", { message: out.message }) };
 }
+
+// ---------- the audit of a proposal recorded before the audit (design V3 §3.9) ----------
+
+/** The rules of an audit computed at view time: the current default (it carries the audit rules). */
+export const AUDIT_RULESET: RuleSetRef = DEFAULT_RULESET;
+
+/**
+ * The plan audit of a stored proposal that has none (generated before engine 2.1.0), from its stored content and today's
+ * library, with the audit rules of `rules`. Pure: the proposal is not changed and nothing is written back. Exercises no longer
+ * in the library count as "não contado". Before 2.1.0 the adapter sent only minutes as a workout's focus (`facts.ts`), so every
+ * stored target came from the phase coverage: it is read as a phase target. Null when `rules` has no audit rules.
+ */
+export function auditOfStored(result: Pick<EngineResult, "phases" | "workouts" | "occurrences"> & Partial<Pick<EngineResult, "rules">>, catalog: readonly CatalogExercise[], rules: RuleSetRef = AUDIT_RULESET): AuditReport | null {
+  const log = ruleLogFor(rules);
+  if (!log || !log.optional("AUDIT_THRESHOLDS")) return null;
+  const byId = new Map(catalog.map((e) => [e.id, e]));
+  const workouts = result.workouts.map((w) => (w.coverage && !w.coverage.origin ? { ...w, coverage: { ...w.coverage, origin: "PHASE_COVERAGE" as const } } : w));
+  const volume = volumeFor(log, result.occurrences, byId);
+  // The suggested action of AUDIT_NO_TARGETS follows the proposal's OWN rules (a regeneration runs with them and refuses an
+  // acceptance they cannot back): no suggestion unless they carry MICROCYCLE_TARGET_SUGGESTIONS (design V3 §3.9).
+  const own = result.rules ? ruleLogFor(result.rules) : null;
+  const suggestionsAccepted = Boolean(own?.optional("MICROCYCLE_TARGET_SUGGESTIONS"));
+  return boundAudit(log, auditPlan({ log, phases: result.phases, structure: null, workouts, occurrences: result.occurrences, volume, byId, suggestionsAccepted }));
+}
+
+export type AuditOutcome = { status: "ok"; audit: AuditReport; source: "STORED" | "VIEW"; rules: RuleSetRef } | { status: "not_found" };
+
+/**
+ * Audits computed at view time, kept in the isolate's memory so that phase and week clicks on a proposal recorded before the
+ * audit do not read the whole proposal and recompute it on every render (design V3 §3.9; ≈ 35–55 ms of CPU locally for 12 phases
+ * × 4 weeks × 7 sessions and 200 exercises). The key is the organization, the proposal, its version and a digest of the library
+ * as read now, so any change to the proposal or to the library computes it again. It is consulted only after the gated reads
+ * (header and library) succeed, so it never answers for someone who no longer reaches the proposal. Bounded, least recently
+ * used first out; it lives only as long as the isolate and is never written anywhere.
+ */
+const VIEW_AUDIT_MEMO_LIMIT = 16;
+const viewAuditMemo = new Map<string, AuditReport>();
+
+function rememberViewAudit(key: string, audit: AuditReport): void {
+  viewAuditMemo.delete(key);
+  viewAuditMemo.set(key, audit);
+  while (viewAuditMemo.size > VIEW_AUDIT_MEMO_LIMIT) viewAuditMemo.delete(viewAuditMemo.keys().next().value as string);
+}
+
+/** Test seam: how many view-time audits are remembered (and a way to forget them). */
+export const viewAuditMemoForTests = { size: () => viewAuditMemo.size, clear: () => viewAuditMemo.clear() };
 
 // ---------- the service ----------
 
@@ -583,8 +699,16 @@ export function proposalService(
     if (header.version !== p.expectedVersion) return fail("conflict", { version: header.version });
     const answers = parseAnswers(opts.answersPatch === undefined ? header.parameters : patchAnswers(header.parameters, opts.answersPatch));
     if (!answers) return fail("invalid", { message: "As respostas desta proposta não são mais aceitas pelas regras atuais. Descarte e gere de novo." });
-    const prepared = await prepare(db, context, planId, revisionId, answers, lockedOf(previous), now);
-    if (!prepared.ok) return prepared.outcome;
+    const prepared = await prepare(db, context, planId, revisionId, answers, lockedOf(previous), now, rulesOf(header));
+    if (!prepared.ok) {
+      // An accepted suggestion stops matching when the periodization changed (sessions per week, workouts): that change is the
+      // answer, as it would be once the answers were built, not "escolha de novo".
+      const moved = prepared.ctx;
+      if (moved && !opts.rebase && moved.revision.contentVersion !== header.baseContentVersion)
+        return fail("revision_changed", { contentVersion: moved.revision.contentVersion });
+      if (moved && opts.rebase && !sameShape(structureFacts(moved.revision.schedule), previous, header.phasesGenerated)) return fail("structure_changed");
+      return prepared.outcome;
+    }
     const { ctx, built } = prepared;
     if (!opts.rebase && ctx.revision.contentVersion !== header.baseContentVersion)
       return fail("revision_changed", { contentVersion: ctx.revision.contentVersion });
@@ -708,7 +832,7 @@ export function proposalService(
         "REBASE",
         { proposalId, expectedVersion },
         ({ header, previous, built, ctx }) => {
-          if (!sameShape(built.input, previous, header.phasesGenerated)) return { ok: false, outcome: fail("structure_changed") };
+          if (!sameShape(built.input.structure, previous, header.phasesGenerated)) return { ok: false, outcome: fail("structure_changed") };
           const out = engineOk(rebase(built.input, previous));
           if (!out.ok) return out;
           return { ok: true, scope: "REBASE", scopeJson: { contentVersion: ctx.revision.contentVersion }, input: built.input, result: out.result, target: { contentVersion: ctx.revision.contentVersion } };
@@ -776,7 +900,7 @@ export function proposalService(
       if (!snap || snap.header.state !== "OPEN") return { status: "not_found" };
       const answers = parseAnswers(snap.header.parameters);
       if (!answers) return { status: "invalid" };
-      const prepared = await prepare(db, context, planId, revisionId, answers, lockedOf(snap.result), clock());
+      const prepared = await prepare(db, context, planId, revisionId, answers, lockedOf(snap.result), clock(), rulesOf(snap.header));
       if (!prepared.ok) return { status: "not_found" };
       const { proposalId, ...target } = parsed.data;
       void proposalId;
@@ -784,6 +908,59 @@ export function proposalService(
       const limit = rules?.rules.ALTERNATIVES_LIMIT.value ?? 8;
       const list = alternativesFor(prepared.built.input, snap.result, target, limit);
       return { status: "ok", alternatives: list.map((a) => ({ exerciseId: a.exerciseId, name: a.name, metadata: a.metadata, reasons: a.reasons })) };
+    },
+
+    /**
+     * The plan audit of an open proposal (design V3 §3.9). A proposal generated with the audit rules carries it in its summary
+     * (the page reads it from there, with no call here). One generated before has none: it is computed now from the whole stored
+     * proposal (one gated read) and the library (gated `loadCatalogForPlan`), labelled with the rules used, and never written back.
+     */
+    async viewAudit(planId: string, revisionId: string, proposalId: string): Promise<AuditOutcome> {
+      // Gated reads first: the header (with the summary, on a DRAFT revision as the full read below) and the library. The memo is
+      // consulted only after both succeed.
+      const head = await repo.summary(planId, revisionId, proposalId);
+      if (!head || head.header.revisionState !== "DRAFT") return { status: "not_found" };
+      if (head.summary.audit) return { status: "ok", audit: head.summary.audit, source: "STORED", rules: head.summary.audit.rules };
+      const loaded = await loadCatalogForPlan(db, context, planId, revisionId);
+      if (loaded.status !== "ok") return { status: "not_found" };
+      const library = await sha256Hex(canonicalJson([...loaded.catalog].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))));
+      const key = `${context.organizationId}|${proposalId}|${head.header.version}|${AUDIT_RULESET.id}@${AUDIT_RULESET.version}|${library}`;
+      const remembered = viewAuditMemo.get(key);
+      if (remembered) {
+        rememberViewAudit(key, remembered);
+        return { status: "ok", audit: remembered, source: "VIEW", rules: remembered.rules };
+      }
+      const snap = await repo.asEngineResult(planId, revisionId, proposalId);
+      if (!snap) return { status: "not_found" };
+      const audit = auditOfStored(snap.result, loaded.catalog);
+      if (!audit) return { status: "not_found" };
+      // Remembered only when the content read is the version of the key (a write in between computes it again next time).
+      if (snap.header.version === head.header.version) rememberViewAudit(key, audit);
+      return { status: "ok", audit, source: "VIEW", rules: audit.rules };
+    },
+
+    /**
+     * The suggested targets of phases of an open proposal (design V3 §4.6, §7.4), for the card of a phase without targets. Only
+     * when the proposal's own rule set has the suggestion rule (a regeneration runs with it and would refuse anything else).
+     * Computed from the proposal's answers and the saved periodization (one gated read, `loadScheduleForPlan`) with the same
+     * pure pieces a regeneration uses to check an acceptance (`suggestedTargets`), so "Aceitar" sends exactly what the server
+     * checks; no library, history or student data is read on render. Nothing is written.
+     */
+    async targetSuggestions(
+      planId: string,
+      revisionId: string,
+      proposalId: string,
+      phaseIndexes: number[],
+    ): Promise<{ status: "ok"; suggestions: Array<{ phaseIndex: number; suggestion: TargetSuggestion | null; reason: string | null }> } | { status: "not_found" }> {
+      const head = await repo.summary(planId, revisionId, proposalId);
+      if (!head || head.header.state !== "OPEN" || head.header.revisionState !== "DRAFT") return { status: "not_found" };
+      const rules = rulesOf(head.header);
+      if (!getRuleSet(rules)?.rules.MICROCYCLE_TARGET_SUGGESTIONS || !phaseIndexes.length) return { status: "ok", suggestions: [] };
+      const answers = parseAnswers(head.header.parameters);
+      if (!answers) return { status: "ok", suggestions: [] };
+      const loaded = await loadScheduleForPlan(db, context, planId, revisionId);
+      if (loaded.status !== "ok") return { status: "not_found" };
+      return { status: "ok", suggestions: suggestedTargets(loaded.schedule, answers, rules, phaseIndexes) };
     },
 
     /** What "Aplicar ao rascunho" would write and what it asks first. Null when the proposal is not reachable. */

@@ -93,6 +93,24 @@ export const weeklyProgressionSchema = z
   })
   .strict();
 
+/** Weekly targets of the muscles of a phase (engine `WeeklySetsTarget`): one entry per muscle, min never above max. */
+const weeklySetsSchema = z
+  .array(
+    z
+      .object({
+        muscle: codeOf(MUSCLES, "Músculo"),
+        minWeighted: z.number().finite().min(0).max(60).optional(),
+        maxWeighted: z.number().finite().min(0).max(60).optional(),
+        minDirectSessions: z.number().int().min(1).max(14).optional(),
+      })
+      .strict()
+      .refine((w) => w.minWeighted === undefined || w.maxWeighted === undefined || w.minWeighted <= w.maxWeighted, {
+        message: "O mínimo de séries não passa do máximo.",
+      }),
+  )
+  .max(Object.keys(MUSCLES).length)
+  .refine((items) => unique(items.map((w) => w.muscle)), { message: "Um alvo semanal por músculo." });
+
 /** The professional's decision about one alert (engine `FlagDecision`); used by the answers and by "Aceitar decisão" (S6). */
 export const flagDecisionSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("EXCLUDE_PATTERN"), pattern: codeOf(PATTERNS, "Padrão") }).strict(),
@@ -142,6 +160,11 @@ export const generationAnswersSchema = z
           phaseIndex,
           muscles: z.array(codeOf(MUSCLES, "Músculo")).max(Object.keys(MUSCLES).length).optional(),
           patterns: z.array(codeOf(PATTERNS, "Padrão")).max(Object.keys(PATTERNS).length).optional(),
+          /**
+           * Weekly targets per muscle (design V3 §3.6): weighted sets per week (min/max) and sessions per week with direct stimulus.
+           * Optional; read only by rule sets with the audit (2026.11.3+), dropped by the adapter otherwise.
+           */
+          weeklySets: weeklySetsSchema.optional(),
           basis: z.enum(["PROFESSIONAL", "HEURISTIC_ACCEPTED"]),
           ruleId: z.string().max(60).optional(),
         })
@@ -149,6 +172,22 @@ export const generationAnswersSchema = z
         .refine((c) => c.basis !== "HEURISTIC_ACCEPTED" || Boolean(c.ruleId), { message: "Uma sugestão aceita cita a sua regra." }),
     )
       .refine((items) => unique(items.map((c) => c.phaseIndex)), { message: "Uma cobertura por fase." })
+      .default([]),
+    /**
+     * Targets of one workout (design V3 §3.6): how a free split is stated (A = upper muscles, B = lower ones). Always the
+     * professional's; the adapter writes them as the workout's focus, which wins over the phase coverage for that workout.
+     */
+    coverageByWorkout: list(
+      z
+        .object({
+          phaseIndex,
+          label,
+          muscles: z.array(codeOf(MUSCLES, "Músculo")).max(Object.keys(MUSCLES).length).optional(),
+          patterns: z.array(codeOf(PATTERNS, "Padrão")).max(Object.keys(PATTERNS).length).optional(),
+        })
+        .strict(),
+    )
+      .refine((items) => unique(items.map((c) => [c.phaseIndex, c.label])), { message: "Uma cobertura por treino." })
       .default([]),
     progressionByPhase: list(z.object({ phaseIndex, progression: weeklyProgressionSchema }).strict())
       .refine((items) => unique(items.map((p) => p.phaseIndex)), { message: "Uma progressão por fase." })
