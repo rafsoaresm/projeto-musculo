@@ -145,12 +145,19 @@ export async function compileAcceptance(i: CompileInput): Promise<CompileOutcome
       planned.push({ phaseIndex: p.phaseIndex, label: w.label });
       if (saved.has(key(p.phaseIndex, w.label))) continue;
       const candidates = sortedUnique(w.candidateExerciseIds);
-      const known = candidates.filter((id) => i.catalogIds.has(id)).slice(0, PLANNER_MAX_CANDIDATES_PER_WORKOUT);
-      if (known.length < candidates.length)
+      const inLibrary = candidates.filter((id) => i.catalogIds.has(id));
+      const known = inLibrary.slice(0, PLANNER_MAX_CANDIDATES_PER_WORKOUT);
+      if (inLibrary.length < candidates.length)
         issues.push({
           severity: "INFO", code: "BLUEPRINT_CANDIDATE_DROPPED", path: `phases.${p.phaseIndex}.workouts.${w.label}`, stage: "INPUT", phaseIndex: p.phaseIndex, label: w.label,
-          count: candidates.length - known.length,
-          message: `Fase ${p.phaseIndex}, treino ${w.label}: ${candidates.length - known.length} exercício(s) nomeado(s) pela estratégia não estão mais na biblioteca visível e foram deixados de fora.`,
+          count: candidates.length - inLibrary.length,
+          message: `Fase ${p.phaseIndex}, treino ${w.label}: ${candidates.length - inLibrary.length} exercício(s) nomeado(s) pela estratégia não estão mais na biblioteca visível e foram deixados de fora.`,
+        });
+      if (known.length < inLibrary.length)
+        issues.push({
+          severity: "INFO", code: "BLUEPRINT_CANDIDATE_CAPPED", path: `phases.${p.phaseIndex}.workouts.${w.label}`, stage: "INPUT", phaseIndex: p.phaseIndex, label: w.label,
+          count: inLibrary.length - known.length,
+          message: `Fase ${p.phaseIndex}, treino ${w.label}: a estratégia nomeou ${inLibrary.length} exercícios e só os ${PLANNER_MAX_CANDIDATES_PER_WORKOUT} primeiros (em ordem de código) entram como candidatos.`,
         });
       emitted.push({
         phaseIndex: p.phaseIndex, label: w.label, acceptanceId: acceptance.id, role: w.role,

@@ -278,6 +278,13 @@ export const generationAnswersSchema = z
 export type GenerationAnswers = z.output<typeof generationAnswersSchema>;
 export type GenerationAnswersInput = z.input<typeof generationAnswersSchema>;
 
+/**
+ * The compiled strategy (`answers.blueprint`) is built by the server from a stored acceptance and injected by an internal path
+ * (PR 2.3); a client never sends it. A payload that carries the key, in any shape, is refused: authenticity of the focus.
+ */
+export const carriesBlueprint = (raw: unknown): boolean => Boolean(raw) && typeof raw === "object" && !Array.isArray(raw) && "blueprint" in (raw as object);
+export const CLIENT_BLUEPRINT_REFUSED = "A estratégia aceita não é enviada pelo navegador: o servidor a monta a partir do aceite gravado.";
+
 /** Strict parse: throws `ZodError` on anything the schema does not take (unknown field, unknown code, number out of range). */
 export function parseGenerationAnswers(raw: unknown): GenerationAnswers {
   return generationAnswersSchema.parse(raw ?? {});

@@ -54,6 +54,8 @@ import {
   flagCodeSchema,
   flagDecisionSchema,
   parseGenerationAnswers,
+  carriesBlueprint,
+  CLIENT_BLUEPRINT_REFUSED,
   type GenerationAnswers,
   type GenerationFactRefs,
   type GenerationQuestion,
@@ -543,13 +545,6 @@ async function record(
     parameters: answers,
   };
 }
-
-/**
- * The compiled strategy (`answers.blueprint`) is built by the server from a stored acceptance and injected by an internal path
- * (PR 2.3); a client never sends it. A payload that carries the key, in any shape, is refused: authenticity of the focus.
- */
-const carriesBlueprint = (raw: unknown): boolean => Boolean(raw) && typeof raw === "object" && !Array.isArray(raw) && "blueprint" in (raw as object);
-const CLIENT_BLUEPRINT_REFUSED = "A estratégia aceita não é enviada pelo navegador: o servidor a monta a partir do aceite gravado.";
 
 function parseAnswers(raw: unknown): GenerationAnswers | null {
   try {

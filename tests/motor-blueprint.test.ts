@@ -289,6 +289,37 @@ describe("pesos, não proibições: transbordo, apoio, candidatos e a escolha do
     expect(r.issues.find((i) => i.code === "BLUEPRINT_FOCUS_SUPPLY_LOW" && i.label === "B")).toMatchObject({ count: 1 });
   });
 
+  it("papel personalizado sem foco nenhum não apaga o alvo da fase aceito pelo profissional", () => {
+    const base = xintusInput();
+    const input = withFocus(
+      { ...base, parameters: { ...base.parameters, phaseCoverage: [{ phaseIndex: 1, basis: "PROFESSIONAL", muscles: ["CHEST", "QUADRICEPS"], patterns: ["SQUAT", "HORIZONTAL_PUSH"] }] } },
+      [fact(1, "A", "CUSTOM"), fact(1, "B", "CUSTOM")],
+    );
+    const r = generate(input);
+    for (const label of ["A", "B"]) {
+      const cov = summaries(r, 1).find((w) => w.label === label)?.coverage;
+      expect(cov, label).toMatchObject({ origin: "PHASE_COVERAGE", basis: "PROFESSIONAL" });
+      expect(cov?.muscles).toEqual(expect.arrayContaining(["CHEST", "QUADRICEPS"]));
+    }
+  });
+
+  it("o aviso de oferta fora do foco é refeito depois da troca do profissional (não fica velho)", () => {
+    const ids = ["ex-bench", "ex-row", "ex-lateral", "ex-squat"];
+    const cat = XINTUS_CATALOG.filter((e) => ids.includes(e.id));
+    const input = small(cat, {}, 4);
+    const r = generate(input);
+    const warn = r.issues.find((i) => i.code === "BLUEPRINT_FOCUS_SUPPLY_LOW" && i.label === "A");
+    expect(warn).toMatchObject({ count: 1 });
+    const off = firstOccurrence(r, 1, "A").find((i) => i.exerciseId === "ex-squat")!;
+    // a biblioteca ganhou um exercício do foco; o profissional troca o item fora do foco por ele
+    const richer = { ...input, catalog: XINTUS_CATALOG.filter((e) => [...ids, "ex-facepull"].includes(e.id)) };
+    const swapped = ok(substitute(richer, r, { phaseIndex: 1, slotKey: off.slotKey, applies: { kind: "PHASE" } }, "ex-facepull"));
+    expect(itemsOf(swapped, 1, "A").some((i) => i.exerciseId === "ex-facepull" && i.origin === "SUBSTITUTED")).toBe(true);
+    expect(swapped.issues.some((i) => i.code === "BLUEPRINT_FOCUS_SUPPLY_LOW" && i.label === "A")).toBe(false);
+    // o aviso do outro treino não é tocado
+    expect(swapped.issues.find((i) => i.code === "BLUEPRINT_FOCUS_SUPPLY_LOW" && i.label === "B")).toEqual(r.issues.find((i) => i.code === "BLUEPRINT_FOCUS_SUPPLY_LOW" && i.label === "B"));
+  });
+
   it("alvo semanal fica global: o músculo do alvo que nenhum treino lista vale em todos e um aviso INFO o diz", () => {
     const base = upperLower(xintusInput(), [1]);
     const input = withFocus(

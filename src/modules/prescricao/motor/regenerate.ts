@@ -8,10 +8,10 @@ import { TECHNICAL_LIMITS } from "./bounds";
 import { metricFor } from "./dose";
 import { ineligibleReason, INELIGIBLE_TEXT } from "./eligibility";
 import {
-  finalize, generate, itemFor, phaseSummaries, planWorkout, prepare, prepareWorkout, unknownRules,
+  coverageFor, finalize, generate, itemFor, phaseSummaries, planWorkout, prepare, prepareWorkout, unknownRules,
   type EngineContext, type SlotPlan,
 } from "./generate";
-import { fixedWorkoutFrom, laneKey, type FixedWorkout, type GenerateOptions, type ReservedSubstitution } from "./microcycle";
+import { blueprintSupplyIssue, fixedWorkoutFrom, laneKey, type FixedWorkout, type GenerateOptions, type ReservedSubstitution } from "./microcycle";
 import { existingFor, metadataOf, nameKeyOf, parseSlotKey, rankAlternatives, selectExercises, slotKeyOf } from "./select";
 import { uniqueIssues } from "./trace";
 import type {
@@ -127,7 +127,14 @@ function substituteWith(
     const root = old.substitutesSlotKey ?? target.slotKey;
     return { ...o, items: o.items.map((i) => (i.slotKey === target.slotKey ? { ...item, origin: by === "PROFESSIONAL" ? ("SUBSTITUTED" as const) : ("ENGINE" as const), substitutesSlotKey: root } : i)) };
   });
-  return { ok: true, result: finalize(ctx, { ...previous, occurrences, issues: uniqueIssues([...previous.issues, ...issues]) }) };
+  // O aviso de oferta fora do foco descreve os itens do treino: depois da troca é refeito (o antigo sai) para não ficar velho.
+  const coverage = coverageFor(ctx, where.phase, where.workout);
+  const offCounts = occurrences.filter((o) => o.phaseIndex === target.phaseIndex && o.label === parsed.label).map((o) =>
+    blueprintSupplyIssue(coverage, target.phaseIndex, parsed.label, o.items.filter((i) => i.origin === "ENGINE" && i.exerciseId)
+      .map((i) => ctx.byId.get(i.exerciseId as string)).filter((e): e is NonNullable<typeof e> => Boolean(e))));
+  const supply = offCounts.reduce<Issue | null>((a, b) => ((b?.count ?? 0) > (a?.count ?? 0) ? b : a), null);
+  const kept = previous.issues.filter((i) => !(i.code === "BLUEPRINT_FOCUS_SUPPLY_LOW" && i.phaseIndex === target.phaseIndex && i.label === parsed.label));
+  return { ok: true, result: finalize(ctx, { ...previous, occurrences, issues: uniqueIssues([...kept, ...(supply ? [supply] : []), ...issues]) }) };
 }
 
 /** Substitui o exercício de um item no escopo pedido; a dose é recalculada para o novo exercício. */

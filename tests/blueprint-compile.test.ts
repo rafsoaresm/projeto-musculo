@@ -138,6 +138,17 @@ describe("compileAcceptance", () => {
     expect(out.issues.every((i) => i.severity === "INFO")).toBe(true);
   });
 
+  it("candidatos acima do limite do treino viram aviso próprio (cortados pela ordem), não 'fora da biblioteca'", async () => {
+    const f = await fixture();
+    const many = XINTUS_CATALOG.slice(0, 8).map((e) => e.id);
+    const acceptance = await accept(f.run, "S1", { phases: (ph) => ph.map((p) => ({ ...p, workouts: p.workouts.map((w) => (w.label === "A" ? { ...w, candidateExerciseIds: many } : w)) })) });
+    const out = await compiled(f, acceptance);
+    const codes = out.issues.map((i) => i.code);
+    expect(codes).toContain("BLUEPRINT_CANDIDATE_CAPPED");
+    expect(codes).not.toContain("BLUEPRINT_CANDIDATE_DROPPED");
+    expect(out.blueprint.workouts.find((w) => w.phaseIndex === 1 && w.label === "A")!.candidateExerciseIds).toHaveLength(6);
+  });
+
   it("o foco salvo na periodização ou nas respostas vence: o treino não entra no bloco e o aviso diz por quê", async () => {
     const f = await fixture();
     const acceptance = await accept(f.run, "S1");

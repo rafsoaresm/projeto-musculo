@@ -131,7 +131,7 @@ function countFor(input: EngineInput, phase: StructurePhase, workout: StructureW
  * Alvos de cobertura do treino: o foco do treino vence o alvo da fase. Com as regras da auditoria (2026.11.3+) o objeto também
  * grava de onde veio (`origin`) e os alvos semanais da fase (`weeklySets`, com a base da entrada); versões anteriores, como antes.
  */
-function coverageFor(ctx: EngineContext, phase: StructurePhase, workout: StructureWorkout): Coverage | null {
+export function coverageFor(ctx: EngineContext, phase: StructurePhase, workout: StructureWorkout): Coverage | null {
   const { input, log } = ctx;
   const audited = log.optional("AUDIT_THRESHOLDS") !== undefined;
   const c = input.parameters.phaseCoverage.find((x) => x.phaseIndex === phase.index);
@@ -145,7 +145,8 @@ function coverageFor(ctx: EngineContext, phase: StructurePhase, workout: Structu
   const b = input.parameters.blueprintFocus?.find((x) => x.phaseIndex === phase.index && x.label === workout.label);
   if (b && log.optional("MICROCYCLE_BLUEPRINT")) {
     // Papéis sem volume (cardio, mobilidade, equilíbrio, habilidade) não geram cobertura: a seleção antiga cuida do treino.
-    if (b.role !== "CARDIO" && b.role !== "MOBILITY" && b.role !== "BALANCE" && b.role !== "SKILL")
+    // Papel personalizado vazio (sem músculo nem padrão): nada a puxar; vale a cobertura da fase, que o profissional já aceitou.
+    if (b.role !== "CARDIO" && b.role !== "MOBILITY" && b.role !== "BALANCE" && b.role !== "SKILL" && (b.dominantMuscles.length || b.targetPatterns.length))
       return {
         muscles: b.dominantMuscles, patterns: b.targetPatterns, basis: b.source === "PROFESSIONAL" ? "PROFESSIONAL" : "HEURISTIC_ACCEPTED", ruleId: "MICROCYCLE_BLUEPRINT",
         origin: "BLUEPRINT_FOCUS",

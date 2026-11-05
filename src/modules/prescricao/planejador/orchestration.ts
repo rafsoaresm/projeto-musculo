@@ -22,7 +22,7 @@ import { ZodError, z } from "zod";
 import { aiPlanningFor, aiSystemFor, type RunRow, type TaskSettings } from "@/db/ai-planning";
 import { studentsFor, type AuthenticatedContext } from "@/db/students";
 import { loadGenerationContext } from "@/modules/prescricao/automatica/context";
-import { parseGenerationAnswers, type GenerationAnswers, type GenerationQuestion } from "@/modules/prescricao/automatica/contracts";
+import { carriesBlueprint, CLIENT_BLUEPRINT_REFUSED, parseGenerationAnswers, type GenerationAnswers, type GenerationQuestion } from "@/modules/prescricao/automatica/contracts";
 import { canonicalJson, sha256Hex } from "@/modules/prescricao/motor/hash";
 import { DEFAULT_RULESET } from "@/modules/prescricao/motor/rules";
 import { plannerResponseSchema, trainingBlueprintSchema, type TrainingBlueprint } from "./blueprint";
@@ -610,6 +610,7 @@ export function plannerService(db: D1Database, context: AuthenticatedContext, de
     async plan(planId: string, revisionId: string, payload: PlanPayload): Promise<PlanningOutcome> {
       const parsed = planSchema.safeParse(payload);
       if (!parsed.success) return fail("invalid");
+      if (carriesBlueprint(parsed.data.answers)) return fail("invalid", { message: CLIENT_BLUEPRINT_REFUSED });
       let answers: GenerationAnswers;
       try {
         answers = parseGenerationAnswers(parsed.data.answers);

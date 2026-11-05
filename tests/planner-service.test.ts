@@ -223,6 +223,7 @@ describe("AI mode with the mock provider: gates, cache, idempotency, persistence
     expect(out).toMatchObject({ ok: false, reason: "questions", canContinueByRules: false });
     if (!out.ok) expect(out.questions!.filter((q) => q.required).map((q) => q.code)).toEqual(expect.arrayContaining(["STIMULUS", "EQUIPMENT"]));
     expect(reason(await plan(d, "AI", t.service(), { answers: { equipmentCodes: ["NOPE-NOT-A-CODE"] } }))).toBe("invalid");
+    expect(reason(await plan(d, "AI", t.service(), { answers: { blueprint: { version: 1 } } }))).toBe("invalid");
     expect(reason(await plan(d, "AI", t.service(), { idempotencyKey: "short" }))).toBe("invalid");
     expect(reason(await plan(d, "AI", t.service(), { mode: "MAGIC" }))).toBe("invalid");
     expect(reason(await t.service().plan(d.planId, d.revisionId, { ...(await body(d, "AI")), extra: 1 } as never))).toBe("invalid");

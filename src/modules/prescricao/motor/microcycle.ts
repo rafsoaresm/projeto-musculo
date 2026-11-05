@@ -264,6 +264,23 @@ function offFocus(bp: BlueprintLane, e: CatalogExercise): boolean {
   return !primaryOf(e).some((m) => bp.dominant.has(m) || bp.supporting.has(m)) && !patternsOf(e).some((p) => bp.targetPatterns.has(p) || bp.spillover.has(p));
 }
 
+/** Aviso informativo quando o motor escolheu itens fora do foco da estratégia; null se todos estão no foco. */
+function blueprintSupplyIssueOf(bp: BlueprintLane, phaseIndex: number, label: string, picked: readonly CatalogExercise[]): Issue | null {
+  const off = picked.filter((e) => offFocus(bp, e)).length;
+  if (off === 0) return null;
+  return {
+    severity: "INFO", code: "BLUEPRINT_FOCUS_SUPPLY_LOW", path: `phases.${phaseIndex}.workouts.${label}.blueprint`, stage: "SELECTION", phaseIndex,
+    label, count: off,
+    message: `Treino ${label}: ${off} ${off === 1 ? "exercício ficou" : "exercícios ficaram"} fora do foco da estratégia (${roleText(bp.role)}) por falta de oferta elegível no foco; a biblioteca, o equipamento ou as exclusões limitam a escolha.`,
+  };
+}
+
+/** Mesmo aviso a partir da cobertura do treino, para quem refaz itens depois da seleção (troca do profissional). */
+export function blueprintSupplyIssue(coverage: WorkoutDraft["coverage"], phaseIndex: number, label: string, picked: readonly CatalogExercise[]): Issue | null {
+  const bp = blueprintLaneOf(coverage);
+  return bp ? blueprintSupplyIssueOf(bp, phaseIndex, label, picked) : null;
+}
+
 class WeekState {
   readonly weighted = new Map<string, number>();
   readonly unknown = new Set<string>();
@@ -644,13 +661,8 @@ export function planPhaseMicrocycle(ctx: EngineContext, phase: StructurePhase, u
   const issues: Issue[] = [];
   for (const lane of lanes) {
     if (!lane.bp || lane.fixed && !lane.replay) continue;
-    const off = lane.picks.filter((pk) => offFocus(lane.bp!, pk.exercise)).length;
-    if (off > 0)
-      issues.push({
-        severity: "INFO", code: "BLUEPRINT_FOCUS_SUPPLY_LOW", path: `phases.${phase.index}.workouts.${lane.draft.workout.label}.blueprint`, stage: "SELECTION", phaseIndex: phase.index,
-        label: lane.draft.workout.label, count: off,
-        message: `Treino ${lane.draft.workout.label}: ${off} ${off === 1 ? "exercício ficou" : "exercícios ficaram"} fora do foco da estratégia (${roleText(lane.bp.role)}) por falta de oferta elegível no foco; a biblioteca, o equipamento ou as exclusões limitam a escolha.`,
-      });
+    const found = blueprintSupplyIssueOf(lane.bp, phase.index, lane.draft.workout.label, lane.picks.map((pk) => pk.exercise));
+    if (found) issues.push(found);
   }
   const stepLimited = new Set(volumeLanes.filter((l) => !l.fixed && l.remaining > 0 && l.candidates.some((e) => !l.ids.has(e.id))).map((l) => l.i));
 
