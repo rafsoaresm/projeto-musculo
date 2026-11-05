@@ -154,3 +154,56 @@ describe("boundaries of the module", () => {
     }
   });
 });
+
+describe("planning orchestration (sub-stage 1.3)", () => {
+  const importsOf = (text: string) => [...stripComments(text).matchAll(/(?:from|import)\s+["']([^"']+)["']/g)].map((m) => m[1]);
+
+  it("nothing reaches a provider outside the gate: only orchestration.ts imports the adapters or the registry", () => {
+    const importers = SRC.filter((f) => !f.includes("/planejador/provedores/") && importsOf(read(f)).some((i) => /provedores\/(registry|openai|anthropic|google|mock)$/.test(i))).map(rel);
+    expect(importers).toEqual(["src/modules/prescricao/planejador/orchestration.ts"]);
+    // and inside orchestration the adapter is only invoked by the function that takes a reservation as proof
+    const text = stripComments(read(join(ROOT, "src/modules/prescricao/planejador/orchestration.ts")));
+    expect(text).toMatch(/^import "server-only";/m);
+    expect(text.match(/callWithPolicy\(/g)).toHaveLength(1);
+    expect(text).toMatch(/async function callGated\(\s*proof: Reserved,/);
+    expect(text.match(/callGated\(/g)).toHaveLength(2); // the definition and the single call
+    expect(text.match(/\.call\(/g) ?? []).toHaveLength(0);
+  });
+
+  it("the orchestration reads and writes only through the AI repositories, the student reader and the generation loader", () => {
+    const text = read(join(ROOT, "src/modules/prescricao/planejador/orchestration.ts"));
+    const db = importsOf(text).filter((i) => i.startsWith("@/db/"));
+    expect(db.sort()).toEqual(["@/db/ai-planning", "@/db/students"]);
+    for (const i of importsOf(text)) expect(i, i).not.toMatch(/approv|aprova|deliver|entrega|planos\/actions|prescription-proposals|\/db\/plans|\/db\/prescription/i);
+    expect(stripComments(text)).not.toMatch(/\bprepare\(|\.batch\(|D1Database\)\.|INSERT|UPDATE|DELETE/);
+  });
+
+  it("the rules-mode producer is pure: no database, no framework, no network, no clock, no randomness", () => {
+    for (const f of PLANEJADOR.filter((p) => p.includes("/rules-mode/") || p.endsWith("/strategy-view.ts"))) {
+      const text = stripComments(read(f));
+      expect(text, rel(f)).not.toMatch(/from "@\/db|server-only|from "next|fetch\(|process\.env|getCloudflareContext|Date\.now|new Date|Math\.random|crypto\./);
+    }
+  });
+
+  it("the server actions are a thin 'use server' layer over the service", () => {
+    const text = read(join(ROOT, "src/modules/prescricao/planejador/actions.ts"));
+    expect(text.startsWith('"use server";')).toBe(true);
+    expect(importsOf(text).sort()).toEqual(["./copy", "./orchestration", "./strategy-view", "@/modules/auth/server"]);
+    const exported = [...text.matchAll(/^export (?:async )?(?:function|const|class)\s+(\w+)/gm)].map((m) => m[1]).sort();
+    expect(exported).toEqual(["getLatestStrategies", "getPlanningAvailability", "getPlanningState", "planStrategies"]);
+  });
+
+  it("every environment variable of the AI layer is documented in docs/WEBFLOW-CLOUD.md, and none is public", () => {
+    const docs = read(join(ROOT, "docs/WEBFLOW-CLOUD.md"));
+    const config = read(join(ROOT, "src/modules/prescricao/planejador/config.ts"));
+    const names = [...config.matchAll(/"(AI_[A-Z_]+)"/g)].map((m) => m[1]);
+    expect(names.length).toBeGreaterThanOrEqual(9);
+    for (const name of new Set(names)) expect(docs, name).toContain(`\`${name}\``);
+  });
+
+  it("the erasure by student is wired into the data-request answer, and the service never calls it", () => {
+    const requests = stripComments(read(join(ROOT, "src/db/data-requests.ts")));
+    expect(requests).toMatch(/aiPlanningFor\(db, context\)\.eraseStudentAi\(/);
+    expect(stripComments(read(join(ROOT, "src/modules/prescricao/planejador/orchestration.ts")))).not.toContain("eraseStudentAi");
+  });
+});

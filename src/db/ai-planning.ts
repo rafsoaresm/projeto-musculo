@@ -8,7 +8,7 @@ import {
   monthKey, remainingTokens, type Allowance, type Currency, type MonthUse, type Reservation, type TypedPrices,
 } from "@/modules/prescricao/planejador/quota";
 import { revisionGate } from "./revision-gates";
-import { activeUser, assertContext, type AuthenticatedContext } from "./students";
+import { activeUser, assertContext, technicalAccessExists, type AuthenticatedContext } from "./students";
 
 /**
  * Organization-side repository of the AI planner (design V4 §3.6, §3.8): gate state, the usage ledger (reserve -> settle, race-safe, per
@@ -539,7 +539,8 @@ export function aiPlanningFor(db: D1Database, context: AuthenticatedContext | nu
           `UPDATE ai_usage_month SET used_input = used_input + ${sum("reserved_input")}, reserved_input = reserved_input - ${sum("reserved_input")},
              reserved_output = reserved_output - ${sum("reserved_output")}, reserved_cost_micros = reserved_cost_micros - ${sum("reserved_cost_micros")},
              failed_requests = failed_requests + (SELECT COUNT(*) FROM ai_usage_ledger WHERE organization_id = ?1 AND month = ?3 AND state = 'RESERVED' AND created_at < ?5), updated_at = ?4
-           WHERE organization_id = ?1 AND month = ?3 AND ${memberGate}`,
+           WHERE organization_id = ?1 AND month = ?3 AND ${memberGate}
+             AND EXISTS (SELECT 1 FROM ai_usage_ledger WHERE organization_id = ?1 AND month = ?3 AND state = 'RESERVED' AND created_at < ?5)`,
         ).bind(organizationId, userId, month, iso(now), iso(cutoff)),
         db.prepare(
           `UPDATE ai_usage_ledger SET state = 'CHARGED_UNKNOWN', input_tokens = reserved_input, output_tokens = 0, usage_source = 'ESTIMATE', error_code = 'STALE', settled_at = ?4
@@ -578,17 +579,31 @@ export function aiPlanningFor(db: D1Database, context: AuthenticatedContext | nu
     async runningByCacheKey(planId: string, revisionId: string, cacheKey: string): Promise<RunRow | null> {
       return run(planId, revisionId, "r.status = 'RUNNING' AND r.cache_key = ?5", cacheKey);
     },
-    async latestRun(planId: string, revisionId: string): Promise<RunRow | null> {
+    /** The newest run of the revision (any status, or only `status`). */
+    /** The revision's CURRENT content_version (null = not reachable). Suggestions made for another version are stale. */
+    async currentContentVersion(planId: string, revisionId: string): Promise<number | null> {
       const row = await db
-        .prepare(`SELECT ${RUN_COLUMNS} FROM planning_runs r WHERE r.organization_id = ?1 AND r.plan_id = ?3 AND r.revision_id = ?4 AND ${revisionGate("ANY")} ORDER BY r.started_at DESC, r.id DESC LIMIT 1`)
+        .prepare(`SELECT r.content_version AS v FROM plan_revisions r WHERE r.organization_id = ?1 AND r.plan_id = ?3 AND r.id = ?4 AND ${revisionGate("ANY")}`)
         .bind(organizationId, userId, planId, revisionId)
+        .first<{ v: number }>();
+      return row?.v ?? null;
+    },
+
+    async latestRun(planId: string, revisionId: string, status?: RunStatus): Promise<RunRow | null> {
+      const row = await db
+        .prepare(
+          `SELECT ${RUN_COLUMNS} FROM planning_runs r WHERE r.organization_id = ?1 AND r.plan_id = ?3 AND r.revision_id = ?4 AND ${revisionGate("ANY")}
+             AND (?5 IS NULL OR r.status = ?5) ORDER BY r.started_at DESC, r.rowid DESC LIMIT 1`,
+        )
+        .bind(organizationId, userId, planId, revisionId, status ?? null)
         .first<RunRaw>();
       return row ? toRun(row) : null;
     },
 
     /**
      * Inserts a RUNNING run. UNIQUE (organization, revision, idempotency key) and the single-flight index on (organization, cache key) turn a
-     * duplicate into a typed answer; at most AI_MAX_RUNNING_PER_ORG runs per organization are RUNNING (counted inside the insert).
+     * duplicate into a typed answer; at most AI_MAX_RUNNING_PER_ORG AI runs per organization are RUNNING (counted inside the insert). Rules-mode
+     * runs are not counted and never refused for that reason: "continue by rules" must work while AI runs are busy.
      */
     async runStart(input: RunStartInput): Promise<RunStartResult> {
       const gate = revisionGate("DRAFT");
@@ -598,7 +613,7 @@ export function aiPlanningFor(db: D1Database, context: AuthenticatedContext | nu
             `INSERT INTO planning_runs (id, organization_id, plan_id, revision_id, idempotency_key, request_hash, attempt, mode, status, base_content_version, structure_fingerprint,
                context_hash, aliases_hash, cache_key, provider_kind, model_id, prompt_version, schema_version, templates_version, omitted_json, requested_by_user_id, started_at)
              SELECT ?5, ?1, ?3, ?4, ?6, ?7, 1, ?8, 'RUNNING', ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?2, ?20
-              WHERE ${gate} AND (SELECT COUNT(*) FROM planning_runs WHERE organization_id = ?1 AND status = 'RUNNING') < ${AI_MAX_RUNNING_PER_ORG}`,
+              WHERE ${gate} AND (?8 = 'RULES' OR (SELECT COUNT(*) FROM planning_runs WHERE organization_id = ?1 AND status = 'RUNNING' AND mode = 'AI') < ${AI_MAX_RUNNING_PER_ORG})`,
           )
           .bind(
             organizationId, userId, input.planId, input.revisionId, input.runId, input.idempotencyKey, input.requestHash, input.mode, input.baseContentVersion,
@@ -790,11 +805,15 @@ export function aiPlanningFor(db: D1Database, context: AuthenticatedContext | nu
 
     // ---------- erasure ----------
 
-    /** Removes what the AI layer keeps ABOUT a student: cache rows and model payloads. Runs, ledger and acceptances (hashes, counts, codes) stay. */
+    /**
+     * Removes what the AI layer keeps ABOUT a student: cache rows and model payloads. Runs, ledger and acceptances (hashes, counts, codes) stay.
+     * Reach is the same as for the student's own data: the acting professional needs the active technical assignment over THIS student.
+     */
     async eraseStudentAi(studentId: string): Promise<{ cache: number; payloads: number }> {
+      const reach = `EXISTS (SELECT 1 FROM students s WHERE s.organization_id = ?1 AND s.id = ?3 AND ${technicalAccessExists("s", "?2")})`;
       const [cache, payloads] = await db.batch([
-        db.prepare(`DELETE FROM ai_planner_cache WHERE organization_id = ?1 AND student_id = ?3 AND ${MEMBER("?1", "?2")}`).bind(organizationId, userId, studentId),
-        db.prepare(`DELETE FROM planning_run_payloads WHERE organization_id = ?1 AND student_id = ?3 AND ${MEMBER("?1", "?2")}`).bind(organizationId, userId, studentId),
+        db.prepare(`DELETE FROM ai_planner_cache WHERE organization_id = ?1 AND student_id = ?3 AND ${MEMBER("?1", "?2")} AND ${reach}`).bind(organizationId, userId, studentId),
+        db.prepare(`DELETE FROM planning_run_payloads WHERE organization_id = ?1 AND student_id = ?3 AND ${MEMBER("?1", "?2")} AND ${reach}`).bind(organizationId, userId, studentId),
       ]);
       return { cache: changesOf(cache), payloads: changesOf(payloads) };
     },

@@ -58,3 +58,20 @@ export const GESTOR_GATE_MESSAGE: Record<GateReason, string> = {
   MINOR_BLOCKED: "Aluno menor de idade: apenas por regras.",
   REQUEST_TOO_LARGE: "O pedido passa do limite por pedido do plano ou do teto de saída.",
 };
+
+/** Messages of the planning service for outcomes that are not a gate reason or a provider code (professional-facing). */
+export const PLAN_MESSAGE = {
+  not_found: "Prescrição não encontrada.",
+  not_open: "Só é possível planejar uma prescrição em rascunho.",
+  invalid: "Confira as respostas: algum valor não é aceito.",
+  key_reused: "Esta tentativa já foi usada com outros dados. Tente de novo.",
+  revision_changed: "A prescrição mudou desde que esta tela foi aberta. Recarregue para planejar com os dados atuais.",
+  questions: "Faltam respostas obrigatórias para planejar.",
+  in_progress: "Já há planejamentos em andamento. Aguarde alguns instantes.",
+  structure_too_large: "A periodização salva é grande demais para o planejador. Use a geração automática atual.",
+  privacy_blocked: PRIVACY_BLOCKED_MESSAGE,
+  invalid_response: "A IA devolveu uma resposta que não passou na validação. Nada foi aplicado. Tente de novo ou continue por regras.",
+  stale: "A tentativa anterior não terminou. Tente de novo ou continue por regras.",
+  limit_rate: RATE_LIMIT_MESSAGE,
+  rules_failed: "Não foi possível montar a sugestão por regras para esta estrutura.",
+} as const;
