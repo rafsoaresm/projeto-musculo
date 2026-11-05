@@ -83,6 +83,16 @@ describe("ruleset gymgital-base@2026.11.5", () => {
   });
 });
 
+describe("vocabulário", () => {
+  it("a união de papéis do motor é a do planejador (o motor não importa o planejador)", () => {
+    const motorRoles: Record<BlueprintRole, true> = {
+      FULL_BODY: true, UPPER: true, LOWER: true, PUSH: true, PULL: true, LEGS: true, CHEST_TRICEPS: true, BACK_BICEPS: true, SHOULDERS_ARMS: true,
+      CORE: true, CUSTOM: true, CARDIO: true, MOBILITY: true, BALANCE: true, SKILL: true,
+    };
+    expect(Object.keys(motorRoles).sort()).toEqual([...WORKOUT_ROLES].sort());
+  });
+});
+
 describe("regras anteriores intactas (reprodução bit a bit)", () => {
   const inputs: Array<[string, (r: RuleSetRef) => EngineInput]> = [
     ["base", (rules) => baseInput({ rules })],
@@ -155,7 +165,7 @@ describe("foco dominante por treino (Xintus, hipertrofia, 4 sessões, ABAB, acad
     expect(guided.issues.map((i) => i.code).filter((c) => c === "MUSCLE_NOT_COVERED" || c === "PATTERN_NOT_COVERED")).toEqual([]);
     const unmet = (guided.audit?.findings ?? []).filter((f) => f.code === "AUDIT_TARGET_MUSCLE_UNMET" || f.code === "AUDIT_TARGET_PATTERN_UNMET");
     expect(unmet).toEqual([]);
-    expect(guided.audit?.findings.every((f) => !f.targets?.some((t) => (t.origin as string) === "BLUEPRINT_FOCUS"))).toBe(true);
+    expect(guided.audit?.findings.every((f) => (f.target?.origin as string) !== "BLUEPRINT_FOCUS")).toBe(true);
   });
 
   it("os termos novos entram no traço com origem e regra (candidato nomeado e apoio), e o 'Por quê?' mostra o valor", () => {

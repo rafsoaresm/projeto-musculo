@@ -269,6 +269,22 @@ describe("topic 12: concurrency and idempotency", () => {
     expect(await count("SELECT COUNT(*) AS n FROM prescription_proposals WHERE revision_id = ?1", d.revisionId)).toBe(0);
   });
 
+  it("a estratégia compilada nunca vem do navegador: generate e regenerate recusam `blueprint` nas respostas (V4)", async () => {
+    const d = await newDraft();
+    const fake = { version: 1, structureFingerprint: "f".repeat(32), acceptances: [{ acceptanceId: "a1", runId: "r1", blueprintHash: "a".repeat(64), acceptanceHash: "b".repeat(64), strategyId: "S1", splitFamily: "UPPER_LOWER", source: "RULES_HEURISTIC" }],
+      workouts: [{ phaseIndex: 1, label: "A", acceptanceId: "a1", role: "LOWER", source: "RULES_HEURISTIC", focusDelta: null, candidateExerciseIds: [] }] };
+    const refused = await service().generate(d.planId, d.revisionId, { idempotencyKey: id("gen"), baseContentVersion: await contentVersion(d), answers: { ...ANSWERS, blueprint: fake } });
+    expect(failure(refused)).toBe("invalid");
+    expect(refused.ok ? "" : refused.message).toContain("não é enviada pelo navegador");
+    expect(await count("SELECT COUNT(*) AS n FROM prescription_proposals WHERE plan_id = ?1", d.planId)).toBe(0);
+    const out = await generated(d);
+    const regen = await service().regenerate(d.planId, d.revisionId, { proposalId: out.proposalId, idempotencyKey: id("key"), ...cas(1), scope: { kind: "PHASE", phaseIndex: 1 }, answers: { blueprint: fake } });
+    expect(failure(regen)).toBe("invalid");
+    const snap = await snapshot(d, out.proposalId);
+    expect(snap.header.version).toBe(1);
+    expect(JSON.stringify(snap.header.parameters)).not.toContain("blueprint");
+  });
+
   it("compare-and-set on the version; a retried write id is saved once; a manual edit forces a rebase", async () => {
     const d = await newDraft();
     const out = await generated(d);
@@ -717,8 +733,8 @@ describe("Motor V3 S2: the plan audit with the proposal", () => {
     const snap = await fresh(d, out.proposalId);
     const audit = snap.result.audit!;
     expect(audit.rules).toEqual(DEFAULT_RULESET);
-    expect(audit.rules.version).toBe("2026.11.4");
-    expect(snap.header.rulesVersion).toBe("2026.11.4");
+    expect(audit.rules.version).toBe("2026.11.5");
+    expect(snap.header.rulesVersion).toBe("2026.11.5");
     expect(audit.phasesAudited).toEqual([1, 2, 3]);
     // Phase 1 is hypertrophy with no structured targets: the absence is described, never filled in.
     expect(codesOf(snap, 1)).toContain("AUDIT_NO_TARGETS");
@@ -819,7 +835,7 @@ describe("Motor V3 S2: the plan audit with the proposal", () => {
     const legacyRules = getRuleSet(LEGACY_RULES);
     expect(canAcceptSuggestions(legacyRules)).toBe(false);
     const view = auditView({ report: out.audit, source: out.source, rules: out.rules }, { engineVersion: snap.header.engineVersion, acceptSuggestions: canAcceptSuggestions(legacyRules) });
-    expect(view.viewNotice).toContain("Auditoria calculada agora com as regras gymgital-base 2026.11.4");
+    expect(view.viewNotice).toContain("Auditoria calculada agora com as regras gymgital-base 2026.11.5");
     expect(view.viewNotice).toContain("Não foi gravada na proposta.");
     const all = [...view.attention, ...view.observations, ...view.descriptive].flatMap((g) => g.findings);
     expect(all.some((f) => f.code === "AUDIT_NO_TARGETS")).toBe(true);

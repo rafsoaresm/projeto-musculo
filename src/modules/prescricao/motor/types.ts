@@ -377,7 +377,7 @@ export interface GenerationParameters {
   blueprintFocus?: BlueprintFocusFact[];
 }
 
-/** Papel de um treino numa estratégia (mesma união de `planejador/vocab.ts`; um teste confere a igualdade: o motor não importa o planejador). */
+/** Papel de um treino numa estratégia (mesma união do vocabulário do módulo de estratégia; um teste confere a igualdade, porque o motor não importa esse módulo). */
 export type BlueprintRole =
   | "FULL_BODY" | "UPPER" | "LOWER" | "PUSH" | "PULL" | "LEGS" | "CHEST_TRICEPS" | "BACK_BICEPS" | "SHOULDERS_ARMS" | "CORE" | "CUSTOM"
   | "CARDIO" | "MOBILITY" | "BALANCE" | "SKILL";

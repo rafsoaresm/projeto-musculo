@@ -17,7 +17,7 @@ import { checkWeeksOf, exposuresOf, occurrenceStimulus, indexInWeek, progression
 import { staticTerms, type StaticRequest } from "./select";
 import { cmp, codeOf, MUSCLE_LABELS, numberText, PATTERN_LABELS } from "./vocabulary";
 import type { BlueprintRole, BlueprintSource, CatalogExercise, Dose, Issue, OccurrenceOut, StructurePhase, TraceEntry } from "./types";
-import type { MicrocycleBlueprint, MicrocycleSelection } from "./rules";
+import type { MicrocycleSelection } from "./rules";
 
 // ---------- opções (internas: não fazem parte de EngineInput, não mudam o hash da entrada) ----------
 

@@ -1,6 +1,6 @@
 # Planejador híbrido V4 (PR 1, versão 0.97.0, não publicada)
 
-Camada que, antes de qualquer exercício ser escolhido, produz **estratégias sugeridas** (divisão por fase e foco por treino) como um `TrainingBlueprint` v1, **com IA ou por regras**. Não aprova, não libera, não aplica e não escreve em plano, revisão ou proposta; o motor determinístico (`../motor/`, 2.2.0) não importa este diretório. Documentação: [`docs/MOTOR-PRESCRICAO.md`](../../../../docs/MOTOR-PRESCRICAO.md) (seções "Planejador híbrido V4") e [`docs/HANDOFF-MOTOR-PRESCRICAO-HIBRIDO-V4.md`](../../../../docs/HANDOFF-MOTOR-PRESCRICAO-HIBRIDO-V4.md).
+Camada que, antes de qualquer exercício ser escolhido, produz **estratégias sugeridas** (divisão por fase e foco por treino) como um `TrainingBlueprint` v1, **com IA ou por regras**. Não aprova, não libera, não aplica e não escreve em plano, revisão ou proposta; o motor determinístico (`../motor/`, 2.3.0) não importa este diretório. `compile.ts` transforma o aceite do profissional no bloco `answers.blueprint` que o motor lê (regras 2026.11.5+); nunca edita a periodização. Documentação: [`docs/MOTOR-PRESCRICAO.md`](../../../../docs/MOTOR-PRESCRICAO.md) (seções "Planejador híbrido V4") e [`docs/HANDOFF-MOTOR-PRESCRICAO-HIBRIDO-V4.md`](../../../../docs/HANDOFF-MOTOR-PRESCRICAO-HIBRIDO-V4.md).
 
 | Arquivo | Papel |
 |---|---|

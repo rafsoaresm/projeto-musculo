@@ -128,6 +128,11 @@ export const flagDecisionSchema = z.discriminatedUnion("kind", [
  */
 export const flagCodeSchema = z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9_.:-]+$/, "Código de alerta inválido.");
 
+/**
+ * Technical bound of the compiled block: `prescription_proposals.parameters_json` is limited to 100 000 characters by the database
+ * (migration 0042), so what the block takes is bounded here, by construction, and the other answers keep the rest.
+ */
+export const BLUEPRINT_MAX_CHARS = 60_000;
 const sha64 = z.string().regex(/^[0-9a-f]{64}$/);
 const blueprintId = z.string().trim().min(1).max(80);
 const blueprintSource = z.enum(["AI_SUGGESTED", "RULES_HEURISTIC"]);
@@ -169,7 +174,8 @@ export const blueprintAnswersSchema = z
       })
       .optional(),
   })
-  .refine((b) => b.workouts.every((w) => b.acceptances.some((a) => a.acceptanceId === w.acceptanceId)), { message: "Todo foco cita um aceite do bloco." });
+  .refine((b) => b.workouts.every((w) => b.acceptances.some((a) => a.acceptanceId === w.acceptanceId)), { message: "Todo foco cita um aceite do bloco." })
+  .refine((b) => JSON.stringify(b).length <= BLUEPRINT_MAX_CHARS, { message: "Estratégia grande demais para ser gravada com a proposta." });
 export type BlueprintAnswers = z.output<typeof blueprintAnswersSchema>;
 
 export const generationAnswersSchema = z

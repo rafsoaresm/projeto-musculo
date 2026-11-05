@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { buildEngineInput } from "@/modules/prescricao/automatica/build-input";
-import { blueprintAnswersSchema, parseGenerationAnswers, type BlueprintAnswers, type GenerationAnswers } from "@/modules/prescricao/automatica/contracts";
+import { BLUEPRINT_MAX_CHARS, blueprintAnswersSchema, parseGenerationAnswers, type BlueprintAnswers, type GenerationAnswers } from "@/modules/prescricao/automatica/contracts";
 import { structureFacts } from "@/modules/prescricao/automatica/facts";
 import { canonicalInput, canonicalJson, DEFAULT_RULESET, generate, sha256Hex, type EngineInput } from "@/modules/prescricao/motor";
 import type { BlueprintAcceptance, TrainingBlueprint } from "@/modules/prescricao/planejador/blueprint";
@@ -176,30 +176,40 @@ describe("compileAcceptance", () => {
 });
 
 describe("limites do bloco `answers.blueprint`", () => {
-  it("o bloco máximo (12 fases x 8 treinos, 12 itens de ajuste, 6 candidatos) cabe em 60 000 caracteres, e com as demais respostas em 100 000", () => {
-    const delta: FocusDelta = { ...emptyDelta(), addDominant: ["FRONT_DELTOID", "SIDE_DELTOID", "REAR_DELTOID"], removeSupporting: ["OBLIQUES", "TRAPEZIUS"], addTargetPatterns: ["HORIZONTAL_ABDUCTION", "ANTI_LATERAL_FLEXION", "HORIZONTAL_ADDUCTION"], removeSpillover: ["SHOULDER_EXTENSION", "ANTI_ROTATION", "ANTI_EXTENSION", "SHOULDER_FLEXION"] };
-    const ids = (n: number) => Array.from({ length: 6 }, (_, k) => `exercise-id-${String(n).padStart(2, "0")}-${k}-xxxxxxxxxxxxxxxxxxxxxxxxxxxx`.slice(0, 40));
+  const maximal = (delta: FocusDelta | null): BlueprintAnswers => {
+    const ids = (n: number) => Array.from({ length: 6 }, (_, k) => `${String(n).padStart(2, "0")}${k}`.padEnd(36, "e"));
     const workouts = Array.from({ length: 12 }, (_, p) => Array.from({ length: 8 }, (_, w) => ({
-      phaseIndex: p + 1, label: `Treino${w + 1}-aaaaaaaaaa`.slice(0, 20), acceptanceId: `accept-${p}`.padEnd(40, "x"), role: "CUSTOM" as const, source: "PROFESSIONAL" as const,
+      phaseIndex: p + 1, label: `Treino${w + 1}`, acceptanceId: `accept-${p}`.padEnd(36, "x"), role: "CUSTOM" as const, source: "PROFESSIONAL" as const,
       focusDelta: delta, candidateExerciseIds: ids(p * 8 + w),
     }))).flat();
-    const block: BlueprintAnswers = {
+    return {
       version: 1, structureFingerprint: "f".repeat(64),
-      acceptances: Array.from({ length: 12 }, (_, p) => ({ acceptanceId: `accept-${p}`.padEnd(40, "x"), runId: "r".repeat(40), blueprintHash: "a".repeat(64), acceptanceHash: "b".repeat(64), strategyId: "CUSTOM" as const, splitFamily: "CUSTOM" as const, source: "AI_SUGGESTED" as const })),
+      acceptances: Array.from({ length: 12 }, (_, p) => ({ acceptanceId: `accept-${p}`.padEnd(36, "x"), runId: "r".repeat(36), blueprintHash: "a".repeat(64), acceptanceHash: "b".repeat(64), strategyId: "CUSTOM" as const, splitFamily: "CUSTOM" as const, source: "AI_SUGGESTED" as const })),
       workouts,
       dosing: { byClass: [{ exerciseClass: "CORE", profileCode: "CORE_STABILITY" }], progression: Array.from({ length: 12 }, (_, p) => ({ phaseIndex: p + 1, intent: "VOLUME_RAMP" as const })) },
     };
+  };
+
+  it("12 fases x 8 treinos com 6 candidatos cada cabe no limite do bloco (60 000) e, com as demais respostas, em parameters_json (100 000)", () => {
+    const block = maximal(null);
     expect(blueprintAnswersSchema.safeParse(block).success).toBe(true);
-    expect(JSON.stringify(block).length).toBeLessThanOrEqual(60_000);
+    expect(JSON.stringify(block).length).toBeLessThanOrEqual(BLUEPRINT_MAX_CHARS);
     const others = {
       stimulusByPhase: Array.from({ length: 12 }, (_, p) => ({ phaseIndex: p + 1, value: "HYPERTROPHY", basis: "PROFESSIONAL" as const })),
       equipmentCodes: ["BARBELL", "RACK", "MACHINE", "DUMBBELL", "BENCH", "CABLE"],
-      preferredExerciseIds: Array.from({ length: 100 }, (_, k) => `preferred-${String(k).padStart(3, "0")}`.padEnd(60, "x")),
-      excludedExerciseIds: Array.from({ length: 100 }, (_, k) => `excluded-${String(k).padStart(3, "0")}`.padEnd(60, "x")),
-      coverageByWorkout: workouts.map((w) => ({ phaseIndex: w.phaseIndex, label: w.label, muscles: ["CHEST", "LATS", "UPPER_BACK"] })),
+      preferredExerciseIds: Array.from({ length: 100 }, (_, k) => `preferred-${String(k).padStart(3, "0")}`.padEnd(40, "x")),
+      excludedExerciseIds: Array.from({ length: 100 }, (_, k) => `excluded-${String(k).padStart(3, "0")}`.padEnd(40, "x")),
+      exerciseCountByWorkout: block.workouts.map((w) => ({ phaseIndex: w.phaseIndex, label: w.label, count: 6 })),
     };
     const parsed = parseGenerationAnswers({ ...others, blueprint: block });
     expect(JSON.stringify(parsed).length).toBeLessThanOrEqual(100_000);
+  });
+
+  it("o bloco com todos os ajustes de foco no máximo (12 itens em cada um dos 96 treinos) passa de 60 000 e é recusado, nunca gravado", () => {
+    const delta: FocusDelta = { ...emptyDelta(), addDominant: ["FRONT_DELTOID", "SIDE_DELTOID", "REAR_DELTOID"], removeSupporting: ["OBLIQUES", "TRAPEZIUS"], addTargetPatterns: ["HORIZONTAL_ABDUCTION", "ANTI_LATERAL_FLEXION", "HORIZONTAL_ADDUCTION"], removeSpillover: ["SHOULDER_EXTENSION", "ANTI_ROTATION", "ANTI_EXTENSION", "SHOULDER_FLEXION"] };
+    const parsed = blueprintAnswersSchema.safeParse(maximal(delta));
+    expect(parsed.success).toBe(false);
+    expect(JSON.stringify(parsed.error?.issues)).toContain("grande demais");
   });
 
   it("estrito: chave desconhecida, treino repetido, foco sem aceite e papel inexistente são recusados", () => {
