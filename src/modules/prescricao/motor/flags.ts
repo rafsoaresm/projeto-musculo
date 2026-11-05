@@ -3,9 +3,48 @@
  * seleção sozinho. Cada sugestão vira uma decisão de um clique do profissional, usada na próxima
  * geração. Observações isoladas da avaliação (postura, flexibilidade) não são contraindicação.
  */
-import { cmp, PATTERN_LABELS } from "./vocabulary";
+import { cmp, numberText, PATTERN_LABELS } from "./vocabulary";
 import type { RuleLog } from "./trace";
 import type { EngineInput, Flag, FlagDecision } from "./types";
+
+/** Leitura da avaliação abaixo da mediana das leituras do próprio aluno, com a observação da regra. Nunca é contraindicação. */
+export interface AssessmentObservation {
+  key: string;
+  code: string;
+  label: string;
+  level: number;
+  median: number;
+  patterns: string[];
+  text: string;
+  ref?: string;
+}
+
+function median(values: number[]): number {
+  const v = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(v.length / 2);
+  return v.length % 2 ? v[mid] : (v[mid - 1] + v[mid]) / 2;
+}
+
+/**
+ * Observações da avaliação (regra FINDING_OBSERVATION_MAP, 2026.11.4+): para cada leitura estruturada do Flexiteste com
+ * nível abaixo da mediana das leituras preenchidas do aluno e com entrada na regra. Sem a regra, nenhuma.
+ */
+export function assessmentObservations(log: RuleLog, input: EngineInput): AssessmentObservation[] {
+  const map = log.optional("FINDING_OBSERVATION_MAP");
+  if (!map) return [];
+  const out: AssessmentObservation[] = [];
+  for (const f of input.student.findings) {
+    if (f.code !== "FLEXITEST" || !f.readings?.length) continue;
+    const m = median(f.readings.map((r) => r.level));
+    for (const r of [...f.readings].sort((a, b) => cmp(a.code, b.code))) {
+      const key = `FLEXITEST:${r.code}`;
+      const rule = map[key];
+      if (!rule || !(r.level < m)) continue;
+      out.push({ key, code: r.code, label: r.label, level: r.level, median: m, patterns: [...rule.patterns], text: rule.text, ...(f.ref ? { ref: f.ref } : {}) });
+    }
+  }
+  return out;
+}
 
 export function buildFlags(log: RuleLog, input: EngineInput): Flag[] {
   const flags: Flag[] = [];
@@ -44,6 +83,11 @@ export function buildFlags(log: RuleLog, input: EngineInput): Flag[] {
       flags.push({ code: `ASSESSMENT:${f.kind}:${f.code}`, severity: "INFO", source: "ASSESSMENT", ...fref, message: `${f.label}. Observação isolada da avaliação: não muda a seleção.` });
     }
   }
+  for (const o of assessmentObservations(log, input))
+    flags.push({
+      code: `ASSESSMENT_OBSERVATION:${o.key}`, severity: "INFO", source: "ASSESSMENT", ...(o.ref ? { ref: o.ref } : {}),
+      message: `${o.label}: nível ${numberText(o.level)}, abaixo da mediana das leituras do aluno (${numberText(o.median)}). Observação na execução de ${o.patterns.map((p) => PATTERN_LABELS[p] ?? p).join(", ")}: ${o.text}. Não é contraindicação; nenhum exercício foi excluído.`,
+    });
   const pain = [...new Set(input.history.filter((h) => h.pain && h.date <= input.asOf).map((h) => h.exerciseId))].sort(cmp);
   const names = new Map(input.catalog.map((e) => [e.id, e.name]));
   for (const id of pain)

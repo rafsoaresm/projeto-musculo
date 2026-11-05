@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_RULESET, getRuleSet } from "@/modules/prescricao/motor/rules";
 import { parseGenerationAnswers, type GenerationQuestion } from "@/modules/prescricao/automatica/contracts";
 import {
@@ -13,6 +13,22 @@ import {
   itemBasisGroups,
   PROGRESSION_MODEL_LABELS,
   weekVolume,
+  auditPhaseRows,
+  auditTargetText,
+  auditValueText,
+  auditView,
+  canAcceptSuggestions,
+  contributionView,
+  changeConditions,
+  phasesWithoutTargets,
+  whyView,
+  rangeText,
+  storedAudit,
+  UNDEFINED_SETS,
+  SETS_NOT_APPLICABLE,
+  NOT_COUNTED,
+  pageAudit,
+  weekTableAudit,
   numberOf,
   openRequired,
   pickPhase,
@@ -28,7 +44,9 @@ import {
 import { sessionTargets } from "@/modules/prescricao/occurrences";
 import { changedDoseFields, restTextForEditing } from "@/modules/prescricao/describe";
 import { generate } from "@/modules/prescricao/motor";
-import { CATALOG, baseInput, parameters, structure } from "./helpers/motor-fixtures";
+import { CATALOG, LEGACY_RULES, baseInput, parameters, structure } from "./helpers/motor-fixtures";
+import { xintusInput } from "./helpers/xintus";
+import type { AuditReport } from "@/modules/prescricao/motor/types";
 import type { ItemOut, OccurrenceOut, PhaseSummary } from "@/modules/prescricao/motor/types";
 
 // Motor S9: the pure rules behind the professional's screens (generation form, proposal view, per-session editor).
@@ -343,7 +361,7 @@ describe("final review: what the engine computes reaches the proposal screen", (
     expect(rows.map((v) => v.muscle)).toContain("Quadríceps");
     expect(rows.every((v) => !/^[A-Z_]+$/.test(v.muscle))).toBe(true);
     expect(weekVolume([{ phaseIndex: 1, week: 1, muscle: "TRICEPS", directSets: 0, indirectSets: 3, weightedSets: 1.5, occurrences: 1 }], 1, 1)[0])
-      .toEqual({ muscle: "Tríceps", direct: "0", indirect: "3", weighted: "1,5", sessions: 1 });
+      .toEqual({ muscle: "Tríceps", direct: "0", indirect: "3", weighted: "1,5", sessions: 1, directSessions: "—", target: null });
     expect(weekVolume(r.volume, 1, 99)).toEqual([]);
   });
 
@@ -357,5 +375,335 @@ describe("final review: what the engine computes reaches the proposal screen", (
     expect(item.trace.params.find((p) => p.param === "stimulus")?.basis).toBe("PROFESSIONAL");
     expect(groups.dose).toEqual(["HEURISTIC"]);
     expect(PROGRESSION_MODEL_LABELS.STEP).toBe("em degraus");
+  });
+});
+
+// Motor V3 S2 (design V3 §7.1): the audit panel's model, the weekly table's extra columns and "Contribuição na semana".
+describe("Motor V3 S2: the plan audit on the proposal screen", () => {
+  const xintus = generate(xintusInput());
+  const audit = xintus.audit!;
+  const stored = storedAudit(xintus)!;
+
+  it("the stored audit comes from the summary; a summary without one gives null (computed at view time instead)", () => {
+    expect(stored).toEqual({ report: audit, source: "STORED", rules: audit.rules });
+    const legacy = generate(xintusInput(LEGACY_RULES));
+    expect(legacy.audit).toBeUndefined();
+    expect(storedAudit(legacy)).toBeNull();
+  });
+
+  it("acceptance follows the proposal's own rule set: only 2026.11.4+ carries the suggestion rule", () => {
+    expect(canAcceptSuggestions(getRuleSet(LEGACY_RULES))).toBe(false);
+    expect(canAcceptSuggestions(getRuleSet({ id: "gymgital-base", version: "2026.11.3" }))).toBe(false);
+    expect(canAcceptSuggestions(getRuleSet(DEFAULT_RULESET))).toBe(true);
+    expect(canAcceptSuggestions(null)).toBe(false);
+    expect(canAcceptSuggestions({ rules: { MICROCYCLE_TARGET_SUGGESTIONS: {} } } as never)).toBe(true);
+  });
+
+  it("KPIs from the real sessions (Xintus ABAB: 4 per week), attention vs observations vs description, grouped by phase", () => {
+    const view = auditView(stored, { engineVersion: xintus.engineVersion, acceptSuggestions: false });
+    expect(view.viewNotice).toBeNull();
+    expect(view.kpis.sessionsPerWeek).toBe("4");
+    expect(view.kpis.phases).toBe("3 de 3");
+    const count = (status: (f: AuditReport["findings"][number]) => boolean) => audit.findings.filter(status).length;
+    expect(view.kpis.attention).toBe(count((f) => f.severity === "WARNING" && f.status !== "DESCRIPTIVE"));
+    expect(view.kpis.observations).toBe(count((f) => f.severity === "INFO" && f.status !== "DESCRIPTIVE"));
+    expect(view.descriptive.flatMap((g) => g.findings).length).toBe(count((f) => f.status === "DESCRIPTIVE"));
+    // The 2 → 3 sets step of week 2 → 3 is a point of attention, with the measured numbers and a link to the week.
+    const jump = view.attention.flatMap((g) => g.findings).find((f) => f.code === "AUDIT_WEEK_VOLUME_JUMP")!;
+    expect(jump.label).toBe("Salto de volume entre semanas");
+    expect(jump.measured).toMatch(/^Medido: \d+(,\d+)? séries ponderadas \(antes: \d+(,\d+)? séries ponderadas\)$/);
+    expect(jump.target).toEqual({ text: "Sem alvo definido", basis: null });
+    expect(jump.links[0]).toMatchObject({ phaseIndex: 1, text: expect.stringMatching(/^Ver a semana \d+ da fase 1$/) });
+    // Groups are in phase order; descriptive findings never count as observations.
+    for (const groups of [view.attention, view.observations, view.descriptive])
+      expect(groups.map((g) => g.phaseIndex ?? 0)).toEqual([...groups.map((g) => g.phaseIndex ?? 0)].sort((a, b) => a - b));
+    const noTargets = view.observations.flatMap((g) => g.findings).find((f) => f.code === "AUDIT_NO_TARGETS")!;
+    expect(noTargets.offerSuggestion).toBe(false);
+    expect(noTargets.links).toEqual([{ phaseIndex: 1, text: "Ver a fase 1" }]);
+    expect(noTargets.location).toBeNull();
+  });
+
+  it("an audit computed now is labelled with its rules and the engine, and never offers an acceptance", () => {
+    const view = auditView({ ...stored, source: "VIEW" }, { engineVersion: "2.0.1", acceptSuggestions: true });
+    expect(view.viewNotice).toBe(
+      "Auditoria calculada agora com as regras gymgital-base 2026.11.4, porque esta proposta foi gerada antes da auditoria (motor 2.0.1). Não foi gravada na proposta.",
+    );
+    expect([...view.attention, ...view.observations, ...view.descriptive].flatMap((g) => g.findings).every((f) => !f.offerSuggestion)).toBe(true);
+    // A recorded audit under rules that can back it would offer it, on AUDIT_NO_TARGETS only (the card comes with those rules).
+    const offered = auditView(stored, { engineVersion: "2.1.0", acceptSuggestions: true }).observations.flatMap((g) => g.findings);
+    expect(offered.filter((f) => f.offerSuggestion).map((f) => f.code)).toEqual(offered.filter((f) => f.code === "AUDIT_NO_TARGETS").map((f) => f.code));
+  });
+
+  it("measured and target texts: units, ranges, basis; nothing invented", () => {
+    expect(auditValueText("SESSIONS", 1)).toBe("1 sessão");
+    expect(auditValueText("DIRECT_SETS", 0)).toBe("0 séries diretas");
+    expect(auditValueText("SHARE", 0.456)).toBe("45,6%");
+    expect(auditValueText("RATIO", 3.5)).toBe("3,5 : 1");
+    expect(auditValueText("MINUTES", 38)).toBe("38 min");
+    expect(auditTargetText({ unit: "SESSIONS", min: 1, basis: "PROFESSIONAL", origin: "PHASE_COVERAGE" })).toBe("≥ 1 sessão");
+    expect(auditTargetText({ unit: "WEIGHTED_SETS", min: 10, max: 20, basis: "HEURISTIC_ACCEPTED", origin: "PHASE_COVERAGE" })).toBe("10–20 séries ponderadas");
+    expect(auditTargetText({ unit: "MINUTES", max: 60, basis: "STUDENT_DATA", origin: "AVAILABILITY" })).toBe("≤ 60 min");
+    expect(auditTargetText({ unit: "MINUTES", basis: "STUDENT_DATA", origin: "AVAILABILITY" })).toBeNull();
+    expect(rangeText({ min: 3, max: 3 })).toBe("3");
+    expect(rangeText({ min: 1.5, max: 4 })).toBe("1,5–4");
+    expect(rangeText(null)).toBeNull();
+    // An imbalance shows both sides and the pair's name, never "0 : 1".
+    const imbalance: AuditReport["findings"][number] = {
+      code: "AUDIT_PATTERN_IMBALANCE", severity: "INFO", status: "OPEN", stage: "VALIDATION", phaseIndex: 1, week: 4, pattern: "KNEE_HIP",
+      measured: { unit: "RATIO", value: 0, detail: { a: 12, b: 0 } }, sourceRefs: [], rationale: "r", suggestedAction: null,
+    };
+    const iv = auditView({ ...stored, report: { ...audit, findings: [imbalance] } }, { engineVersion: "2.1.0", acceptSuggestions: false }).observations[0].findings[0];
+    expect(iv).toMatchObject({ measured: "Medido: 12 × 0 séries diretas", location: "Semana 4 · dominantes de joelho × de quadril" });
+    // Indirect only: the value counts muscles; the card shows each muscle's weekly maximum, never "3 séries indiretas".
+    const indirect: AuditReport["findings"][number] = {
+      code: "AUDIT_INDIRECT_ONLY", severity: "INFO", status: "OPEN", stage: "VALIDATION", phaseIndex: 1,
+      measured: { unit: "INDIRECT_SETS", value: 3, detail: { ADDUCTORS: 6, SIDE_DELTOID: 4, TRICEPS: 9 } }, sourceRefs: [], rationale: "r", suggestedAction: null,
+    };
+    const ind = auditView({ ...stored, report: { ...audit, findings: [indirect] } }, { engineVersion: "2.2.0", acceptSuggestions: false }).observations[0].findings[0];
+    expect(ind.measured).toBe("Medido (máximo semanal, séries indiretas): Adutores 6 · Deltoide lateral 4 · Tríceps 9");
+    const unmet: AuditReport["findings"][number] = {
+      code: "AUDIT_TARGET_MUSCLE_UNMET", severity: "WARNING", status: "OPEN", stage: "VALIDATION", phaseIndex: 2, week: 3, label: "A", muscle: "QUADRICEPS",
+      measured: { unit: "SESSIONS", value: 0 }, target: { unit: "SESSIONS", min: 1, basis: "PROFESSIONAL", origin: "WORKOUT_FOCUS" },
+      sourceRefs: [], rationale: "r", suggestedAction: null, count: 3,
+    };
+    const v = auditView({ ...stored, report: { ...audit, findings: [unmet] } }, { engineVersion: "2.1.0", acceptSuggestions: false });
+    expect(v.attention).toHaveLength(1);
+    expect(v.attention[0].title).toBe("Fase 2");
+    expect(v.attention[0].findings[0]).toMatchObject({
+      location: "Semana 3 · treino A · Quadríceps",
+      measured: "Medido: 0 sessões",
+      target: { text: "Alvo: ≥ 1 sessão", basis: "PROFESSIONAL" },
+      aggregated: "(3 achados iguais agrupados)",
+      links: [{ phaseIndex: 2, week: 3, text: "Ver a semana 3 da fase 2" }],
+    });
+  });
+
+  it("time use: the time available is the target with its basis; the rule's threshold is a heuristic on a line of its own", () => {
+    const st = structure("2026-11-09", [{ weeks: 2, sessionsPerWeek: 2, stimulus: "STRENGTH", workouts: [{ label: "A", exerciseTarget: 1 }, { label: "B", exerciseTarget: 1 }] }]);
+    const r = generate(baseInput({ structure: st, parameters: parameters({ availableMinutes: 60 }) }));
+    const view = auditView(storedAudit(r)!, { engineVersion: r.engineVersion, acceptSuggestions: false });
+    const all = [...view.attention, ...view.observations, ...view.descriptive].flatMap((g) => g.findings);
+    const under = all.find((f) => f.code === "AUDIT_DURATION_UNDERUSED")!;
+    // Never "36–60 min" under the professional's (or the student's) pill: 36 is 60% of 60, a heuristic.
+    // The upper bound is the time available, not a target the plan is under ("Alvo: ≤ 60 min" next to 31 min read as met).
+    expect(under.target).toEqual({ text: "Tempo disponível: 60 min", basis: "PROFESSIONAL" });
+    expect(under.threshold).toEqual({ text: "Limiar de uso: 36 min", basis: "HEURISTIC" });
+    expect(all.filter((f) => f.code !== "AUDIT_DURATION_UNDERUSED").every((f) => f.threshold === null)).toBe(true);
+  });
+
+  it("an unknown total says why: doses without sets, items not counted, or both", () => {
+    const phase = audit.phases[0];
+    const as = (unknownSetItems: number, uncountedItems: number): AuditReport => ({
+      ...audit,
+      phases: [{
+        ...phase,
+        weekRows: phase.weekRows.map((w) => ({ ...w, unknownSetItems, uncountedItems, weighted: null })),
+        muscles: phase.muscles.map((m) => ({ ...m, direct: null, indirect: null, weighted: null })),
+        patterns: phase.patterns.map((x) => ({ ...x, sets: null })),
+      }],
+    });
+    // A custom row (no library exercise) only: "não contado", never "séries não definidas".
+    const uncounted = auditPhaseRows(as(0, 1), 1)!;
+    expect(new Set(uncounted.muscles.flatMap((m) => [m.direct, m.indirect, m.weighted]))).toEqual(new Set([NOT_COUNTED]));
+    expect(uncounted.patterns.every((x) => x.sets === NOT_COUNTED)).toBe(true);
+    expect(uncounted.unknownNote).toContain("Item não contado");
+    expect(uncounted.unknownNote).not.toContain("Séries não definidas");
+    // Doses without sets only.
+    const unknown = auditPhaseRows(as(1, 0), 1)!;
+    expect(unknown.muscles[0].direct).toBe(UNDEFINED_SETS);
+    expect(unknown.unknownNote).toContain("dose sem séries");
+    expect(unknown.unknownNote).not.toContain("não contado");
+    // Both: neither cause alone.
+    const both = auditPhaseRows(as(1, 1), 1)!;
+    expect(both.muscles[0].direct).toBe("não calculado");
+    expect(both.unknownNote).toContain("dose sem séries");
+    expect(both.unknownNote).toContain("não contado");
+    // Every total known: no note.
+    expect(auditPhaseRows(audit, 1)!.unknownNote).toBeNull();
+    // The week total of "Contribuição na semana" names the cause of that week.
+    const occ = xintus.occurrences.find((o) => o.phaseIndex === 1 && o.week === 3)!;
+    const item = occ.items.find((i) => i.trace.selection.some((t) => t.code === "WEEKLY_CONTRIBUTION"))!;
+    const c = contributionView(item, as(0, 1), 1, 3)!.weekTotal!;
+    expect(c).toContain("não calculado, há item não contado");
+    expect(c).not.toContain(UNDEFINED_SETS);
+    expect(contributionView(item, as(1, 1), 1, 3)!.weekTotal).toContain(`${UNDEFINED_SETS} e item não contado`);
+  });
+
+  it("the weekly table takes only a recorded audit; the page computes one only when none is recorded", async () => {
+    expect(weekTableAudit(stored)).toBe(audit);
+    expect(weekTableAudit({ ...stored, source: "VIEW" })).toBeNull();
+    expect(weekTableAudit(null)).toBeNull();
+    const compute = vi.fn(async () => ({ status: "ok" as const, audit, source: "VIEW" as const, rules: audit.rules }));
+    // A recorded audit: straight from the summary already loaded, no call (so no extra read).
+    expect(await pageAudit(xintus, compute)).toEqual(stored);
+    expect(compute).not.toHaveBeenCalled();
+    const legacy = generate(xintusInput(LEGACY_RULES));
+    expect(await pageAudit(legacy, compute)).toEqual({ report: audit, source: "VIEW", rules: audit.rules });
+    expect(compute).toHaveBeenCalledTimes(1);
+    expect(await pageAudit(legacy, async () => ({ status: "not_found" as const }))).toBeNull();
+  });
+
+  it("the phase tables: ranges per week, situation, split shape; unknown sets read 'séries não definidas', never 0", () => {
+    const rows = auditPhaseRows(audit, 1)!;
+    expect(rows.shape).not.toBeNull();
+    const quads = rows.muscles.find((m) => m.muscle === "Quadríceps")!;
+    expect(quads.situation).toBe("Direto");
+    expect(quads.direct).toMatch(/^\d+(–\d+)?$/);
+    expect(rows.muscles.every((m) => !/^[A-Z_]+$/.test(m.muscle))).toBe(true);
+    expect(rows.patterns.every((p) => p.sessions !== "0")).toBe(true);
+    expect(auditPhaseRows(audit, 9)).toBeNull();
+    // Empty doses (LEAVE_EMPTY): set ranges are unknown, presence still counts.
+    const empty = generate(xintusInput(DEFAULT_RULESET, { parameters: { ...xintusInput().parameters, doseMode: "LEAVE_EMPTY" } }));
+    const er = auditPhaseRows(empty.audit!, 1)!;
+    const q = er.muscles.find((m) => m.muscle === "Quadríceps")!;
+    expect([q.direct, q.indirect, q.weighted]).toEqual([UNDEFINED_SETS, UNDEFINED_SETS, UNDEFINED_SETS]);
+    expect(q.situation).toBe("Direto");
+    expect(Number(q.directSessions.split("–")[0])).toBeGreaterThan(0);
+  });
+
+  it("a phase without volume workouts: no all-zero muscle table, and cardio sets read 'não se aplica', not 'não definidas'", () => {
+    const st = structure("2026-11-09", [{ weeks: 2, sessionsPerWeek: 3, workouts: [
+      { label: "Z2", exerciseTarget: 1, focus: { stimulus: { value: "AEROBIC_ENDURANCE", source: "STRUCTURE", basis: "PROFESSIONAL" } } },
+      { label: "Mob", exerciseTarget: 2, focus: { stimulus: { value: "MOBILITY", source: "STRUCTURE", basis: "PROFESSIONAL" } } },
+    ] }]);
+    const r = generate(baseInput({ structure: st }));
+    const rows = auditPhaseRows(r.audit!, 1)!;
+    expect(rows.volume).toBe(false);
+    expect(rows.muscles).toEqual([]);
+    expect(rows.patterns.some((x) => x.sets === SETS_NOT_APPLICABLE)).toBe(true);
+    expect(rows.patterns.every((x) => x.sets !== UNDEFINED_SETS)).toBe(true);
+    expect(rows.unknownNote).toBeNull();
+    expect(auditPhaseRows(audit, 1)!.volume).toBe(true);
+  });
+
+  it("the weekly table gains sessions with direct stimulus (from the audit) and the target; '—' without an audit", () => {
+    const rows = weekVolume(xintus.volume, 1, 1, audit);
+    const quads = rows.find((r) => r.muscle === "Quadríceps")!;
+    expect(Number(quads.directSessions)).toBe(audit.phases[0].weekRows[0].directSessions.QUADRICEPS);
+    expect(quads.target).toBeNull();
+    expect(weekVolume(xintus.volume, 1, 1).every((r) => r.directSessions === "—" && r.target === null)).toBe(true);
+    // A muscle only worked indirectly that week has 0 sessions with direct stimulus when every item was counted.
+    const indirect = rows.find((r) => r.direct === "0");
+    if (indirect) expect(indirect.directSessions).toBe("0");
+  });
+
+  it("'Contribuição na semana': the item's recorded sentence plus the week total from the audit, or nothing", () => {
+    const occ = xintus.occurrences.find((o) => o.phaseIndex === 1 && o.week === 3)!;
+    const item = occ.items.find((i) => i.trace.selection.some((t) => t.code === "WEEKLY_CONTRIBUTION"))!;
+    const c = contributionView(item, audit, 1, 3)!;
+    expect(c.lines).toHaveLength(1);
+    expect(c.lines[0]).toMatch(/^Semana 3: 2 sessões do treino [AB] × \d+ séries = /);
+    expect(c.weekTotal).toBe(`Total da semana 3 na fase (4 sessões): ${auditValueText("WEIGHTED_SETS", audit.phases[0].weekRows[2].weighted!)}.`);
+    expect(contributionView(item, null, 1, 3)!.weekTotal).toBeNull();
+    // Rules without the audit: no entry, nothing shown.
+    const legacy = generate(xintusInput(LEGACY_RULES));
+    expect(contributionView(legacy.occurrences[0].items[0], null, 1, 1)).toBeNull();
+    // Unknown sets: the total is not computed (never 0).
+    const empty = generate(xintusInput(DEFAULT_RULESET, { parameters: { ...xintusInput().parameters, doseMode: "LEAVE_EMPTY" } }));
+    const eItem = empty.occurrences[0].items.find((i) => i.trace.selection.some((t) => t.code === "WEEKLY_CONTRIBUTION"))!;
+    const ec = contributionView(eItem, empty.audit!, 1, empty.occurrences[0].week)!;
+    expect(ec.lines[0]).toContain("séries não definidas");
+    expect(ec.weekTotal).toContain("não calculado");
+  });
+});
+
+describe("Motor V3 S4: 'Por quê?' answers the six questions (design §5, §7.1)", () => {
+  const xintus = generate(xintusInput());
+  const audit = xintus.audit!;
+  const occ = xintus.occurrences.find((o) => o.phaseIndex === 1 && o.week === 3)!;
+  const squat = occ.items.find((i) => i.trace.selection.some((t) => t.code === "ASSESSMENT_OBSERVATION"))!;
+
+  it("six sections in order, each from the item's own trace; empty ones are left out", () => {
+    const why = whyView(squat, { rulesUsed: xintus.rulesUsed, contribution: contributionView(squat, audit, 1, 3) });
+    expect(why.map((s) => s.key)).toEqual(["choice", "student", "contribution", "sets", "rules", "change"]);
+    const by = Object.fromEntries(why.map((s) => [s.key, s]));
+    // why this exercise: the selection entries (eligibility, equipment, microcycle terms, rank), never the derived ones
+    expect(by.choice.lines.map((l) => l.text).join(" ")).toMatch(/Elegível/);
+    expect(by.choice.lines.some((l) => /Não é contraindicação|sessões do treino/.test(l.text))).toBe(false);
+    // the student's data: the assessment reading with its reference, labelled as not a contraindication
+    const obs = by.student.lines.find((l) => l.text.includes("Não é contraindicação"))!;
+    expect(obs.basis).toBe("STUDENT_DATA");
+    expect(obs.text).toContain("assessment:as-xintus");
+    expect(obs.rule).toBeTruthy();
+    // weekly contribution with the week total, why N sets with its basis and rule
+    expect(by.contribution.lines[0].text).toMatch(/^Semana 3: 2 sessões do treino [AB] × 3 séries/);
+    expect(by.contribution.lines.at(-1)!.muted).toBe(true);
+    expect(by.sets.title).toBe("Por que 3 séries");
+    expect(by.sets.lines[0]).toMatchObject({ basis: "HEURISTIC" });
+    expect(by.sets.lines[0].text).toContain("política de doses");
+    // rules used: each rule id once, with its label
+    const ruleIds = by.rules.lines.map((l) => /\(([A-Z_]+)\)$/.exec(l.text)?.[1]);
+    expect(new Set(ruleIds).size).toBe(ruleIds.length);
+    expect(ruleIds).toContain("DOSE_DEFAULTS");
+    expect(ruleIds).toContain("FINDING_OBSERVATION_MAP");
+    // what would change it: from the codes present
+    expect(by.change.lines.map((l) => l.text)).toContain("Se a observação na execução mostrar compensação, decida com o aluno (não é contraindicação).");
+  });
+
+  it("'O que mudaria esta escolha' only for codes present: no history entry, no history condition", () => {
+    const item = (selection: Array<{ code: string; basis?: string }>, sets?: { basis: string; ruleId?: string }) =>
+      ({
+        trace: {
+          selection: selection.map((t) => ({ code: t.code, basis: t.basis ?? "HEURISTIC", detail: t.code })),
+          params: sets ? [{ param: "sets", value: 3, ...sets }] : [],
+        },
+      }) as unknown as ItemOut;
+    expect(changeConditions(item([{ code: "ELIGIBLE" }]))).toEqual(["Se as modalidades do treino ou as suas exclusões mudarem."]);
+    expect(changeConditions(item([{ code: "ELIGIBLE" }])).some((t) => t.includes("dor"))).toBe(false);
+    expect(changeConditions(item([{ code: "HISTORY_PAIN", basis: "STUDENT_DATA" }, { code: "HISTORY_CONTINUITY", basis: "STUDENT_DATA" }]))).toEqual([
+      "Se o aluno registrar dor ou não tolerar o exercício.",
+    ]);
+    expect(changeConditions(item([{ code: "MICRO_TARGET_DEFICIT" }]))[0]).toContain("alvo semanal");
+    expect(changeConditions(item([{ code: "LOCKED", basis: "PROFESSIONAL" }]))).toEqual(["Está mantido por você: só muda se você destravar."]);
+    expect(changeConditions(item([], { basis: "PROFESSIONAL" }))).toEqual(["A dose é sua: muda só se você a editar."]);
+    expect(changeConditions(item([], { basis: "HEURISTIC", ruleId: "DOSE_DEFAULTS" }))[0]).toContain("política de doses");
+    expect(changeConditions(item([{ code: "UNMAPPED_CODE" }]))).toEqual([]);
+  });
+
+  it("the experience level that weighed the difficulty is student data, or the assumption when it was not recorded; sets name the progression week", () => {
+    const withDifficulty = occ.items.find((i) => i.trace.selection.some((t) => t.code === "DIFFICULTY"))!;
+    const known = whyView(withDifficulty, { rulesUsed: xintus.rulesUsed, contribution: null }).find((s) => s.key === "student")!;
+    expect(known.lines.at(-1)).toMatchObject({ basis: "STUDENT_DATA", text: expect.stringMatching(/^Nível de experiência do perfil \(não iniciante\) usado no peso da dificuldade: Dificuldade/) });
+    const unknown = whyView(withDifficulty, { rulesUsed: xintus.rulesUsed, contribution: null, experienceUnknown: true }).find((s) => s.key === "student")!;
+    expect(unknown.lines.at(-1)).toMatchObject({ basis: "HEURISTIC", text: expect.stringMatching(/^Nível de experiência não informado: a dificuldade pesou como para não iniciantes/) });
+    const beginner = { trace: { selection: [{ code: "DIFFICULTY", basis: "HEURISTIC", ruleId: "SELECTION_WEIGHTS", detail: "Dificuldade 3 para iniciante (-1,5)" }], params: [] } } as unknown as ItemOut;
+    expect(whyView(beginner, { rulesUsed: [], contribution: null }).find((s) => s.key === "student")!.lines[0].text).toMatch(/\(iniciante\)/);
+    // Sets set by the phase's progression say which week of the phase; the policy and the professional's values keep their text.
+    const progressed = { trace: { selection: [], params: [{ param: "sets", value: 2, basis: "HEURISTIC_ACCEPTED", ruleId: "PROGRESSION_TEMPLATES" }] } } as unknown as ItemOut;
+    expect(whyView(progressed, { rulesUsed: [], contribution: null, week: 2 }).find((s) => s.key === "sets")!.lines[0].text).toBe("2 séries na semana 2 da fase, pela progressão da fase.");
+    const deload = { trace: { selection: [], params: [{ param: "sets", value: 2, basis: "HEURISTIC", ruleId: "DELOAD_ROUNDING" }] } } as unknown as ItemOut;
+    expect(whyView(deload, { rulesUsed: [], contribution: null, week: 4 }).find((s) => s.key === "sets")!.lines[0].text).toBe("2 séries na semana 4 da fase, semana de descarga da progressão.");
+    expect(whyView(withDifficulty, { rulesUsed: xintus.rulesUsed, contribution: null, week: 3 }).find((s) => s.key === "sets")!.lines[0].text).toContain("política de doses");
+  });
+
+  it("an item without sets, contribution or student data has only what it carries; a preserved row says it is the professional's", () => {
+    const legacy = generate(xintusInput(LEGACY_RULES));
+    const plain = legacy.occurrences[0].items[0];
+    const why = whyView(plain, { rulesUsed: legacy.rulesUsed, contribution: contributionView(plain, null, 1, 1) });
+    expect(why.map((s) => s.key)).not.toContain("contribution");
+    // Under the older rules only the experience level is student data here (it weighs the difficulty term), when the item has one.
+    const student = why.find((s) => s.key === "student");
+    if (plain.trace.selection.some((t) => t.code === "DIFFICULTY")) expect(student!.lines.map((l) => l.text)).toEqual([expect.stringMatching(/^Nível de experiência do perfil \(não iniciante\)/)]);
+    else expect(student).toBeUndefined();
+    const empty = generate(xintusInput(DEFAULT_RULESET, { parameters: { ...xintusInput().parameters, doseMode: "LEAVE_EMPTY" } }));
+    const blank = empty.occurrences[0].items[0];
+    expect(whyView(blank, { rulesUsed: empty.rulesUsed, contribution: null }).map((s) => s.key)).not.toContain("sets");
+    const preserved = { trace: { selection: [{ code: "PRESERVED", basis: "PROFESSIONAL", detail: "Linha preservada." }], params: [] } } as unknown as ItemOut;
+    expect(whyView(preserved, { rulesUsed: [], contribution: null })).toEqual([
+      { key: "choice", title: "Por que este exercício", lines: [{ text: "Linha preservada.", basis: "PROFESSIONAL", rule: null }] },
+      { key: "change", title: "O que mudaria esta escolha", lines: [{ text: "Já estava no rascunho: a ferramenta não o troca; mude no editor da revisão.", basis: null, rule: null }] },
+    ]);
+  });
+
+  it("the suggested-targets card is drawn only for phases a recorded audit says have none, under rules that can back it", () => {
+    const stored = storedAudit(xintus)!;
+    expect(audit.findings.some((f) => f.code === "AUDIT_NO_TARGETS")).toBe(true);
+    expect(phasesWithoutTargets(stored, true)).toEqual([1, 2, 3]);
+    expect(phasesWithoutTargets(stored, false)).toEqual([]);
+    expect(phasesWithoutTargets({ ...stored, source: "VIEW" }, true)).toEqual([]);
+    expect(phasesWithoutTargets(null, true)).toEqual([]);
+    const view = auditView(stored, { engineVersion: xintus.engineVersion, acceptSuggestions: true });
+    const offered = [...view.observations, ...view.attention].flatMap((g) => g.findings).filter((f) => f.offerSuggestion);
+    expect(offered.map((f) => f.phaseIndex)).toEqual([1, 2, 3]);
   });
 });

@@ -5,7 +5,7 @@
  */
 import { cmp, codeOf, MUSCLE_LABELS, normalizeText, numberText, PATTERN_LABELS } from "./vocabulary";
 import type { RuleLog } from "./trace";
-import type { Alternative, Basis, CatalogExercise, ExistingItem, Experience, ItemMetadata, Metric, TraceEntry } from "./types";
+import type { Alternative, Basis, CatalogExercise, CoverageTargets, ExistingItem, Experience, ItemMetadata, Metric, TraceEntry } from "./types";
 
 // ---------- chaves de item ----------
 
@@ -39,12 +39,7 @@ export function nameKeyOf(name: string, nameKey?: string): string {
 
 // ---------- seleção ----------
 
-export interface Coverage {
-  muscles: string[];
-  patterns: string[];
-  basis: Basis;
-  ruleId?: string;
-}
+export type Coverage = CoverageTargets;
 
 export interface SelectionRequest {
   stimulus: string | null;
@@ -77,15 +72,66 @@ export interface Pick {
 const muscle = (m: string) => MUSCLE_LABELS[m] ?? m;
 const pattern = (p: string) => PATTERN_LABELS[p] ?? p;
 
+type AddTerm = (value: number, code: string, detail: string, basis?: Basis) => void;
+
+/** O que os termos que não dependem do que já foi escolhido precisam saber do pedido. */
+export interface StaticRequest {
+  stimulus: SelectionRequest["stimulus"];
+  preferred: SelectionRequest["preferred"];
+  experience: SelectionRequest["experience"];
+  history: SelectionRequest["history"];
+  usedInPreviousPhase: SelectionRequest["usedInPreviousPhase"];
+  avoid: SelectionRequest["avoid"];
+}
+
+/**
+ * Termos da pontuação que não dependem do estado da seleção (preferido, histórico, dificuldade pela experiência,
+ * metadados inferidos, multiarticular, carga externa, variação entre fases, item atual). Mesma ordem e mesma aritmética
+ * da seleção antiga: `between` é onde a seleção antiga soma "já usado em outro treino da fase".
+ */
+function staticInto(log: RuleLog, e: CatalogExercise, req: StaticRequest, add: AddTerm, between?: () => void): void {
+  const W = log.get("SELECTION_WEIGHTS");
+  if (e.compound === true && req.stimulus && log.get("COMPOUND_PRIORITY_STIMULI").includes(req.stimulus))
+    add(W.compound, "COMPOUND", "Multiarticular num estímulo que os prioriza");
+  // Sem equipamento nenhum (nem alternativo), um exercício resistido não recebe carga externa: pesa contra nos estímulos de carga.
+  if (W.noExternalLoad && req.stimulus && log.optional("EXTERNAL_LOAD_STIMULI")?.includes(req.stimulus) && e.modality
+    && codeOf(e.modality) === "RESISTANCE" && e.equipmentKnown !== false && !e.equipment.length && !e.equipmentAlternatives.some((set) => set.length))
+    add(W.noExternalLoad, "NO_EXTERNAL_LOAD", "Sem carga externa num estímulo de carga");
+  if (req.preferred.has(e.id)) add(W.preferred, "PREFERRED", "Preferido pelo profissional", "PROFESSIONAL");
+  const h = req.history.get(e.id);
+  if (h?.pain) add(W.historyPain, "HISTORY_PAIN", "Dor relatada no histórico", "STUDENT_DATA");
+  else if (h?.exposures) add(W.historyContinuity, "HISTORY_CONTINUITY", `Já executado pelo aluno (${h.exposures} registro(s))`, "STUDENT_DATA");
+  between?.();
+  if (req.usedInPreviousPhase.has(e.id)) add(W.usedInPreviousPhase, "USED_IN_PREVIOUS_PHASE", "Usado na fase anterior (variação)");
+  if (e.difficulty !== null) {
+    const beginner = req.experience === "BEGINNER";
+    add((beginner ? W.beginnerDifficulty : W.otherDifficulty) * e.difficulty, "DIFFICULTY", `Dificuldade ${e.difficulty}${beginner ? " para iniciante" : ""}`);
+  }
+  if (e.metadataStatus === "INFERRED") add(W.inferredMetadata, "INFERRED_METADATA", "Metadados inferidos (não revisados)");
+  if (req.avoid.has(e.id)) add(W.avoidCurrent, "AVOID_CURRENT", "Exercício atual do item (pedido de troca)");
+}
+
+function termAdder(log: RuleLog, trace: TraceEntry[], sum: (value: number) => void): AddTerm {
+  return (value, code, detail, basis) => {
+    if (!value) return;
+    sum(value);
+    trace.push({ code, basis: basis ?? log.basis("SELECTION_WEIGHTS"), ruleId: "SELECTION_WEIGHTS", detail: `${detail} (${value > 0 ? "+" : ""}${numberText(value)})` });
+  };
+}
+
+/** Termos independentes do estado (seleção por microciclo): calculados uma vez por treino e exercício. */
+export function staticTerms(log: RuleLog, e: CatalogExercise, req: StaticRequest): { score: number; trace: TraceEntry[] } {
+  const trace: TraceEntry[] = [];
+  let total = 0;
+  staticInto(log, e, req, termAdder(log, trace, (v) => (total += v)));
+  return { score: total, trace };
+}
+
 function score(log: RuleLog, e: CatalogExercise, chosen: CatalogExercise[], req: SelectionRequest): { score: number; trace: TraceEntry[] } {
   const W = log.get("SELECTION_WEIGHTS");
   const trace: TraceEntry[] = [];
   let total = 0;
-  const add = (value: number, code: string, detail: string, basis?: Basis) => {
-    if (!value) return;
-    total += value;
-    trace.push({ code, basis: basis ?? log.basis("SELECTION_WEIGHTS"), ruleId: "SELECTION_WEIGHTS", detail: `${detail} (${value > 0 ? "+" : ""}${numberText(value)})` });
-  };
+  const add = termAdder(log, trace, (v) => (total += v));
   const covered = new Map<string, number>();
   const patterns = new Set<string>();
   for (const x of chosen) {
@@ -109,24 +155,9 @@ function score(log: RuleLog, e: CatalogExercise, chosen: CatalogExercise[], req:
     const repeated = e.patterns.map(codeOf).filter((p) => patterns.has(p));
     if (repeated.length && W.noTargetsPatternRepeat) add(W.noTargetsPatternRepeat * repeated.length, "NO_TARGETS_PATTERN_REPEAT", `Padrão já presente neste treino: ${repeated.map(pattern).join(", ")}`);
   }
-  if (e.compound === true && req.stimulus && log.get("COMPOUND_PRIORITY_STIMULI").includes(req.stimulus))
-    add(W.compound, "COMPOUND", "Multiarticular num estímulo que os prioriza");
-  // Sem equipamento nenhum (nem alternativo), um exercício resistido não recebe carga externa: pesa contra nos estímulos de carga.
-  if (W.noExternalLoad && req.stimulus && log.optional("EXTERNAL_LOAD_STIMULI")?.includes(req.stimulus) && e.modality
-    && codeOf(e.modality) === "RESISTANCE" && e.equipmentKnown !== false && !e.equipment.length && !e.equipmentAlternatives.some((set) => set.length))
-    add(W.noExternalLoad, "NO_EXTERNAL_LOAD", "Sem carga externa num estímulo de carga");
-  if (req.preferred.has(e.id)) add(W.preferred, "PREFERRED", "Preferido pelo profissional", "PROFESSIONAL");
-  const h = req.history.get(e.id);
-  if (h?.pain) add(W.historyPain, "HISTORY_PAIN", "Dor relatada no histórico", "STUDENT_DATA");
-  else if (h?.exposures) add(W.historyContinuity, "HISTORY_CONTINUITY", `Já executado pelo aluno (${h.exposures} registro(s))`, "STUDENT_DATA");
-  if (req.usedInPhase.has(e.id)) add(W.usedInOtherWorkoutOfPhase, "USED_IN_PHASE", "Já usado em outro treino da fase");
-  if (req.usedInPreviousPhase.has(e.id)) add(W.usedInPreviousPhase, "USED_IN_PREVIOUS_PHASE", "Usado na fase anterior (variação)");
-  if (e.difficulty !== null) {
-    const beginner = req.experience === "BEGINNER";
-    add((beginner ? W.beginnerDifficulty : W.otherDifficulty) * e.difficulty, "DIFFICULTY", `Dificuldade ${e.difficulty}${beginner ? " para iniciante" : ""}`);
-  }
-  if (e.metadataStatus === "INFERRED") add(W.inferredMetadata, "INFERRED_METADATA", "Metadados inferidos (não revisados)");
-  if (req.avoid.has(e.id)) add(W.avoidCurrent, "AVOID_CURRENT", "Exercício atual do item (pedido de troca)");
+  staticInto(log, e, req, add, () => {
+    if (req.usedInPhase.has(e.id)) add(W.usedInOtherWorkoutOfPhase, "USED_IN_PHASE", "Já usado em outro treino da fase");
+  });
   return { score: total, trace };
 }
 

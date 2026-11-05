@@ -8,6 +8,7 @@
  * optional fact is written as an assumption.
  */
 import { DEFAULT_RULESET, getRuleSet } from "@/modules/prescricao/motor/rules";
+import { targetSuggestion, type TargetSuggestion } from "@/modules/prescricao/motor/targets";
 import { codeOf, normalizeText, STIMULUS_LABELS } from "@/modules/prescricao/motor/vocabulary";
 import type {
   Assumption,
@@ -16,7 +17,9 @@ import type {
   Issue,
   ItemTarget,
   RuleSetRef,
+  StructureFacts,
   Suggestion,
+  WeeklySetsTarget,
 } from "@/modules/prescricao/motor/types";
 import type { BuildOutcome, GenerationAnswers, GenerationFactRefs, GenerationQuestion } from "./contracts";
 import { existingItems, structureFacts, studentFacts, type GenerationContext } from "./facts";
@@ -65,55 +68,62 @@ export interface BuildOptions {
   rules?: RuleSetRef;
 }
 
-export function buildEngineInput(ctx: GenerationContext, answers: GenerationAnswers, options: BuildOptions = {}): BuildOutcome {
-  const rules = options.rules ?? DEFAULT_RULESET;
-  const ruleSet = getRuleSet(rules);
-  if (!ruleSet) throw new Error("RULESET_UNKNOWN");
-  const structure = structureFacts(ctx.revision.schedule);
+const sortedCodes = (list: readonly string[] | undefined) => [...new Set(list ?? [])].sort(cmp);
 
-  // 1. Every exercise id and every target in the answers must exist: the visible library, the saved structure.
-  const catalogIds = new Set(ctx.catalog.map((e) => e.id));
-  const unknown = [...new Set(answerExerciseIds(answers).filter((id) => !catalogIds.has(id)))].sort(cmp);
-  if (unknown.length) return { ok: false, code: "UNKNOWN_EXERCISE", exerciseIds: unknown };
-  const phases = new Map(structure.phases.map((p) => [p.index, new Set(p.workouts.map((w) => w.label))]));
-  const badTargets: Array<{ phaseIndex: number; label?: string }> = [];
-  const checkPhase = (phaseIndex: number) => {
-    if (!phases.has(phaseIndex)) badTargets.push({ phaseIndex });
+/** A weekly target as the engine reads it, with only the bounds that were given. */
+function weeklyEntry(w: WeeklySetsTarget): WeeklySetsTarget {
+  return {
+    muscle: w.muscle,
+    ...(w.minWeighted !== undefined ? { minWeighted: w.minWeighted } : {}),
+    ...(w.maxWeighted !== undefined ? { maxWeighted: w.maxWeighted } : {}),
+    ...(w.minDirectSessions !== undefined ? { minDirectSessions: w.minDirectSessions } : {}),
   };
-  const checkWorkout = (phaseIndex: number, label: string) => {
-    if (!phases.get(phaseIndex)?.has(label)) badTargets.push({ phaseIndex, label });
+}
+const weeklyKey = (list: readonly WeeklySetsTarget[] | undefined) =>
+  JSON.stringify([...(list ?? [])].map(weeklyEntry).sort((a, b) => cmp(a.muscle, b.muscle)).map((w) => [w.muscle, w.minWeighted ?? null, w.maxWeighted ?? null, w.minDirectSessions ?? null]));
+
+/** Whether an accepted coverage is exactly the rule's suggestion: muscles, patterns and weekly targets (order does not matter). */
+export function sameAsSuggestion(c: { muscles?: readonly string[]; patterns?: readonly string[]; weeklySets?: readonly WeeklySetsTarget[] }, s: TargetSuggestion): boolean {
+  return (
+    JSON.stringify(sortedCodes(c.muscles)) === JSON.stringify(sortedCodes(s.muscles)) &&
+    JSON.stringify(sortedCodes(c.patterns)) === JSON.stringify(sortedCodes(s.patterns)) &&
+    weeklyKey(c.weeklySets) === weeklyKey(s.weeklySets)
+  );
+}
+
+/**
+ * The professional's targets per workout (`coverageByWorkout`) written as each workout's focus, which the engine already reads
+ * (a workout's focus wins over the phase coverage for that workout). An entry with no muscle and no pattern changes nothing.
+ */
+function withWorkoutCoverage(structure: StructureFacts, entries: GenerationAnswers["coverageByWorkout"]): StructureFacts {
+  const useful = entries.filter((c) => c.muscles?.length || c.patterns?.length);
+  if (!useful.length) return structure;
+  return {
+    ...structure,
+    phases: structure.phases.map((p) => ({
+      ...p,
+      workouts: p.workouts.map((w) => {
+        const c = useful.find((x) => x.phaseIndex === p.index && x.label === w.label);
+        if (!c) return w;
+        return {
+          ...w,
+          focus: {
+            ...w.focus,
+            ...(c.muscles?.length ? { muscles: sortedCodes(c.muscles) } : {}),
+            ...(c.patterns?.length ? { patterns: sortedCodes(c.patterns) } : {}),
+          },
+        };
+      }),
+    })),
   };
-  answers.stimulusByPhase.forEach((s) => checkPhase(s.phaseIndex));
-  answers.phaseCoverage.forEach((c) => checkPhase(c.phaseIndex));
-  answers.progressionByPhase.forEach((p) => checkPhase(p.phaseIndex));
-  answers.modalitiesByWorkout.forEach((m) => checkWorkout(m.phaseIndex, m.label));
-  answers.exerciseCountByWorkout.forEach((c) => checkWorkout(c.phaseIndex, c.label));
-  answers.policyOverrides.forEach((o) => {
-    if (o.phaseIndex !== undefined && o.label !== undefined) checkWorkout(o.phaseIndex, o.label);
-    else if (o.phaseIndex !== undefined) checkPhase(o.phaseIndex);
-  });
-  if (options.scope?.kind === "PHASES") options.scope.phaseIndexes.forEach(checkPhase);
-  if (badTargets.length) return { ok: false, code: "UNKNOWN_TARGET", targets: badTargets };
+}
 
-  // 1b. "Sugestão aceita" only for what a rule of this rule set actually suggests: the stimulus chips come from the student's goal
-  // (GOAL_STIMULUS_HINTS); the coverage chips are patterns of DEFAULT_COVERAGE (any modality: which modality a workout ends up with is
-  // the engine's to resolve) and never muscles. Anything else the professional chose is PROFESSIONAL.
-  const goalChips = new Set(goalSuggestions(studentFacts(ctx.profile, ctx.assessment).goal?.value ?? null, rules).map((s) => s.value));
-  const coverageChips = new Set(Object.values(ruleSet.rules.DEFAULT_COVERAGE.value).flat());
-  const unsupported: Array<{ field: "stimulusByPhase" | "phaseCoverage"; phaseIndex: number }> = [];
-  for (const s of answers.stimulusByPhase)
-    if (s.basis === "HEURISTIC_ACCEPTED" && (s.ruleId !== "GOAL_STIMULUS_HINTS" || !goalChips.has(s.value)))
-      unsupported.push({ field: "stimulusByPhase", phaseIndex: s.phaseIndex });
-  for (const c of answers.phaseCoverage)
-    if (
-      c.basis === "HEURISTIC_ACCEPTED" &&
-      (c.ruleId !== "DEFAULT_COVERAGE" || Boolean(c.muscles?.length) || !c.patterns?.length || c.patterns.some((p) => !coverageChips.has(p)))
-    )
-      unsupported.push({ field: "phaseCoverage", phaseIndex: c.phaseIndex });
-  if (unsupported.length) return { ok: false, code: "UNSUPPORTED_SUGGESTION", targets: unsupported };
-
-  // 2. The engine's parameters: only what the professional answered, plus the two defaults decided on 04/11/2026.
-  const parameters: GenerationParameters = {
+/**
+ * The engine's parameters from the answers: only what the professional answered, plus the two defaults decided on 04/11/2026.
+ * `audited`: the rule set has the audit (AUDIT_THRESHOLDS); only then do weekly targets reach the engine.
+ */
+function engineParameters(answers: GenerationAnswers, audited: boolean): GenerationParameters {
+  return {
     doseMode: answers.doseMode ?? "FILL_FROM_POLICY",
     metadataTrust: answers.metadataTrust ?? "REVIEWED_AND_INFERRED",
     stimulusByPhase: answers.stimulusByPhase.map((s) => ({ phaseIndex: s.phaseIndex, value: s.value, basis: s.basis, ...(s.ruleId ? { ruleId: s.ruleId } : {}) })),
@@ -128,14 +138,120 @@ export function buildEngineInput(ctx: GenerationContext, answers: GenerationAnsw
     excludedCautionTags: answers.excludedCautionTags,
     phaseCoverage: answers.phaseCoverage.map((c) => ({
       phaseIndex: c.phaseIndex, basis: c.basis,
-      ...(c.muscles ? { muscles: c.muscles } : {}), ...(c.patterns ? { patterns: c.patterns } : {}), ...(c.ruleId ? { ruleId: c.ruleId } : {}),
+      ...(c.muscles ? { muscles: c.muscles } : {}), ...(c.patterns ? { patterns: c.patterns } : {}),
+      // Weekly targets exist only for rule sets with the audit: an older proposal's input stays as it was (no unknown field).
+      ...(c.weeklySets?.length && audited ? { weeklySets: c.weeklySets.map(weeklyEntry) } : {}),
+      ...(c.ruleId ? { ruleId: c.ruleId } : {}),
     })),
     progressionByPhase: answers.progressionByPhase,
     doseOverrides: answers.policyOverrides,
     metricOverrides: answers.metricOverrides,
     acceptedFlagDecisions: answers.acceptedFlagDecisions,
   };
-  const student = studentFacts(ctx.profile, ctx.assessment);
+}
+
+/**
+ * The suggested targets of some phases of an open proposal, exactly as `buildEngineInput` checks an acceptance: the saved
+ * structure with the targets per workout of the answers, and the engine parameters of the answers. It reads nothing else
+ * (no library, history or student data), so the proposal page can show the card without a full generation context. Phases
+ * not in the structure are left out; `reason` says why a phase has no suggestion.
+ */
+export function suggestedTargets(
+  schedule: GenerationContext["revision"]["schedule"],
+  answers: GenerationAnswers,
+  rules: RuleSetRef,
+  phaseIndexes: readonly number[],
+): Array<{ phaseIndex: number; suggestion: TargetSuggestion | null; reason: string | null }> {
+  const ruleSet = getRuleSet(rules);
+  if (!ruleSet?.rules.MICROCYCLE_TARGET_SUGGESTIONS || !phaseIndexes.length) return [];
+  const structure = withWorkoutCoverage(structureFacts(schedule), answers.coverageByWorkout);
+  const parameters = engineParameters(answers, Boolean(ruleSet.rules.AUDIT_THRESHOLDS));
+  const wanted = new Set(phaseIndexes);
+  return structure.phases
+    .filter((p) => wanted.has(p.index))
+    .map((phase) => {
+      const out = targetSuggestion(rules, phase, { parameters });
+      return { phaseIndex: phase.index, suggestion: out.suggestion, reason: out.suggestion ? null : out.reason };
+    });
+}
+
+export function buildEngineInput(ctx: GenerationContext, answers: GenerationAnswers, options: BuildOptions = {}): BuildOutcome {
+  const rules = options.rules ?? DEFAULT_RULESET;
+  const ruleSet = getRuleSet(rules);
+  if (!ruleSet) throw new Error("RULESET_UNKNOWN");
+  const baseStructure = structureFacts(ctx.revision.schedule);
+
+  // 1. Every exercise id and every target in the answers must exist: the visible library, the saved structure.
+  const catalogIds = new Set(ctx.catalog.map((e) => e.id));
+  const unknown = [...new Set(answerExerciseIds(answers).filter((id) => !catalogIds.has(id)))].sort(cmp);
+  if (unknown.length) return { ok: false, code: "UNKNOWN_EXERCISE", exerciseIds: unknown };
+  const phases = new Map(baseStructure.phases.map((p) => [p.index, new Set(p.workouts.map((w) => w.label))]));
+  const badTargets: Array<{ phaseIndex: number; label?: string }> = [];
+  const checkPhase = (phaseIndex: number) => {
+    if (!phases.has(phaseIndex)) badTargets.push({ phaseIndex });
+  };
+  const checkWorkout = (phaseIndex: number, label: string) => {
+    if (!phases.get(phaseIndex)?.has(label)) badTargets.push({ phaseIndex, label });
+  };
+  answers.stimulusByPhase.forEach((s) => checkPhase(s.phaseIndex));
+  answers.phaseCoverage.forEach((c) => checkPhase(c.phaseIndex));
+  answers.progressionByPhase.forEach((p) => checkPhase(p.phaseIndex));
+  answers.modalitiesByWorkout.forEach((m) => checkWorkout(m.phaseIndex, m.label));
+  answers.exerciseCountByWorkout.forEach((c) => checkWorkout(c.phaseIndex, c.label));
+  answers.coverageByWorkout.forEach((c) => checkWorkout(c.phaseIndex, c.label));
+  answers.policyOverrides.forEach((o) => {
+    if (o.phaseIndex !== undefined && o.label !== undefined) checkWorkout(o.phaseIndex, o.label);
+    else if (o.phaseIndex !== undefined) checkPhase(o.phaseIndex);
+  });
+  if (options.scope?.kind === "PHASES") options.scope.phaseIndexes.forEach(checkPhase);
+  if (badTargets.length) return { ok: false, code: "UNKNOWN_TARGET", targets: badTargets };
+
+  // 1b. "Sugestão aceita" only for what a rule of this rule set actually suggests: the stimulus chips come from the student's goal
+  // (GOAL_STIMULUS_HINTS). Coverage: with MICROCYCLE_TARGET_SUGGESTIONS (2026.11.4+) the one suggestion of that rule, exactly as the
+  // rule computes it for the phase (checked below, once the parameters exist); without it, patterns of DEFAULT_COVERAGE (any
+  // modality: which modality a workout ends up with is the engine's to resolve) and never muscles. A DEFAULT_COVERAGE acceptance
+  // already stored stays valid under the newer rules, so saved answers keep working. Anything else the professional chose is
+  // PROFESSIONAL: a subset or an edit of a suggestion included.
+  const goalChips = new Set(goalSuggestions(studentFacts(ctx.profile, ctx.assessment).goal?.value ?? null, rules).map((s) => s.value));
+  const coverageChips = new Set(Object.values(ruleSet.rules.DEFAULT_COVERAGE.value).flat());
+  const suggests = Boolean(ruleSet.rules.MICROCYCLE_TARGET_SUGGESTIONS);
+  const unsupported: Array<{ field: "stimulusByPhase" | "phaseCoverage"; phaseIndex: number }> = [];
+  for (const s of answers.stimulusByPhase)
+    if (s.basis === "HEURISTIC_ACCEPTED" && (s.ruleId !== "GOAL_STIMULUS_HINTS" || !goalChips.has(s.value)))
+      unsupported.push({ field: "stimulusByPhase", phaseIndex: s.phaseIndex });
+  const legacyCoverage = (c: GenerationAnswers["phaseCoverage"][number]) =>
+    c.ruleId === "DEFAULT_COVERAGE" && !c.muscles?.length && !c.weeklySets?.length && Boolean(c.patterns?.length) && !c.patterns!.some((p) => !coverageChips.has(p));
+  const toCheck: Array<GenerationAnswers["phaseCoverage"][number]> = [];
+  for (const c of answers.phaseCoverage) {
+    if (c.basis !== "HEURISTIC_ACCEPTED" || legacyCoverage(c)) continue;
+    if (suggests && c.ruleId === "MICROCYCLE_TARGET_SUGGESTIONS") toCheck.push(c);
+    else unsupported.push({ field: "phaseCoverage", phaseIndex: c.phaseIndex });
+  }
+  if (unsupported.length) return { ok: false, code: "UNSUPPORTED_SUGGESTION", targets: unsupported };
+
+  // 2. The engine's parameters: only what the professional answered, plus the two defaults decided on 04/11/2026.
+  const parameters = engineParameters(answers, Boolean(ruleSet.rules.AUDIT_THRESHOLDS));
+  // 2b. A suggestion accepted as is must be exactly what the rule suggests for that phase today (same omission rule for the
+  // sessions per week), or it is the professional's choice and must say so. `suggestedTargets` computes the card's suggestion
+  // from these same two pieces (structure and parameters), so what "Aceitar" sends is what is checked here.
+  const structure = withWorkoutCoverage(baseStructure, answers.coverageByWorkout);
+  for (const c of toCheck) {
+    const phase = structure.phases.find((p) => p.index === c.phaseIndex)!;
+    const out = targetSuggestion(rules, phase, { parameters });
+    if (!out.suggestion || !sameAsSuggestion(c, out.suggestion)) unsupported.push({ field: "phaseCoverage", phaseIndex: c.phaseIndex });
+  }
+  if (unsupported.length) return { ok: false, code: "UNSUPPORTED_SUGGESTION", targets: unsupported };
+
+  const studentAll = studentFacts(ctx.profile, ctx.assessment);
+  // Leituras estruturadas só vão ao motor com a regra que as usa (2026.11.4+): a entrada das versões anteriores fica igual.
+  const student = ruleSet.rules.FINDING_OBSERVATION_MAP
+    ? studentAll
+    : { ...studentAll, findings: studentAll.findings.map((f) => {
+        if (!f.readings) return f;
+        const rest = { ...f };
+        delete rest.readings;
+        return rest;
+      }) };
   const input: EngineInput = {
     rules,
     asOf: ctx.asOf,

@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { canonicalInput, canonicalJson, generate, sha256Hex, type EngineInput, type ItemOut } from "@/modules/prescricao/motor";
-import { baseInput, CATALOG, codes, exercise, parameters, structure } from "./helpers/motor-fixtures";
+import { AUDIT_RULES, baseInput, CATALOG, codes, exercise, parameters, structure } from "./helpers/motor-fixtures";
 
 const items = (r: ReturnType<typeof generate>): ItemOut[] => r.occurrences.flatMap((o) => o.items);
 
@@ -45,8 +45,8 @@ describe("motor: geração completa a partir de uma periodização (tópico 1)",
     const p2 = r.occurrences.find((o) => o.phaseIndex === 2)!;
     expect(p1.stimulus).toMatchObject({ value: "HYPERTROPHY", basis: "PROFESSIONAL" });
     expect(p2.stimulus?.value).toBe("STRENGTH");
-    const d1 = p1.items[0].dose!;
-    const d2 = p2.items[0].dose!;
+    const d1 = p1.items.find((i) => i.dose?.metric === "REPS")!.dose!;
+    const d2 = p2.items.find((i) => i.dose?.metric === "REPS")!.dose!;
     expect(d1.metric === "REPS" && d1.reps).toEqual({ min: 8, max: 12 });
     expect(d2.metric === "REPS" && d2.reps).toEqual({ min: 3, max: 6 });
     const sets = p1.items[0].trace.params.find((p) => p.param === "sets")!;
@@ -201,10 +201,18 @@ describe("motor: fases e semanas em quantidades variáveis (tópico 3)", () => {
   });
 
   it("escopo PHASES gera só as fases pedidas, com a mesma seleção da geração completa", () => {
-    const full = generate(baseInput());
-    const part = generate(baseInput({ scope: { kind: "PHASES", phaseIndexes: [2] } }));
+    // Seleção por treino: o escopo replaneja todas as fases e devolve só as pedidas.
+    const full = generate(baseInput({ rules: AUDIT_RULES }));
+    const part = generate(baseInput({ rules: AUDIT_RULES, scope: { kind: "PHASES", phaseIndexes: [2] } }));
     expect(new Set(part.occurrences.map((o) => o.phaseIndex))).toEqual(new Set([2]));
     expect(canonicalJson(part.occurrences)).toBe(canonicalJson(full.occurrences.filter((o) => o.phaseIndex === 2)));
+    // Microciclo (padrão): só a fase pedida é planejada; a variação vem da fase anterior gravada (aqui, a da geração completa).
+    const fullMicro = generate(baseInput());
+    const previousPhaseExercises = new Map([[1, [...new Set(fullMicro.occurrences.filter((o) => o.phaseIndex === 1).flatMap((o) => o.items.map((i) => i.exerciseId!)))]]]);
+    const partMicro = generate(baseInput({ scope: { kind: "PHASES", phaseIndexes: [2] } }), { previousPhaseExercises });
+    expect(new Set(partMicro.occurrences.map((o) => o.phaseIndex))).toEqual(new Set([2]));
+    expect(canonicalJson(partMicro.occurrences)).toBe(canonicalJson(fullMicro.occurrences.filter((o) => o.phaseIndex === 2)));
+    expect(partMicro.workouts.every((w) => w.phaseIndex === 2)).toBe(true);
   });
 });
 

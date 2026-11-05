@@ -8279,3 +8279,63 @@ a.phase-tab[aria-current="page"] {
     display: inline;
   }
 }
+
+/* Motor V3: auditoria técnica do plano (proposal-view → audit-panel) */
+.audit-panel .audit-group > summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+}
+.audit-phase + .audit-phase {
+  margin-top: 12px;
+}
+.audit-finding {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--color-line);
+}
+.audit-measure {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+}
+.audit-finding .exercise-actions {
+  margin-top: 4px;
+}
+.why-block .small-heading {
+  margin-top: 4px;
+}
+
+/* Motor V3: alvos sugeridos (target-suggestions) e "Por quê?" em seções */
+.target-card {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-xs);
+}
+.target-card .chip-row {
+  min-width: 0;
+}
+.target-list {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.target-tag {
+  padding: 2px 10px;
+  border: 1px solid var(--color-line-strong);
+  border-radius: var(--radius-xs);
+  font-size: 0.875rem;
+}
+.target-editor {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.why-section + .why-section {
+  margin-top: 4px;
+}

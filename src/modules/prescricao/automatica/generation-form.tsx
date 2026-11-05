@@ -9,6 +9,7 @@ import type { DoseParam } from "@/modules/prescricao/motor/types";
 import { continueProposal, generateProposal } from "./actions";
 import type { GenerationQuestion } from "./contracts";
 import type { GenerationScreen } from "./service";
+import { TargetSuggestionCard } from "./target-suggestions";
 import { NETWORK_ERROR, useIntent } from "./use-intent";
 import {
   BASIS_LABELS,
@@ -18,7 +19,9 @@ import {
   PARAM_LABELS,
   PROGRESSION_PARAMS,
   answersFromForm,
+  coverageSummary,
   formFromAnswers,
+  formSuggestionFor,
   openRequired,
   shortDate,
   type GenerationForm as FormState,
@@ -49,8 +52,14 @@ export function GenerationForm({ planId, revisionId, screen }: { planId: string;
   const info = questions.filter((q) => !q.required);
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((f) => ({ ...f, [key]: value }));
   const stimulusOf = (phaseIndex: number) => form.stimulus.find((s) => s.phaseIndex === phaseIndex);
+  // A suggestion accepted for one stimulus is not the rule's suggestion for another: changing the stimulus drops it (the card
+  // shows the new one); the professional's own targets stay.
   const setStimulus = (phaseIndex: number, next: FormState["stimulus"][number] | null) =>
-    set("stimulus", [...form.stimulus.filter((s) => s.phaseIndex !== phaseIndex), ...(next ? [next] : [])]);
+    setForm((f) => ({
+      ...f,
+      stimulus: [...f.stimulus.filter((s) => s.phaseIndex !== phaseIndex), ...(next ? [next] : [])],
+      coverage: f.coverage.filter((c) => c.phaseIndex !== phaseIndex || c.basis !== "HEURISTIC_ACCEPTED"),
+    }));
   const progressionOf = (phaseIndex: number): ProgressionForm => form.progression.find((p) => p.phaseIndex === phaseIndex) ?? EMPTY_PROGRESSION;
   const setProgression = (phaseIndex: number, patch: Partial<ProgressionForm>) =>
     set("progression", [...form.progression.filter((p) => p.phaseIndex !== phaseIndex), { ...progressionOf(phaseIndex), ...patch, phaseIndex }]);
@@ -393,6 +402,70 @@ export function GenerationForm({ planId, revisionId, screen }: { planId: string;
           );
         })}
       </fieldset>
+
+      {screen.targetSuggestions.length > 0 && (
+        <details className="auto-details" open={form.coverage.length > 0 || form.coverageByWorkout.length > 0}>
+          <summary>Alvos por fase (opcional)</summary>
+          <div className="auto-section">
+            <p className="small muted">
+              Sem alvos, a ferramenta segue a elegibilidade e espalha os padrões pela semana; nada vira alvo sem o seu aceite. Os
+              objetivos em texto livre nunca viram restrição.
+            </p>
+            {screen.targetSuggestions.map((phase) => {
+              const structure = screen.structure.find((p) => p.index === phase.phaseIndex);
+              if (!structure) return null;
+              const current = form.coverage.find((c) => c.phaseIndex === phase.phaseIndex);
+              const byWorkout = form.coverageByWorkout.filter((c) => c.phaseIndex === phase.phaseIndex);
+              const clear = () =>
+                setForm((f) => ({
+                  ...f,
+                  coverage: f.coverage.filter((c) => c.phaseIndex !== phase.phaseIndex),
+                  coverageByWorkout: f.coverageByWorkout.filter((c) => c.phaseIndex !== phase.phaseIndex),
+                }));
+              if (current || byWorkout.length)
+                return (
+                  <div key={phase.phaseIndex} className="auto-question" role="group" aria-label={`Alvos da ${phaseName(structure)}`}>
+                    <strong>{phaseName(structure)}: alvos</strong>
+                    <span className="small">
+                      {current && (
+                        <>
+                          <Pill tone="brand">{BASIS_LABELS[current.basis]}</Pill>{" "}
+                        </>
+                      )}
+                      {coverageSummary(current ?? { phaseIndex: phase.phaseIndex, basis: "PROFESSIONAL" }, byWorkout)}
+                    </span>
+                    <div className="exercise-actions">
+                      <button type="button" className="button secondary small" onClick={clear}>
+                        Remover os alvos da fase {phase.phaseIndex}
+                      </button>
+                    </div>
+                  </div>
+                );
+              const out = formSuggestionFor(phase, form);
+              return (
+                <TargetSuggestionCard
+                  key={phase.phaseIndex}
+                  phaseIndex={phase.phaseIndex}
+                  suggestion={out.suggestion}
+                  reason={out.reason}
+                  labels={structure.workouts.map((w) => w.label)}
+                  pending={pending}
+                  acceptText="Aceitar estes alvos"
+                  commitText="Nada é aplicado sem o seu aceite. Ao aceitar, os alvos entram nesta geração e você pode removê-los antes de gerar."
+                  onAccept={(entry) => setForm((f) => ({ ...f, coverage: [...f.coverage.filter((c) => c.phaseIndex !== entry.phaseIndex), entry] }))}
+                  onApply={(coverage, list) =>
+                    setForm((f) => ({
+                      ...f,
+                      coverage: [...f.coverage.filter((c) => c.phaseIndex !== phase.phaseIndex), ...(coverage ? [coverage] : [])],
+                      coverageByWorkout: [...f.coverageByWorkout.filter((c) => c.phaseIndex !== phase.phaseIndex), ...list],
+                    }))
+                  }
+                />
+              );
+            })}
+          </div>
+        </details>
+      )}
 
       <details className="auto-details">
         <summary>Ajustes opcionais</summary>
