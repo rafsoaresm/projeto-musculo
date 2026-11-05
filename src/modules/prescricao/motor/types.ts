@@ -370,6 +370,32 @@ export interface GenerationParameters {
   /** Métrica escolhida pelo profissional para um exercício (vence o atributo do catálogo). */
   metricOverrides: Array<{ exerciseId: string; metric: Metric }>;
   acceptedFlagDecisions: Array<{ flagCode: string; decision: FlagDecision }>;
+  /**
+   * Foco dominante por treino vindo de uma estratégia aceita (V4), já expandido pela tabela de papéis do conjunto de regras fixado.
+   * Só é emitido com regras que têm MICROCYCLE_BLUEPRINT (2026.11.5+): versões anteriores nunca o recebem nem o leem.
+   */
+  blueprintFocus?: BlueprintFocusFact[];
+}
+
+/** Papel de um treino numa estratégia (mesma união de `planejador/vocab.ts`; um teste confere a igualdade: o motor não importa o planejador). */
+export type BlueprintRole =
+  | "FULL_BODY" | "UPPER" | "LOWER" | "PUSH" | "PULL" | "LEGS" | "CHEST_TRICEPS" | "BACK_BICEPS" | "SHOULDERS_ARMS" | "CORE" | "CUSTOM"
+  | "CARDIO" | "MOBILITY" | "BALANCE" | "SKILL";
+export type BlueprintSource = "AI_SUGGESTED" | "RULES_HEURISTIC" | "PROFESSIONAL";
+
+/** Foco expandido de um treino: dominante (puxa só neste treino), apoio, padrões-alvo e padrões que podem aparecer sem penalidade. */
+export interface BlueprintFocusFact {
+  phaseIndex: number;
+  label: string;
+  role: BlueprintRole;
+  source: BlueprintSource;
+  strategyId: string;
+  dominantMuscles: string[];
+  supportingMuscles: string[];
+  targetPatterns: string[];
+  spilloverPatterns: string[];
+  /** Candidatos nomeados (bônus leve, nunca obrigação); ids reais da biblioteca. */
+  candidateExerciseIds: string[];
 }
 
 export type GenerationScope = { kind: "FULL" } | { kind: "PHASES"; phaseIndexes: number[] };
@@ -407,6 +433,8 @@ export interface TraceEntry {
   basis: Basis;
   ruleId?: string;
   detail: string;
+  /** De onde vem a decisão (só nos termos da estratégia, 2026.11.5+). */
+  origin?: BlueprintSource | "STUDENT_DATA";
 }
 
 export interface ParamTrace {
@@ -521,7 +549,9 @@ export interface CoverageTargets {
   basis: Basis;
   ruleId?: string;
   /** WORKOUT_FOCUS: alvo do treino (vale nas sessões dele); PHASE_COVERAGE: alvo da fase (vale na fase inteira). */
-  origin?: "WORKOUT_FOCUS" | "PHASE_COVERAGE";
+  origin?: "WORKOUT_FOCUS" | "PHASE_COVERAGE" | "BLUEPRINT_FOCUS";
+  /** Só com origin BLUEPRINT_FOCUS: o papel do treino na estratégia e o que ele aceita sem penalidade. */
+  blueprint?: { role: BlueprintRole; source: BlueprintSource; strategyId: string; supporting: string[]; spillover: string[]; candidates: string[] };
   weeklySets?: Array<WeeklySetsTarget & { basis: "PROFESSIONAL" | "HEURISTIC_ACCEPTED"; ruleId?: string }>;
 }
 

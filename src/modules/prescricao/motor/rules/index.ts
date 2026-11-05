@@ -7,8 +7,9 @@ import base from "./gymgital-base.json";
 import base2 from "./gymgital-base-2026.11.2.json";
 import base3 from "./gymgital-base-2026.11.3.json";
 import base4 from "./gymgital-base-2026.11.4.json";
+import base5 from "./gymgital-base-2026.11.5.json";
 import referencesFile from "./references.json";
-import type { Basis, DoseParam, Experience, LoadBasis, Metric, RuleSetRef } from "../types";
+import type { Basis, BlueprintRole, DoseParam, Experience, LoadBasis, Metric, RuleSetRef } from "../types";
 import { MUSCLE_LABELS, PATTERN_LABELS } from "../vocabulary";
 
 export interface DoseDefault {
@@ -118,10 +119,58 @@ export interface AuditBalancePair {
   b: string[];
 }
 
+/** Seleção guiada pela estratégia aceita (2026.11.5): descontos e bônus de pontuação, nunca proibições. */
+export interface MicrocycleBlueprint {
+  /** Desconto (≤ 0) de um exercício fora do foco do treino (nem músculo dominante/apoio nem padrão-alvo/transbordo). */
+  offFocus: number;
+  /** Bônus (≥ 0) de um exercício cujo músculo principal é de apoio do treino. */
+  supportingBonus: number;
+  /** Bônus (≥ 0) de um exercício nomeado pela estratégia. */
+  candidateBonus: number;
+  /** Limite técnico de candidatos por treino (1 a 6). */
+  maxCandidatesPerWorkout: number;
+}
+
+/** O que um papel de treino significa (2026.11.5). */
+export interface BlueprintRoleFocus {
+  dominantMuscles: string[];
+  supportingMuscles: string[];
+  targetPatterns: string[];
+  spilloverPatterns: string[];
+}
+
+export interface BlueprintFamilyTemplate {
+  family: string;
+  /** Números de treinos distintos (de volume) que a divisão aceita sem mudar a periodização, ou qualquer número. */
+  labelCounts: number[] | "ANY";
+  roleCycle: BlueprintRole[];
+  minLabels?: number;
+  minSessionsPerWeek?: number;
+}
+export interface BlueprintRecommendation {
+  when: { sessionsPerWeekMin?: number; sessionsPerWeekMax?: number; experience?: Array<Experience | null> };
+  family: string;
+  ifSupported?: boolean;
+}
+export interface BlueprintStrategyTemplates {
+  families: BlueprintFamilyTemplate[];
+  recommend: BlueprintRecommendation[];
+  maxStrategies: number;
+  volumeModalities: string[];
+}
+
+/** Limiares da aderência à estratégia na auditoria (2026.11.5). */
+export interface AuditStrategy {
+  adherenceMin: number;
+  overlapNote: number;
+  exposureMinPerWeek: number;
+}
+
 /**
  * Regras que só existem a partir de uma versão: uma versão anterior não as tem e o motor segue sem elas.
  * 2026.11.2: EXTERNAL_LOAD_STIMULI. 2026.11.3: AUDIT_* (auditoria técnica do plano). 2026.11.4: MICROCYCLE_SELECTION,
  * MICROCYCLE_TARGET_SUGGESTIONS e FINDING_OBSERVATION_MAP (seleção por microciclo, alvos sugeridos, observações da avaliação).
+ * 2026.11.5: MICROCYCLE_BLUEPRINT, BLUEPRINT_ROLE_FOCUS, BLUEPRINT_STRATEGY_TEMPLATES e AUDIT_STRATEGY (estratégia aceita guia a seleção).
  */
 export interface OptionalRuleValues {
   EXTERNAL_LOAD_STIMULI: string[];
@@ -132,6 +181,10 @@ export interface OptionalRuleValues {
   MICROCYCLE_SELECTION: MicrocycleSelection;
   MICROCYCLE_TARGET_SUGGESTIONS: Record<string, StimulusTargetSuggestion>;
   FINDING_OBSERVATION_MAP: Record<string, FindingObservation>;
+  MICROCYCLE_BLUEPRINT: MicrocycleBlueprint;
+  BLUEPRINT_ROLE_FOCUS: Record<BlueprintRole, BlueprintRoleFocus>;
+  BLUEPRINT_STRATEGY_TEMPLATES: BlueprintStrategyTemplates;
+  AUDIT_STRATEGY: AuditStrategy;
 }
 
 export type RequiredRuleId = keyof RuleValues;
@@ -187,13 +240,20 @@ const GYMGITAL_BASE_2026_11_3 = deepFreeze(JSON.parse(JSON.stringify(base3)) as 
  * 2026.11.4: 2026.11.3 + seleção da fase inteira por microciclo (MICROCYCLE_SELECTION), alvos sugeridos para aceite
  * (MICROCYCLE_TARGET_SUGGESTIONS) e leituras da avaliação que viram observação (FINDING_OBSERVATION_MAP). Doses iguais.
  */
-const GYMGITAL_BASE = deepFreeze(JSON.parse(JSON.stringify(base4)) as RuleSet);
+const GYMGITAL_BASE_2026_11_4 = deepFreeze(JSON.parse(JSON.stringify(base4)) as RuleSet);
+/**
+ * 2026.11.5: 2026.11.4 + seleção por estratégia (MICROCYCLE_BLUEPRINT), papéis dos treinos (BLUEPRINT_ROLE_FOCUS), modelos da
+ * estratégia por regras (BLUEPRINT_STRATEGY_TEMPLATES) e limiares da aderência à estratégia (AUDIT_STRATEGY). Todas as regras da
+ * 2026.11.4 estão iguais; sem uma estratégia aceita na entrada o resultado é o da 2026.11.4.
+ */
+const GYMGITAL_BASE = deepFreeze(JSON.parse(JSON.stringify(base5)) as RuleSet);
 
 /** Conjuntos publicados. Uma versão publicada nunca muda: novos números entram como nova versão. */
 export const RULESETS: Readonly<Record<string, RuleSet>> = deepFreeze({
   [`${GYMGITAL_BASE_2026_11_1.id}@${GYMGITAL_BASE_2026_11_1.version}`]: GYMGITAL_BASE_2026_11_1,
   [`${GYMGITAL_BASE_2026_11_2.id}@${GYMGITAL_BASE_2026_11_2.version}`]: GYMGITAL_BASE_2026_11_2,
   [`${GYMGITAL_BASE_2026_11_3.id}@${GYMGITAL_BASE_2026_11_3.version}`]: GYMGITAL_BASE_2026_11_3,
+  [`${GYMGITAL_BASE_2026_11_4.id}@${GYMGITAL_BASE_2026_11_4.version}`]: GYMGITAL_BASE_2026_11_4,
   [`${GYMGITAL_BASE.id}@${GYMGITAL_BASE.version}`]: GYMGITAL_BASE,
 });
 
@@ -261,6 +321,7 @@ export function validateRuleSet(rules: RuleSet): string[] {
   if (new Set(keys).size !== keys.length) problems.push("DOSE_DEFAULTS: entradas repetidas para o mesmo estímulo, modalidade e métrica");
   problems.push(...auditRuleProblems(rules));
   problems.push(...microcycleRuleProblems(rules));
+  problems.push(...blueprintRuleProblems(rules));
   return problems;
 }
 
@@ -291,6 +352,61 @@ function microcycleRuleProblems(rules: RuleSet): string[] {
     if (!o.patterns.length) problems.push(`FINDING_OBSERVATION_MAP.${key}: sem padrões`);
     for (const p of o.patterns) if (!PATTERN_LABELS[p]) problems.push(`FINDING_OBSERVATION_MAP.${key}: padrão desconhecido ${p}`);
     if (!o.text?.trim()) problems.push(`FINDING_OBSERVATION_MAP.${key}: sem texto`);
+  }
+  return problems;
+}
+
+export const BLUEPRINT_ROLES: readonly BlueprintRole[] = [
+  "FULL_BODY", "UPPER", "LOWER", "PUSH", "PULL", "LEGS", "CHEST_TRICEPS", "BACK_BICEPS", "SHOULDERS_ARMS", "CORE", "CUSTOM", "CARDIO", "MOBILITY", "BALANCE", "SKILL",
+];
+const VOLUME_ROLES: readonly BlueprintRole[] = ["FULL_BODY", "UPPER", "LOWER", "PUSH", "PULL", "LEGS", "CHEST_TRICEPS", "BACK_BICEPS", "SHOULDERS_ARMS", "CORE"];
+
+/** Regras da seleção por estratégia (opcionais, 2026.11.5+): sinais, papéis e códigos existentes, modelos que só citam papéis definidos. */
+function blueprintRuleProblems(rules: RuleSet): string[] {
+  const problems: string[] = [];
+  const b = rules.rules.MICROCYCLE_BLUEPRINT?.value;
+  if (b) {
+    if (!rules.rules.MICROCYCLE_SELECTION) problems.push("MICROCYCLE_BLUEPRINT: exige MICROCYCLE_SELECTION no mesmo conjunto");
+    if (!rules.rules.AUDIT_THRESHOLDS) problems.push("MICROCYCLE_BLUEPRINT: exige AUDIT_THRESHOLDS no mesmo conjunto");
+    if (!(typeof b.offFocus === "number" && b.offFocus <= 0)) problems.push("MICROCYCLE_BLUEPRINT.offFocus: desconto, deve ser ≤ 0");
+    if (!(typeof b.supportingBonus === "number" && b.supportingBonus >= 0)) problems.push("MICROCYCLE_BLUEPRINT.supportingBonus: deve ser ≥ 0");
+    if (!(typeof b.candidateBonus === "number" && b.candidateBonus >= 0)) problems.push("MICROCYCLE_BLUEPRINT.candidateBonus: deve ser ≥ 0");
+    if (!(Number.isInteger(b.maxCandidatesPerWorkout) && b.maxCandidatesPerWorkout >= 1 && b.maxCandidatesPerWorkout <= 6))
+      problems.push("MICROCYCLE_BLUEPRINT.maxCandidatesPerWorkout: inteiro de 1 a 6");
+  }
+  const roles = rules.rules.BLUEPRINT_ROLE_FOCUS?.value;
+  if (roles) {
+    for (const role of Object.keys(roles)) if (!BLUEPRINT_ROLES.includes(role as BlueprintRole)) problems.push(`BLUEPRINT_ROLE_FOCUS: papel desconhecido ${role}`);
+    for (const role of BLUEPRINT_ROLES) {
+      const f = roles[role];
+      if (!f) { problems.push(`BLUEPRINT_ROLE_FOCUS.${role}: papel sem entrada`); continue; }
+      for (const m of [...f.dominantMuscles, ...f.supportingMuscles]) if (!MUSCLE_LABELS[m]) problems.push(`BLUEPRINT_ROLE_FOCUS.${role}: músculo desconhecido ${m}`);
+      for (const pt of [...f.targetPatterns, ...f.spilloverPatterns]) if (!PATTERN_LABELS[pt]) problems.push(`BLUEPRINT_ROLE_FOCUS.${role}: padrão desconhecido ${pt}`);
+      if (f.dominantMuscles.some((m) => f.supportingMuscles.includes(m))) problems.push(`BLUEPRINT_ROLE_FOCUS.${role}: músculo dominante e de apoio ao mesmo tempo`);
+      const empty = !f.dominantMuscles.length && !f.targetPatterns.length;
+      if (VOLUME_ROLES.includes(role) && empty) problems.push(`BLUEPRINT_ROLE_FOCUS.${role}: papel de volume sem foco`);
+      if (!VOLUME_ROLES.includes(role) && (!empty || f.supportingMuscles.length || f.spilloverPatterns.length)) problems.push(`BLUEPRINT_ROLE_FOCUS.${role}: papel sem volume deve ficar vazio`);
+    }
+  }
+  const t = rules.rules.BLUEPRINT_STRATEGY_TEMPLATES?.value;
+  if (t) {
+    if (!roles) problems.push("BLUEPRINT_STRATEGY_TEMPLATES: exige BLUEPRINT_ROLE_FOCUS no mesmo conjunto");
+    const families = new Set(t.families.map((f) => f.family));
+    if (families.size !== t.families.length) problems.push("BLUEPRINT_STRATEGY_TEMPLATES: família repetida");
+    for (const f of t.families) {
+      for (const r of f.roleCycle) if (!BLUEPRINT_ROLES.includes(r) || (roles && !roles[r])) problems.push(`BLUEPRINT_STRATEGY_TEMPLATES.${f.family}: papel desconhecido ${r}`);
+      if (!f.roleCycle.length) problems.push(`BLUEPRINT_STRATEGY_TEMPLATES.${f.family}: ciclo de papéis vazio`);
+      if (f.labelCounts !== "ANY" && !(f.labelCounts.length && f.labelCounts.every((n) => Number.isInteger(n) && n >= 1 && n <= 8)))
+        problems.push(`BLUEPRINT_STRATEGY_TEMPLATES.${f.family}.labelCounts: inteiros de 1 a 8 ou "ANY"`);
+    }
+    for (const r of t.recommend) if (!families.has(r.family)) problems.push(`BLUEPRINT_STRATEGY_TEMPLATES.recommend: família desconhecida ${r.family}`);
+    if (!(Number.isInteger(t.maxStrategies) && t.maxStrategies >= 1 && t.maxStrategies <= 3)) problems.push("BLUEPRINT_STRATEGY_TEMPLATES.maxStrategies: inteiro de 1 a 3");
+    if (!t.volumeModalities.length) problems.push("BLUEPRINT_STRATEGY_TEMPLATES.volumeModalities: vazio");
+  }
+  const a = rules.rules.AUDIT_STRATEGY?.value;
+  if (a) {
+    for (const k of ["adherenceMin", "overlapNote"] as const) if (!(typeof a[k] === "number" && a[k] >= 0 && a[k] <= 1)) problems.push(`AUDIT_STRATEGY.${k}: fora de [0, 1]`);
+    if (!(typeof a.exposureMinPerWeek === "number" && a.exposureMinPerWeek >= 0)) problems.push("AUDIT_STRATEGY.exposureMinPerWeek: deve ser ≥ 0");
   }
   return problems;
 }

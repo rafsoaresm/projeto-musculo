@@ -42,7 +42,7 @@ import type {
   WorkoutSummary,
 } from "./types";
 
-export const ENGINE_VERSION = "2.2.0";
+export const ENGINE_VERSION = "2.3.0";
 
 // ---------- contexto ----------
 
@@ -140,6 +140,19 @@ function coverageFor(ctx: EngineContext, phase: StructurePhase, workout: Structu
     : {};
   if (workout.focus.muscles?.length || workout.focus.patterns?.length)
     return { muscles: workout.focus.muscles ?? [], patterns: workout.focus.patterns ?? [], basis: "PROFESSIONAL", ...(audited ? { origin: "WORKOUT_FOCUS" as const } : {}), ...weeklySets };
+  // Foco dominante da estratégia aceita (2026.11.5+): vale só neste treino; os alvos semanais da fase continuam globais.
+  // A regra só é lida (e só entra em `rulesUsed`) quando há foco para este treino: sem estratégia, o resultado é o da 2026.11.4.
+  const b = input.parameters.blueprintFocus?.find((x) => x.phaseIndex === phase.index && x.label === workout.label);
+  if (b && log.optional("MICROCYCLE_BLUEPRINT")) {
+    // Papéis sem volume (cardio, mobilidade, equilíbrio, habilidade) não geram cobertura: a seleção antiga cuida do treino.
+    if (b.role !== "CARDIO" && b.role !== "MOBILITY" && b.role !== "BALANCE" && b.role !== "SKILL")
+      return {
+        muscles: b.dominantMuscles, patterns: b.targetPatterns, basis: b.source === "PROFESSIONAL" ? "PROFESSIONAL" : "HEURISTIC_ACCEPTED", ruleId: "MICROCYCLE_BLUEPRINT",
+        origin: "BLUEPRINT_FOCUS",
+        blueprint: { role: b.role, source: b.source, strategyId: b.strategyId, supporting: b.supportingMuscles, spillover: b.spilloverPatterns, candidates: b.candidateExerciseIds },
+        ...weeklySets,
+      };
+  }
   if (c && (c.muscles?.length || c.patterns?.length || "weeklySets" in weeklySets))
     return { muscles: c.muscles ?? [], patterns: c.patterns ?? [], basis: c.basis, ...(c.ruleId ? { ruleId: c.ruleId } : {}), ...(audited ? { origin: "PHASE_COVERAGE" as const } : {}), ...weeklySets };
   return null;

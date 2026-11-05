@@ -1,0 +1,1106 @@
+{
+  "id": "gymgital-base",
+  "version": "2026.11.5",
+  "comment": "Valores padrão do motor. Todos são heurística operacional editável, não protocolo científico validado nem recomendação universal. Uma regra só pode ter base EVIDENCE com referência VERIFIED em references.json. 2026.11.3 = 2026.11.2 + regras da auditoria técnica do plano (AUDIT_*). 2026.11.4 = 2026.11.3 + seleção da fase inteira por microciclo (MICROCYCLE_SELECTION), alvos sugeridos para aceite (MICROCYCLE_TARGET_SUGGESTIONS) e leituras da avaliação que viram observação (FINDING_OBSERVATION_MAP); 2026.11.5 = 2026.11.4 + seleção por estratégia (MICROCYCLE_BLUEPRINT), papéis dos treinos (BLUEPRINT_ROLE_FOCUS), modelos de estratégia por regras (BLUEPRINT_STRATEGY_TEMPLATES) e limiares da aderência à estratégia (AUDIT_STRATEGY). Todos heurística operacional editável; sem a estratégia aceita nada muda em relação à 2026.11.4.",
+  "rules": {
+    "DOSE_DEFAULTS": {
+      "basis": "HEURISTIC",
+      "description": "Dose inicial por estímulo, modalidade e métrica. stimulus \"*\" vale para qualquer estímulo da modalidade. Intensidade de cardio (zona, ritmo) nunca é preenchida: fica com o profissional.",
+      "value": [
+        {
+          "stimulus": "HYPERTROPHY",
+          "modality": "RESISTANCE",
+          "metric": "REPS",
+          "values": {
+            "sets": 3,
+            "repsMin": 8,
+            "repsMax": 12,
+            "rirMin": 1,
+            "rirMax": 3,
+            "restSeconds": 90
+          }
+        },
+        {
+          "stimulus": "STRENGTH",
+          "modality": "RESISTANCE",
+          "metric": "REPS",
+          "values": {
+            "sets": 4,
+            "repsMin": 3,
+            "repsMax": 6,
+            "rirMin": 2,
+            "rirMax": 3,
+            "restSeconds": 180
+          }
+        },
+        {
+          "stimulus": "POWER",
+          "modality": "RESISTANCE",
+          "metric": "REPS",
+          "values": {
+            "sets": 3,
+            "repsMin": 2,
+            "repsMax": 5,
+            "rirMin": 3,
+            "rirMax": 5,
+            "restSeconds": 180
+          },
+          "loadInstruction": "Priorizar velocidade de execução; encerrar a série ao perder velocidade técnica."
+        },
+        {
+          "stimulus": "MUSCULAR_ENDURANCE",
+          "modality": "RESISTANCE",
+          "metric": "REPS",
+          "values": {
+            "sets": 2,
+            "repsMin": 12,
+            "repsMax": 20,
+            "rirMin": 2,
+            "rirMax": 4,
+            "restSeconds": 60
+          }
+        },
+        {
+          "stimulus": "GENERAL_FITNESS",
+          "modality": "RESISTANCE",
+          "metric": "REPS",
+          "values": {
+            "sets": 2,
+            "repsMin": 8,
+            "repsMax": 12,
+            "rirMin": 2,
+            "rirMax": 4,
+            "restSeconds": 90
+          }
+        },
+        {
+          "stimulus": "RECOVERY",
+          "modality": "RESISTANCE",
+          "metric": "REPS",
+          "values": {
+            "sets": 1,
+            "repsMin": 8,
+            "repsMax": 12,
+            "rirMin": 4,
+            "rirMax": 6,
+            "restSeconds": 90
+          }
+        },
+        {
+          "stimulus": "*",
+          "modality": "RESISTANCE",
+          "metric": "TIME",
+          "values": {
+            "sets": 3,
+            "durationMin": 20,
+            "durationMax": 40,
+            "restSeconds": 60
+          }
+        },
+        {
+          "stimulus": "*",
+          "modality": "RESISTANCE",
+          "metric": "DISTANCE",
+          "values": {
+            "sets": 3,
+            "distanceMin": 20,
+            "distanceMax": 40,
+            "restSeconds": 90
+          }
+        },
+        {
+          "stimulus": "AEROBIC_ENDURANCE",
+          "modality": "CARDIO",
+          "metric": "CONTINUOUS",
+          "values": {
+            "durationMin": 1200,
+            "durationMax": 1800
+          }
+        },
+        {
+          "stimulus": "INTERVALS",
+          "modality": "CARDIO",
+          "metric": "INTERVALS",
+          "values": {
+            "blocks": 1,
+            "repeats": 6,
+            "workDurationMin": 30,
+            "workDurationMax": 60,
+            "recoveryMin": 60,
+            "recoveryMax": 90,
+            "restBetweenBlocks": 0
+          },
+          "recoveryMode": "ACTIVE"
+        },
+        {
+          "stimulus": "*",
+          "modality": "CARDIO",
+          "metric": "CONTINUOUS",
+          "values": {
+            "durationMin": 600,
+            "durationMax": 1200
+          }
+        },
+        {
+          "stimulus": "*",
+          "modality": "CARDIO",
+          "metric": "TIME",
+          "values": {
+            "sets": 1,
+            "durationMin": 600,
+            "durationMax": 1200,
+            "restSeconds": 0
+          }
+        },
+        {
+          "stimulus": "*",
+          "modality": "MOBILITY",
+          "metric": "TIME",
+          "values": {
+            "sets": 2,
+            "durationMin": 30,
+            "durationMax": 45,
+            "restSeconds": 15
+          }
+        },
+        {
+          "stimulus": "*",
+          "modality": "MOBILITY",
+          "metric": "REPS",
+          "values": {
+            "sets": 2,
+            "repsMin": 8,
+            "repsMax": 10,
+            "restSeconds": 30
+          },
+          "loadBasis": "BODYWEIGHT"
+        },
+        {
+          "stimulus": "*",
+          "modality": "BALANCE",
+          "metric": "TIME",
+          "values": {
+            "sets": 2,
+            "durationMin": 20,
+            "durationMax": 30,
+            "restSeconds": 30
+          }
+        },
+        {
+          "stimulus": "*",
+          "modality": "SKILL",
+          "metric": "TIME",
+          "values": {
+            "sets": 3,
+            "durationMin": 30,
+            "durationMax": 45,
+            "restSeconds": 90
+          }
+        }
+      ]
+    },
+    "LOAD_INSTRUCTION_DEFAULT": {
+      "basis": "HEURISTIC",
+      "description": "Texto de carga para exercícios por repetições: o motor nunca propõe quilos.",
+      "value": "Escolher a carga na execução para o esforço indicado; registrar a base (total, por mão ou por lado)."
+    },
+    "LOAD_BASIS_DEFAULT": {
+      "basis": "HEURISTIC",
+      "description": "Base de carga sugerida para exercícios por repetições quando a regra de dose não diz outra; o profissional ajusta (total, por mão, por lado, máquina, peso do corpo).",
+      "value": "TOTAL"
+    },
+    "MODALITY_FOR_STIMULUS": {
+      "basis": "HEURISTIC",
+      "description": "Modalidades elegíveis quando o treino não diz quais. Sem preenchimento entre modalidades.",
+      "value": {
+        "HYPERTROPHY": [
+          "RESISTANCE"
+        ],
+        "STRENGTH": [
+          "RESISTANCE"
+        ],
+        "POWER": [
+          "RESISTANCE"
+        ],
+        "MUSCULAR_ENDURANCE": [
+          "RESISTANCE"
+        ],
+        "GENERAL_FITNESS": [
+          "RESISTANCE"
+        ],
+        "AEROBIC_ENDURANCE": [
+          "CARDIO"
+        ],
+        "INTERVALS": [
+          "CARDIO"
+        ],
+        "MOBILITY": [
+          "MOBILITY"
+        ],
+        "BALANCE": [
+          "BALANCE"
+        ],
+        "RECOVERY": [
+          "MOBILITY",
+          "CARDIO"
+        ]
+      }
+    },
+    "GOAL_STIMULUS_HINTS": {
+      "basis": "HEURISTIC",
+      "description": "Palavras do objetivo do aluno que sugerem um estímulo. Só produzem sugestões; nada é pré-selecionado.",
+      "value": [
+        {
+          "keywords": [
+            "hipertrof",
+            "massa",
+            "muscul",
+            "definic"
+          ],
+          "stimulus": "HYPERTROPHY"
+        },
+        {
+          "keywords": [
+            "forca",
+            "forte"
+          ],
+          "stimulus": "STRENGTH"
+        },
+        {
+          "keywords": [
+            "potenc",
+            "explos",
+            "salto"
+          ],
+          "stimulus": "POWER"
+        },
+        {
+          "keywords": [
+            "resistencia muscular"
+          ],
+          "stimulus": "MUSCULAR_ENDURANCE"
+        },
+        {
+          "keywords": [
+            "corrida",
+            "aerob",
+            "cardio",
+            "condicion",
+            "emagrec",
+            "maratona"
+          ],
+          "stimulus": "AEROBIC_ENDURANCE"
+        },
+        {
+          "keywords": [
+            "mobilidade",
+            "flexibilidade",
+            "alongamento"
+          ],
+          "stimulus": "MOBILITY"
+        },
+        {
+          "keywords": [
+            "equilibrio",
+            "queda"
+          ],
+          "stimulus": "BALANCE"
+        },
+        {
+          "keywords": [
+            "saude",
+            "qualidade de vida",
+            "bem-estar",
+            "condicionamento geral"
+          ],
+          "stimulus": "GENERAL_FITNESS"
+        }
+      ]
+    },
+    "DEFAULT_COVERAGE": {
+      "basis": "HEURISTIC",
+      "description": "Padrões sugeridos (botões) quando o treino não tem alvo. Aceitar registra HEURISTIC_ACCEPTED.",
+      "value": {
+        "RESISTANCE": [
+          "SQUAT",
+          "HINGE",
+          "HORIZONTAL_PUSH",
+          "HORIZONTAL_PULL",
+          "VERTICAL_PUSH",
+          "VERTICAL_PULL",
+          "ANTI_EXTENSION"
+        ],
+        "CARDIO": [
+          "CYCLICAL"
+        ],
+        "MOBILITY": [
+          "MOBILITY"
+        ],
+        "BALANCE": [
+          "BALANCE"
+        ]
+      }
+    },
+    "EXPERIENCE_MAP": {
+      "basis": "HEURISTIC",
+      "description": "Texto do nível no perfil do aluno para a experiência usada na seleção.",
+      "value": {
+        "iniciante": "BEGINNER",
+        "intermediario": "INTERMEDIATE",
+        "avancado": "ADVANCED"
+      }
+    },
+    "SELECTION_WEIGHTS": {
+      "basis": "HEURISTIC",
+      "description": "Pesos da pontuação de seleção (gulosa por cobertura marginal). Empates pelo id, por ponto de código.",
+      "value": {
+        "primaryTarget": 60,
+        "primaryRepeatDivisor": 2,
+        "secondaryTarget": 10,
+        "patternNew": 30,
+        "patternRepeat": 5,
+        "noTargets": 10,
+        "noTargetsPatternRepeat": -12,
+        "compound": 8,
+        "noExternalLoad": -8,
+        "preferred": 20,
+        "historyContinuity": 6,
+        "historyPain": -40,
+        "usedInOtherWorkoutOfPhase": -15,
+        "usedInPreviousPhase": -5,
+        "beginnerDifficulty": -6,
+        "otherDifficulty": -0.5,
+        "inferredMetadata": -3,
+        "avoidCurrent": -1000
+      }
+    },
+    "COMPOUND_PRIORITY_STIMULI": {
+      "basis": "HEURISTIC",
+      "description": "Estímulos em que exercícios multiarticulares recebem bônus de seleção.",
+      "value": [
+        "HYPERTROPHY",
+        "STRENGTH",
+        "POWER",
+        "GENERAL_FITNESS"
+      ]
+    },
+    "EXTERNAL_LOAD_STIMULI": {
+      "basis": "HEURISTIC",
+      "description": "Estímulos em que um exercício resistido sem nenhum equipamento (sem carga externa a progredir) perde pontos na seleção (peso noExternalLoad). Não exclui: só pesa contra na pontuação.",
+      "value": [
+        "STRENGTH",
+        "POWER",
+        "HYPERTROPHY"
+      ]
+    },
+    "ALTERNATIVES_LIMIT": {
+      "basis": "HEURISTIC",
+      "description": "Quantas alternativas o motor lista por item.",
+      "value": 4
+    },
+    "ALTERNATIVE_WEIGHTS": {
+      "basis": "HEURISTIC",
+      "description": "Pontuação das alternativas de um item: substituição curada na biblioteca, músculo principal em comum, padrão em comum, mesma métrica. Sem nada em comum, o exercício não é listado como alternativa.",
+      "value": {
+        "curated": 100,
+        "sharedPrimary": 10,
+        "sharedPattern": 8,
+        "sameMetric": 3
+      }
+    },
+    "DURATION": {
+      "basis": "HEURISTIC",
+      "description": "Estimativa de duração: aquecimento, transição por exercício, segundos por repetição quando o exercício não informa, fator unilateral. Usa o máximo das faixas (estimativa conservadora).",
+      "value": {
+        "warmupSeconds": 300,
+        "transitionSecondsPerExercise": 60,
+        "defaultSecondsPerRep": 4,
+        "unilateralFactor": 2
+      }
+    },
+    "COUNT_FROM_TIME": {
+      "basis": "HEURISTIC",
+      "description": "Quantidade de exercícios pelo tempo: adiciona exercícios enquanto a estimativa cabe no tempo disponível, com este mínimo.",
+      "value": {
+        "minimum": 1
+      }
+    },
+    "LINEAR_ROUNDING": {
+      "basis": "HEURISTIC",
+      "description": "Arredondamento dos valores interpolados da progressão linear (inteiro mais próximo).",
+      "value": {
+        "decimals": 0
+      }
+    },
+    "DELOAD_ROUNDING": {
+      "basis": "HEURISTIC",
+      "description": "Séries da semana de descarga: arredondar séries × multiplicador, mínimo 0.",
+      "value": {
+        "floor": 0
+      }
+    },
+    "INDIRECT_VOLUME_FACTOR": {
+      "basis": "HEURISTIC",
+      "description": "Peso das séries de músculos secundários no volume ponderado. Heurística até a referência ser conferida.",
+      "value": 0.5,
+      "refs": [
+        "PELLAND_2026"
+      ]
+    },
+    "VOLUME_MODALITIES": {
+      "basis": "HEURISTIC",
+      "description": "Modalidades contadas no volume semanal por músculo.",
+      "value": [
+        "RESISTANCE"
+      ]
+    },
+    "EXPOSURE_WINDOW_DAYS": {
+      "basis": "HEURISTIC",
+      "description": "Janela de histórico de execução lida pelo adaptador.",
+      "value": 180
+    },
+    "PROGRESSION_HISTORY": {
+      "basis": "HEURISTIC",
+      "description": "Sugestão de progressão pelo histórico: exposições completas e comparáveis seguidas e aumento máximo relativo. Só sugestão; nunca gravada como valor.",
+      "value": {
+        "consecutiveSuccesses": 2,
+        "maximumIncrementFraction": 0.1
+      }
+    },
+    "MOVEMENT_FINDING_PATTERN_MAP": {
+      "basis": "HEURISTIC",
+      "description": "Teste de movimento da avaliação → padrões que podem ser excluídos com um clique do profissional. Nunca é contraindicação automática.",
+      "value": {
+        "SQUAT": [
+          "SQUAT"
+        ],
+        "HIP_HINGE": [
+          "HINGE"
+        ],
+        "LUNGE": [
+          "LUNGE"
+        ],
+        "PUSH": [
+          "HORIZONTAL_PUSH",
+          "VERTICAL_PUSH"
+        ],
+        "PULL": [
+          "HORIZONTAL_PULL",
+          "VERTICAL_PULL"
+        ]
+      }
+    },
+    "MOVEMENT_FINDING_GRADES": {
+      "basis": "HEURISTIC",
+      "description": "Graus do teste de movimento que geram sugestão de decisão.",
+      "value": [
+        "MODERATE",
+        "STOPPED_BY_PAIN"
+      ]
+    },
+    "AUDIT_THRESHOLDS": {
+      "basis": "HEURISTIC",
+      "description": "Limiares da auditoria técnica do plano: acima deles a auditoria explica e sugere revisão; nunca bloqueia nem muda a proposta. Frações de 0 a 1; doseRestFactorMax é a razão máxima entre o descanso do item e o da política para o estímulo; maxFindings limita os achados listados um a um.",
+      "value": {
+        "weekJumpFraction": 0.25,
+        "phaseJumpFraction": 0.25,
+        "uniformShare": 0.8,
+        "uniformMinItems": 6,
+        "balanceRatioMax": 2,
+        "regionShareMax": 0.6,
+        "workoutShareMax": 0.7,
+        "durationUnderuseFraction": 0.6,
+        "patternRepeatInSession": 3,
+        "doseRestFactorMax": 2,
+        "maxFindings": 150
+      }
+    },
+    "AUDIT_COMPREHENSIVE_STIMULI": {
+      "basis": "HEURISTIC",
+      "description": "Estímulos em que a auditoria descreve a distribuição muscular mesmo sem alvos (hipertrofia abrangente). Nos demais (força, cardio, mobilidade…) só há achados musculares quando o profissional definiu alvos.",
+      "value": [
+        "HYPERTROPHY"
+      ]
+    },
+    "AUDIT_BALANCE_PAIRS": {
+      "basis": "HEURISTIC",
+      "description": "Pares de padrões comparados quando pertinentes ao objetivo e à estrutura (fase abrangente, algum lado com estímulo e o lado dominante não sendo exatamente o alvo explícito do profissional).",
+      "value": [
+        {
+          "code": "KNEE_HIP",
+          "a": [
+            "SQUAT",
+            "LUNGE",
+            "KNEE_EXTENSION"
+          ],
+          "b": [
+            "HINGE",
+            "HIP_EXTENSION",
+            "KNEE_FLEXION"
+          ]
+        },
+        {
+          "code": "PUSH_PULL",
+          "a": [
+            "HORIZONTAL_PUSH",
+            "VERTICAL_PUSH"
+          ],
+          "b": [
+            "HORIZONTAL_PULL",
+            "VERTICAL_PULL"
+          ]
+        }
+      ]
+    },
+    "AUDIT_REGIONS": {
+      "basis": "HEURISTIC",
+      "description": "Agrupamento de músculos em regiões para descrever concentração de volume e o formato observado da divisão (corpo inteiro, superior e inferior). Só descreve; não renomeia treinos.",
+      "value": {
+        "LOWER": [
+          "QUADRICEPS",
+          "HAMSTRINGS",
+          "GLUTEUS",
+          "ADDUCTORS",
+          "ABDUCTORS",
+          "CALVES"
+        ],
+        "UPPER_PUSH": [
+          "CHEST",
+          "FRONT_DELTOID",
+          "SIDE_DELTOID",
+          "TRICEPS"
+        ],
+        "UPPER_PULL": [
+          "LATS",
+          "UPPER_BACK",
+          "TRAPEZIUS",
+          "REAR_DELTOID",
+          "BICEPS",
+          "FOREARMS"
+        ],
+        "TRUNK": [
+          "ABS",
+          "OBLIQUES",
+          "ERECTORS"
+        ]
+      }
+    },
+    "MICROCYCLE_SELECTION": {
+      "basis": "HEURISTIC",
+      "description": "Seleção da fase inteira considerando quantas vezes cada treino aparece na semana (pior semana completa) e o déficit dos alvos semanais do profissional. Pesos de pontuação, não proibições: repetir um exercício ou um padrão em outro treino continua possível. weeklyDeficit pesa a parte do déficit que o exercício cobre; frequencyGap, sessões com estímulo direto que faltam; targetAffinity, exercício com músculo-alvo do próprio treino (mantém o foco do treino depois do déficit atendido); overTarget, séries acima do máximo; weeklyPatternNew/weeklyPatternRepeat, padrão-alvo novo ou já presente na semana; weeklyPatternRedundancy, padrão que não é alvo já exposto na semana (por sessão semanal); sameExerciseWeekly, mesmo exercício em outro treino (por exposição semanal); maxSteps, limite técnico de passos por fase.",
+      "value": {
+        "weeklyDeficit": 40,
+        "frequencyGap": 15,
+        "targetAffinity": 12,
+        "overTarget": -10,
+        "weeklyPatternNew": 30,
+        "weeklyPatternRepeat": 5,
+        "weeklyPatternRedundancy": -8,
+        "sameExerciseWeekly": -6,
+        "maxSteps": 420
+      }
+    },
+    "MICROCYCLE_TARGET_SUGGESTIONS": {
+      "basis": "HEURISTIC",
+      "description": "Alvos sugeridos por estímulo quando a fase não tem alvos. Só valem depois do aceite do profissional; nunca são aplicados sozinhos. Os padrões vêm de DEFAULT_COVERAGE.RESISTANCE: GENERAL_FITNESS igual; STRENGTH sem ANTI_EXTENSION; HYPERTROPHY sem ANTI_EXTENSION e com KNEE_FLEXION (função de flexão do joelho dos posteriores). A lista de músculos, minDirectSessions e as séries ponderadas semanais da hipertrofia são heurística operacional a confirmar.",
+      "value": {
+        "HYPERTROPHY": {
+          "muscles": [
+            "QUADRICEPS",
+            "HAMSTRINGS",
+            "GLUTEUS",
+            "CHEST",
+            "LATS",
+            "UPPER_BACK",
+            "SIDE_DELTOID"
+          ],
+          "patterns": [
+            "SQUAT",
+            "HINGE",
+            "KNEE_FLEXION",
+            "HORIZONTAL_PUSH",
+            "HORIZONTAL_PULL",
+            "VERTICAL_PUSH",
+            "VERTICAL_PULL"
+          ],
+          "minDirectSessions": 2,
+          "weeklyWeightedSets": {
+            "min": 10,
+            "max": 20
+          }
+        },
+        "STRENGTH": {
+          "patterns": [
+            "SQUAT",
+            "HINGE",
+            "HORIZONTAL_PUSH",
+            "HORIZONTAL_PULL",
+            "VERTICAL_PUSH",
+            "VERTICAL_PULL"
+          ]
+        },
+        "GENERAL_FITNESS": {
+          "patterns": [
+            "SQUAT",
+            "HINGE",
+            "HORIZONTAL_PUSH",
+            "HORIZONTAL_PULL",
+            "VERTICAL_PUSH",
+            "VERTICAL_PULL",
+            "ANTI_EXTENSION"
+          ]
+        }
+      }
+    },
+    "FINDING_OBSERVATION_MAP": {
+      "basis": "HEURISTIC",
+      "description": "Leituras da avaliação que viram observação (nunca contraindicação) nos exercícios de padrões relacionados, quando abaixo da mediana das leituras do próprio aluno. Não muda a seleção nem a dose.",
+      "value": {
+        "FLEXITEST:ankle_dorsiflexion": {
+          "patterns": [
+            "SQUAT",
+            "LUNGE"
+          ],
+          "text": "observar a mecânica do tornozelo e do agachamento na execução"
+        },
+        "FLEXITEST:hip_flexion": {
+          "patterns": [
+            "SQUAT",
+            "HINGE"
+          ],
+          "text": "observar a amplitude do quadril na execução"
+        },
+        "FLEXITEST:shoulder_abduction": {
+          "patterns": [
+            "VERTICAL_PUSH",
+            "SHOULDER_ABDUCTION"
+          ],
+          "text": "observar a amplitude do ombro na execução"
+        }
+      }
+    },
+    "MICROCYCLE_BLUEPRINT": {
+      "basis": "HEURISTIC",
+      "description": "Seleção guiada pela estratégia aceita: cada treino tem um foco dominante (músculos e padrões) e só ele puxa os exercícios do próprio treino; os alvos semanais da fase continuam globais. São pesos de pontuação, não proibições: um exercício fora do foco continua possível (offFocus é um desconto; se faltar oferta, o treino é completado e o fato é registrado). supportingBonus: músculo de apoio do treino, abaixo do dominante; candidateBonus: exercício nomeado pela estratégia (preferência leve, abaixo da escolha do profissional); padrões de transbordo não recebem desconto nem bônus; maxCandidatesPerWorkout: limite técnico de candidatos por treino.",
+      "value": {
+        "offFocus": -18,
+        "supportingBonus": 4,
+        "candidateBonus": 6,
+        "maxCandidatesPerWorkout": 6
+      }
+    },
+    "BLUEPRINT_ROLE_FOCUS": {
+      "basis": "HEURISTIC",
+      "description": "O que cada papel de treino (superior, inferior, empurrar, puxar, pernas, corpo inteiro...) significa em músculos dominantes, músculos de apoio, padrões-alvo e padrões que podem aparecer sem desconto (transbordo). Ponto de partida editável: a estratégia guarda só as diferenças em relação a esta tabela. Corpo inteiro não tem músculo dominante: todos os treinos têm os mesmos seis padrões-base. Papéis sem volume (cardio, mobilidade, equilíbrio, habilidade) e personalizado ficam vazios.",
+      "value": {
+        "UPPER": {
+          "dominantMuscles": [
+            "CHEST",
+            "LATS",
+            "UPPER_BACK",
+            "FRONT_DELTOID",
+            "SIDE_DELTOID",
+            "REAR_DELTOID",
+            "TRICEPS",
+            "BICEPS"
+          ],
+          "supportingMuscles": [
+            "TRAPEZIUS",
+            "FOREARMS",
+            "ABS",
+            "OBLIQUES",
+            "ERECTORS"
+          ],
+          "targetPatterns": [
+            "HORIZONTAL_PUSH",
+            "HORIZONTAL_PULL",
+            "VERTICAL_PUSH",
+            "VERTICAL_PULL"
+          ],
+          "spilloverPatterns": [
+            "ELBOW_FLEXION",
+            "ELBOW_EXTENSION",
+            "SHOULDER_ABDUCTION",
+            "SHOULDER_FLEXION",
+            "SHOULDER_EXTENSION",
+            "HORIZONTAL_ADDUCTION",
+            "HORIZONTAL_ABDUCTION",
+            "ANTI_EXTENSION",
+            "ANTI_ROTATION",
+            "CARRY"
+          ]
+        },
+        "LOWER": {
+          "dominantMuscles": [
+            "QUADRICEPS",
+            "HAMSTRINGS",
+            "GLUTEUS",
+            "ADDUCTORS",
+            "ABDUCTORS",
+            "CALVES"
+          ],
+          "supportingMuscles": [
+            "ERECTORS",
+            "ABS",
+            "OBLIQUES"
+          ],
+          "targetPatterns": [
+            "SQUAT",
+            "HINGE",
+            "LUNGE",
+            "KNEE_EXTENSION",
+            "KNEE_FLEXION",
+            "HIP_EXTENSION",
+            "HIP_ABDUCTION",
+            "PLANTAR_FLEXION"
+          ],
+          "spilloverPatterns": [
+            "ANTI_EXTENSION",
+            "ANTI_ROTATION",
+            "CARRY"
+          ]
+        },
+        "PUSH": {
+          "dominantMuscles": [
+            "CHEST",
+            "FRONT_DELTOID",
+            "SIDE_DELTOID",
+            "TRICEPS"
+          ],
+          "supportingMuscles": [
+            "ABS"
+          ],
+          "targetPatterns": [
+            "HORIZONTAL_PUSH",
+            "VERTICAL_PUSH",
+            "ELBOW_EXTENSION",
+            "SHOULDER_ABDUCTION"
+          ],
+          "spilloverPatterns": [
+            "ANTI_EXTENSION",
+            "SHOULDER_FLEXION",
+            "HORIZONTAL_ADDUCTION"
+          ]
+        },
+        "PULL": {
+          "dominantMuscles": [
+            "LATS",
+            "UPPER_BACK",
+            "REAR_DELTOID",
+            "BICEPS"
+          ],
+          "supportingMuscles": [
+            "TRAPEZIUS",
+            "FOREARMS",
+            "ERECTORS"
+          ],
+          "targetPatterns": [
+            "HORIZONTAL_PULL",
+            "VERTICAL_PULL",
+            "ELBOW_FLEXION",
+            "HORIZONTAL_ABDUCTION"
+          ],
+          "spilloverPatterns": [
+            "SHOULDER_EXTENSION",
+            "CARRY",
+            "ANTI_ROTATION"
+          ]
+        },
+        "LEGS": {
+          "dominantMuscles": [
+            "QUADRICEPS",
+            "HAMSTRINGS",
+            "GLUTEUS",
+            "ADDUCTORS",
+            "ABDUCTORS",
+            "CALVES"
+          ],
+          "supportingMuscles": [
+            "ABS",
+            "ERECTORS"
+          ],
+          "targetPatterns": [
+            "SQUAT",
+            "HINGE",
+            "LUNGE",
+            "KNEE_EXTENSION",
+            "KNEE_FLEXION",
+            "HIP_EXTENSION",
+            "HIP_ABDUCTION",
+            "PLANTAR_FLEXION"
+          ],
+          "spilloverPatterns": [
+            "ANTI_EXTENSION",
+            "ANTI_ROTATION",
+            "CARRY"
+          ]
+        },
+        "CHEST_TRICEPS": {
+          "dominantMuscles": [
+            "CHEST",
+            "FRONT_DELTOID",
+            "TRICEPS"
+          ],
+          "supportingMuscles": [
+            "ABS"
+          ],
+          "targetPatterns": [
+            "HORIZONTAL_PUSH",
+            "ELBOW_EXTENSION"
+          ],
+          "spilloverPatterns": [
+            "ANTI_EXTENSION",
+            "SHOULDER_FLEXION",
+            "HORIZONTAL_ADDUCTION"
+          ]
+        },
+        "BACK_BICEPS": {
+          "dominantMuscles": [
+            "LATS",
+            "UPPER_BACK",
+            "BICEPS"
+          ],
+          "supportingMuscles": [
+            "FOREARMS",
+            "TRAPEZIUS",
+            "REAR_DELTOID"
+          ],
+          "targetPatterns": [
+            "HORIZONTAL_PULL",
+            "VERTICAL_PULL",
+            "ELBOW_FLEXION"
+          ],
+          "spilloverPatterns": [
+            "SHOULDER_EXTENSION",
+            "CARRY",
+            "ANTI_ROTATION"
+          ]
+        },
+        "SHOULDERS_ARMS": {
+          "dominantMuscles": [
+            "FRONT_DELTOID",
+            "SIDE_DELTOID",
+            "REAR_DELTOID",
+            "BICEPS",
+            "TRICEPS"
+          ],
+          "supportingMuscles": [
+            "TRAPEZIUS",
+            "FOREARMS"
+          ],
+          "targetPatterns": [
+            "VERTICAL_PUSH",
+            "SHOULDER_ABDUCTION",
+            "ELBOW_FLEXION",
+            "ELBOW_EXTENSION",
+            "HORIZONTAL_ABDUCTION"
+          ],
+          "spilloverPatterns": [
+            "ANTI_EXTENSION",
+            "CARRY"
+          ]
+        },
+        "FULL_BODY": {
+          "dominantMuscles": [],
+          "supportingMuscles": [],
+          "targetPatterns": [
+            "SQUAT",
+            "HINGE",
+            "HORIZONTAL_PUSH",
+            "HORIZONTAL_PULL",
+            "VERTICAL_PUSH",
+            "VERTICAL_PULL"
+          ],
+          "spilloverPatterns": []
+        },
+        "CORE": {
+          "dominantMuscles": [
+            "ABS",
+            "OBLIQUES"
+          ],
+          "supportingMuscles": [
+            "ERECTORS"
+          ],
+          "targetPatterns": [
+            "ANTI_EXTENSION",
+            "ANTI_ROTATION",
+            "ANTI_LATERAL_FLEXION",
+            "TRUNK_FLEXION",
+            "ROTATION"
+          ],
+          "spilloverPatterns": []
+        },
+        "CUSTOM": {
+          "dominantMuscles": [],
+          "supportingMuscles": [],
+          "targetPatterns": [],
+          "spilloverPatterns": []
+        },
+        "CARDIO": {
+          "dominantMuscles": [],
+          "supportingMuscles": [],
+          "targetPatterns": [],
+          "spilloverPatterns": []
+        },
+        "MOBILITY": {
+          "dominantMuscles": [],
+          "supportingMuscles": [],
+          "targetPatterns": [],
+          "spilloverPatterns": []
+        },
+        "BALANCE": {
+          "dominantMuscles": [],
+          "supportingMuscles": [],
+          "targetPatterns": [],
+          "spilloverPatterns": []
+        },
+        "SKILL": {
+          "dominantMuscles": [],
+          "supportingMuscles": [],
+          "targetPatterns": [],
+          "spilloverPatterns": []
+        }
+      }
+    },
+    "BLUEPRINT_STRATEGY_TEMPLATES": {
+      "basis": "HEURISTIC",
+      "description": "Modelos da estratégia por regras (sem IA): quais divisões cabem conforme o número de treinos distintos da fase, em que ordem os papéis se repetem e qual divisão recomendar conforme sessões por semana e experiência. Divisão que exige mudar rótulos, rotação ou frequência é só informativa e nunca é aceita sem o profissional editar a periodização. No máximo três estratégias; só modalidades de volume recebem papel de volume.",
+      "value": {
+        "families": [
+          {
+            "family": "FULL_BODY",
+            "labelCounts": "ANY",
+            "roleCycle": [
+              "FULL_BODY"
+            ]
+          },
+          {
+            "family": "UPPER_LOWER",
+            "labelCounts": [
+              2,
+              4,
+              6
+            ],
+            "roleCycle": [
+              "UPPER",
+              "LOWER"
+            ]
+          },
+          {
+            "family": "PUSH_PULL_LEGS",
+            "labelCounts": [
+              3,
+              6
+            ],
+            "roleCycle": [
+              "PUSH",
+              "PULL",
+              "LEGS"
+            ]
+          },
+          {
+            "family": "BODY_PART",
+            "labelCounts": "ANY",
+            "roleCycle": [
+              "CHEST_TRICEPS",
+              "BACK_BICEPS",
+              "LEGS",
+              "SHOULDERS_ARMS",
+              "LEGS"
+            ],
+            "minLabels": 4,
+            "minSessionsPerWeek": 4
+          }
+        ],
+        "recommend": [
+          {
+            "when": {
+              "sessionsPerWeekMax": 2
+            },
+            "family": "FULL_BODY"
+          },
+          {
+            "when": {
+              "sessionsPerWeekMax": 4,
+              "experience": [
+                "BEGINNER",
+                null
+              ]
+            },
+            "family": "FULL_BODY"
+          },
+          {
+            "when": {
+              "sessionsPerWeekMin": 3,
+              "sessionsPerWeekMax": 3,
+              "experience": [
+                "INTERMEDIATE",
+                "ADVANCED"
+              ]
+            },
+            "family": "PUSH_PULL_LEGS",
+            "ifSupported": true
+          },
+          {
+            "when": {
+              "sessionsPerWeekMin": 3,
+              "sessionsPerWeekMax": 3,
+              "experience": [
+                "INTERMEDIATE",
+                "ADVANCED"
+              ]
+            },
+            "family": "UPPER_LOWER",
+            "ifSupported": true
+          },
+          {
+            "when": {
+              "sessionsPerWeekMin": 4,
+              "sessionsPerWeekMax": 4
+            },
+            "family": "UPPER_LOWER",
+            "ifSupported": true
+          },
+          {
+            "when": {
+              "sessionsPerWeekMin": 5
+            },
+            "family": "PUSH_PULL_LEGS",
+            "ifSupported": true
+          },
+          {
+            "when": {
+              "sessionsPerWeekMin": 5
+            },
+            "family": "BODY_PART",
+            "ifSupported": true
+          },
+          {
+            "when": {
+              "sessionsPerWeekMin": 5
+            },
+            "family": "UPPER_LOWER",
+            "ifSupported": true
+          },
+          {
+            "when": {},
+            "family": "FULL_BODY"
+          }
+        ],
+        "maxStrategies": 3,
+        "volumeModalities": [
+          "RESISTANCE"
+        ]
+      }
+    },
+    "AUDIT_STRATEGY": {
+      "basis": "HEURISTIC",
+      "description": "Limiares da aderência à estratégia na auditoria: adherenceMin é a fração mínima dos exercícios do treino que ficam no foco, no apoio ou no transbordo (abaixo disso a auditoria avisa, sem bloquear); overlapNote, sobreposição de músculos principais entre treinos acima da qual a auditoria apenas descreve; exposureMinPerWeek, exposições semanais mínimas de uma região para não ser descrita como esquecida.",
+      "value": {
+        "adherenceMin": 0.7,
+        "overlapNote": 0.5,
+        "exposureMinPerWeek": 1
+      }
+    }
+  }
+}

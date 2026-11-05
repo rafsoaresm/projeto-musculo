@@ -544,6 +544,13 @@ async function record(
   };
 }
 
+/**
+ * The compiled strategy (`answers.blueprint`) is built by the server from a stored acceptance and injected by an internal path
+ * (PR 2.3); a client never sends it. A payload that carries the key, in any shape, is refused: authenticity of the focus.
+ */
+const carriesBlueprint = (raw: unknown): boolean => Boolean(raw) && typeof raw === "object" && !Array.isArray(raw) && "blueprint" in (raw as object);
+const CLIENT_BLUEPRINT_REFUSED = "A estratégia aceita não é enviada pelo navegador: o servidor a monta a partir do aceite gravado.";
+
 function parseAnswers(raw: unknown): GenerationAnswers | null {
   try {
     return parseGenerationAnswers(raw);
@@ -583,6 +590,7 @@ async function prepare(
   if (!built.ok) {
     if (built.code === "UNKNOWN_EXERCISE") return { ok: false, outcome: fail("unknown_exercise") };
     if (built.code === "UNKNOWN_TARGET") return { ok: false, outcome: fail("invalid_target", { message: "Alguma resposta cita uma fase ou um treino que não existe na periodização salva." }) };
+    if (built.code === "UNSUPPORTED_RULESET") return { ok: false, ctx: loaded.context, outcome: fail("invalid", { message: built.message }) };
     // The context goes back with this refusal: a change checks first whether the revision moved (see `change`).
     return { ok: false, ctx: loaded.context, outcome: fail("invalid", { message: "Uma resposta marcada como sugestão aceita não corresponde a uma sugestão da regra. Escolha de novo." }) };
   }
@@ -767,6 +775,7 @@ export function proposalService(
     async generate(planId: string, revisionId: string, payload: GeneratePayload): Promise<ProposalOutcome> {
       const parsed = generateSchema.safeParse(payload);
       if (!parsed.success) return fail("invalid");
+      if (carriesBlueprint(parsed.data.answers)) return fail("invalid", { message: CLIENT_BLUEPRINT_REFUSED });
       const answers = parseAnswers(parsed.data.answers);
       if (!answers) return fail("invalid", { message: "Confira as respostas: algum valor não é aceito (código, número ou lista)." });
       const now = clock();
@@ -816,6 +825,7 @@ export function proposalService(
       const parsed = regenerateSchema.safeParse(payload);
       if (!parsed.success) return fail("invalid");
       const { proposalId, expectedVersion, scope, answers } = parsed.data;
+      if (carriesBlueprint(answers)) return fail("invalid", { message: CLIENT_BLUEPRINT_REFUSED });
       const typed = scope as RegenerationScope;
       return change(
         planId,

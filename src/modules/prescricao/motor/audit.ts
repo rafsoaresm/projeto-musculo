@@ -182,9 +182,13 @@ function targetsOf(workouts: WorkoutSummary[], structure: StructurePhase | null)
     const fromStructure = focused(w.label);
     const origin = c.origin ?? (fromStructure === null ? inferred : fromStructure ? "WORKOUT_FOCUS" : "PHASE_COVERAGE");
     const label = origin === "PHASE_COVERAGE" ? null : w.label;
-    const base = { basis: c.basis, ...(c.ruleId ? { ruleId: c.ruleId } : {}), origin, label };
-    for (const m of c.muscles) add({ kind: "MUSCLE", code: codeOf(m), minSessions: 1, ...base });
-    for (const p of c.patterns) add({ kind: "PATTERN", code: codeOf(p), minSessions: 1, ...base });
+    // O foco dominante da estratégia (2026.11.5) orienta a seleção, não é meta: não vira "alvo não atendido" (a aderência à
+    // estratégia é medida à parte). Os alvos semanais da fase, abaixo, continuam valendo.
+    if (origin !== "BLUEPRINT_FOCUS") {
+      const base = { basis: c.basis, ...(c.ruleId ? { ruleId: c.ruleId } : {}), origin, label };
+      for (const m of c.muscles) add({ kind: "MUSCLE", code: codeOf(m), minSessions: 1, ...base });
+      for (const p of c.patterns) add({ kind: "PATTERN", code: codeOf(p), minSessions: 1, ...base });
+    }
     for (const ws of c.weeklySets ?? [])
       add({
         kind: "MUSCLE", code: codeOf(ws.muscle), label: null, origin: "PHASE_COVERAGE", basis: ws.basis, ...(ws.ruleId ? { ruleId: ws.ruleId } : {}),
