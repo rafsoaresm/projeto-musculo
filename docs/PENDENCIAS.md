@@ -26,7 +26,7 @@ Estado conhecido em 28/10/2026: a 0.25.0 está no ar, com as migrations até a 0
 
 ## Motor de prescrição híbrido V4 — especificação e telas em 05/11/2026
 
-- **Código / produto:** o novo [handoff V4](HANDOFF-MOTOR-PRESCRICAO-HIBRIDO-V4.md) foi documentado com contratos de IA planejadora, compilação no motor já existente, estratégia e foco por fase, doses adaptativas, custo e testes. **Ainda não implementado** em runtime, API, banco ou produção.
+- **Código / produto:** o novo [handoff V4](HANDOFF-MOTOR-PRESCRICAO-HIBRIDO-V4.md) foi documentado com contratos de IA planejadora, compilação no motor já existente, estratégia e foco por fase, doses adaptativas, custo e testes. **Atualização 05/11/2026: a PR 1 (0.97.0, não publicada) implementou contexto, contratos, provedores, cota, painel do gestor e o planejador por IA e por regras; compilação no motor, doses, telas e observabilidade seguem não implementados** (status por fatia no fim do handoff).
 - **Design / Figma:** oito wireframes editáveis foram criados no arquivo [Trainer Prescription — UX Redesign](https://www.figma.com/design/RRHeYHC01jSd0hnrRzzBxP/Trainer-Prescription-UX-Redesign-Wireframes-V1), sem remover as telas anteriores; exigem validação UX antes de implementar no app.
 - **Responsável:** escolher provedor, teto de custo por organização, política de privacidade e habilitação de IA; decidir rollout gradual.
 - **Advogado / Técnico de Educação Física:** avaliar tratamento e envio de dados de saúde, evidências, parâmetros e critérios de segurança antes de uso real.

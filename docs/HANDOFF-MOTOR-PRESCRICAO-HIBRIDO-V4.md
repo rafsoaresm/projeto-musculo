@@ -1,6 +1,6 @@
 # Gymgital — Handoff V4: Motor de prescrição híbrido (IA planejadora + motor determinístico)
 
-Status: ESPECIFICAÇÃO DE PRODUTO E DESIGN (05/11/2026). Não implementado no código. Wireframes V4 criados no mesmo Figma em 05/11/2026. Aprovação técnica, integração do provedor e validação em ambiente real ainda pendentes.
+Status: ESPECIFICAÇÃO DE PRODUTO E DESIGN (05/11/2026). **Em implementação: a PR 1 (0.97.0, branch `feat/motor-v4-pr1-planejador-ia-20261105`, não publicada) cobre F1 e F2 em parte; ver a seção "Status de implementação" no fim.** O restante continua não implementado. Wireframes V4 criados no mesmo Figma em 05/11/2026. Aprovação técnica, integração do provedor e validação em ambiente real ainda pendentes.
 
 ## 0. Decisão arquitetural
 
@@ -191,3 +191,33 @@ F6 — Observabilidade e rollout: registro de latência/custos e qualidade por o
 6. Abrir PRs incrementais, documentar contratos, decisões, trade-offs e resultados; não fazer merge/deploy sem autorização.
 
 **Nota:** esta entrega consiste somente em documentação e wireframes. Nenhuma rota, integração de modelo de IA, alteração no runtime do motor, migração, teste executado ou deploy foram realizados por este handoff V4.
+
+## Status de implementação (atualizado em 05/11/2026, PR 1, versão 0.97.0, não publicada)
+
+Legenda: FEITO = código, testes locais e documentação; PARCIAL = existe mas falta parte; NÃO FEITO. Nada abaixo foi verificado com provedor real, no D1 remoto nem num Worker real (ver `VALIDACAO.md`, seções do Motor V4, PR 1, "O que NÃO foi verificado").
+
+**Decisões do usuário de 05/11/2026 que ampliaram a PR 1:** três provedores reais (OpenAI, Anthropic, Google) atrás da porta `PlannerProvider`, painel do gestor "Inteligência artificial" (chaves cifradas, modelos por tarefa, planos de IA, organizações, uso), envio real **autorizado só com dado anonimizado**, limite de tokens por plano de IA, "Por regras" também gera estratégias.
+
+| Fatia | Estado | O que existe | O que falta |
+|---|---|---|---|
+| F0 Benchmark | NÃO FEITO | — | PR 5 |
+| F1 Contexto e contratos | FEITO nos contratos | `TrainingPlanningContext` v1 anonimizado, `TrainingBlueprint` v1 (zod estrito), validador vinculante, hashes, vista segura | o conversor para a geração existente é a PR 2 |
+| F2 IA planejadora real | PARCIAL | porta + `mock` e 3 adaptadores (só com `fetch` simulado), prompt versionado, saída estruturada, portões, cota por plano, reserva e livro, cache, idempotência, voo único, disjuntor, falhas com "continuar por regras", painel do gestor | primeira chamada real a cada provedor (pendência do Responsável); tela do profissional (PR 4); relatórios (PR 5) |
+| F3 Compilador do blueprint | NÃO FEITO | o modo por regras já produz o blueprint | aceite, compilação, regras `2026.11.5` (PR 2) |
+| F4 Doses adaptativas | NÃO FEITO | `doseIntent` existe só no contrato | PR 3 |
+| F5 UX e orquestração | NÃO FEITO | ações de servidor `getPlanningAvailability`, `planStrategies`, `getPlanningState`, `getLatestStrategies` (sem botão) | telas GEN/RX/M e ajustes por linguagem natural (PR 4) |
+| F6 Observabilidade | NÃO FEITO | uso por organização e mês no painel | PR 5 |
+
+**Critérios de aceite (seção 8) após a PR 1:**
+1. Xintus com A e B diferentes: PARCIAL. O blueprint (IA simulada e por regras) já dá papéis diferentes para A e B em todas as fases e o teste confirma; a seleção de exercícios ainda não usa o blueprint (PR 2).
+2. Fases com divisões distintas, e ABCD sobre ABAB só informa: PARCIAL (validador e cartão `requiresScheduleChange` prontos; aceite e edição da periodização na PR 2).
+3. Nenhum exercício inelegível, nenhuma carga inventada: PARCIAL (candidatos só do pool elegível; a compilação é da PR 2).
+4. Doses variando por política: NÃO FEITO (PR 3).
+5. Reprodução determinística após blueprint aceito: PARCIAL (resposta validada e hashes ficam gravados; "aceito" e "compilado" são da PR 2).
+6. Auditoria recalculada, nenhuma aprovação automática: ATENDIDO no que existe (nada aqui aprova, libera, aplica nem escreve em plano; teste estático).
+7. IA desligada, modo por regras integral: ATENDIDO para planejar estratégias; a geração por regras de sempre não mudou.
+8. Erro, timeout ou JSON inválido sem perder dado, com fallback e reexecução idempotente: ATENDIDO nos testes locais (provedor simulado e `fetch` simulado).
+9. Idempotência, corrida, isolamento, cotas, retenção, exclusão, payload, orçamento: ATENDIDO nos testes locais (Miniflare); taxa de erro real e corrida real no D1 remoto não foram medidas.
+10. Lint, TS, vitest, build cloud, e2e nos dois mounts: ver `VALIDACAO.md`; benchmark de CPU e memória e Worker/D1 remoto: NÃO FEITO.
+11. Interface a 390 e 1440 px: só o painel do gestor; as telas V4 do profissional são da PR 4.
+12. Nada apresentado como homologado: ATENDIDO (rótulo "Heurística operacional (editável)"; validação do Técnico aberta em `PENDENCIAS.md`).

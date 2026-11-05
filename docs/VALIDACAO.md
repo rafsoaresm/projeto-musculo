@@ -1819,3 +1819,26 @@ Três revisões finais (aceite, regressão, qualidade) foram conferidas contra o
 **Testes:** `eslint`, `tsc` e a suíte inteira com `--maxWorkers=3` (o padrão falha por carga neste sandbox de 4 núcleos): **171 arquivos passaram, 1 pulado; 3104 testes passaram, 1 pulado** (4 novos: execuções paradas, aluno sem nascimento, sonda devolvida, memorização). `build:cloud` sem erro. Navegador, suíte inteira (`v4pr1full`, raiz): **182 passaram, 39 pulados**; `v4pr1fullb` (`/treinador`, `SIMULATE_PLATFORM_MOUNT=1`): **182 passaram, 39 pulados**; o cenário do gestor (que agora clica em "Aplicar plano") rodou no projeto `gestor` e passou. Capturas de "Organizações" a 1440, 1280, 1024, 768 e 390 em `scratchpad/motor4/shots/ia-organizacoes-*-r2-*.png` (o banco local tem centenas de organizações de outras execuções, por isso a página é longa; foram olhadas as de 1440 e 390 recortadas: seletor e botão "Aplicar plano" sem rolagem horizontal; a 390 o seletor aparece estreito).
 
 **O que NÃO foi verificado:** chamada real a qualquer provedor; D1 remoto e concorrência real; CPU e memória num Worker; comparação com o Figma; as capturas de 1280, 1024 e 768 não foram abertas uma a uma; "Testar conexão" com provedor real.
+
+## Motor V4, PR 1: fechamento da versão 0.97.0 (05/11/2026, branch `feat/motor-v4-pr1-planejador-ia-20261105`, empilhada sobre a `main` 0.96.2, não publicada)
+
+**O que rodou neste fechamento (local, depois do bump de versão e da documentação):**
+- `npm run lint` (`eslint .`): sem erros.
+- `npx tsc --noEmit`: sem erros.
+- `npx vitest run --maxWorkers=3` (o padrão falha por carga neste sandbox de 4 núcleos): **171 arquivos passaram, 1 pulado; 3104 testes passaram, 1 pulado**, duas execuções seguidas com o mesmo resultado (cerca de 9 minutos cada). Inclui os testes de divergência de regras (`tests/motor-rules.test.ts`: SHA-256 de `2026.11.1` a `2026.11.4` inalterados) e os testes estáticos (`tests/ai-static.test.ts`, 30) que conferem variáveis `AI_*` documentadas em `WEBFLOW-CLOUD.md`.
+- `npm run build:cloud` (OpenNext): passou, `Worker saved in .open-next/worker.js`.
+- Navegador: não foi repetido neste fechamento; valem os resultados da revisão final acima (suíte inteira nos dois mounts, raiz e `/treinador` simulado: 182 passaram e 39 pulados em cada) porque depois dela só mudaram `package.json`, `package-lock.json` e documentação.
+
+**Versão e arquivos:** `npm version 0.97.0 --no-git-tag-version`; documentação atualizada: `MOTOR-PRESCRICAO.md` (tabela de versões regenerada, seção do painel e resumo da PR 1), `ROADMAP-IMPLEMENTACAO.md`, `PENDENCIAS.md`, `HANDOFF-MOTOR-PRESCRICAO-HIBRIDO-V4.md` (status por fatia e por critério), `src/modules/prescricao/motor/README.md` e `src/modules/prescricao/planejador/README.md` (novo). O motor (`ENGINE_VERSION` 2.2.0) e as regras publicadas não foram tocados.
+
+**O que NÃO foi validado (lista única da PR 1):**
+- **Nenhuma chamada real** a OpenAI, Anthropic ou Google: corpos, cabeçalhos, esquemas, listas de modelos e leitura de uso vêm da documentação conhecida e foram exercitados só com `fetch` simulado. A autorização e a primeira chamada real são pendência do Responsável/Usuário.
+- Nenhum envio de dado de aluno real a terceiros; os termos de tratamento de dados de cada provedor, a retenção em cada conta e o aviso de privacidade ao aluno não foram confirmados (Responsável/Advogado).
+- D1 remoto: concorrência real (voo único, reservas, retomada), `changes()` e lotes foram medidos só no Miniflare, que pode serializar chamadas.
+- Worker real: CPU, memória, `AbortSignal.timeout` e AES-GCM; estrutura grande (12 fases × 8 treinos) medida só localmente.
+- Contagem real de tokens (a estimativa é `ceil(caracteres / 3)`; o "pensamento" oculto de OpenAI e Google é um placeholder); preços nunca inventados (custo "desconhecido" sem preço digitado).
+- Entrega de `AI_SECRETS_KEY` como segredo no Webflow Cloud.
+- Validação do Técnico de Educação Física: tabela de papéis `interim-1`, limiares de família, faixas de histórico e modo por regras são heurísticas operacionais.
+- Telas do profissional (PR 4) e comparação com o Figma; aceite e compilação do blueprint no motor (PR 2); doses (PR 3); observabilidade, relatórios, benchmark e matriz de regressão (PR 5). Aliases e faixas reduzem, não garantem, a não reidentificação.
+- Critérios de aceite do handoff: 1 e 6 parciais; 8, 9 e 10 atendidos no nível de contratos, serviço e painel; 2 a 5 e 7 dependem das PRs 2 a 4.
+
