@@ -108,6 +108,12 @@ export interface OrganizationAiRow {
   usedOutput: number;
   /** Reserved by calls in flight (counted against the allowance like use). */
   reservedTokens: number;
+  reservedInput: number;
+  reservedOutput: number;
+  /** Cost used and reserved this month in `costCurrency` (null currency: nothing was priced). Counted against the plan's cost cap like the gate does. */
+  costMicros: number;
+  reservedCostMicros: number;
+  costCurrency: Currency | null;
   version: number;
 }
 export type SetOrganizationResult = "saved" | "conflict" | "plan_required" | "ack_required" | "not_found";
@@ -121,9 +127,13 @@ export interface UsageRow {
   errors: number;
   inputTokens: number;
   outputTokens: number;
-  /** Null when no row of the group was priced: shown as "custo desconhecido", never 0. */
+  /** Null when no call of the group was priced, or when the priced calls used more than one currency: shown as unknown, never 0. */
   costMicros: number | null;
   currency: Currency | null;
+  /** Calls that spent tokens with no typed price: when above 0 and `costMicros` is set, the cost is PARTIAL (only the priced calls). */
+  unpricedCalls: number;
+  /** True when the priced calls used more than one currency (they are never added together). */
+  mixedCurrency: boolean;
 }
 export interface CircuitView {
   providerKind: string;
@@ -256,12 +266,19 @@ export function aiPlatformFor(db: D1Database, context: PlatformContext) {
     },
 
     /** "Testar modelo" spends tokens outside any organization ledger: the audit row is its only trace. */
-    async recordModelTest(task: AiTask): Promise<boolean> {
+    async recordModelTest(task: AiTask, now: Date, minIntervalMs: number): Promise<"recorded" | "too_soon" | "denied"> {
+      // One statement decides and the audit row follows only if it matched, so two concurrent clicks cannot both pass the interval.
       const results = await db.batch([
-        db.prepare(`UPDATE ai_task_settings SET task = task WHERE task = ?2 AND ${writer}`).bind(userId, task),
+        db
+          .prepare(
+            `UPDATE ai_task_settings SET task = task WHERE task = ?2 AND ${writer}
+               AND NOT EXISTS (SELECT 1 FROM access_audit_events a WHERE a.action = 'AI_MODEL_TESTED' AND a.subject_id = ?2 AND a.created_at > ?3)`,
+          )
+          .bind(userId, task, iso(new Date(now.getTime() - minIntervalMs))),
         audit("AI_MODEL_TESTED", task),
       ]);
-      return changesOf(results[0]) === 1;
+      if (changesOf(results[0]) === 1) return "recorded";
+      return (await this.lastModelTestAt(task)) ? "too_soon" : "denied";
     },
 
     // ---------- task -> provider / model ----------
@@ -406,7 +423,9 @@ export function aiPlatformFor(db: D1Database, context: PlatformContext) {
         .prepare(
           `SELECT o.id AS organizationId, o.name AS organizationName, COALESCE(os.enabled, 0) AS enabled, os.quota_plan_id AS quotaPlanId, qp.name AS quotaPlanName,
                   COALESCE(um.used_input + um.used_output, 0) AS usedTokens, COALESCE(um.used_input, 0) AS usedInput,
-                  COALESCE(um.used_output, 0) AS usedOutput, COALESCE(um.reserved_input + um.reserved_output, 0) AS reservedTokens, COALESCE(os.version, 0) AS version
+                  COALESCE(um.used_output, 0) AS usedOutput, COALESCE(um.reserved_input + um.reserved_output, 0) AS reservedTokens,
+                  COALESCE(um.reserved_input, 0) AS reservedInput, COALESCE(um.reserved_output, 0) AS reservedOutput, COALESCE(um.cost_micros, 0) AS costMicros,
+                  COALESCE(um.reserved_cost_micros, 0) AS reservedCostMicros, um.cost_currency AS costCurrency, COALESCE(os.version, 0) AS version
              FROM organizations o LEFT JOIN ai_organization_settings os ON os.organization_id = o.id
              LEFT JOIN ai_quota_plans qp ON qp.id = os.quota_plan_id
              LEFT JOIN ai_usage_month um ON um.organization_id = o.id AND um.month = ?2
@@ -475,14 +494,17 @@ export function aiPlatformFor(db: D1Database, context: PlatformContext) {
                   SUM(l.cache_hit) AS cacheHits,
                   SUM(CASE WHEN l.state IN ('RELEASED','CHARGED_UNKNOWN') THEN 1 ELSE 0 END) AS errors,
                   COALESCE(SUM(l.input_tokens), 0) AS inputTokens, COALESCE(SUM(l.output_tokens), 0) AS outputTokens,
-                  SUM(l.cost_micros) AS costMicros, MAX(l.currency) AS currency
+                  CASE WHEN COUNT(DISTINCT l.currency) > 1 THEN NULL ELSE SUM(l.cost_micros) END AS costMicros,
+                  CASE WHEN COUNT(DISTINCT l.currency) > 1 THEN NULL ELSE MAX(l.currency) END AS currency,
+                  SUM(CASE WHEN l.cache_hit = 0 AND l.state IN ('SETTLED','CHARGED_UNKNOWN') AND l.cost_micros IS NULL THEN 1 ELSE 0 END) AS unpricedCalls,
+                  CASE WHEN COUNT(DISTINCT l.currency) > 1 THEN 1 ELSE 0 END AS mixedCurrency
              FROM ai_usage_ledger l JOIN organizations o ON o.id = l.organization_id
             WHERE l.month = ?2 AND ${adminGuard("?1")}
             GROUP BY l.organization_id, l.task ORDER BY o.name, l.task`,
         )
         .bind(userId, month)
-        .all<UsageRow>();
-      return result.results;
+        .all<Omit<UsageRow, "mixedCurrency"> & { mixedCurrency: number }>();
+      return result.results.map((r) => ({ ...r, mixedCurrency: r.mixedCurrency === 1 }));
     },
 
     /** Last "Testar modelo" of a task (any manager): the panel allows one test per task every few seconds. */

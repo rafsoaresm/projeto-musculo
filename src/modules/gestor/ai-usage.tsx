@@ -25,7 +25,9 @@ const CIRCUIT_LABEL = { CLOSED: "Fechado (normal)", OPEN: "Aberto (chamadas susp
 export function UsagePanel({
   month, months, rows, circuits, audit,
 }: { month: string; months: string[]; rows: UsageRow[]; circuits: CircuitView[]; audit: AiAuditRow[] }) {
-  const anyUnknownCost = rows.some((r) => r.costMicros === null);
+  const anyUnknownCost = rows.some((r) => r.costMicros === null && !r.mixedCurrency);
+  const anyPartialCost = rows.some((r) => r.costMicros !== null && r.unpricedCalls > 0);
+  const anyMixedCurrency = rows.some((r) => r.mixedCurrency);
   return (
     <>
       <section className="panel" aria-labelledby="ai-usage-title">
@@ -74,7 +76,7 @@ export function UsagePanel({
                     <td data-label="Erros" className="num">{formatTokens(r.errors)}</td>
                     <td data-label="Tokens de entrada" className="num">{formatTokens(r.inputTokens)}</td>
                     <td data-label="Tokens de saída" className="num">{formatTokens(r.outputTokens)}</td>
-                    <td data-label="Custo" className="num">{r.costMicros !== null && r.currency ? formatMoney(r.costMicros, r.currency) : "—"}</td>
+                    <td data-label="Custo" className="num">{r.costMicros !== null && r.currency ? `${formatMoney(r.costMicros, r.currency)}${r.unpricedCalls > 0 ? " (parcial)" : ""}` : "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -82,6 +84,8 @@ export function UsagePanel({
           </div>
         )}
         {anyUnknownCost && <p className="small muted">“—” é custo desconhecido: o preço do modelo não estava digitado quando a chamada foi feita. A ferramenta nunca estima um preço.</p>}
+        {anyPartialCost && <p className="small muted">“(parcial)” soma só as chamadas que tinham preço digitado; as demais chamadas do grupo ficaram sem preço e não entram na soma.</p>}
+        {anyMixedCurrency && <p className="small muted">“—” também aparece quando as chamadas com preço usaram moedas diferentes: a ferramenta não soma moedas.</p>}
         <p className="small muted">
           Os tokens vêm do que o provedor informou; quando ele não informa, a ferramenta usa uma estimativa e marca como tal. Para o uso e o que resta da franquia de cada organização, veja a aba{" "}
           <Link className="account-link" href="/gestor/inteligencia-artificial?aba=organizacoes">Organizações</Link>.

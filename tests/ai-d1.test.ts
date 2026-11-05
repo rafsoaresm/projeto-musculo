@@ -368,7 +368,7 @@ describe("quota plans and per-organization assignment", () => {
   it("audit actions are all registered for the manager audit trail", async () => {
     const { PLATFORM_AUDIT_ACTIONS } = await import("@/db/platform");
     for (const action of AI_AUDIT_ACTIONS) expect(PLATFORM_AUDIT_ACTIONS).toContain(action);
-    expect(await gestor().recordModelTest("PLANNER")).toBe(true);
+    expect(await gestor().recordModelTest("PLANNER", new Date(), 10_000)).toBe("recorded");
     expect(await n("SELECT COUNT(*) AS n FROM access_audit_events WHERE action = 'AI_MODEL_TESTED' AND subject_id = 'PLANNER'")).toBe(1);
   });
 });

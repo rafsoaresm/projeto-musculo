@@ -149,11 +149,9 @@ export function gestorAi(db: D1Database, context: { userId: string }, deps: Gest
         if (!key.ok) return key;
         apiKey = key.apiKey;
       }
-      const last = await repo.lastModelTestAt(task);
-      if (last && now().getTime() - Date.parse(last) < MODEL_TEST_INTERVAL_MS) {
-        return { ok: false, reason: "too_soon", message: "Aguarde alguns segundos entre dois testes da mesma tarefa." };
-      }
-      await repo.recordModelTest(task as AiTask);
+      const recorded = await repo.recordModelTest(task as AiTask, now(), MODEL_TEST_INTERVAL_MS);
+      if (recorded === "too_soon") return { ok: false, reason: "too_soon", message: "Aguarde alguns segundos entre dois testes da mesma tarefa." };
+      if (recorded === "denied") return { ok: false, reason: "invalid", message: "Não foi possível registrar o teste. Atualize a página." };
       const request = await buildProviderPayload(
         task as AiTask,
         { kind, system: MODEL_TEST_SYSTEM_PROMPT, user: MODEL_TEST_USER, schema: { ...MODEL_TEST_SCHEMA }, schemaName: MODEL_TEST_SCHEMA_NAME },

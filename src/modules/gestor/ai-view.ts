@@ -228,11 +228,11 @@ export function organizationUsage(org: OrganizationAiRow, plan: PlanRow | null):
   }
   const input = plan.inputTokens ?? 0;
   const output = plan.outputTokens ?? 0;
-  const worst = Math.max(org.usedInput / input, org.usedOutput / output);
+  const worst = Math.max((org.usedInput + org.reservedInput) / input, (org.usedOutput + org.reservedOutput) / output);
   return {
     percent: Math.min(100, Math.round(worst * 100)),
     text: `Entrada ${formatTokens(org.usedInput)} de ${formatTokens(input)} · Saída ${formatTokens(org.usedOutput)} de ${formatTokens(output)}`,
-    remainingText: `Restam ${formatTokens(Math.max(0, input - org.usedInput))} de entrada e ${formatTokens(Math.max(0, output - org.usedOutput))} de saída`,
+    remainingText: `Restam ${formatTokens(Math.max(0, input - org.usedInput - org.reservedInput))} de entrada e ${formatTokens(Math.max(0, output - org.usedOutput - org.reservedOutput))} de saída`,
   };
 }
 
@@ -243,8 +243,11 @@ export function organizationState(org: OrganizationAiRow, plan: PlanRow | null):
   const exhausted =
     plan.mode === "TOTAL"
       ? org.usedTokens + org.reservedTokens >= (plan.totalTokens ?? 0)
-      : org.usedInput >= (plan.inputTokens ?? 0) || org.usedOutput >= (plan.outputTokens ?? 0);
-  if (exhausted) return { code: "LIMIT_REACHED", label: "Limite do plano atingido", tone: "danger" };
+      : org.usedInput + org.reservedInput >= (plan.inputTokens ?? 0) || org.usedOutput + org.reservedOutput >= (plan.outputTokens ?? 0);
+  // Same inequality as the gate: a cost cap only counts when the month's currency is the cap's (otherwise the gate refuses for another reason).
+  const costReached =
+    plan.costCapMicros !== null && (org.costCurrency === null || org.costCurrency === plan.costCapCurrency) && org.costMicros + org.reservedCostMicros >= plan.costCapMicros;
+  if (exhausted || costReached) return { code: "LIMIT_REACHED", label: "Limite do plano atingido", tone: "danger" };
   return { code: "ACTIVE", label: "Ativa", tone: "success" };
 }
 

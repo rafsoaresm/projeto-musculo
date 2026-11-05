@@ -98,7 +98,15 @@ export async function saveTask(task: string, values: TaskFormValues, expectedVer
     new Date(),
   );
   done();
-  if (outcome === "saved") return { ok: true, message: "Configuração salva." };
+  if (outcome === "saved") {
+    const clamped = parsed.value.maxOutputTokens > env.hardMaxOutputTokens || parsed.value.timeoutMs > env.hardTimeoutMs;
+    return {
+      ok: true,
+      message: clamped
+        ? `Configuração salva. Os limites foram reduzidos ao teto do ambiente: saída até ${env.hardMaxOutputTokens} tokens e tempo até ${Math.round(env.hardTimeoutMs / 1000)} s.`
+        : "Configuração salva.",
+    };
+  }
   if (outcome === "conflict") return { ok: false, message: "Outro gestor alterou estas configurações. Atualize a página." };
   if (outcome === "provider_not_connected") return { ok: false, message: "Esse provedor não tem chave conectada. Conecte-o na aba Provedores." };
   return { ok: false, message: "Confira os campos: provedor, modelo e limites." };

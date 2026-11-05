@@ -38,7 +38,8 @@ const plan = (over: Partial<PlanRow> = {}): PlanRow => ({
   requestsPerMinute: 6, costCapMicros: null, costCapCurrency: null, archivedAt: null, organizations: 1, version: 1, ...over,
 });
 const org = (over: Partial<OrganizationAiRow> = {}): OrganizationAiRow => ({
-  organizationId: "o1", organizationName: "Studio A", enabled: true, quotaPlanId: "p1", quotaPlanName: "Essencial", usedTokens: 125_000, usedInput: 100_000, usedOutput: 25_000, reservedTokens: 0, version: 2, ...over,
+  organizationId: "o1", organizationName: "Studio A", enabled: true, quotaPlanId: "p1", quotaPlanName: "Essencial", usedTokens: 125_000, usedInput: 100_000, usedOutput: 25_000, reservedTokens: 0, reservedInput: 0, reservedOutput: 0,
+  costMicros: 0, reservedCostMicros: 0, costCurrency: null, version: 2, ...over,
 });
 const html = (element: Parameters<typeof renderToStaticMarkup>[0]) => renderToStaticMarkup(element);
 
@@ -150,6 +151,16 @@ describe("organization state and remaining allowance", () => {
     expect(organizationState(org({ usedInput: 1000, usedOutput: 0 }), split).code).toBe("LIMIT_REACHED");
     expect(organizationState(org({ usedInput: 999, usedOutput: 199 }), split).code).toBe("ACTIVE");
   });
+  it("SPLIT plans count what is reserved by calls in flight, and a reached cost cap shows the limit", () => {
+    const split = plan({ mode: "SPLIT", totalTokens: null, inputTokens: 1000, outputTokens: 200 });
+    expect(organizationState(org({ usedInput: 900, usedOutput: 0, reservedInput: 100 }), split).code).toBe("LIMIT_REACHED");
+    expect(organizationState(org({ usedInput: 0, usedOutput: 150, reservedOutput: 50 }), split).code).toBe("LIMIT_REACHED");
+    expect(organizationUsage(org({ usedInput: 500, usedOutput: 100, reservedInput: 100 }), split).remainingText).toBe("Restam 400 de entrada e 100 de saída");
+    const capped = plan({ costCapMicros: 1_000_000, costCapCurrency: "USD" });
+    expect(organizationState(org({ costMicros: 900_000, reservedCostMicros: 100_000, costCurrency: "USD" }), capped).code).toBe("LIMIT_REACHED");
+    expect(organizationState(org({ costMicros: 900_000, costCurrency: "USD" }), capped).code).toBe("ACTIVE");
+    expect(organizationState(org({ costMicros: 2_000_000, costCurrency: "BRL" }), capped).code).toBe("ACTIVE");
+  });
   it("shows used, allowance, percentage and what remains; never a percentage without an allowance", () => {
     expect(organizationUsage(org(), plan())).toEqual({ percent: 25, text: "125.000 de 500.000 tokens", remainingText: "Restam 375.000 tokens" });
     expect(organizationUsage(org({ usedTokens: 900_000 }), plan()).percent).toBe(100);
@@ -259,6 +270,12 @@ describe("components never print a key", () => {
     expect(html(createElement(PlansPanel, { canWrite: true, plans: [], tasks: [] }))).toContain("Nenhum plano ainda");
   });
 
+  it("enabling an organization whose plan is archived offers the plan select", () => {
+    const archived = plan({ id: "old", name: "Antigo", archivedAt: "2026-11-01T00:00:00Z" });
+    const page = html(createElement(OrganizationsPanel, { organizations: [org({ quotaPlanId: "old", quotaPlanName: "Antigo", enabled: false })], plans: [archived, plan()], canWrite: true, ackText: AI_ORG_ACK_TEXT }));
+    expect(page).toContain("Antigo (arquivado)");
+  });
+
   it("organizations: switch, plan select, progress with text, state in words", () => {
     const page = html(createElement(OrganizationsPanel, { organizations: [org(), org({ organizationId: "o2", organizationName: "Studio B", enabled: false, quotaPlanId: null, quotaPlanName: null, usedTokens: 0, version: 0 })], plans: [plan()], canWrite: true, ackText: AI_ORG_ACK_TEXT }));
     expect(page).toContain("Studio A");
@@ -275,8 +292,9 @@ describe("components never print a key", () => {
 
   it("usage: unknown cost is a dash with its footnote; circuits and the audit trail are listed without any secret", () => {
     const rows: UsageRow[] = [
-      { organizationId: "o1", organizationName: "Studio A", task: "PLANNER", requests: 3, cacheHits: 1, errors: 0, inputTokens: 9000, outputTokens: 4000, costMicros: null, currency: null },
-      { organizationId: "o2", organizationName: "Studio B", task: "PLANNER", requests: 1, cacheHits: 0, errors: 1, inputTokens: 1000, outputTokens: 500, costMicros: 1_250_000, currency: "USD" },
+      { organizationId: "o1", organizationName: "Studio A", task: "PLANNER", requests: 3, cacheHits: 1, errors: 0, inputTokens: 9000, outputTokens: 4000, costMicros: null, currency: null, unpricedCalls: 3, mixedCurrency: false },
+      { organizationId: "o2", organizationName: "Studio B", task: "PLANNER", requests: 1, cacheHits: 0, errors: 1, inputTokens: 1000, outputTokens: 500, costMicros: 1_250_000, currency: "USD", unpricedCalls: 0, mixedCurrency: false },
+      { organizationId: "o3", organizationName: "Studio C", task: "ADJUSTMENTS", requests: 2, cacheHits: 0, errors: 0, inputTokens: 10, outputTokens: 5, costMicros: 500_000, currency: "USD", unpricedCalls: 1, mixedCurrency: false },
     ];
     const circuits: CircuitView[] = [{ providerKind: "openai", modelId: "m-1", state: "OPEN", consecutiveFailures: 5, since: "2026-11-05T12:00:00.000Z" }];
     const page = html(createElement(UsagePanel, { month: "2026-11", months: recentMonths("2026-11"), rows, circuits, audit: [{ id: "a1", action: "AI_PROVIDER_ROTATED", createdAt: "2026-11-05T12:00:00.000Z", actorEmail: "gestor@example.test", subject: "openai" }] }));
@@ -284,6 +302,8 @@ describe("components never print a key", () => {
     expect(page).toContain("custo desconhecido");
     expect(page).toMatch(/Custo[\s\S]*—/);
     expect(page).toMatch(/US\$\s?1,25/);
+    expect(page).toMatch(/US\$\s?0,50 \(parcial\)/);
+    expect(page).toContain("soma só as chamadas que tinham preço digitado");
     expect(page).toContain("Aberto (chamadas suspensas)");
     expect(page).toContain("Chave trocada");
     expect(page).toContain("nunca entram nele");

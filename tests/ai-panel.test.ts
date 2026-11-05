@@ -295,7 +295,7 @@ describe("task settings", () => {
     expect(await saveTask("PLANNER", taskForm(), 0)).toMatchObject({ ok: false });
     expect(await saveTask("PLANNER", taskForm({ providerKind: "google", modelId: "g-1" }), version)).toMatchObject({ ok: false, message: expect.stringContaining("não tem chave") });
     const ok = await saveTask("PLANNER", taskForm({ priceInput: "0,15", priceOutput: "0,6", currency: "USD", timeoutSeconds: "60", maxOutputTokens: "9000" }), version);
-    expect(ok).toMatchObject({ ok: true });
+    expect(ok).toMatchObject({ ok: true, message: expect.stringContaining("reduzidos ao teto do ambiente") });
     expect((await t.gestor().getTasks()).find((r) => r.task === "PLANNER")).toMatchObject({
       providerKind: "mock", modelId: "mock-ok", maxOutputTokens: 4000, timeoutMs: 20000, currency: "USD", priceInputMicrosPerMillion: 150_000, priceOutputMicrosPerMillion: 600_000,
     });

@@ -24,6 +24,8 @@ export function OrganizationsPanel({ organizations, plans, canWrite, ackText }: 
   const [ack, setAck] = useState(false);
   const [pick, setPick] = useState("");
   const live = plans.filter((p) => !p.archivedAt);
+  // No plan, or a plan that was archived: the gestor must choose a live one here (the row's select is not required first).
+  const needsPick = enabling !== null && (!enabling.quotaPlanId || !live.some((p) => p.id === enabling.quotaPlanId));
   const byId = new Map(plans.map((p) => [p.id, p]));
 
   return (
@@ -68,6 +70,7 @@ export function OrganizationsPanel({ organizations, plans, canWrite, ackText }: 
                           onChange={(event) => {
                             if (event.target.checked) {
                               setAck(false);
+                              setPick("");
                               setEnabling(org);
                             } else {
                               run(() => setOrganizationAi(org.organizationId, { enabled: false }, org.version));
@@ -122,7 +125,7 @@ export function OrganizationsPanel({ organizations, plans, canWrite, ackText }: 
           }}
         >
           <h3>Habilitar a IA para {enabling.organizationName}</h3>
-          {!enabling.quotaPlanId && (
+          {needsPick && (
             <label>
               Plano de IA
               <select value={pick} onChange={(e) => setPick(e.target.value)} required>
@@ -140,7 +143,7 @@ export function OrganizationsPanel({ organizations, plans, canWrite, ackText }: 
             <span>{ackText}</span>
           </label>
           <div className="inline-form">
-            <button className="button primary small" disabled={!ack || pending || (!enabling.quotaPlanId && !pick)}>
+            <button className="button primary small" disabled={!ack || pending || (needsPick && !pick)}>
               {pending ? "Habilitando…" : "Habilitar a IA"}
             </button>
             <button type="button" className="button secondary small" disabled={pending} onClick={() => setEnabling(null)}>

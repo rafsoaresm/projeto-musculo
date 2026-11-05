@@ -54,6 +54,12 @@ function TaskCard({ row, connections, mockEnabled, canWrite, callsBlocked, secre
   const list = useRunner();
   const test = useRunner();
   const [v, setV] = useState<TaskFormValues>(valuesOf(row));
+  // The server may clamp limits to the environment ceilings: after a refresh the form shows what was really saved, so it is not left "dirty".
+  const [seenVersion, setSeenVersion] = useState(row.version);
+  if (seenVersion !== row.version) {
+    setSeenVersion(row.version);
+    setV(valuesOf(row));
+  }
   const [models, setModels] = useState<Array<{ id: string; label: string | null }>>([]);
   const [filter, setFilter] = useState("");
   const set = <K extends keyof TaskFormValues>(key: K, value: TaskFormValues[K]) => setV((current) => ({ ...current, [key]: value }));
