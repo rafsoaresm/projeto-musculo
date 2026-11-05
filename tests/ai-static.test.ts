@@ -134,7 +134,7 @@ describe("boundaries of the module", () => {
       const touchesTenantTable = /\b(ai_planner_cache|planning_runs|planning_run_payloads|ai_usage_ledger|ai_usage_month|blueprint_acceptances)\b/.test(sql);
       if (touchesTenantTable) expect(sql, `tenant filter: ${sql.slice(0, 80)}`).toMatch(/organization_id/);
     }
-    expect(read(join(ROOT, "src/app/api/health/route.ts"))).toContain('.bind("0047_ai_planning")');
+    expect(read(join(ROOT, "src/app/api/health/route.ts"))).toContain('.bind("0048_proposal_blueprints")');
     expect(stripComments(read(join(ROOT, "src/modules/prescricao/planejador/provedores/http.ts")))).toContain('redirect: "error"');
   });
 
@@ -145,12 +145,12 @@ describe("boundaries of the module", () => {
     for (const sql of statements) expect(sql, sql.slice(0, 80)).toMatch(/\$\{writer\}|adminGuard\(/);
   });
 
-  it("the migrations are additive: 0046 and 0047 create tables, indexes and triggers only", () => {
-    for (const file of ["0046_ai_platform.sql", "0047_ai_planning.sql"]) {
+  it("the migrations are additive: 0046, 0047 and 0048 create tables, indexes and triggers only", () => {
+    for (const file of ["0046_ai_platform.sql", "0047_ai_planning.sql", "0048_proposal_blueprints.sql"]) {
       const sql = read(join(ROOT, "migrations", file));
       expect(sql, file).not.toMatch(/^\s*(ALTER|DROP)\s/im);
       expect(sql, file).not.toMatch(/\b(DELETE FROM|UPDATE\s+\w+\s+SET)\b/i);
-      expect(sql.trim().split("\n").at(-1), file).toMatch(/INSERT INTO app_schema_versions\(version\) VALUES \('004[67]_/);
+      expect(sql.trim().split("\n").at(-1), file).toMatch(/INSERT INTO app_schema_versions\(version\) VALUES \('004[678]_/);
     }
   });
 });

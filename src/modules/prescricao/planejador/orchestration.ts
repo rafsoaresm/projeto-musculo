@@ -43,8 +43,8 @@ import { toWireSchema } from "./provedores/wire-schema";
 import { AI_RETRY_DELAY_MS, costMicros, estimateTokens, monthKey, outputBudget, reservationFor, staleAfterMs, type Reservation } from "./quota";
 import { ROLE_FOCUS_INTERIM_TABLE } from "./role-focus";
 import { openSecret } from "./secrets";
-import { produceRulesBlueprint } from "./rules-mode/producer";
-import { RULES_TEMPLATES_VERSION } from "./rules-mode/templates";
+import { currentTemplates, produceRulesBlueprint } from "./rules-mode/producer";
+import { rulesetRefText, roleFocusFromRuleSet } from "./rules-mode/ruleset-templates";
 import { toStrategyListView, type StrategyListView } from "./strategy-view";
 import { BLUEPRINT_VERSION, PLANNER_PROMPT_VERSION, ROLE_FOCUS_INTERIM } from "./versions";
 
@@ -280,15 +280,16 @@ export function plannerService(db: D1Database, context: AuthenticatedContext, de
   };
 
   async function runRules(p: Prepared, now: Date): Promise<PlanningOutcome> {
+    const templates = currentTemplates();
     const runId = newId();
     const started = await repo.runStart({
       runId, planId: p.planId, revisionId: p.revisionId, idempotencyKey: p.idempotencyKey, requestHash: p.requestHash, mode: "RULES",
       baseContentVersion: p.baseContentVersion, structureFingerprint: p.bundle.refs.structureFingerprint, contextHash: p.bundle.contextHash,
       aliasesHash: p.bundle.aliases.aliasMapHash, cacheKey: null, providerKind: null, modelId: null, promptVersion: null, schemaVersion: BLUEPRINT_VERSION,
-      templatesVersion: RULES_TEMPLATES_VERSION, omittedJson: omittedJsonOf(p.bundle), now,
+      templatesVersion: templates.version, omittedJson: omittedJsonOf(p.bundle), now,
     });
     if (!started.ok) return startFailure(p, started.reason);
-    const blueprint = produceRulesBlueprint(p.bundle);
+    const blueprint = produceRulesBlueprint(p.bundle, templates);
     const checked = trainingBlueprintSchema.safeParse(blueprint);
     const base = { runId, planId: p.planId, revisionId: p.revisionId, attempt: 1, cacheHit: false, responseHash: null, usageJson: null, ledgerId: null, now };
     if (!checked.success) {
@@ -360,13 +361,18 @@ export function plannerService(db: D1Database, context: AuthenticatedContext, de
       estimatedInput: request.estimatedInputTokens, effectiveMaxOutput: budget.effectiveMaxOutput, maxRetries: task.maxRetries, prices: task.prices,
     });
 
+    // The role table the model's deltas are relative to is the default ruleset's (its reference is stored with the blueprint).
+    const rulesetFocus = roleFocusFromRuleSet();
+    const roleFocus = rulesetFocus ?? ROLE_FOCUS_INTERIM_TABLE;
+    const roleFocusRef = rulesetFocus ? rulesetRefText(DEFAULT_RULESET) : ROLE_FOCUS_INTERIM;
+
     // 3. cache lookup (a hit costs nothing) -- the cache is keyed by hashes only
     const cacheKey = await plannerCacheKey({
       task: "PLANNER", contextHash: bundle.contextHash, aliasMapHash: bundle.aliases.aliasMapHash, promptVersion: PLANNER_PROMPT_VERSION, schemaVersion: BLUEPRINT_VERSION,
-      provider: kind, modelId, maxOutputTokens: budget.effectiveMaxOutput, roleFocusRef: ROLE_FOCUS_INTERIM, strategiesMax: 3,
+      provider: kind, modelId, maxOutputTokens: budget.effectiveMaxOutput, roleFocusRef, strategiesMax: 3,
     });
     const producer = { kind: "AI" as const, provider: kind, modelId, promptVersion: PLANNER_PROMPT_VERSION };
-    const validate = (raw: unknown) => validatePlannerResponse(raw, bundle, ROLE_FOCUS_INTERIM_TABLE, { producer, roleFocusRef: ROLE_FOCUS_INTERIM });
+    const validate = (raw: unknown) => validatePlannerResponse(raw, bundle, roleFocus, { producer, roleFocusRef });
     const runStartInput = (runId: string) => ({
       runId, planId: p.planId, revisionId: p.revisionId, idempotencyKey: p.idempotencyKey, requestHash: p.requestHash, mode: "AI" as const,
       baseContentVersion: p.baseContentVersion, structureFingerprint: bundle.refs.structureFingerprint, contextHash: bundle.contextHash,

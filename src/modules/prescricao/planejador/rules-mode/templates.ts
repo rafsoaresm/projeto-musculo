@@ -4,10 +4,30 @@
  * Everything here is HEURISTIC operational and editable: the Técnico must validate it (docs/PENDENCIAS.md). Pure: no clock, no network.
  * Texts are fixed pt-BR sentences with no number, dose, study or alias: they are not model output.
  */
+import { familySupportedBy } from "../blueprint-validate";
+import type { TrainingPlanningContext } from "../context-types";
 import { RULES_TEMPLATES_INTERIM } from "../versions";
 import type { SplitFamily, WorkoutRole } from "../vocab";
 
 export const RULES_TEMPLATES_VERSION = RULES_TEMPLATES_INTERIM;
+
+type RankedFamily = Exclude<SplitFamily, "CUSTOM">;
+type Experience = TrainingPlanningContext["student"]["experience"];
+
+/**
+ * Preference order of the families for the reference phase (design §3.11, first match): S <= 2 => full body; beginner (or unknown
+ * experience, as the published ruleset says) and S <= 4 => full body; S = 3 otherwise => push/pull/legs (or upper/lower); S = 4 =>
+ * upper/lower, else full body; S >= 5 => push/pull/legs, body part, upper/lower, full body. The code form of the table that now lives in the ruleset
+ * (`BLUEPRINT_STRATEGY_TEMPLATES.recommend`); a test keeps the two equal. "Unsupported" families are skipped by the caller.
+ */
+export function preferenceFor(sessionsPerWeek: number, experience: Experience): RankedFamily[] {
+  const S = sessionsPerWeek;
+  if (S <= 2) return ["FULL_BODY"];
+  if ((experience === "BEGINNER" || experience === null) && S <= 4) return ["FULL_BODY"];
+  if (S === 3) return experience === null ? ["FULL_BODY"] : ["PUSH_PULL_LEGS", "UPPER_LOWER", "FULL_BODY"];
+  if (S === 4) return ["UPPER_LOWER", "FULL_BODY"];
+  return ["PUSH_PULL_LEGS", "BODY_PART", "UPPER_LOWER", "FULL_BODY"];
+}
 
 /** Families that rotate roles over the volume labels of a phase, in order of first appearance. FULL_BODY and CUSTOM have no cycle. */
 export const FAMILY_ROLE_CYCLE: Readonly<Record<"UPPER_LOWER" | "PUSH_PULL_LEGS" | "BODY_PART", readonly WorkoutRole[]>> = Object.freeze({
@@ -54,8 +74,18 @@ export const RULES_UNCERTAINTY_TEXT = Object.freeze({
 export const RULES_QUESTION_TEXT = "Confirme se esta divisão combina com o que você quer para este aluno.";
 
 export interface RulesTemplates {
+  /** "interim-1" for the constants below, "<ruleset id>@<version>" when read from a ruleset. */
   version: string;
-  cycle: typeof FAMILY_ROLE_CYCLE;
-  minSessions: typeof FAMILY_MIN_SESSIONS;
+  cycle: Readonly<Record<"UPPER_LOWER" | "PUSH_PULL_LEGS" | "BODY_PART", readonly WorkoutRole[]>>;
+  minSessions: Readonly<Record<RankedFamily, number>>;
+  /** Families in order of preference for the reference phase (supported ones are chosen by the caller). */
+  preference: (sessionsPerWeek: number, experience: Experience) => RankedFamily[];
+  /** Can `volumeLabels` distinct volume labels carry the family without editing the saved periodization? */
+  supports: (family: RankedFamily, volumeLabels: number) => boolean;
+  maxStrategies: number;
 }
-export const RULES_TEMPLATES: RulesTemplates = Object.freeze({ version: RULES_TEMPLATES_VERSION, cycle: FAMILY_ROLE_CYCLE, minSessions: FAMILY_MIN_SESSIONS });
+/** The interim constants (design V4 §3.11, PR 1.3). Kept until a release deletes them; `rules-mode` reads the ruleset's copy. */
+export const RULES_TEMPLATES: RulesTemplates = Object.freeze({
+  version: RULES_TEMPLATES_VERSION, cycle: FAMILY_ROLE_CYCLE, minSessions: FAMILY_MIN_SESSIONS, preference: preferenceFor,
+  supports: (family: RankedFamily, volumeLabels: number) => familySupportedBy(family, volumeLabels), maxStrategies: 3,
+});

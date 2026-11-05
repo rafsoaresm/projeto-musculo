@@ -153,5 +153,11 @@ export const AUDIT_LABELS: Record<string, string> = {
   AUDIT_DURATION_UNDERUSED: "Tempo disponível pouco usado",
   AUDIT_PARTIAL_WEEK: "Semana parcial",
   AUDIT_PHASES_NOT_GENERATED: "Fases ainda não geradas",
+  AUDIT_STRATEGY_ADHERENCE_LOW: "Pouca aderência ao foco do treino",
+  AUDIT_STRATEGY_OFF_FOCUS_ITEMS: "Exercícios fora do foco por escolha do profissional",
+  AUDIT_STRATEGY_SUPPLY_LOW: "Pouca oferta no foco do treino",
+  AUDIT_STRATEGY_OVERLAP: "Músculos em comum entre treinos",
+  AUDIT_STRATEGY_EXPOSURE: "Região com pouca exposição na semana",
+  AUDIT_STRATEGY_PHASE_TARGET_OUTSIDE: "Alvo da fase fora do foco dos treinos",
   AUDIT_AGGREGATED: "Achados agrupados",
 };

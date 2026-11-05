@@ -12,7 +12,7 @@ Núcleo puro e determinístico (sem banco, rede, IA, relógio ou acaso). Documen
 | `regenerate.ts` | Regenerar escopos, substituir, alternativas, rebase |
 | `select.ts`, `eligibility.ts` | Seleção gulosa por cobertura e elegibilidade (equipamento, modalidade, exclusões, confiança nos metadados) |
 | `microcycle.ts`, `occurrence.ts` | Seleção da fase inteira por microciclo (regras 2026.11.4) e ocorrências reais de cada treino por semana |
-| `audit.ts`, `targets.ts` | Auditoria pura do plano inteiro (fora de `issues`, só WARNING/INFO) e alvos sugeridos (só valem depois de aceitos) |
+| `audit.ts`, `audit-strategy.ts`, `targets.ts` | Auditoria pura do plano inteiro (fora de `issues`, só WARNING/INFO), aderência ao foco da estratégia aceita (auditoria 1.1.0, só com treinos de estratégia) e alvos sugeridos (só valem depois de aceitos) |
 | `dose.ts`, `progress-week.ts` | Doses em camadas, progressão semanal, texto pt-BR |
 | `duration.ts`, `volume.ts`, `flags.ts` | Duração × disponibilidade, volume por músculo, alertas |
 | `progression.ts` | Sugestão de progressão pelo histórico (nunca valor) |

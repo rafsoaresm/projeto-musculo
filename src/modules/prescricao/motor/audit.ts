@@ -1,13 +1,15 @@
 /**
  * Auditoria técnica do plano inteiro (fatia B do handoff V3). Pura e determinística: lê só o conteúdo da proposta (sessões reais
  * de cada semana, itens e doses), os alvos persistidos nos treinos e as regras do conjunto. Nunca muda a proposta, nunca bloqueia,
- * nunca lê texto livre nem a origem dos itens (travar ou destravar não deixa a auditoria velha).
+ * nunca lê texto livre. A origem dos itens só entra no bloco de aderência à estratégia, e de um jeito que travar ou destravar não
+ * muda (travar não recalcula a auditoria gravada; ver audit-strategy.ts).
  *
  * Distinções (handoff V3, B): (a) músculo só com estímulo indireto; (b) alvo explícito não atingido; (c) músculo fora dos alvos
  * omitido por escolha do profissional. Faixas só vêm de alvos do profissional, de heurística aceita ou da disponibilidade
  * informada; os limiares do conjunto de regras são heurística operacional (editável) e geram observações, nunca bloqueios.
  * Vazio nunca vira 0: séries não definidas e itens que não puderam ser contados desligam as checagens por séries.
  */
+import { focusOfWorkout, strategyAudit } from "./audit-strategy";
 import { intensityText } from "./dose";
 import type { AuditThresholds } from "./rules";
 import type { RuleLog } from "./trace";
@@ -19,6 +21,8 @@ import type {
 } from "./types";
 
 export const AUDIT_VERSION = "1.0.0";
+/** Só quando o bloco de aderência à estratégia é calculado (treinos de estratégia aceita, regras com AUDIT_STRATEGY). */
+export const AUDIT_VERSION_STRATEGY = "1.1.0";
 
 export interface AuditInput {
   /** As regras da proposta (ou, para propostas antigas sem auditoria gravada, as regras de auditoria atuais). */
@@ -37,6 +41,8 @@ export interface AuditInput {
    * sugestão, e a ação não pode apontar para um aceite que o servidor recusaria. Omitido = lido de `log`.
    */
   suggestionsAccepted?: boolean;
+  /** Alvos aceitos de cada fase (a entrada da geração): a auditoria da estratégia avisa de um alvo que nenhum treino lista. */
+  phaseTargets?: Array<{ phaseIndex: number; muscles: string[]; patterns: string[] }>;
 }
 
 const MAX_RATIONALE = 300;
@@ -918,11 +924,23 @@ export function auditPlan(a: AuditInput): AuditReport {
       rationale: `Fases ainda sem sessões geradas: ${phasesMissing.join(", ")}. A auditoria cobre só as fases geradas.`,
       suggestedAction: "Continue a geração para auditar o plano inteiro.",
     }));
+  // Aderência à estratégia aceita: recalculada a cada auditoria, a partir das sessões reais. Sem a regra AUDIT_STRATEGY (< 2026.11.5)
+  // ou sem treinos de estratégia, o relatório é o de sempre (versão 1.0.0, sem a chave `strategy`).
+  // (A regra só é lida, e registrada como usada, quando há treinos de estratégia: sem eles o resultado é o das regras anteriores.)
+  const strategyRule = a.workouts.some((w) => focusOfWorkout(w) !== null) ? log.optional("AUDIT_STRATEGY") : undefined;
+  const strategy = strategyRule
+    ? strategyAudit({
+        rule: strategyRule, regions, volumeModalities, phases: a.phases, workouts: a.workouts, occurrences: a.occurrences, byId: a.byId, auditedPhases: phases,
+        ...(a.phaseTargets ? { phaseTargets: a.phaseTargets } : {}), mk: finding,
+      })
+    : null;
+  if (strategy) findings.push(...strategy.findings);
   return {
-    auditVersion: AUDIT_VERSION, rules: { id: log.rules.id, version: log.rules.version },
+    auditVersion: strategy ? AUDIT_VERSION_STRATEGY : AUDIT_VERSION, rules: { id: log.rules.id, version: log.rules.version },
     phasesAudited: phases.map((x) => x.phaseIndex), phasesMissing,
     occurrences: a.occurrences.length, datesMissing: a.occurrences.filter((o) => o.plannedDate === null).length,
     phases, findings: sortFindings(findings),
+    ...(strategy ? { strategy: strategy.strategy } : {}),
   };
 }
 

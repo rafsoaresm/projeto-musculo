@@ -31,7 +31,8 @@ import { generate, workUnits } from "@/modules/prescricao/motor/generate";
 import { canonicalInput, canonicalJson, canonicalRequest, sha256Hex } from "@/modules/prescricao/motor/hash";
 import { alternativesFor, rebase, regenerate, substitute } from "@/modules/prescricao/motor/regenerate";
 import { DEFAULT_RULESET, getRuleSet } from "@/modules/prescricao/motor/rules";
-import { STIMULUS_LABELS } from "@/modules/prescricao/motor/vocabulary";
+import { cmp, STIMULUS_LABELS } from "@/modules/prescricao/motor/vocabulary";
+import { proposalBlueprintView, type ProposalBlueprintView } from "./blueprint-view";
 import { ruleLogFor, uniqueIssues } from "@/modules/prescricao/motor/trace";
 import { auditPlan, boundAudit } from "@/modules/prescricao/motor/audit";
 import { targetSuggestion, type TargetSuggestion, type TargetSuggestionOutcome } from "@/modules/prescricao/motor/targets";
@@ -148,6 +149,7 @@ export type ProposalFailure =
   | "incomplete"
   | "already_complete"
   | "structure_changed"
+  | "blueprint_invalid"
   | "too_large";
 
 export type ProposalOutcome =
@@ -255,6 +257,7 @@ const MESSAGES: Record<ProposalFailure, string> = {
   incomplete: "A proposta ainda não tem todas as fases. Continue a geração antes de regenerar desta fase em diante.",
   already_complete: "A proposta já tem todas as fases.",
   structure_changed: "A periodização mudou depois da geração: descarte esta proposta e gere de novo.",
+  blueprint_invalid: "O aceite da estratégia não pertence a esta revisão ou não existe mais. Aceite a estratégia de novo antes de gerar.",
   too_large:
     "A operação passa do limite técnico de um pedido. Regenere uma fase por vez, ou reduza a quantidade de sessões ou de exercícios.",
 };
@@ -543,6 +546,9 @@ async function record(
     studentId: facts.plan.studentId,
     inputJson: stored.length <= GENERATION_INPUT_MAX ? stored : null,
     parameters: answers,
+    ...(answers.blueprint
+      ? { blueprintLink: { compiledHash: await sha256Hex(canonicalJson(answers.blueprint)), acceptanceIds: answers.blueprint.acceptances.map((a) => a.acceptanceId) } }
+      : {}),
   };
 }
 
@@ -600,7 +606,7 @@ async function prepare(
  * and the targets of a workout by phase and workout. A patch that is not an object is passed on as is, so the strict parse
  * refuses it.
  */
-export function patchAnswers(stored: unknown, patch: unknown): unknown {
+export function patchAnswers(stored: unknown, patch: unknown, options: { replaceBlueprint?: boolean } = {}): unknown {
   if (!patch || typeof patch !== "object" || Array.isArray(patch)) return patch;
   const base = stored && typeof stored === "object" && !Array.isArray(stored) ? (stored as Record<string, unknown>) : {};
   const next = patch as Record<string, unknown>;
@@ -627,7 +633,33 @@ export function patchAnswers(stored: unknown, patch: unknown): unknown {
     ...("acceptedFlagDecisions" in next && !Array.isArray(next.acceptedFlagDecisions) ? { acceptedFlagDecisions: next.acceptedFlagDecisions } : {}),
     ...merge("phaseCoverage", (r) => JSON.stringify(r?.phaseIndex ?? null)),
     ...merge("coverageByWorkout", (r) => JSON.stringify([r?.phaseIndex ?? null, r?.label ?? null])),
+    ...("blueprint" in next ? { blueprint: mergeBlueprint(base.blueprint, next.blueprint, options.replaceBlueprint === true) } : {}),
   };
+}
+
+/**
+ * The compiled strategy block of a patch (only the server's own path sends one, never the client). A partial replan (one phase, or
+ * from a phase on) MERGES: the workouts of the patch replace those with the same (phase, label), the others keep their own entry and
+ * their own `acceptanceId`; acceptances are merged by id and the ones no workout cites are dropped. A full replan (`replace`)
+ * takes the patch as it is. Dosing: the patch's when it sends one, else the stored. Anything that is not a block is passed on
+ * as sent, so the strict parse refuses it.
+ */
+export function mergeBlueprint(stored: unknown, patch: unknown, replace: boolean): unknown {
+  const isObject = (v: unknown): v is Record<string, unknown> => Boolean(v) && typeof v === "object" && !Array.isArray(v);
+  if (replace || !isObject(patch) || !isObject(stored)) return patch;
+  const rows = (v: unknown) => (Array.isArray(v) ? (v as Array<Record<string, unknown>>) : []);
+  const wkey = (w: Record<string, unknown>) => JSON.stringify([w?.phaseIndex ?? null, w?.label ?? null]);
+  const incoming = rows(patch.workouts);
+  const replaced = new Set(incoming.map(wkey));
+  const workouts = [...rows(stored.workouts).filter((w) => !replaced.has(wkey(w))), ...incoming].sort(
+    (a, b) => Number(a?.phaseIndex ?? 0) - Number(b?.phaseIndex ?? 0) || cmp(String(a?.label ?? ""), String(b?.label ?? "")),
+  );
+  const cited = new Set(workouts.map((w) => w?.acceptanceId));
+  const byId = new Map<unknown, Record<string, unknown>>();
+  for (const a of [...rows(stored.acceptances), ...rows(patch.acceptances)]) byId.set(a?.acceptanceId, a);
+  const acceptances = [...byId.values()].filter((a) => cited.has(a?.acceptanceId)).sort((a, b) => cmp(String(a?.acceptanceId ?? ""), String(b?.acceptanceId ?? "")));
+  const dosing = "dosing" in patch ? patch.dosing : stored.dosing;
+  return { ...stored, ...patch, workouts, acceptances, ...(dosing === undefined ? {} : { dosing }) };
 }
 
 /**
@@ -678,6 +710,8 @@ export function auditOfStored(result: Pick<EngineResult, "phases" | "workouts" |
   return boundAudit(log, auditPlan({ log, phases: result.phases, structure: null, workouts, occurrences: result.occurrences, volume, byId, suggestionsAccepted }));
 }
 
+export type BlueprintOutcome = { status: "ok"; blueprint: ProposalBlueprintView | null } | { status: "not_found" };
+
 export type AuditOutcome = { status: "ok"; audit: AuditReport; source: "STORED" | "VIEW"; rules: RuleSetRef } | { status: "not_found" };
 
 /**
@@ -702,6 +736,15 @@ export const viewAuditMemoForTests = { size: () => viewAuditMemo.size, clear: ()
 
 // ---------- the service ----------
 
+/**
+ * The compiled strategy (`answers.blueprint`) for a generation, built by the server from a stored acceptance (`planejador/compile.ts`,
+ * sub-stage 2.3). It is a separate argument of `generate`, not part of the payload: actions and the browser cannot reach it, and a
+ * payload that carries a `blueprint` is refused. Every acceptance it cites must belong to this revision (the write fails whole otherwise).
+ */
+export interface InternalBlueprint {
+  blueprint: unknown;
+}
+
 export function proposalService(
   db: D1Database,
   context: AuthenticatedContext,
@@ -725,7 +768,7 @@ export function proposalService(
       built: Built;
       answers: GenerationAnswers;
     }) => { ok: true; scope: GenerationScopeKind; scopeJson: unknown; input: EngineInput; result: EngineResult; target: unknown } | { ok: false; outcome: ProposalOutcome },
-    opts: { answersPatch?: unknown; rebase?: boolean } = {},
+    opts: { answersPatch?: unknown; rebase?: boolean; replaceBlueprint?: boolean } = {},
   ): Promise<ProposalOutcome> {
     const now = clock();
     const key = { idempotencyKey: p.idempotencyKey, requestHash: await requestHash(kind, { planId, revisionId, ...(hashPayload as object) }) };
@@ -736,7 +779,7 @@ export function proposalService(
     const { header, result: previous } = snap;
     if (header.state !== "OPEN") return fail("closed");
     if (header.version !== p.expectedVersion) return fail("conflict", { version: header.version });
-    const answers = parseAnswers(opts.answersPatch === undefined ? header.parameters : patchAnswers(header.parameters, opts.answersPatch));
+    const answers = parseAnswers(opts.answersPatch === undefined ? header.parameters : patchAnswers(header.parameters, opts.answersPatch, { replaceBlueprint: opts.replaceBlueprint === true }));
     if (!answers) return fail("invalid", { message: "As respostas desta proposta não são mais aceitas pelas regras atuais. Descarte e gere de novo." });
     const prepared = await prepare(db, context, planId, revisionId, answers, lockedOf(previous), now, rulesOf(header));
     if (!prepared.ok) {
@@ -767,11 +810,12 @@ export function proposalService(
      * "Gerar prescrição automática": reads the real data, asks what is missing, runs the engine on the phases that fit one
      * request and records a new OPEN proposal. Never writes the prescription.
      */
-    async generate(planId: string, revisionId: string, payload: GeneratePayload): Promise<ProposalOutcome> {
+    async generate(planId: string, revisionId: string, payload: GeneratePayload, internal?: InternalBlueprint): Promise<ProposalOutcome> {
       const parsed = generateSchema.safeParse(payload);
       if (!parsed.success) return fail("invalid");
       if (carriesBlueprint(parsed.data.answers)) return fail("invalid", { message: CLIENT_BLUEPRINT_REFUSED });
-      const answers = parseAnswers(parsed.data.answers);
+      // The compiled strategy only enters through the server's own argument (never the payload): see `InternalBlueprint`.
+      const answers = parseAnswers(internal ? { ...(parsed.data.answers ?? {}), blueprint: internal.blueprint } : parsed.data.answers);
       if (!answers) return fail("invalid", { message: "Confira as respostas: algum valor não é aceito (código, número ou lista)." });
       const now = clock();
       const key = {
@@ -949,6 +993,18 @@ export function proposalService(
       const limit = rules?.rules.ALTERNATIVES_LIMIT.value ?? 8;
       const list = alternativesFor(prepared.built.input, snap.result, target, limit);
       return { status: "ok", alternatives: list.map((a) => ({ exerciseId: a.exerciseId, name: a.name, metadata: a.metadata, reasons: a.reasons })) };
+    },
+
+    /**
+     * The strategy a proposal was generated with (design V4 §4.7): the compiled block stored in its answers plus the recorded links
+     * (acceptance, planner run, blueprint and response hashes). Null block for a proposal with no strategy. Read-only, gated.
+     */
+    async blueprint(planId: string, revisionId: string, proposalId: string): Promise<BlueprintOutcome> {
+      // Gated reads only (the header carries the stored answers, the links are gated by the same proposal); nothing is computed or written.
+      const head = await repo.summary(planId, revisionId, proposalId);
+      if (!head) return { status: "not_found" };
+      const links = await repo.blueprintLinks(planId, revisionId, proposalId);
+      return { status: "ok", blueprint: proposalBlueprintView(head.header.parameters, links) };
     },
 
     /**

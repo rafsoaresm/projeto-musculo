@@ -651,6 +651,12 @@ export type AuditCode =
   | "AUDIT_DURATION_UNDERUSED"
   | "AUDIT_PARTIAL_WEEK"
   | "AUDIT_PHASES_NOT_GENERATED"
+  | "AUDIT_STRATEGY_ADHERENCE_LOW"
+  | "AUDIT_STRATEGY_OFF_FOCUS_ITEMS"
+  | "AUDIT_STRATEGY_SUPPLY_LOW"
+  | "AUDIT_STRATEGY_OVERLAP"
+  | "AUDIT_STRATEGY_EXPOSURE"
+  | "AUDIT_STRATEGY_PHASE_TARGET_OUTSIDE"
   | "AUDIT_AGGREGATED";
 
 export interface AuditMeasure {
@@ -668,7 +674,7 @@ export interface AuditTarget {
   basis: Basis;
   ruleId?: string;
   /** AVAILABILITY: o tempo disponível (treino, parâmetros da geração ou perfil do aluno). */
-  origin: "WORKOUT_FOCUS" | "PHASE_COVERAGE" | "AVAILABILITY";
+  origin: "WORKOUT_FOCUS" | "PHASE_COVERAGE" | "AVAILABILITY" | "BLUEPRINT_FOCUS";
 }
 
 export interface AuditFinding {
@@ -767,6 +773,47 @@ export interface AuditPhase {
   workouts: AuditWorkoutRow[];
 }
 
+/** Como cada item de volume se situa frente ao foco do treino na estratégia aceita (auditoria 1.1.0). */
+export type FocusClass = "ON_FOCUS" | "SUPPORTING" | "SPILLOVER" | "OFF_FOCUS";
+/** Quem pôs o item, para a auditoria: travar não muda (um item travado do motor segue "ENGINE"), troca do profissional e linha preservada sim. */
+export type AuditItemOrigin = "ENGINE" | "PRESERVED" | "SUBSTITUTED";
+
+export interface StrategyWeek {
+  week: number;
+  items: number;
+  onFocus: number;
+  supporting: number;
+  spillover: number;
+  offFocus: number;
+  /** (no foco + apoio + transbordo) / itens; null sem itens. */
+  adherence: number | null;
+  /** Só dos itens fora do foco. */
+  offFocusByOrigin: Record<AuditItemOrigin, number>;
+}
+
+/**
+ * Aderência ao foco declarado, recalculada em toda operação (auditoria 1.1.0, só com treinos de estratégia). É descrição do que as
+ * sessões reais contêm: sobreposição entre treinos é diagnóstico, nunca objetivo; exposições vêm das ocorrências do calendário.
+ */
+export interface StrategyAdherence {
+  /** Estratégias citadas pelos treinos (um aceite por fase pode ter estratégias diferentes). */
+  strategyIds: string[];
+  sources: BlueprintSource[];
+  workouts: Array<{
+    phaseIndex: number;
+    label: string;
+    role: BlueprintRole;
+    source: BlueprintSource;
+    strategyId: string;
+    weeks: StrategyWeek[];
+    adherenceMin: number | null;
+  }>;
+  /** Por fase e par de treinos de papéis diferentes, a semana completa de maior sobreposição de músculos principais (Jaccard). */
+  overlaps: Array<{ phaseIndex: number; week: number; a: string; b: string; jaccard: number; byDesign: boolean }>;
+  /** Por fase e região listada como dominante por algum treino: sessões por semana com estímulo direto nas ocorrências reais. */
+  exposures: Array<{ phaseIndex: number; region: string; perWeek: AuditRange; weeksCounted: number }>;
+}
+
 export interface AuditReport {
   auditVersion: string;
   rules: RuleSetRef;
@@ -776,6 +823,8 @@ export interface AuditReport {
   datesMissing: number;
   phases: AuditPhase[];
   findings: AuditFinding[];
+  /** Só com treinos de estratégia aceita (regras com AUDIT_STRATEGY); ausente nas propostas sem estratégia. */
+  strategy?: StrategyAdherence;
 }
 
 /** Operações de revisão devolvem um resultado ou um motivo; nunca lançam exceção. */

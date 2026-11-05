@@ -72,7 +72,7 @@ describe("rules mode works with the AI completely unconfigured", () => {
     expect(out.blueprint.strategies.map((s) => s.splitFamily)).toEqual(["UPPER_LOWER", "FULL_BODY", "PUSH_PULL_LEGS"]);
     expect(out.blueprint.strategies[0].phases[0].workouts.map((w) => [w.label, w.role])).toEqual([["A", "UPPER"], ["B", "LOWER"]]);
     const run = await t.first<Record<string, unknown>>("SELECT * FROM planning_runs WHERE id = ?1", out.runId);
-    expect(run).toMatchObject({ mode: "RULES", status: "SUCCEEDED", failure_code: null, cache_hit: 0, provider_kind: null, model_id: null, ledger_id: null, templates_version: "interim-1", base_content_version: before.revision!.content_version });
+    expect(run).toMatchObject({ mode: "RULES", status: "SUCCEEDED", failure_code: null, cache_hit: 0, provider_kind: null, model_id: null, ledger_id: null, templates_version: "gymgital-base@2026.11.5", base_content_version: before.revision!.content_version });
     expect(String(run!.blueprint_hash)).toMatch(/^[0-9a-f]{64}$/);
     expect(await t.n("SELECT COUNT(*) AS n FROM planning_run_payloads WHERE run_id = ?1", out.runId)).toBe(1);
     expect(await t.n("SELECT COUNT(*) AS n FROM ai_usage_ledger")).toBe(0);

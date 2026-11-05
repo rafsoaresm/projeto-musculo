@@ -84,4 +84,5 @@ export const ALL_MIGRATIONS = [
   "0045_exercise_metadata_inferred_seed.sql",
   "0046_ai_platform.sql",
   "0047_ai_planning.sql",
+  "0048_proposal_blueprints.sql",
 ];

@@ -743,7 +743,7 @@ export function finalize(ctx: EngineContext, result: EngineResult): EngineResult
   const volume = volumeFor(log, occurrences, ctx.byId);
   // A auditoria (regras 2026.11.3+) é recalculada aqui em toda operação: nenhum achado antigo sobrevive.
   const audit = log.optional("AUDIT_THRESHOLDS")
-    ? boundAudit(log, auditPlan({ log, phases: result.phases, structure: input.structure.phases, workouts: result.workouts, occurrences, volume, byId: ctx.byId }))
+    ? boundAudit(log, auditPlan({ log, phases: result.phases, structure: input.structure.phases, workouts: result.workouts, occurrences, volume, byId: ctx.byId, phaseTargets: input.parameters.phaseCoverage.map((c) => ({ phaseIndex: c.phaseIndex, muscles: c.muscles ?? [], patterns: c.patterns ?? [] })) }))
     : undefined;
   const rest: EngineResult = { ...result };
   delete rest.audit;

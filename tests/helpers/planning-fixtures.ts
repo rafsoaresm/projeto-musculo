@@ -8,7 +8,7 @@ import { readMovement } from "@/modules/avaliacoes/v2/flexitest";
 import { parseGenerationAnswers, type GenerationAnswersInput } from "@/modules/prescricao/automatica/contracts";
 import type { AssessmentRecord, GenerationContext } from "@/modules/prescricao/automatica/facts";
 import { buildPlanningContext, type PlanningContextOptions } from "@/modules/prescricao/planejador/context";
-import type { PlanningContextBundle } from "@/modules/prescricao/planejador/context-types";
+import type { PlanningContextBundle, PlanningWorkout } from "@/modules/prescricao/planejador/context-types";
 import type { PlannerResponse } from "@/modules/prescricao/planejador/blueprint";
 import type { CatalogExercise } from "@/modules/prescricao/motor/types";
 import { buildPeriodization } from "@/modules/training/periodization";
@@ -178,4 +178,38 @@ export function upperLowerResponse(over: { candidates?: string[] } = {}): Planne
     dosingIntent: [], progressionIntent: [],
   };
   return { schemaVersion: 1, global: GLOBAL, recommendedStrategyId: "S1", strategies: [s1, s2] };
+}
+
+// A bundle with the periodization of `phases` and the given experience (everything else from the Xintus bundle): rules-mode and strategy tests.
+export type Spec = string | { label: string; modalities?: string[] | null; existingFocus?: PlanningWorkout["existingFocus"] };
+export interface PhaseSpec { sessionsPerWeek: number; labels: Spec[] }
+
+let synthBase: PlanningContextBundle | null = null;
+export async function synth(phases: PhaseSpec[], experience: "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | null = "INTERMEDIATE"): Promise<PlanningContextBundle> {
+  synthBase ??= await xintusBundle();
+  const base = synthBase;
+  const workouts = new Map<string, `T${number}`>();
+  const alias = (label: string): `T${number}` => {
+    if (!workouts.has(label)) workouts.set(label, `T${workouts.size + 1}`);
+    return workouts.get(label)!;
+  };
+  const periodization = {
+    irregular: false,
+    phases: phases.map((p, i) => ({
+      index: i + 1, weeks: 4, sessionsPerWeek: p.sessionsPerWeek, stimulus: "HYPERTROPHY", weekdays: null,
+      weekSequence: [] as string[],
+      workouts: p.labels.map((spec) => {
+        const s = typeof spec === "string" ? { label: spec } : spec;
+        return {
+          alias: alias(s.label), sessionsInPhase: 4, perWeek: { min: 1, max: 1 }, modalities: s.modalities === undefined ? ["RESISTANCE"] : s.modalities,
+          exerciseTarget: 6, existingFocus: s.existingFocus ?? null, hasFixedItems: false,
+        } satisfies PlanningWorkout;
+      }),
+    })),
+  };
+  return {
+    ...base,
+    context: { ...base.context, student: { ...base.context.student, experience }, periodization },
+    aliases: { ...base.aliases, workouts: new Map([...workouts].map(([label, a]) => [a, label])) },
+  };
 }

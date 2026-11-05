@@ -56,6 +56,11 @@ export interface GenerationRecord {
   inputJson: string | null;
   /** The professional's answers the proposal was generated with (shown again as "da geração anterior"). */
   parameters: unknown;
+  /**
+   * The accepted strategy this generation compiled (`parameters.blueprint`): one `proposal_blueprint_links` row per acceptance is written
+   * in the SAME batch as the generation row. An acceptance that is not the revision's own makes the whole write fail (`blueprint_invalid`).
+   */
+  blueprintLink?: { compiledHash: string; acceptanceIds: string[] };
 }
 
 export type GenerateOutcome =
@@ -65,6 +70,7 @@ export type GenerateOutcome =
   | { status: "key_reused" }
   | { status: "not_open" }
   | { status: "too_large" }
+  | { status: "blueprint_invalid" }
   | { status: "not_found" };
 
 export type MutateOutcome =
@@ -76,6 +82,7 @@ export type MutateOutcome =
   | { status: "not_open" }
   | { status: "invalid_target" }
   | { status: "too_large" }
+  | { status: "blueprint_invalid" }
   | { status: "not_found" };
 
 /** What a non-engine write means (lock, unlock, flag decision, discard): compared with the decision recorded under a write id. */
@@ -178,6 +185,22 @@ export interface ProposalHeader {
 
 /** The proposal's result without the sessions: what `summary_json` holds. */
 export type ProposalSummary = Omit<EngineResult, "occurrences">;
+
+/** The accepted strategy a generation of a proposal compiled (one row per acceptance): ids, hashes and the rules it ran with. */
+export interface BlueprintLinkRow {
+  generationId: string;
+  acceptanceId: string;
+  runId: string;
+  /** SHA-256 of the canonical compiled block (`answers.blueprint`) of that generation. */
+  compiledHash: string;
+  /** The planner's blueprint hash (rules or AI run). */
+  blueprintHash: string | null;
+  /** SHA-256 of the model's raw response; null for a rules-mode run (no model was called). */
+  responseHash: string | null;
+  rulesId: string;
+  rulesVersion: string;
+  createdAt: string;
+}
 
 export interface ProposalPage {
   header: ProposalHeader;
@@ -462,8 +485,10 @@ function unlockedOrigin(item: ItemOut): ItemOut["origin"] {
 }
 
 /** Database errors with a specific meaning. Anything else is rethrown (a bug), never mapped to an answer. */
-function knownFailure(error: unknown): "not_open" | "closed" | "invalid_target" | "too_large" | "unique" | null {
+function knownFailure(error: unknown): "not_open" | "closed" | "invalid_target" | "too_large" | "unique" | "blueprint_invalid" | null {
   const text = String(error);
+  // The link row is built from the acceptance row: a missing or foreign acceptance has no run, so the NOT NULL fails (or the trigger does).
+  if (text.includes("BLUEPRINT_LINK_INVALID") || text.includes("proposal_blueprint_links.run_id")) return "blueprint_invalid";
   if (text.includes("PLAN_REVISION_FROZEN")) return "not_open";
   if (text.includes("PROPOSAL_CLOSED")) return "closed";
   if (text.includes("PROPOSAL_ITEM_INVALID")) return "invalid_target";
@@ -775,6 +800,27 @@ export function proposalsFor(db: D1Database, context: AuthenticatedContext | nul
           stamp,
         ),
       );
+    // The strategy link: built from the acceptance and its planner run in SQL (the run's hashes are never taken from the caller). The
+    // LEFT JOINs always produce a row; a missing acceptance leaves run_id NULL and the NOT NULL aborts the whole batch.
+    for (const acceptanceId of rec.blueprintLink?.acceptanceIds ?? [])
+      out.push(
+        g(
+          `INSERT INTO proposal_blueprint_links (id, organization_id, proposal_id, generation_id, acceptance_id, run_id, compiled_hash,
+             blueprint_hash, response_hash, rules_id, rules_version, created_at)
+           SELECT ?8, ?1, ?5, ?9, ?10, a.run_id, ?11, r.blueprint_hash, r.response_hash, ?12, ?13, ?14
+           FROM (SELECT 1) one
+           LEFT JOIN blueprint_acceptances a ON a.organization_id = ?1 AND a.id = ?10 AND a.revision_id = ?4
+           LEFT JOIN planning_runs r ON r.organization_id = ?1 AND r.id = a.run_id
+           WHERE ${token}`,
+          crypto.randomUUID(),
+          generationId,
+          acceptanceId,
+          rec.blueprintLink!.compiledHash,
+          result.rules.id,
+          result.rules.version,
+          stamp,
+        ),
+      );
     return out;
   }
 
@@ -877,7 +923,7 @@ export function proposalsFor(db: D1Database, context: AuthenticatedContext | nul
       const decided = landed ? await decisionByWrite(planId, revisionId, proposalId, cas.writeId) : null;
       if (landed && decided) return { status: "saved", version: landed.version, replayed: false };
     }
-    if (failure === "too_large" || failure === "invalid_target") return { status: failure };
+    if (failure === "too_large" || failure === "invalid_target" || failure === "blueprint_invalid") return { status: failure };
     return classifyMutation(planId, revisionId, proposalId, cas, key, expectedContent, intent);
   }
 
@@ -1393,6 +1439,26 @@ export function proposalsFor(db: D1Database, context: AuthenticatedContext | nul
       return snap ? { header: snap.header, result: snap.result } : null;
     },
 
+    /**
+     * The strategy links of a proposal's generations, oldest first (empty for a proposal with no strategy). Gated like the proposal
+     * itself: a revision the member does not reach, or another organization's proposal, reads as none.
+     */
+    async blueprintLinks(planId: string, revisionId: string, proposalId: string): Promise<BlueprintLinkRow[]> {
+      const rows = await db
+        .prepare(
+          `SELECT l.generation_id AS generationId, l.acceptance_id AS acceptanceId, l.run_id AS runId, l.compiled_hash AS compiledHash,
+             l.blueprint_hash AS blueprintHash, l.response_hash AS responseHash, l.rules_id AS rulesId, l.rules_version AS rulesVersion,
+             l.created_at AS createdAt
+           FROM proposal_blueprint_links l
+           JOIN prescription_proposals p ON p.organization_id = l.organization_id AND p.id = l.proposal_id
+           WHERE l.organization_id = ?1 AND p.plan_id = ?3 AND p.revision_id = ?4 AND p.id = ?5 AND ${any}
+           ORDER BY l.created_at, l.rowid`,
+        )
+        .bind(organizationId, userId, planId, revisionId, proposalId)
+        .all<BlueprintLinkRow>();
+      return rows.results;
+    },
+
     /** Proposals of a revision in any state, with their generations and decisions (no content, no health text). */
     async history(planId: string, revisionId: string): Promise<ProposalHistory> {
       const [p, g, d] = await db.batch([
@@ -1558,6 +1624,7 @@ export function proposalsFor(db: D1Database, context: AuthenticatedContext | nul
       if (revision.state !== "DRAFT") return { status: "not_open" };
       if (revision.contentVersion !== rec.baseContentVersion) return { status: "revision_changed", contentVersion: revision.contentVersion };
       if (failure === "too_large") return { status: "too_large" };
+      if (failure === "blueprint_invalid") return { status: "blueprint_invalid" };
       throw new Error(`PROPOSAL_WRITE_UNEXPLAINED${failure ? `:${failure}` : ""}`);
     },
 

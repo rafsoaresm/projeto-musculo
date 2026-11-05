@@ -10,13 +10,13 @@
  * All of it is HEURISTIC operational, for the Técnico to validate.
  */
 import { BLUEPRINT_LABEL, type StoredPhase, type StoredStrategy, type StoredWorkout, type TrainingBlueprint } from "../blueprint";
-import { familySupportedBy } from "../blueprint-validate";
 import type { PlanningContextBundle, PlanningPhase, PlanningWorkout, TrainingPlanningContext } from "../context-types";
 import { BLUEPRINT_VERSION, ROLE_FOCUS_INTERIM } from "../versions";
 import { SPLIT_DISPLAY_NAME, UNCERTAINTY_CODES, isNonVolumeRole, type SplitFamily, type WorkoutRole } from "../vocab";
+import { rulesTemplatesFromRuleSet } from "./ruleset-templates";
 import {
-  FAMILY_EXPLANATION, FAMILY_TRADEOFF, RULES_GLOBAL_RATIONALE, RULES_QUESTION_TEXT, RULES_TEMPLATES, RULES_UNCERTAINTY_TEXT, SCHEDULE_CHANGE_TRADEOFF,
-  type RulesTemplates,
+  FAMILY_EXPLANATION, FAMILY_TRADEOFF, preferenceFor, RULES_GLOBAL_RATIONALE, RULES_QUESTION_TEXT, RULES_TEMPLATES, RULES_UNCERTAINTY_TEXT,
+  SCHEDULE_CHANGE_TRADEOFF, type RulesTemplates,
 } from "./templates";
 
 type RankedFamily = Exclude<SplitFamily, "CUSTOM">;
@@ -31,20 +31,7 @@ export function nonVolumeRoleOf(modalities: readonly string[] | null): WorkoutRo
 
 const volumeCount = (phase: PlanningPhase): number => phase.workouts.filter(isVolume).length;
 
-/**
- * Preference order of the families for the reference phase (design §3.11, first match):
- * S <= 2 => full body; beginner and S <= 4 => full body; S = 3: beginner/unknown => full body, else push/pull/legs (or upper/lower);
- * S = 4 => upper/lower, else full body; S >= 5 => push/pull/legs, body part, upper/lower, full body.
- * "Unsupported" families are skipped by the caller, never recommended.
- */
-export function preferenceFor(sessionsPerWeek: number, experience: TrainingPlanningContext["student"]["experience"]): RankedFamily[] {
-  const S = sessionsPerWeek;
-  if (S <= 2) return ["FULL_BODY"];
-  if (experience === "BEGINNER" && S <= 4) return ["FULL_BODY"];
-  if (S === 3) return experience === null ? ["FULL_BODY"] : ["PUSH_PULL_LEGS", "UPPER_LOWER", "FULL_BODY"];
-  if (S === 4) return ["UPPER_LOWER", "FULL_BODY"];
-  return ["PUSH_PULL_LEGS", "BODY_PART", "UPPER_LOWER", "FULL_BODY"];
-}
+export { preferenceFor };
 
 function rolesFor(phase: PlanningPhase, family: RankedFamily, templates: RulesTemplates): Map<string, WorkoutRole> {
   const roles = new Map<string, WorkoutRole>();
@@ -80,8 +67,8 @@ function storedPhase(phase: PlanningPhase, family: RankedFamily, bundle: Plannin
   return { phaseIndex: phase.index, splitType: family, workouts };
 }
 
-function supportOf(family: RankedFamily, phases: readonly PlanningPhase[]): "YES" | "PARTIAL" | "NO" {
-  const supported = phases.map((p) => familySupportedBy(family, volumeCount(p)));
+function supportOf(family: RankedFamily, phases: readonly PlanningPhase[], templates: RulesTemplates): "YES" | "PARTIAL" | "NO" {
+  const supported = phases.map((p) => templates.supports(family, volumeCount(p)));
   return supported.every(Boolean) ? "YES" : supported.some(Boolean) ? "PARTIAL" : "NO";
 }
 
@@ -105,29 +92,34 @@ function uncertaintiesOf(context: TrainingPlanningContext): Array<{ code: Uncert
  * full body when not already there, then the next supported family, then (if a slot is left) ONE informational card for a family
  * the saved labels cannot carry.
  */
-export function chooseFamilies(context: TrainingPlanningContext, templates: RulesTemplates = RULES_TEMPLATES): Array<{ family: RankedFamily; support: "YES" | "PARTIAL" | "NO" }> {
+export function chooseFamilies(context: TrainingPlanningContext, templates: RulesTemplates = currentTemplates()): Array<{ family: RankedFamily; support: "YES" | "PARTIAL" | "NO" }> {
   const phases = context.periodization.phases;
   const reference = phases.find((p) => volumeCount(p) > 0);
   if (!reference) return [{ family: "FULL_BODY", support: "YES" }];
-  const preference = preferenceFor(reference.sessionsPerWeek, context.student.experience);
+  const preference = templates.preference(reference.sessionsPerWeek, context.student.experience);
   const order = [...new Set<RankedFamily>([...preference, "UPPER_LOWER", "PUSH_PULL_LEGS", "BODY_PART", "FULL_BODY"])];
   const sensible = (f: RankedFamily) => reference.sessionsPerWeek >= templates.minSessions[f];
-  const support = new Map(order.map((f) => [f, supportOf(f, phases)] as const));
+  const support = new Map(order.map((f) => [f, supportOf(f, phases, templates)] as const));
   const recommended = preference.find((f) => support.get(f) === "YES") ?? "FULL_BODY";
   const picked: RankedFamily[] = [recommended];
   if (!picked.includes("FULL_BODY")) picked.push("FULL_BODY");
   for (const f of order) {
-    if (picked.length >= 3) break;
+    if (picked.length >= templates.maxStrategies) break;
     if (!picked.includes(f) && sensible(f) && support.get(f) === "YES") picked.push(f);
   }
-  if (picked.length < 3) {
+  if (picked.length < templates.maxStrategies) {
     const card = order.find((f) => !picked.includes(f) && sensible(f) && support.get(f) !== "YES");
     if (card) picked.push(card);
   }
   return picked.map((family) => ({ family, support: support.get(family) ?? "YES" }));
 }
 
-export function produceRulesBlueprint(bundle: PlanningContextBundle, templates: RulesTemplates = RULES_TEMPLATES): TrainingBlueprint {
+/** The templates rules mode uses: the default ruleset's (gymgital-base@2026.11.5+); the interim constants only if a ruleset has none. */
+export function currentTemplates(): RulesTemplates {
+  return rulesTemplatesFromRuleSet() ?? RULES_TEMPLATES;
+}
+
+export function produceRulesBlueprint(bundle: PlanningContextBundle, templates: RulesTemplates = currentTemplates()): TrainingBlueprint {
   const { context } = bundle;
   const chosen = chooseFamilies(context, templates);
   const ids = ["S1", "S2", "S3"] as const;
@@ -156,7 +148,7 @@ export function produceRulesBlueprint(bundle: PlanningContextBundle, templates: 
     contextHash: bundle.contextHash,
     structureFingerprint: bundle.refs.structureFingerprint,
     aliasMapHash: bundle.aliases.aliasMapHash,
-    roleFocusRef: ROLE_FOCUS_INTERIM,
+    roleFocusRef: templates.version === RULES_TEMPLATES.version ? ROLE_FOCUS_INTERIM : templates.version,
     global: {
       goalCodes: context.student.goalCodes.filter((g) => /^[A-Z_]{3,30}$/.test(g)).slice(0, 3),
       rationale: RULES_GLOBAL_RATIONALE,

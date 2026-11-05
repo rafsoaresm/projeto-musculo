@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BLUEPRINT_LABEL, trainingBlueprintSchema, type TrainingBlueprint } from "@/modules/prescricao/planejador/blueprint";
 import { validatePlannerResponse } from "@/modules/prescricao/planejador/blueprint-validate";
-import type { PlanningContextBundle, PlanningWorkout } from "@/modules/prescricao/planejador/context-types";
 import { blueprintHash } from "@/modules/prescricao/planejador/hashes";
 import { ROLE_FOCUS_INTERIM_TABLE } from "@/modules/prescricao/planejador/role-focus";
 import { chooseFamilies, nonVolumeRoleOf, preferenceFor, produceRulesBlueprint } from "@/modules/prescricao/planejador/rules-mode/producer";
@@ -11,41 +10,10 @@ import {
 import { proseProblems } from "@/modules/prescricao/planejador/text-guards";
 import { toStrategyListView } from "@/modules/prescricao/planejador/strategy-view";
 import { ROLE_FOCUS_INTERIM } from "@/modules/prescricao/planejador/versions";
-import { CANARY, canaryBundle, upperLowerResponse, xintusBundle } from "./helpers/planning-fixtures";
+import { CANARY, canaryBundle, synth, upperLowerResponse, xintusBundle, type PhaseSpec, type Spec } from "./helpers/planning-fixtures";
 
 // Rules mode (sub-stage 1.3): the SAME TrainingBlueprint type as the AI planner, built with no network and no clock from the coded context.
 // Pure tests; the persistence and the service are in planner-service.test.ts.
-type Spec = string | { label: string; modalities?: string[] | null; existingFocus?: PlanningWorkout["existingFocus"] };
-interface PhaseSpec { sessionsPerWeek: number; labels: Spec[] }
-
-let base: PlanningContextBundle | null = null;
-async function synth(phases: PhaseSpec[], experience: "BEGINNER" | "INTERMEDIATE" | "ADVANCED" | null = "INTERMEDIATE"): Promise<PlanningContextBundle> {
-  base ??= await xintusBundle();
-  const workouts = new Map<string, `T${number}`>();
-  const alias = (label: string): `T${number}` => {
-    if (!workouts.has(label)) workouts.set(label, `T${workouts.size + 1}`);
-    return workouts.get(label)!;
-  };
-  const periodization = {
-    irregular: false,
-    phases: phases.map((p, i) => ({
-      index: i + 1, weeks: 4, sessionsPerWeek: p.sessionsPerWeek, stimulus: "HYPERTROPHY", weekdays: null,
-      weekSequence: [] as string[],
-      workouts: p.labels.map((spec) => {
-        const s = typeof spec === "string" ? { label: spec } : spec;
-        return {
-          alias: alias(s.label), sessionsInPhase: 4, perWeek: { min: 1, max: 1 }, modalities: s.modalities === undefined ? ["RESISTANCE"] : s.modalities,
-          exerciseTarget: 6, existingFocus: s.existingFocus ?? null, hasFixedItems: false,
-        } satisfies PlanningWorkout;
-      }),
-    })),
-  };
-  return {
-    ...base,
-    context: { ...base.context, student: { ...base.context.student, experience }, periodization },
-    aliases: { ...base.aliases, workouts: new Map([...workouts].map(([label, a]) => [a, label])) },
-  };
-}
 const families = (b: TrainingBlueprint) => b.strategies.map((s) => s.splitFamily);
 const rolesOf = (b: TrainingBlueprint, strategy: "S1" | "S2" | "S3", phase = 1) =>
   Object.fromEntries(b.strategies.find((s) => s.strategyId === strategy)!.phases.find((p) => p.phaseIndex === phase)!.workouts.map((w) => [w.label, w.role]));
@@ -71,11 +39,11 @@ describe("the producer returns the contract's blueprint, deterministically", () 
 
   it("is a RULES blueprint, never presented as AI: producer, label, provenance, fixed names, no candidates, no deltas, no dose or progression intent", async () => {
     const b = produceRulesBlueprint(await xintusBundle());
-    expect(b.producer).toEqual({ kind: "RULES", templatesVersion: RULES_TEMPLATES_VERSION });
+    expect(b.producer).toEqual({ kind: "RULES", templatesVersion: "gymgital-base@2026.11.5" });
     expect(RULES_TEMPLATES_VERSION).toBe("interim-1");
     expect(b.label).toBe(BLUEPRINT_LABEL.RULES);
     expect(b.label).toBe("Heurística operacional (editável)");
-    expect(b.roleFocusRef).toBe(ROLE_FOCUS_INTERIM);
+    expect(b.roleFocusRef).toBe("gymgital-base@2026.11.5");
     for (const s of b.strategies) {
       expect(s.provenance).toBe("RULES_HEURISTIC");
       expect(s.dosingIntent).toEqual([]);
