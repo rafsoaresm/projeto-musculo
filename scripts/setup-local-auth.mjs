@@ -10,6 +10,8 @@ const files = [
 const generated = {
   AUTH_SECRET: () => randomBytes(48).toString("base64url"),
   PLATFORM_SETUP_TOKEN: () => randomBytes(48).toString("base64url"),
+  // Master key (AES-256-GCM) that encrypts the AI provider keys in the local database. Local only: production configures its own secret.
+  AI_SECRETS_KEY: () => randomBytes(32).toString("base64url"),
 };
 // EMAIL_TRANSPORT=capture keeps the text of e-mail in the local database for the browser tests; the
 // application only honours it on localhost or 127.0.0.1.
@@ -17,6 +19,8 @@ const generated = {
 const fixed = {
   DEMO_MODE: "true",
   EMAIL_TRANSPORT: "capture",
+  // Allows the simulated AI provider (no network, fixed answers) for tests and local development. NEVER set in production.
+  AI_MOCK_ENABLED: "true",
 };
 
 async function read(file) {

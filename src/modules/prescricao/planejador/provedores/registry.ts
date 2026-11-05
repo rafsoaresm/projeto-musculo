@@ -11,6 +11,4 @@ const ADAPTERS: Readonly<Record<ProviderKind, PlannerProvider>> = Object.freeze(
 /** The adapter for a kind. `mock` is only usable when the caller checked `AI_MOCK_ENABLED` (the gate does). */
 export const providerFor = (kind: ProviderKind): PlannerProvider => ADAPTERS[kind];
 
-export const PROVIDER_LABEL: Readonly<Record<ProviderKind, string>> = Object.freeze({
-  mock: "Simulado (testes)", openai: "OpenAI", anthropic: "Anthropic", google: "Google (Gemini)",
-});
+export { PROVIDER_LABEL } from "./labels";

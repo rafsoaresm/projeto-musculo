@@ -104,6 +104,10 @@ export interface OrganizationAiRow {
   quotaPlanId: string | null;
   quotaPlanName: string | null;
   usedTokens: number;
+  usedInput: number;
+  usedOutput: number;
+  /** Reserved by calls in flight (counted against the allowance like use). */
+  reservedTokens: number;
   version: number;
 }
 export type SetOrganizationResult = "saved" | "conflict" | "plan_required" | "ack_required" | "not_found";
@@ -120,6 +124,14 @@ export interface UsageRow {
   /** Null when no row of the group was priced: shown as "custo desconhecido", never 0. */
   costMicros: number | null;
   currency: Currency | null;
+}
+export interface CircuitView {
+  providerKind: string;
+  modelId: string;
+  state: "CLOSED" | "OPEN" | "HALF_OPEN";
+  consecutiveFailures: number;
+  /** Since when the state holds (opened_at for OPEN/HALF_OPEN, else the last update). */
+  since: string;
 }
 export interface AiAuditRow {
   id: string;
@@ -145,6 +157,12 @@ export function aiPlatformFor(db: D1Database, context: PlatformContext) {
       .bind(userId, crypto.randomUUID(), organizationId, action, subject, new Date().toISOString());
 
   return {
+    /** True for an active platform manager who has two-factor on: the only kind of actor that may change anything here (decision D5). */
+    async canWrite(): Promise<boolean> {
+      const row = await db.prepare(`SELECT 1 AS ok WHERE ${writer}`).bind(userId).first<{ ok: number }>();
+      return row !== null;
+    },
+
     // ---------- global switch ----------
     async getSettings(): Promise<{ killSwitch: boolean; byEmail: string | null; at: string | null }> {
       const row = await db
@@ -387,7 +405,8 @@ export function aiPlatformFor(db: D1Database, context: PlatformContext) {
       const result = await db
         .prepare(
           `SELECT o.id AS organizationId, o.name AS organizationName, COALESCE(os.enabled, 0) AS enabled, os.quota_plan_id AS quotaPlanId, qp.name AS quotaPlanName,
-                  COALESCE(um.used_input + um.used_output, 0) AS usedTokens, COALESCE(os.version, 0) AS version
+                  COALESCE(um.used_input + um.used_output, 0) AS usedTokens, COALESCE(um.used_input, 0) AS usedInput,
+                  COALESCE(um.used_output, 0) AS usedOutput, COALESCE(um.reserved_input + um.reserved_output, 0) AS reservedTokens, COALESCE(os.version, 0) AS version
              FROM organizations o LEFT JOIN ai_organization_settings os ON os.organization_id = o.id
              LEFT JOIN ai_quota_plans qp ON qp.id = os.quota_plan_id
              LEFT JOIN ai_usage_month um ON um.organization_id = o.id AND um.month = ?2
@@ -463,6 +482,26 @@ export function aiPlatformFor(db: D1Database, context: PlatformContext) {
         )
         .bind(userId, month)
         .all<UsageRow>();
+      return result.results;
+    },
+
+    /** Last "Testar modelo" of a task (any manager): the panel allows one test per task every few seconds. */
+    async lastModelTestAt(task: AiTask): Promise<string | null> {
+      const row = await db
+        .prepare(`SELECT MAX(a.created_at) AS at FROM access_audit_events a WHERE a.action = 'AI_MODEL_TESTED' AND a.subject_id = ?2 AND ${adminGuard("?1")}`)
+        .bind(userId, task)
+        .first<{ at: string | null }>();
+      return row?.at ?? null;
+    },
+
+    async listCircuits(): Promise<CircuitView[]> {
+      const result = await db
+        .prepare(
+          `SELECT provider_kind AS providerKind, model_id AS modelId, state, consecutive_failures AS consecutiveFailures, COALESCE(opened_at, updated_at) AS since
+             FROM ai_circuit_state WHERE ${adminGuard("?1")} ORDER BY provider_kind, model_id`,
+        )
+        .bind(userId)
+        .all<CircuitView>();
       return result.results;
     },
 

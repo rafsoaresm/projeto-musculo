@@ -145,7 +145,10 @@ export const mockProvider: PlannerProvider = {
     if (model === "mock-truncated") return fail("TRUNCATED", 1, { ...usage, outputTokens: settings.maxOutputTokens }, 200);
     let context: TrainingPlanningContext | null = null;
     try {
-      context = (JSON.parse(req.user) as { context?: TrainingPlanningContext }).context ?? null;
+      const parsed = JSON.parse(req.user) as { context?: TrainingPlanningContext; task?: string };
+      // "Testar modelo" of the gestor panel: a constant, student-free message asking for {"ok":true}
+      if (parsed.task === "CONNECTIVITY_CHECK") return { ok: true, json: { ok: true }, usage: estimateUsage(req, 11), latencyMs: 1, providerRequestId: null, finish: "STOP" };
+      context = parsed.context ?? null;
     } catch {
       context = null;
     }

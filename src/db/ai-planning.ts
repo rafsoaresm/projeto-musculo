@@ -7,6 +7,7 @@ import type { AiTask, ProviderErrorCode } from "@/modules/prescricao/planejador/
 import {
   monthKey, remainingTokens, type Allowance, type Currency, type MonthUse, type Reservation, type TypedPrices,
 } from "@/modules/prescricao/planejador/quota";
+import { adminGuard } from "./platform";
 import { revisionGate } from "./revision-gates";
 import { activeUser, assertContext, technicalAccessExists, type AuthenticatedContext } from "./students";
 
@@ -824,14 +825,29 @@ export function aiPlanningFor(db: D1Database, context: AuthenticatedContext | nu
  * The ONLY reader of provider-key ciphertext. It returns the sealed value for one provider to the server code that is about to call
  * it (the caller decrypts with `secrets.ts` and never keeps the plaintext). Membership of the acting user is proven in the statement.
  */
+/** The one SELECT of key ciphertext: `?3` is the provider kind, the guard decides who may read (an active member, or an active platform manager). */
+const keyQuery = (guard: string) => `SELECT key_ciphertext AS ciphertext, key_key_id AS keyId FROM ai_provider_connections WHERE kind = ?3 AND ${guard}`;
+
 export function aiSystemFor(db: D1Database, context: AuthenticatedContext | null) {
   const { userId, organizationId } = assertContext(context);
   return {
     async readKeyForCall(kind: string): Promise<{ ciphertext: string; keyId: string } | null> {
-      const row = await db
-        .prepare(`SELECT key_ciphertext AS ciphertext, key_key_id AS keyId FROM ai_provider_connections WHERE kind = ?3 AND ${MEMBER("?1", "?2")}`)
-        .bind(organizationId, userId, kind)
-        .first<{ ciphertext: string; keyId: string }>();
+      const row = await db.prepare(keyQuery(MEMBER("?1", "?2"))).bind(organizationId, userId, kind).first<{ ciphertext: string; keyId: string }>();
+      return row ?? null;
+    },
+  };
+}
+
+/**
+ * The same reader for the gestor panel's "Testar conexão", "Listar modelos" and "Testar modelo": an active platform manager, never an
+ * organization. The ciphertext is decrypted by the caller right before a request that carries no student data and is never returned.
+ */
+export function aiPlatformKeyFor(db: D1Database, context: { userId: string }) {
+  const userId = context?.userId?.trim();
+  if (!userId) throw new Error("AUTHENTICATION_REQUIRED");
+  return {
+    async readKeyForTest(kind: string): Promise<{ ciphertext: string; keyId: string } | null> {
+      const row = await db.prepare(keyQuery(adminGuard("?1"))).bind(userId, null, kind).first<{ ciphertext: string; keyId: string }>();
       return row ?? null;
     },
   };

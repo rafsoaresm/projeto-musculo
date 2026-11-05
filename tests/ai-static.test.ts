@@ -158,9 +158,18 @@ describe("boundaries of the module", () => {
 describe("planning orchestration (sub-stage 1.3)", () => {
   const importsOf = (text: string) => [...stripComments(text).matchAll(/(?:from|import)\s+["']([^"']+)["']/g)].map((m) => m[1]);
 
-  it("nothing reaches a provider outside the gate: only orchestration.ts imports the adapters or the registry", () => {
+  it("nothing reaches a provider outside a gate: only orchestration.ts (planning gate) and the gestor service (panel gate, no student data) import the adapters or the registry", () => {
     const importers = SRC.filter((f) => !f.includes("/planejador/provedores/") && importsOf(read(f)).some((i) => /provedores\/(registry|openai|anthropic|google|mock)$/.test(i))).map(rel);
-    expect(importers).toEqual(["src/modules/prescricao/planejador/orchestration.ts"]);
+    expect(importers).toEqual(["src/modules/gestor/ai-service.ts", "src/modules/prescricao/planejador/orchestration.ts"]);
+    // the panel's calls: body-less model listing and one constant prompt; each only after `ready()` (writer + both kill switches), and the
+    // service can reach no student: it imports neither the context builder, nor the generation loader, nor the orchestration
+    const panel = stripComments(read(join(ROOT, "src/modules/gestor/ai-service.ts")));
+    expect(panel.match(/\.listModels\(/g)).toHaveLength(2);
+    expect(panel.match(/callWithPolicy\(/g)).toHaveLength(1);
+    expect(panel.match(/await ready\(\)/g)?.length).toBeGreaterThanOrEqual(3);
+    expect(panel).toContain("{ values: [], tokens: [], prose: [] }");
+    expect(panel).toContain("MODEL_TEST_USER");
+    expect(importsOf(read(join(ROOT, "src/modules/gestor/ai-service.ts"))).filter((i) => /context|orchestration|automatica|@\/db\/(students|plans|generation|assessments)/.test(i))).toEqual([]);
     // and inside orchestration the adapter is only invoked by the function that takes a reservation as proof
     const text = stripComments(read(join(ROOT, "src/modules/prescricao/planejador/orchestration.ts")));
     expect(text).toMatch(/^import "server-only";/m);
@@ -205,5 +214,69 @@ describe("planning orchestration (sub-stage 1.3)", () => {
     const requests = stripComments(read(join(ROOT, "src/db/data-requests.ts")));
     expect(requests).toMatch(/aiPlanningFor\(db, context\)\.eraseStudentAi\(/);
     expect(stripComments(read(join(ROOT, "src/modules/prescricao/planejador/orchestration.ts")))).not.toContain("eraseStudentAi");
+  });
+});
+
+describe("the gestor panel (sub-stage 1.4)", () => {
+  const GESTOR = walk(join(ROOT, "src/modules/gestor")).filter((f) => /\/ai-[\w-]+\.(ts|tsx)$/.test(f));
+  const PAGE = join(ROOT, "src/app/gestor/(painel)/inteligencia-artificial/page.tsx");
+  const isClient = (f: string) => read(f).startsWith('"use client";');
+
+  it("client components never import anything that can read, decrypt or send a key", () => {
+    const clients = GESTOR.filter(isClient);
+    expect(clients.map(rel).sort()).toEqual([
+      "src/modules/gestor/ai-kill-switch.tsx", "src/modules/gestor/ai-models.tsx", "src/modules/gestor/ai-organizations.tsx", "src/modules/gestor/ai-plans.tsx",
+      "src/modules/gestor/ai-providers.tsx", "src/modules/gestor/ai-ui.tsx",
+    ]);
+    for (const f of clients) {
+      const text = stripComments(read(f));
+      expect(text, rel(f)).not.toMatch(/key_ciphertext|readKeyForTest|openSecret|sealSecret|ai-service|@\/db\/ai-plan|server-only|process\.env|localStorage|sessionStorage/);
+      // the only module of src/db a client may name is a type-only import
+      for (const m of text.matchAll(/^import (?!type)[^;]*from "(@\/db\/[^"]+)"/gm)) throw new Error(`${rel(f)} imports ${m[1]} at runtime`);
+      expect(text, rel(f)).not.toMatch(/console\s*\./);
+    }
+  });
+
+  it("the key field is write-only: a password input, autocomplete off, never given a value from the server", () => {
+    const text = read(join(ROOT, "src/modules/gestor/ai-providers.tsx"));
+    expect(text).toMatch(/type="password"/);
+    expect(text).toMatch(/autoComplete="off"/);
+    expect(text).toContain("data-1p-ignore");
+    expect(text).not.toMatch(/defaultValue=/);
+    expect(text).not.toMatch(/connection\.(key|apiKey|ciphertext)/);
+  });
+
+  it("every action asks for an active platform manager first; the actions file only exports async functions", () => {
+    const text = read(join(ROOT, "src/modules/gestor/ai-actions.ts"));
+    expect(text.startsWith('"use server";')).toBe(true);
+    const code = stripComments(text);
+    const names = [...code.matchAll(/^export (async function|function|const|class|let|var)\s+(\w+)/gm)];
+    for (const m of names) expect(m[1], m[2]).toBe("async function");
+    for (const m of code.matchAll(/^export async function (\w+)[\s\S]*?^}/gm)) {
+      expect(m[0], m[1]).toMatch(/requirePlatformAdmin\(\)|writerOrMessage\(\)/);
+      expect(m[0], m[1]).not.toMatch(/organizationId\s*=\s*(?:await|\w+\.headers)|headers\(\)|cookies\(\)/);
+    }
+    expect(names.length).toBeGreaterThanOrEqual(10);
+  });
+
+  it("the service is the only gestor file that decrypts a key, and the page never reads one", () => {
+    for (const f of GESTOR) {
+      const text = stripComments(read(f));
+      if (rel(f) !== "src/modules/gestor/ai-service.ts") expect(text, rel(f)).not.toMatch(/openSecret|sealSecret|readKeyForTest/);
+    }
+    expect(stripComments(read(PAGE))).not.toMatch(/openSecret|readKeyForTest|key_ciphertext|apiKey/);
+    expect(read(join(ROOT, "src/modules/gestor/ai-service.ts"))).toMatch(/^import "server-only";/);
+  });
+
+  it("no Next link or browser call fixes a mount path (/api, /_next)", () => {
+    for (const f of [...GESTOR, PAGE]) expect(stripComments(read(f)), rel(f)).not.toMatch(/["'`]\/(?:api|_next)\b|fetch\(/);
+  });
+
+  it("the page and the navigation are wired: route, nav item, audit labels for every AI action", () => {
+    expect(read(join(ROOT, "src/modules/platform/surfaces.ts"))).toContain('slug: "inteligencia-artificial"');
+    expect(read(PAGE)).toContain("requirePlatformAdmin()");
+    const labels = read(join(ROOT, "src/modules/gestor/audit-table.tsx"));
+    const actions = read(join(ROOT, "src/db/ai-platform.ts")).match(/AI_AUDIT_ACTIONS = \[([\s\S]*?)\] as const/)![1].match(/AI_[A-Z_]+/g)!;
+    for (const action of actions) expect(labels, action).toContain(action);
   });
 });

@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import { aiPanelScenario } from "./ai-gestor";
 import {
   addStudent,
   createProfessional,
@@ -26,6 +27,7 @@ test("the platform manager is activated once and manages organizations without s
   browser,
   baseURL,
 }) => {
+  test.setTimeout(240_000); // a whole-product flow: the manager, the invitations, the recovery, the AI panel and the terms
   // A professional with an organization and a student that must stay private.
   // Unique names: the local database keeps organizations from earlier runs.
   const studio = `Estúdio do gestor ${crypto.randomUUID().slice(0, 8)}`;
@@ -241,6 +243,9 @@ test("the platform manager is activated once and manages organizations without s
   await expect(manager.page.getByRole("heading", { name: "Quem contratou a ferramenta." })).toBeVisible();
   await manager.page.goto("./gestor/auditoria");
   await expect(manager.page.getByText("Verificação em duas etapas redefinida com o código de ativação").first()).toBeVisible();
+
+  // Sub-stage 1.4: the AI panel (keys, models, plans, organizations, usage). It turns the second step on for this manager.
+  await aiPanelScenario(manager.page, pro.page, studio);
 
   // The terms: the text in force is the approved one, and the manager can change it on a page of its own.
   // This is the last thing the scenario does: publishing a text asks everyone to accept again.
