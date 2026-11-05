@@ -65,6 +65,8 @@ export interface ReserveInput {
   ledgerId: string;
   /** Server generated: `${runId}:${attempt}`, never a client key. */
   requestKey: string;
+  /** The RUNNING run this reservation belongs to: `reserve` stamps `planning_runs.ledger_id` in the same batch, so a crashed run can be charged by id. */
+  runId?: string;
   providerKind: string;
   modelId: string;
   reservation: Reservation;
@@ -486,8 +488,21 @@ export function aiPlanningFor(db: D1Database, context: AuthenticatedContext | nu
 
     /** ONE batch: ensure the month row, sweep stale reservations, conditional reserve, ledger insert. `ok:false` = a predicate refused (re-read the gate to say which). */
     async reserve(input: ReserveInput): Promise<ReserveResult> {
-      const results = await db.batch(reserveStatements(db, ctx, input, null));
-      return changesOf(results[results.length - 1]) === 1 ? { ok: true, ledgerId: input.ledgerId } : { ok: false };
+      const statements = reserveStatements(db, ctx, input, null);
+      const ledgerAt = statements.length - 1;
+      if (input.runId) {
+        // Only when the ledger row was just inserted and the run is still RUNNING: the run now points at its reservation.
+        statements.push(
+          db
+            .prepare(
+              `UPDATE planning_runs SET ledger_id = ?5 WHERE id = ?6 AND organization_id = ?1 AND revision_id = ?4 AND plan_id = ?3 AND status = 'RUNNING'
+                 AND (SELECT changes()) = 1 AND ${MEMBER("?1", "?2")}`,
+            )
+            .bind(ctx.organizationId, ctx.userId, input.planId, input.revisionId, input.ledgerId, input.runId),
+        );
+      }
+      const results = await db.batch(statements);
+      return changesOf(results[ledgerAt]) === 1 ? { ok: true, ledgerId: input.ledgerId } : { ok: false };
     },
 
     /** Settle, release or charge-unknown ONE reservation (no run involved: panel tests, probes). Returns whether the reservation was still RESERVED. */
@@ -632,13 +647,14 @@ export function aiPlanningFor(db: D1Database, context: AuthenticatedContext | nu
      * Takes over a STALE run of the SAME idempotency key in ONE batch: the old ledger row (if any) is charged as unknown by id, the run's attempt and
      * start are moved by compare-and-set, and the new reservation (request key `${runId}:${attempt + 1}`) is made only if that CAS won.
      */
-    async takeoverRun(input: { runId: string; expectedStartedAt: string; expectedAttempt: number; oldLedgerId: string | null; oldInputEstimate: number; reserve: Omit<ReserveInput, "requestKey" | "ledgerId"> & { newLedgerId: string } }): Promise<ReserveResult & { attempt?: number }> {
+    async takeoverRun(input: { runId: string; expectedStartedAt: string; expectedAttempt: number; oldLedgerId: string | null; oldInputEstimate: number; reserve: Omit<ReserveInput, "requestKey" | "ledgerId"> & { newLedgerId: string } }): Promise<ReserveResult & { attempt?: number; claimed?: boolean }> {
       const now = input.reserve.now;
       const newAttempt = input.expectedAttempt + 1;
       const statements: D1PreparedStatement[] = [];
       if (input.oldLedgerId) {
         statements.push(...ledgerStatements(db, ctx, { kind: "CHARGE_UNKNOWN", ledgerId: input.oldLedgerId, inputTokens: input.oldInputEstimate, errorCode: "STALE", attempts: 1, latencyMs: null, now }));
       }
+      const casAt = statements.length;
       statements.push(
         db
           .prepare(
@@ -654,7 +670,10 @@ export function aiPlanningFor(db: D1Database, context: AuthenticatedContext | nu
       });
       statements.push(...reserve);
       const results = await db.batch(statements);
-      return changesOf(results[results.length - 1]) === 1 ? { ok: true, ledgerId: input.reserve.newLedgerId, attempt: newAttempt } : { ok: false };
+      if (changesOf(results[results.length - 1]) === 1) return { ok: true, ledgerId: input.reserve.newLedgerId, attempt: newAttempt };
+      // `claimed`: this caller WON the compare-and-set but the quota refused: the run is RUNNING at `attempt` and must be finished (FAILED) with it.
+      // Not claimed: another caller took the run (or it moved): do nothing.
+      return changesOf(results[casAt]) === 1 ? { ok: false, claimed: true, attempt: newAttempt } : { ok: false, claimed: false };
     },
 
     /** A stale RUNNING run that blocks the single-flight key (another idempotency key): charge its ledger row as unknown and mark it FAILED/STALE. */
@@ -754,14 +773,18 @@ export function aiPlanningFor(db: D1Database, context: AuthenticatedContext | nu
       ]);
     },
 
-    /** Any answer that proves the provider is up (including model-quality failures) closes the circuit. */
-    async circuitSuccess(kind: string, modelId: string, now: Date): Promise<void> {
+    /**
+     * Any answer that proves the provider is up (including model-quality failures) closes the circuit, but only an answer to a request SENT at or after
+     * the circuit opened (`sentAt`): a slow success from a call that was already in flight when it opened must not close it early.
+     */
+    async circuitSuccess(kind: string, modelId: string, now: Date, sentAt: Date): Promise<void> {
       await db
         .prepare(
           `UPDATE ai_circuit_state SET state = 'CLOSED', consecutive_failures = 0, first_failure_at = NULL, opened_at = NULL, probe_started_at = NULL, updated_at = ?5
-            WHERE provider_kind = ?3 AND model_id = ?4 AND (state <> 'CLOSED' OR consecutive_failures > 0) AND ${MEMBER("?1", "?2")}`,
+            WHERE provider_kind = ?3 AND model_id = ?4 AND (state <> 'CLOSED' OR consecutive_failures > 0)
+              AND (opened_at IS NULL OR opened_at <= ?6) AND ${MEMBER("?1", "?2")}`,
         )
-        .bind(organizationId, userId, kind, modelId, iso(now))
+        .bind(organizationId, userId, kind, modelId, iso(now), iso(sentAt))
         .run();
     },
 

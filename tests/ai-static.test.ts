@@ -130,7 +130,12 @@ describe("boundaries of the module", () => {
     for (const sql of statements) {
       // platform-wide reads (switch, task row, provider presence, circuit) are still gated by membership of the acting organization
       expect(sql, sql.slice(0, 80)).toMatch(/organization_id|revisionGate|MEMBER|\?1|\$\{gate\}/);
+      // tenant tables: the organization column itself must appear (a MEMBER or ?1 alone does not prove the filter)
+      const touchesTenantTable = /\b(ai_planner_cache|planning_runs|planning_run_payloads|ai_usage_ledger|ai_usage_month|blueprint_acceptances)\b/.test(sql);
+      if (touchesTenantTable) expect(sql, `tenant filter: ${sql.slice(0, 80)}`).toMatch(/organization_id/);
     }
+    expect(read(join(ROOT, "src/app/api/health/route.ts"))).toContain('.bind("0047_ai_planning")');
+    expect(stripComments(read(join(ROOT, "src/modules/prescricao/planejador/provedores/http.ts")))).toContain('redirect: "error"');
   });
 
   it("every statement of the manager repository carries the manager guard", () => {

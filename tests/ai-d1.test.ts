@@ -938,10 +938,29 @@ describe("takeover of a stale run", () => {
   async function runningWithLedger(d: Draft) {
     const r = runArgs(d);
     await ai().runStart(r);
-    const res = reserveArgs(d, { requestKey: `${r.runId}:1` });
+    const res = reserveArgs(d, { requestKey: `${r.runId}:1`, runId: r.runId });
     expect((await ai().reserve(res)).ok).toBe(true);
     return { r, res };
   }
+
+  it("reserve stamps the ledger id on the run, so a crashed run is charged by the id the NEXT request reads from the run row", async () => {
+    const { r, res } = await runningWithLedger(D.a1);
+    const held = (await ai().runById(D.a1.planId, D.a1.revisionId, r.runId))!;
+    expect(held.ledgerId).toBe(res.ledgerId);
+    expect(await ai().expireStaleRun({ planId: D.a1.planId, revisionId: D.a1.revisionId, runId: r.runId, expectedStartedAt: held.startedAt, oldLedgerId: held.ledgerId, oldInputEstimate: 100, now: at(STALE + 500) })).toBe(true);
+    expect(await ledgerRow(res.ledgerId)).toMatchObject({ state: "CHARGED_UNKNOWN", error_code: "STALE" });
+    await reconciled();
+  });
+
+  it("a reserve refused by the quota leaves the run without a ledger id; a reserve of another run never stamps this one", async () => {
+    const r = runArgs(D.a1);
+    await ai().runStart(r);
+    await run("UPDATE ai_usage_month SET used_input = used_input + 1000000 WHERE organization_id = 'org-a' AND month = ?1", MONTH);
+    expect((await ai().reserve(reserveArgs(D.a1, { requestKey: `${r.runId}:1`, runId: r.runId }))).ok).toBe(false);
+    await run("UPDATE ai_usage_month SET used_input = used_input - 1000000 WHERE organization_id = 'org-a' AND month = ?1", MONTH);
+    expect((await ai().runById(D.a1.planId, D.a1.revisionId, r.runId))!.ledgerId).toBeNull();
+    await ai().finishRun({ ledger: null, run: { runId: r.runId, planId: D.a1.planId, revisionId: D.a1.revisionId, attempt: 1, status: "FAILED", failureCode: "x", cacheHit: false, responseHash: null, blueprintHash: null, usageJson: null, ledgerId: null, now: NOW } });
+  });
 
   it("charges the old row as unknown, moves the attempt and reserves `${runId}:${attempt + 1}` in ONE batch, with no waiting window", async () => {
     const { r, res } = await runningWithLedger(D.a1);
@@ -978,6 +997,7 @@ describe("takeover of a stale run", () => {
     });
     const results = await Promise.all([take(), take()]);
     expect(results.filter((x) => x.ok)).toHaveLength(1);
+    expect(results.filter((x) => !x.ok).every((x) => x.claimed === false)).toBe(true);
     expect(await n("SELECT COUNT(*) AS n FROM ai_usage_ledger WHERE request_key = ?1", `${r.runId}:2`)).toBe(1);
     expect(await ledgerRow(res.ledgerId)).toMatchObject({ state: "CHARGED_UNKNOWN" });
     await reconciled();
@@ -994,7 +1014,8 @@ describe("takeover of a stale run", () => {
       runId: r.runId, expectedStartedAt: r.now.toISOString(), expectedAttempt: 1, oldLedgerId: res.ledgerId, oldInputEstimate: 100,
       reserve: { ...reserveArgs(D.a1, { now: at(STALE + 3000) }), newLedgerId: id("led") },
     });
-    expect(outcome.ok).toBe(false);
+    // the CAS won but the quota refused: the caller is told it holds attempt 2 and must finish it
+    expect(outcome).toEqual({ ok: false, claimed: true, attempt: 2 });
     await run("UPDATE ai_usage_month SET used_input = used_input - 100000 WHERE organization_id = 'org-a' AND month = ?1", MONTH);
     await ai().expireStaleRun({ planId: D.a1.planId, revisionId: D.a1.revisionId, runId: r.runId, expectedStartedAt: (await ai().runById(D.a1.planId, D.a1.revisionId, r.runId))!.startedAt, oldLedgerId: null, oldInputEstimate: 0, now: at(STALE + 4000) });
   });
@@ -1052,7 +1073,10 @@ describe("circuit breaker (per provider and model)", () => {
     expect(await state()).toMatchObject({ state: "HALF_OPEN", probe_started_at: t.toISOString() });
     // while the probe is fresh nobody else passes
     expect((await ai().circuitCheck("openai", M, at(4000 + CIRCUIT_OPEN_MS + 1000), STALE)).allowed).toBe(false);
-    await ai().circuitSuccess("openai", M, at(70_000));
+    // a success of a request sent BEFORE the circuit opened does not close it
+    await ai().circuitSuccess("openai", M, at(70_000), at(1));
+    expect(await state()).toMatchObject({ state: "HALF_OPEN" });
+    await ai().circuitSuccess("openai", M, at(70_000), t);
     expect(await state()).toMatchObject({ state: "CLOSED", consecutive_failures: 0, first_failure_at: null, opened_at: null, probe_started_at: null });
     expect((await ai().circuitCheck("openai", M, at(71_000), STALE)).decision).toBe("ALLOW");
   });
@@ -1074,7 +1098,7 @@ describe("circuit breaker (per provider and model)", () => {
   });
 
   it("only an active member may move or read the circuit", async () => {
-    await ai("stranger").circuitSuccess("openai", M, NOW);
+    await ai("stranger").circuitSuccess("openai", M, NOW, NOW);
     await ai("stranger").circuitFailure("openai", "stranger-model", "SERVER_ERROR", NOW);
     expect(await state("stranger-model")).toBeNull();
     expect((await ai("stranger").circuitCheck("openai", M, NOW, STALE)).decision).toBe("ALLOW"); // no row visible => nothing to enforce, and nothing leaked

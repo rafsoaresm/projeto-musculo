@@ -23,11 +23,15 @@ export const AI_CACHE_TTL_DEFAULT_DAYS = 14;
 export const AI_CACHE_TTL_MAX_DAYS = 60;
 /** Fixed pause before the single retry (deterministic, bounded). */
 export const AI_RETRY_DELAY_MS = 400;
-/** A run, a reservation and a breaker probe older than `timeout + this` are stale (design §3.6). */
+/** A run, a reservation and a breaker probe older than `all attempts + this` are stale (design §3.6). */
 export const AI_STALE_GRACE_MS = 15_000;
 
 export const estimateTokens = (chars: number): number => Math.ceil(Math.max(0, chars) / AI_CHARS_PER_TOKEN);
-export const staleAfterMs = (timeoutMs: number): number => timeoutMs + AI_STALE_GRACE_MS;
+/**
+ * A reservation covers EVERY attempt (`maxRetries + 1`), so a live run can last `(maxRetries + 1) * timeout + the retry pauses`: staleness starts after that
+ * plus the grace. The orchestration must also bound the whole execution (attempts + pauses) to this window.
+ */
+export const staleAfterMs = (timeoutMs: number, maxRetries: 0 | 1): number => (maxRetries + 1) * timeoutMs + maxRetries * AI_RETRY_DELAY_MS + AI_STALE_GRACE_MS;
 
 /** `YYYY-MM` in America/Sao_Paulo. */
 export const monthKey = (now: Date): string => todayInBrazil(now).slice(0, 7);

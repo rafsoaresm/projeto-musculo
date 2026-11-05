@@ -93,13 +93,13 @@ describe("the master key from the environment", () => {
     expect(secretsConfigFrom(read({ AI_SECRETS_KEY: K1, AI_SECRETS_KEY_ID: "bad id!" }))).toBeNull();
   });
 
-  it("resolves the other variables with ceilings and defaults; only the exact string 'true' turns a switch on", () => {
+  it("resolves the other variables with ceilings and defaults; the kill switch fails closed", () => {
     const read = (map: Record<string, string>) => (name: string) => map[name];
     const base = resolveAiEnv(read({}));
     expect(base).toMatchObject({ killSwitch: false, mockEnabled: false, hardTimeoutMs: 25_000, hardMaxOutputTokens: 8192, cacheTtlDays: 14, secrets: null });
     expect(resolveAiEnv(read({ AI_PLANNER_DISABLED: "true" })).killSwitch).toBe(true);
-    expect(resolveAiEnv(read({ AI_PLANNER_DISABLED: "1" })).killSwitch).toBe(false);
-    expect(resolveAiEnv(read({ AI_PLANNER_DISABLED: "TRUE" })).killSwitch).toBe(false);
+    for (const on of ["1", "TRUE", "yes", " true ", "anything"]) expect(resolveAiEnv(read({ AI_PLANNER_DISABLED: on })).killSwitch, on).toBe(true);
+    for (const off of ["", "  ", "false", "0", "no", "OFF"]) expect(resolveAiEnv(read({ AI_PLANNER_DISABLED: off })).killSwitch, off).toBe(false);
     expect(resolveAiEnv(read({ AI_MOCK_ENABLED: "true" })).mockEnabled).toBe(true);
     expect(resolveAiEnv(read({ AI_CACHE_TTL_DAYS: "999" })).cacheTtlDays).toBe(14);
     expect(resolveAiEnv(read({ AI_CACHE_TTL_DAYS: "30" })).cacheTtlDays).toBe(30);

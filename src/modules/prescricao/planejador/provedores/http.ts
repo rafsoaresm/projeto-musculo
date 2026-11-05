@@ -40,7 +40,7 @@ export async function send(req: HttpRequest, options: { fetchImpl?: typeof fetch
   });
   try {
     const f = options.fetchImpl ?? ((u: string, i?: RequestInit) => globalThis.fetch(u, i));
-    const init: RequestInit = { method: req.method, headers: req.headers, signal: controller.signal, ...(req.body !== undefined ? { body: req.body } : {}) };
+    const init: RequestInit = { method: req.method, headers: req.headers, signal: controller.signal, redirect: "error", ...(req.body !== undefined ? { body: req.body } : {}) };
     const res = await Promise.race([f(req.url, init), aborted]);
     const declared = Number(res.headers.get("content-length"));
     if (Number.isFinite(declared) && declared > MAX_RESPONSE_BYTES) return fail("INVALID_JSON", false, res.status);

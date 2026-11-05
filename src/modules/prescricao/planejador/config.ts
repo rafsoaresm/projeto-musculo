@@ -7,7 +7,7 @@ import { AI_CACHE_TTL_DEFAULT_DAYS, AI_CACHE_TTL_MAX_DAYS, AI_HARD_MAX_OUTPUT_DE
 import { secretsConfigFrom, type SecretsConfig } from "./secrets";
 
 export interface AiEnv {
-  /** `AI_PLANNER_DISABLED` is exactly "true": wins over everything and blocks every provider call, panel tests included. */
+  /** `AI_PLANNER_DISABLED` is any non-empty value except false/0/no/off (fail closed): wins over everything and blocks every provider call, panel tests included. */
   killSwitch: boolean;
   secrets: SecretsConfig | null;
   mockEnabled: boolean;
@@ -26,9 +26,16 @@ function intIn(raw: string | undefined, fallback: number, min: number, max: numb
   return Number.isInteger(n) && n >= min && n <= max ? n : fallback;
 }
 
+/** Fails closed: any non-empty value turns the emergency switch ON, except the explicit negatives. */
+function killSwitchOn(raw: string | undefined): boolean {
+  const v = raw?.trim().toLowerCase();
+  if (!v) return false;
+  return !["false", "0", "no", "off"].includes(v);
+}
+
 export function resolveAiEnv(read: (name: string) => string | undefined): AiEnv {
   return {
-    killSwitch: read("AI_PLANNER_DISABLED")?.trim() === "true",
+    killSwitch: killSwitchOn(read("AI_PLANNER_DISABLED")),
     secrets: secretsConfigFrom(read),
     mockEnabled: read("AI_MOCK_ENABLED")?.trim() === "true",
     hardTimeoutMs: intIn(read("AI_HARD_TIMEOUT_MS"), AI_HARD_TIMEOUT_DEFAULT_MS, 2000, 120_000),

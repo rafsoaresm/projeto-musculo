@@ -3,10 +3,17 @@ import { plannerResponseSchema } from "@/modules/prescricao/planejador/blueprint
 import { evaluateAiGate, type AiGateState } from "@/modules/prescricao/planejador/gate";
 import {
   allowanceIsZero, costMicros, estimatedTokensOf, estimateTokens, fitsAllowance, maximalPlannerResponse, monthKey, outputBudget, remainingTokens, reservationFor,
-  withinPerRequestCap, worstCaseOutputTokens, AI_CHARS_PER_TOKEN, THINKING_ALLOWANCE_TOKENS, type Allowance, type MonthUse, type TypedPrices,
+  staleAfterMs, withinPerRequestCap, worstCaseOutputTokens, AI_CHARS_PER_TOKEN, THINKING_ALLOWANCE_TOKENS, type Allowance, type MonthUse, type TypedPrices,
 } from "@/modules/prescricao/planejador/quota";
 import { CIRCUIT_OPEN_MS, circuitDecision, countsForCircuit, type CircuitRow } from "@/modules/prescricao/planejador/circuit";
 import { xintusBundle } from "./helpers/planning-fixtures";
+
+describe("staleAfterMs", () => {
+  it("covers every attempt of a reservation plus the pause and the grace", () => {
+    expect(staleAfterMs(25_000, 0)).toBe(40_000);
+    expect(staleAfterMs(25_000, 1)).toBe(2 * 25_000 + 400 + 15_000);
+  });
+});
 
 const ZERO: MonthUse = { usedInput: 0, usedOutput: 0, reservedInput: 0, reservedOutput: 0 };
 

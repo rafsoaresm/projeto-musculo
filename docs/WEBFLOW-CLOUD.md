@@ -82,7 +82,7 @@ A recuperação de senha por e-mail (0.26) só existe quando as cinco variáveis
 
 | Variável | Segredo? | Padrão | O que faz |
 |---|---|---|---|
-| `AI_PLANNER_DISABLED` | não | ausente | exatamente `"true"` desliga **toda** chamada a provedor, inclusive "Testar conexão", "Listar modelos" e "Testar modelo" do painel; vence qualquer outra comporta |
+| `AI_PLANNER_DISABLED` | não | ausente | qualquer valor não vazio, exceto `false`, `0`, `no` e `off`, desliga (falha fechado) **toda** chamada a provedor, inclusive "Testar conexão", "Listar modelos" e "Testar modelo" do painel; vence qualquer outra comporta |
 | `AI_SECRETS_KEY` | **sim** | ausente | base64url de 32 bytes aleatórios (chave AES-256-GCM que cifra as chaves dos provedores no D1). Ausente ou inválida: o painel diz que não dá para salvar chaves e **nada é guardado**; chaves já guardadas não são lidas |
 | `AI_SECRETS_KEY_ID` | não | `k1` | rótulo guardado com cada cifra (para a troca de chave) |
 | `AI_SECRETS_KEY_PREVIOUS` + `AI_SECRETS_KEY_PREVIOUS_ID` | **sim** (a chave) | ausentes | chave antiga, só para decifrar durante uma troca; salvar de novo recifra com a atual |
