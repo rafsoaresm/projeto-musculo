@@ -5,7 +5,7 @@ import { Notice } from "@/components/ui";
 import { Sheet } from "@/components/sheet";
 import type { ApplyCounts, ManualWorkout } from "@/db/prescription-proposals";
 import { applyProposal } from "./actions";
-import { NETWORK_ERROR, useIntent } from "./use-intent";
+import { NETWORK_ERROR, isRedirectError, useIntent } from "./use-intent";
 
 export interface ApplyView {
   counts: ApplyCounts;
@@ -231,7 +231,9 @@ export function ApplyPanel({
                       setError(result.error);
                       router.refresh();
                     }
-                  } catch {
+                  } catch (caught) {
+                    // `redirect()` after a successful apply: the router is already taking the professional to the draft.
+                    if (isRedirectError(caught)) return;
                     setError(NETWORK_ERROR);
                   }
                 })

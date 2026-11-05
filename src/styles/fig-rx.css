@@ -448,11 +448,17 @@
   border-right: 1px solid var(--color-primary);
   border-radius: 0 8px 8px 0;
 }
-.rx-cell-main {
+/* A célula continua célula de tabela (display: table-cell); o que alinha o conteúdo é o div de dentro. */
+.rx-cell-flex {
   display: flex;
   align-items: center;
   gap: 10px;
   min-height: 48px;
+  min-width: 0;
+}
+.rx-cell-wrap {
+  flex-wrap: wrap;
+  gap: 4px;
 }
 .rx-name,
 .rx-rowtitle {
@@ -467,13 +473,6 @@
 .rx-cell-origin {
   font-size: var(--font-size-xs);
   color: var(--color-muted);
-}
-.rx-exercise-table .rx-cell-origin {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-  min-height: 48px;
 }
 .rx-exercise-table th:nth-child(1) {
   width: 36%;
@@ -1093,6 +1092,9 @@
     grid-column: 1;
     min-height: 0;
   }
+  .rx-cell-flex {
+    min-height: 0;
+  }
   .rx-exercise-table .rx-cell-dose {
     grid-column: 1;
     padding-left: 30px;
@@ -1312,4 +1314,101 @@
   overflow-x: auto;
   flex-wrap: nowrap;
   scrollbar-width: thin;
+}
+
+/* O painel de cada aba empilha seus blocos com o mesmo respiro do resto do workbench (antes ficavam colados). */
+.rx-tabpanel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--rx-gap);
+  align-content: start;
+  min-width: 0;
+}
+.rx-tabpanel[hidden] {
+  display: none !important;
+}
+/* Tabela de alertas: colunas fixas para o status não passar do cartão. */
+@media (min-width: 861px) {
+  .rx-alert-table {
+    table-layout: fixed;
+  }
+  .rx-alert-table th:nth-child(2),
+  .rx-alert-table td:nth-child(2) {
+    width: 112px;
+  }
+  .rx-alert-table th:nth-child(3),
+  .rx-alert-table td:nth-child(3) {
+    width: 108px;
+  }
+  .rx-alert-table .rx-rowtitle {
+    overflow-wrap: anywhere;
+  }
+}
+
+/* O título de uma linha quebra em vez de passar por cima das outras colunas. */
+.rx-cell-flex > .rx-rowbtn {
+  flex: 1 1 0;
+  min-width: 0;
+  white-space: normal;
+}
+.rx-rowtitle {
+  display: block;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+/* Tabela de exercícios: colunas fixas dentro do cartão (a última, o botão "Revisar", nunca sai dele). */
+@media (min-width: 861px) {
+  .rx-exercise-table {
+    table-layout: fixed;
+  }
+  .rx-exercise-table th:nth-child(1) {
+    width: 28%;
+  }
+  .rx-exercise-table th:nth-child(2) {
+    width: 31%;
+  }
+  .rx-exercise-table th:nth-child(3) {
+    width: 25%;
+  }
+  .rx-exercise-table th:nth-child(4) {
+    width: 16%;
+  }
+  .rx-exercise-table .rx-cell-dose {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    padding-right: 20px;
+  }
+  .rx-exercise-table .rx-cell-origin .rx-chip {
+    max-width: 100%;
+    white-space: normal;
+    text-align: left;
+  }
+  .rx-exercise-table .rx-cell-action .rx-rowaction {
+    min-width: 0;
+    width: 100%;
+    max-width: 104px;
+  }
+}
+
+/* Entre o celular e telas largas a lista fica estreita (o painel ocupa 365px): as quatro colunas continuam, com a dose e as pílulas quebrando em linhas. */
+@media (min-width: 861px) and (max-width: 1439px) {
+  .rx-exercise-table th:nth-child(1) {
+    width: 33%;
+  }
+  .rx-exercise-table th:nth-child(2) {
+    width: 25%;
+  }
+  .rx-exercise-table th:nth-child(3) {
+    width: 26%;
+  }
+  .rx-exercise-table th:nth-child(4) {
+    width: 16%;
+  }
+  .rx-exercise-table .rx-cell-dose {
+    padding-right: 10px;
+  }
+  .rx-exercise-table .rx-cell-action .rx-rowaction {
+    max-width: 88px;
+  }
 }

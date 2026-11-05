@@ -601,15 +601,19 @@ function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, cr
                             return (
                               <tr key={it.slotKey} className={on ? "selected" : undefined} aria-current={on ? "true" : undefined}>
                                 <td className="rx-cell-main">
-                                  <span className={on ? "rx-order on" : "rx-order"} aria-hidden="true">
-                                    {n + 1}
-                                  </span>
-                                  <span className="rx-name">{it.exerciseName}</span>
+                                  <div className="rx-cell-flex">
+                                    <span className={on ? "rx-order on" : "rx-order"} aria-hidden="true">
+                                      {n + 1}
+                                    </span>
+                                    <span className="rx-name">{it.exerciseName}</span>
+                                  </div>
                                 </td>
                                 <td className="rx-cell-dose">{it.display.doseText || "Dose em branco: você preenche depois de aplicar."}</td>
                                 <td className="rx-cell-origin">
-                                  <span className={it.origin === "ENGINE" ? "rx-chip rx-chip-line" : "rx-chip rx-chip-brand"}>{PROPOSAL_ORIGIN_LABELS[it.origin]}</span>
-                                  {meta && <span className="rx-chip rx-chip-warning">{meta}</span>}
+                                  <div className="rx-cell-flex rx-cell-wrap">
+                                    <span className={it.origin === "ENGINE" ? "rx-chip rx-chip-line" : "rx-chip rx-chip-brand"}>{PROPOSAL_ORIGIN_LABELS[it.origin]}</span>
+                                    {meta && <span className="rx-chip rx-chip-warning">{meta}</span>}
+                                  </div>
                                 </td>
                                 <td className="rx-cell-action">
                                   <button
