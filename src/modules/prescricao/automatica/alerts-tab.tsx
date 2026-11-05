@@ -152,13 +152,15 @@ export function AlertsTab({
                   return (
                     <tr key={row.key} className={on ? "selected" : undefined} aria-current={on ? "true" : undefined}>
                       <td className="rx-cell-main">
-                        <span className={on ? "rx-order on" : "rx-order"} aria-hidden="true">
-                          {n}
-                        </span>
-                        <button type="button" className="rx-rowbtn" onClick={() => onSelect(row.key)} aria-label={`Revisar registro ${n}: ${row.message}`}>
-                          <span className="rx-rowtitle">{row.message}</span>
-                          <span className="rx-sub rx-mobile">{row.origin}</span>
-                        </button>
+                        <div className="rx-cell-flex">
+                          <span className={on ? "rx-order on" : "rx-order"} aria-hidden="true">
+                            {n}
+                          </span>
+                          <button type="button" className="rx-rowbtn" onClick={() => onSelect(row.key)} aria-label={`Revisar registro ${n}: ${row.message}`}>
+                            <span className="rx-rowtitle">{row.message}</span>
+                            <span className="rx-sub rx-mobile">{row.origin}</span>
+                          </button>
+                        </div>
                       </td>
                       <td className="rx-cell-origin">{row.origin}</td>
                       <td className="rx-cell-status">

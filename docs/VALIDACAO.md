@@ -10,6 +10,18 @@ Refeita a partir das medidas de `get_design_context` de cada frame (arquivo `RRH
 - **Decisões:** a caixa "Notificar" é desenhada desabilitada e desmarcada com texto honesto (o produto não avisa o aluno); "Baixar PDF" não aparece como ação nas revisões não entregues (o PDF só existe após a entrega): na aprovada o lugar do botão é de "Mais ações", e no menu o item fica desabilitado com o motivo; "Criar nova revisão" e a prescrição completa (com doses por sessão) continuam acessíveis (menu e bloco recolhido "Prescrição completa e estrutura do ciclo").
 - **Não verificado:** nenhuma comparação visual lado a lado com o Figma nem e2e após esta mudança (só `tsc`, `eslint` e `tests/approval.test.ts`); leitor de tela; mount `/treinador`.
 
+## Correções da 0.96.1 vistas em produção (0.96.2) — 05/11/2026
+
+O usuário, olhando o site publicado, apontou três defeitos que a verificação local não pegou:
+
+1. **Tabela de exercícios da proposta desalinhada** (linha selecionada cobrindo só parte da linha, colunas "Dosagem" e "Origem" deslocadas): a célula `td` tinha `display: flex`, o que a tira da tabela. Agora o `td` fica célula de tabela e o conteúdo vai num `div` interno; colunas fixas; a lista não passa mais do cartão.
+2. **Seções coladas na aba Alertas** (filtros, lista, painel e auditoria sem espaço entre si, tabela passando por cima do painel): o painel de cada aba não tinha CSS. Agora é uma grade com o mesmo respiro do resto, e a tabela de alertas tem colunas fixas e título que quebra.
+3. **"Não foi possível falar com o servidor" ao aplicar a proposta ao rascunho**, e depois o fluxo seguia normal: a ação termina em `redirect()`, que faz a chamada lançar o erro de redirecionamento do Next, e o `catch` o tratava como falha de rede. `isRedirectError` (`use-intent.ts`) agora separa os dois; o e2e confere que o aviso nunca aparece depois de aplicar.
+
+- **Testes executados (local):** `tsc`, `eslint`, vitest dos arquivos novos e e2e (desktop e celular) de `automatic-prescription`, `delivery`, `plans`, `plans-new`, `prescription`, `execution`, `assessments`, `assessment-finalize`, `planner`, `structure-v2` e `export`: **36 passaram**. Capturas da proposta a 1280 e 1440 px (Sessões e Alertas) conferidas depois dos ajustes.
+- **Por que a verificação anterior não viu isso:** o e2e de aplicar só esperava o resultado final (que acontecia) e as capturas feitas antes eram de outros estados. Agora há uma checagem do aviso falso e capturas dessas duas abas.
+- **Não verificado:** a suíte inteira e o mount `/treinador` fora do CI; as demais abas (Premissas, Regras) e as telas de celular da proposta continuam só com captura, não com teste de layout.
+
 ## Figma fiel: AP, GEN e RX refeitos a partir dos frames (0.96.1) — 05/11/2026
 
 A 0.96.0 foi feita sem consultar os frames (só AP-01) e o usuário apontou que não seguia o Figma. A 0.96.1 refaz AP-01..10, GEN-01..08 e RX-01..11 a partir de `get_screenshot` + `get_design_context` de cada frame. Sem migration.

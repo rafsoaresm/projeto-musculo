@@ -21,3 +21,13 @@ export function useIntent() {
 }
 
 export const NETWORK_ERROR = "Não foi possível falar com o servidor. Tente de novo: o mesmo pedido será reenviado, sem duplicar nada.";
+
+/**
+ * A server action that ends in `redirect()` makes the awaiting call throw Next's redirect error while the router is already navigating.
+ * That is a success, not a network failure: callers must not show NETWORK_ERROR for it.
+ */
+export function isRedirectError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const { digest, message } = error as { digest?: unknown; message?: unknown };
+  return (typeof digest === "string" && digest.startsWith("NEXT_REDIRECT")) || (typeof message === "string" && message.includes("NEXT_REDIRECT"));
+}

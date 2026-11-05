@@ -235,8 +235,11 @@ test("automatic prescription from the periodization to the student's log", async
   const confirmApply = applyDialog.getByRole("button", { name: "Confirmar aplicação ao rascunho" });
   await expect(confirmApply).toBeDisabled();
   await applyDialog.getByLabel("Entendi que aplicar ao rascunho não publica os treinos").check();
+  // The redirect after a successful apply is not a network failure: the dialog must never flash "Não foi possível falar com o servidor".
+  const falseNetworkError = page.getByText(/Não foi possível falar com o servidor/).waitFor({ state: "visible", timeout: 12_000 }).then(() => true, () => false);
   await confirmApply.click();
   await expect(page.getByText("Proposta aplicada ao rascunho.")).toBeVisible({ timeout: 30_000 });
+  expect(await falseNetworkError).toBe(false);
   await expect(page.getByRole("heading", { name: "Doses por sessão" })).toBeVisible();
   await expect(page.getByText("Proposta automática").first()).toBeVisible();
 
