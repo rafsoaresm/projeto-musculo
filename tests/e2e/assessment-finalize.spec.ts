@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { addStudent, createProfessional, localIP, noHorizontalOverflow, readyPlan, showStudentTab } from "./helpers";
+import { addStudent, approveAndDeliver, openDeliverDialog, createProfessional, localIP, noHorizontalOverflow, readyPlan, showStudentTab } from "./helpers";
 import { PARQ } from "../../src/modules/avaliacoes/catalog";
 
 // Slice 0.77: the "Revisão" step, finalize, the recorded assessment, the plan gate on the PAR-Q, the amendment (retificação) and the history.
@@ -76,7 +76,7 @@ test("the Revisão step finalizes the Avaliação Física, the record shows the 
   // Meanwhile the plan still has no recorded screening: an open draft (with a "Sim" and no decision) never counts as one.
   const draftURL = page.url();
   await page.goto(revisionURL);
-  await expect(page.getByText("Triagem não registrada.")).toBeVisible();
+  await expect((await openDeliverDialog(page)).getByText("Triagem não registrada.")).toBeVisible();
   await page.goto(draftURL);
 
   // The decision, then Medidas with the handoff's example.
@@ -176,8 +176,7 @@ test("the Revisão step finalizes the Avaliação Física, the record shows the 
   await expect(page.getByText("PAR-Q com “Sim” e decisão profissional registrada")).toBeVisible();
   await expect(page.getByLabel(/Confirmo que não há triagem registrada/)).toHaveCount(0);
   await shots(page, "plano", testInfo.project.name);
-  await page.getByRole("button", { name: "Aprovar revisão" }).click();
-  await expect(page.getByRole("heading", { name: "Entregar ao aluno" })).toBeVisible();
+  await approveAndDeliver(page, false);
 
   // Retificar: a reason is required; the amendment is a new draft with the original's modules.
   await page.goto(recordedURL);

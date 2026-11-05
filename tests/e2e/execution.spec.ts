@@ -1,6 +1,7 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
 import {
   addStudent,
+  approveAndDeliver,
   createProfessional,
   localIP,
   newActor,
@@ -49,12 +50,7 @@ async function deliveredPlanWithClient(page: Page, browser: Browser, baseURL: st
     await page.getByRole("button", { name: "Copiar mesociclo" }).click();
     await expect(page.getByText("Mesociclo copiado.")).toBeVisible();
   }
-  await page.getByRole("button", { name: "Marcar estrutura como pronta" }).click();
-  await expect(page.getByRole("heading", { name: "Aprovar esta revisão" })).toBeVisible();
-  await page.getByLabel(/Confirmo que não há triagem registrada/).check();
-  await page.getByRole("button", { name: "Aprovar revisão" }).click();
-  await page.getByRole("button", { name: "Entregar ao aluno" }).click();
-  await expect(page.getByRole("heading", { name: "Entregue ao aluno" })).toBeVisible();
+  await approveAndDeliver(page);
 
   await page.goto(studentURL);
   await showStudentTab(page, "Acesso e dados");

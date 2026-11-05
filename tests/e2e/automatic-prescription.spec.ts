@@ -1,11 +1,14 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 import {
   addStudent,
+  approveAndDeliver,
+  confirmDelivery,
   createProfessional,
   joinStudent,
   localIP,
   newActor,
   noHorizontalOverflow,
+  openDeliverDialog,
   readyPlan,
   showStudentTab,
   signIn,
@@ -17,15 +20,6 @@ import {
 // deliver → the student sees the weeks with their progression and logs week 2, session 1. A manual plan delivered before stays
 // exactly as it was, and another organization cannot reach the proposal.
 const yesterday = () => new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
-
-async function approveAndDeliver(page: Page) {
-  await expect(page.getByRole("heading", { name: "Aprovar esta revisão" })).toBeVisible();
-  await page.getByLabel(/Confirmo que não há triagem registrada/).check();
-  await page.getByRole("button", { name: "Aprovar revisão" }).click();
-  await expect(page.getByRole("heading", { name: "Entregar ao aluno" })).toBeVisible();
-  await page.getByRole("button", { name: "Entregar ao aluno" }).click();
-  await expect(page.getByRole("heading", { name: "Entregue ao aluno" })).toBeVisible();
-}
 
 test("automatic prescription from the periodization to the student's log", async ({ page, browser, baseURL }) => {
   test.setTimeout(360_000);
@@ -62,12 +56,16 @@ test("automatic prescription from the periodization to the student's log", async
   // Nothing pre-selected: the button waits for the required answers.
   const generate = page.getByRole("button", { name: "Gerar prescrição automática" });
   await expect(generate).toBeDisabled();
-  await expect(page.getByText("Os valores padrão desta ferramenta não são recomendação universal.").first()).toBeVisible();
   await page.getByLabel("Estímulo da fase 1").selectOption("HYPERTROPHY");
   await page.getByLabel("Estímulo da fase 2").selectOption("STRENGTH");
   await expect(generate).toBeDisabled();
   await page.getByLabel("Estímulo da fase 3").selectOption("HYPERTROPHY");
   await page.getByRole("group", { name: "Equipamentos disponíveis" }).getByRole("button", { name: "Marcar todos" }).click();
+  // 0.96: three steps. The defaults of the engine are read in the second one and nothing there has to be edited; the third has the progression.
+  await page.getByRole("button", { name: /Políticas de dose/ }).click();
+  await expect(page.getByText("Os valores padrão desta ferramenta não são recomendação universal.").first()).toBeVisible();
+  await expect(generate).toBeEnabled();
+  await page.getByRole("button", { name: /Progressão/ }).click();
   const progression = page.getByRole("group", { name: /Progressão da Fase 01/ });
   await progression.getByLabel("Modelo").selectOption("LINEAR");
   await progression.getByLabel("Parâmetro").selectOption("sets");
@@ -160,7 +158,10 @@ test("automatic prescription from the periodization to the student's log", async
   await expect(page.getByRole("status").filter({ hasText: /Proposta atualizada|mudaram/ })).toBeVisible({ timeout: 30_000 });
 
   // 10. Apply to the draft: the existing flow continues on the revision page.
-  await page.getByRole("button", { name: "Aplicar ao rascunho" }).click();
+  await page.getByRole("button", { name: "Aplicar ao rascunho", exact: true }).click();
+  const applyDialog = page.getByRole("dialog", { name: "Aplicar ao rascunho" });
+  await expect(applyDialog.getByText("Repetir o pedido não duplica sessões.")).toBeVisible();
+  await applyDialog.getByRole("button", { name: "Confirmar e aplicar" }).click();
   await expect(page.getByText("Proposta aplicada ao rascunho.")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("heading", { name: "Doses por sessão" })).toBeVisible();
   await expect(page.getByText("Proposta automática").first()).toBeVisible();
@@ -193,10 +194,11 @@ test("automatic prescription from the periodization to the student's log", async
   await noHorizontalOverflow(page);
 
   // 11. Ready and approval by the professional; 12. delivery by the existing flow.
-  await page.getByRole("button", { name: "Marcar estrutura como pronta" }).click();
+  // One strip, one confirmation (0.96): the draft is closed, approved and delivered together.
+  const deliverDialog = await openDeliverDialog(page);
   // The edit made in week 2, session 1 only is counted (never "0 editados").
-  await expect(page.getByRole("note").filter({ hasText: /exercícios? propostos? automaticamente \([1-9]\d* editados? por você\)/ })).toBeVisible();
-  await approveAndDeliver(page);
+  await expect(deliverDialog.getByText(/exercícios? propostos? automaticamente \([1-9]\d* editados? por você\)/)).toBeVisible();
+  await confirmDelivery(page, deliverDialog, true);
   // The history of the proposal stays, read-only.
   await page.goto(autoURL);
   await expect(page.getByRole("heading", { name: "Histórico das propostas" })).toBeVisible();

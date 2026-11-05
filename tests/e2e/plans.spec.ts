@@ -1,6 +1,8 @@
 import { test, expect } from "@playwright/test";
 import {
   addStudent,
+  approveWithoutDelivering,
+  createNewRevision,
   createProfessional,
   localIP,
   newActor,
@@ -45,9 +47,7 @@ test("a professional saves, revisits and revises a plan; nobody else reaches it"
   // Change to six phases; saving is blocked from marking ready until saved.
   await page.getByLabel("Quantidade de fases").selectOption("6");
   await expect(page.getByText("Há alterações não salvas.")).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Marcar estrutura como pronta" }),
-  ).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Aprovar e entregar", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Salvar alterações" }).click();
   await expect(page.getByText("Rascunho salvo.")).toBeVisible();
   await page.reload();
@@ -55,15 +55,14 @@ test("a professional saves, revisits and revises a plan; nobody else reaches it"
   await expect(page.getByLabel("Quantidade de fases")).toHaveValue("6");
   await expect(page.locator(".big-stat")).toContainText("24");
 
-  // Mark the structure ready: the revision closes and says it is not approval.
-  await page.getByRole("button", { name: "Marcar estrutura como pronta" }).click();
-  await expect(page.getByText("Estrutura pronta", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText(/não é aprovação|Isto não é aprovação/).first()).toBeVisible();
+  // Approve without delivering (the exception, under "Mais ações"): the revision closes, is approved and the student does not get it.
+  await approveWithoutDelivering(page);
+  await expect(page.getByText("O aluno ainda não vê este plano", { exact: false })).toBeVisible();
   await expect(page.getByRole("button", { name: "Salvar alterações" })).toHaveCount(0);
   await expect(page.getByLabel("Data de início")).toHaveCount(0);
 
   // A revision is copied, never edited: revision 2 opens as a draft.
-  await page.getByRole("button", { name: "Criar nova revisão" }).click();
+  await createNewRevision(page);
   await expect(page.getByText("Revisão 2", { exact: false }).first()).toBeVisible();
   await expect(page.getByLabel("Quantidade de fases")).toHaveValue("6");
   await page.goto(studentURL);
@@ -73,7 +72,7 @@ test("a professional saves, revisits and revises a plan; nobody else reaches it"
   await expect(page.getByRole("link", { name: "Revisão 2" })).toBeVisible();
   // Revision 1 is still the validated one.
   await page.goto(revisionURL);
-  await expect(page.getByText("Estrutura pronta", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("region", { name: "Aprovada, não entregue" })).toBeVisible();
 
   // Another organization cannot open the plan or the student by address.
   const other = await newActor(browser, baseURL);

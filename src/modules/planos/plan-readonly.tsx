@@ -1,6 +1,5 @@
 "use client";
-import { useState, useTransition } from "react";
-import { Info } from "lucide-react";
+import { useState } from "react";
 import type { PeriodizationSchedule } from "@/modules/training/contracts";
 import {
   ScheduleResult,
@@ -8,40 +7,19 @@ import {
 } from "@/modules/training/components/schedule-view";
 import { phaseTitle } from "@/modules/training/format";
 import { phaseName } from "@/modules/training/periodization";
-import type { PlanActionResult } from "./actions";
 
 /**
  * A revision past DRAFT. Nothing here edits it: changes go into a new revision,
- * so what was validated stays exactly as it was.
+ * so what was validated stays exactly as it was. The status and the way to a new revision are in the strip above (0.96).
  */
 export function PlanReadOnly({
-  state,
   schedule,
-  createRevision,
 }: {
-  state: string;
   schedule: PeriodizationSchedule;
-  createRevision: () => Promise<PlanActionResult>;
 }) {
   const [selected, setSelected] = useState(0);
-  const [error, setError] = useState("");
-  const [pending, startTransition] = useTransition();
   return (
     <>
-      <div className="notice">
-        <Info size={19} />
-        <p>
-          A estrutura e os exercícios desta revisão foram fechados e não podem
-          mais ser alterados.{" "}
-          {state === "DELIVERED"
-            ? "O aluno vê esta revisão."
-            : state === "APPROVED"
-              ? "Ela está aprovada, mas o aluno só a vê depois da entrega."
-              : "Ainda não é aprovação nem liberação: o aluno não recebe este plano."}{" "}
-          Para mudar algo, crie uma nova revisão a partir dela, que leva os
-          exercícios junto.
-        </p>
-      </div>
       <div className="planner-layout">
         <section className="panel">
           <div className="panel-title">
@@ -61,24 +39,6 @@ export function PlanReadOnly({
               </button>
             ))}
           </div>
-          {error && (
-            <p className="error-message" role="alert">
-              {error}
-            </p>
-          )}
-          <button
-            className="button primary"
-            type="button"
-            disabled={pending}
-            onClick={() =>
-              startTransition(async () => {
-                const outcome = await createRevision();
-                if (outcome?.error) setError(outcome.error);
-              })
-            }
-          >
-            {pending ? "Criando…" : "Criar nova revisão"}
-          </button>
         </section>
         <aside className="planner-summary" aria-live="polite">
           <ScheduleSummary schedule={schedule} />

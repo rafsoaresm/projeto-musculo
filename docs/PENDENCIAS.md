@@ -14,6 +14,14 @@ Estado conhecido em 28/10/2026: a 0.25.0 está no ar, com as migrations até a 0
 - **Responsável:** decidir se análise adicional por IA ficará desativada ou disponível sob demanda ao profissional, com orçamento por organização e política de dados. Na 0.95.0 existem só os contratos (desligados, sem provedor).
 - **Especificação e aceite:** [HANDOFF-MOTOR-PRESCRICAO-INDIVIDUALIZACAO-V3.md](HANDOFF-MOTOR-PRESCRICAO-INDIVIDUALIZACAO-V3.md). Abertas: fatia D (política de dose adaptativa + calendário de progressão) e fatia E (revisão por IA de verdade).
 
+## Handoff unificado do Figma (05/11/2026, 0.96.0)
+
+- **Código:** RX (workbench com abas Sessões | Alertas | Premissas | Regras, painel contextual, telas móveis RX-04..10) **não feito**; só o rodapé de aplicação com prévia foi entregue. Fatia própria, com o e2e de proposta junto.
+- **Código:** GEN: edição de uma política por vez em painel/tela própria, equipamentos em tela própria no celular e pendências com link ao campo **não feitos** (só as três etapas).
+- **Código:** AV-01..06 não comparados com a tela atual; frames móveis de AV não existem no Figma.
+- **Responsável:** a caixa "notificar o aluno" do modal AP-02 **não existe**, porque o produto não tem envio de aviso de entrega. Decidir se haverá (exige serviço de e-mail/notificação e outbox). Hoje a tela afirma que nada é enviado.
+- **Código:** conferir a 0.96.0 com a suíte e2e inteira nos dois mounts antes do merge.
+
 ## 1. Depende do Responsável (conta, domínio, decisão)
 
 | # | O que falta | Por que importa | Onde está |
