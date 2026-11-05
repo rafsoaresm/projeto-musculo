@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { test, expect } from "@playwright/test";
-import { addStudent, createProfessional, localIP, noHorizontalOverflow, readyPlan, showStudentTab } from "./helpers";
+import { addStudent, approveAndDeliver, createProfessional, localIP, noHorizontalOverflow, readyPlan, showStudentTab } from "./helpers";
 
 /**
  * The earlier format of the assessment can no longer be started, filled or recorded (user's decision of 03/11/2026: only the Avaliação
@@ -76,7 +76,7 @@ test("a recorded assessment of the earlier format stays readable under its own n
   // The plan cannot be approved while the alert has no review, and says where to record it.
   await page.goto(revisionURL);
   await expect(page.getByText("Revisão obrigatória antes da entrega.", { exact: false })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Aprovar revisão" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Aprovar e entregar", exact: true })).toBeDisabled();
   await expect(page.getByLabel(/Confirmo que não há triagem registrada/)).toHaveCount(0);
   await page.getByRole("link", { name: "Registrar a revisão" }).click();
 
@@ -95,8 +95,7 @@ test("a recorded assessment of the earlier format stays readable under its own n
   // Reviewed: the plan is approved, recording that assessment, with no acknowledgement asked.
   await page.goto(revisionURL);
   await expect(page.getByText("Alerta da triagem com revisão registrada")).toBeVisible();
-  await page.getByRole("button", { name: "Aprovar revisão" }).click();
-  await expect(page.getByRole("heading", { name: "Entregar ao aluno" })).toBeVisible();
+  await approveAndDeliver(page, false);
 
   // The evolution still reads it.
   await page.goto(`${studentURL}/evolucao`);

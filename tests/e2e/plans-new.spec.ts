@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { addStudent, createProfessional, localIP, newActor, noHorizontalOverflow } from "./helpers";
+import { addStudent, approveWithoutDelivering, createProfessional, localIP, newActor, noHorizontalOverflow } from "./helpers";
 
 // 0.93 (user, 03/11/2026): "Novo plano" from Planos e treinos asks for the student, and saving the structure goes straight to the prescription.
 const workout = (page: Page, label: string) => page.getByRole("region", { name: `Treino ${label}` });
@@ -104,10 +104,10 @@ test("Planos e treinos → Novo plano → choose the student → structure → p
   await expect(page.getByRole("heading", { name: "Prescrição dos exercícios" })).toBeInViewport();
   await page.goto(revisionURL);
 
-  // The approval path still works: mark ready, and the approval step appears.
-  await page.getByRole("button", { name: "Marcar estrutura como pronta" }).click();
-  await expect(page.getByText("Estrutura pronta", { exact: true }).first()).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Aprovar esta revisão" })).toBeVisible();
+  // The approval path still works: the one strip offers "Aprovar e entregar" and, under "Mais ações", the exception.
+  await expect(page.getByRole("button", { name: "Aprovar e entregar", exact: true })).toBeEnabled();
+  await approveWithoutDelivering(page);
+  await expect(page.getByRole("region", { name: "Aprovada, não entregue" })).toBeVisible();
   await expect(workout(page, "A").getByText("Agachamento goblet")).toBeVisible();
 
   // Another organization sees none of these students in its picker.

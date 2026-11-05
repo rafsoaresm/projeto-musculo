@@ -218,6 +218,55 @@ describe("approving and delivering", () => {
   });
 });
 
+describe("approving and delivering in one write (0.96)", () => {
+  it("goes from READY to DELIVERED at once, keeps every guard and converges on a repeated call", async () => {
+    const plans = plansFor(db, scope("tech-a"));
+    const plan = await newPlan();
+    // A draft is not deliverable; the acknowledgement about the missing screening is still asked.
+    expect((await plans.approveAndDeliver(plan.planId, plan.revisionId, { screeningNotRecorded: true })).status).toBe("not_found");
+    await plans.markReady(plan.planId, plan.revisionId);
+    expect(await plans.approveAndDeliver(plan.planId, plan.revisionId, { screeningNotRecorded: false })).toEqual({ status: "screening_acknowledgement_required" });
+    expect((await stateOf(plan.revisionId)).state).toBe("READY");
+    expect(await clientSees(plan.planId)).toBe(false);
+
+    expect(await plans.approveAndDeliver(plan.planId, plan.revisionId, { screeningNotRecorded: true }, at(40))).toEqual({ status: "delivered" });
+    expect(await stateOf(plan.revisionId)).toEqual({
+      state: "DELIVERED", approvedAt: at(40).toISOString(), approvedBy: "tech-a", screening: "NOT_RECORDED",
+      deliveredAt: at(40).toISOString(), deliveredBy: "tech-a",
+    });
+    expect(await clientSees(plan.planId)).toBe(true);
+    // A double click or a retry after a timeout changes nothing.
+    expect(await plans.approveAndDeliver(plan.planId, plan.revisionId, { screeningNotRecorded: true }, at(41))).toEqual({ status: "already_delivered" });
+    expect((await stateOf(plan.revisionId)).deliveredAt).toBe(at(40).toISOString());
+    const events = await db
+      .prepare("SELECT action FROM training_plan_events WHERE revision_id = ?1 AND action IN ('APPROVED','DELIVERED') ORDER BY created_at, rowid")
+      .bind(plan.revisionId)
+      .all<{ action: string }>();
+    expect(events.results.map((row) => row.action)).toEqual(["APPROVED", "DELIVERED"]);
+  });
+
+  it("delivers a revision that was approved without delivery, with no second approval", async () => {
+    const plans = plansFor(db, scope("tech-a"));
+    const plan = await newPlan();
+    await plans.markReady(plan.planId, plan.revisionId);
+    await plans.approve(plan.planId, plan.revisionId, { screeningNotRecorded: true }, at(50));
+    expect(await clientSees(plan.planId)).toBe(false);
+    expect(await plans.approveAndDeliver(plan.planId, plan.revisionId, { screeningNotRecorded: false }, at(51))).toEqual({ status: "delivered" });
+    const row = await stateOf(plan.revisionId);
+    expect(row.approvedAt).toBe(at(50).toISOString());
+    expect(row.deliveredAt).toBe(at(51).toISOString());
+    expect(await clientSees(plan.planId)).toBe(true);
+  });
+
+  it("is refused for anyone without technical access and publishes nothing", async () => {
+    const plan = await newPlan();
+    await plansFor(db, scope("tech-a")).markReady(plan.planId, plan.revisionId);
+    expect((await plansFor(db, scope("tech-b", "org-b")).approveAndDeliver(plan.planId, plan.revisionId, { screeningNotRecorded: true })).status).toBe("not_found");
+    expect((await plansFor(db, scope("commercial-a")).approveAndDeliver(plan.planId, plan.revisionId, { screeningNotRecorded: true })).status).toBe("not_found");
+    expect((await stateOf(plan.revisionId)).state).toBe("READY");
+  });
+});
+
 describe("what the client sees", () => {
   it("shows only delivered revisions, to the linked login, without anything private", async () => {
     const library = exercisesFor(db, scope("tech-a"));

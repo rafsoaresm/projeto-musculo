@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { addStudent, createProfessional, localIP, newActor, noHorizontalOverflow, readyPlan, showStudentTab } from "./helpers";
+import { addStudent, confirmDelivery, createProfessional, localIP, newActor, noHorizontalOverflow, openDeliverDialog, readyPlan, showStudentTab } from "./helpers";
 
 // The Avaliação Física is the only assessment (user's decision of 03/11/2026). Until it can be finalized (a later slice), no assessment can be
 // recorded: the plan approval keeps its acknowledgement path, and a draft never counts as a screening. The records of the earlier format that
@@ -13,8 +13,9 @@ test("without a recorded assessment the plan approval asks for the acknowledgeme
   const studentURL = await addStudent(page, "Aluno do aviso de ciência");
   const revisionURL = await readyPlan(page, studentURL, "Plano do aviso de ciência");
 
-  await expect(page.getByText("Triagem não registrada.")).toBeVisible();
-  await page.getByRole("link", { name: "Iniciar a avaliação física" }).click();
+  const noScreening = await openDeliverDialog(page);
+  await expect(noScreening.getByText("Triagem não registrada.")).toBeVisible();
+  await noScreening.getByRole("link", { name: "Iniciar a avaliação física" }).click();
   await expect(page.getByRole("heading", { name: "Avaliação Física de Aluno do aviso de ciência" })).toBeVisible();
   await page.getByRole("button", { name: "Iniciar avaliação física" }).click();
   await expect(page.getByRole("heading", { name: "Avaliação física de Aluno do aviso de ciência" })).toBeVisible();
@@ -26,12 +27,10 @@ test("without a recorded assessment the plan approval asks for the acknowledgeme
 
   // An open draft is not a recorded screening: the approval still asks for the acknowledgement, and with it the plan is approved.
   await page.goto(revisionURL);
-  await expect(page.getByText("Triagem não registrada.")).toBeVisible();
-  const approve = page.getByRole("button", { name: "Aprovar revisão" });
-  await expect(approve).toBeDisabled();
-  await page.getByLabel(/Confirmo que não há triagem registrada/).check();
-  await approve.click();
-  await expect(page.getByRole("heading", { name: "Entregar ao aluno" })).toBeVisible();
+  const dialog = await openDeliverDialog(page);
+  await expect(dialog.getByText("Triagem não registrada.")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Confirmar e entregar" })).toBeDisabled();
+  await confirmDelivery(page, dialog, true);
   await noHorizontalOverflow(page);
 });
 

@@ -38,6 +38,9 @@ const phaseName = (p: { index: number; name: string | null }) => `Fase ${String(
  * engine runs, the indicator says how many phases are done; a long periodization is generated in parts, one request after
  * the other, until it is complete.
  */
+type Step = 0 | 1 | 2;
+const STEPS = ["Diretrizes", "Políticas de dose", "Progressão"] as const;
+
 export function GenerationForm({ planId, revisionId, screen }: { planId: string; revisionId: string; screen: GenerationScreen }) {
   const router = useRouter();
   const intent = useIntent();
@@ -45,6 +48,8 @@ export function GenerationForm({ planId, revisionId, screen }: { planId: string;
   const [errors, setErrors] = useState<string[]>([]);
   const [serverQuestions, setServerQuestions] = useState<GenerationQuestion[]>([]);
   const [progress, setProgress] = useState<string>("");
+  // 0.96 (Figma GEN-01..08): the form is read in three steps. All of them stay mounted (hidden), so going back and forth keeps every choice.
+  const [step, setStep] = useState<Step>(0);
   const [pending, startTransition] = useTransition();
   const questions = useMemo(() => [...screen.questions, ...serverQuestions.filter((q) => !screen.questions.some((s) => s.code === q.code && s.phaseIndex === q.phaseIndex && s.label === q.label))], [screen.questions, serverQuestions]);
   const open = openRequired(questions, form);
@@ -138,8 +143,27 @@ export function GenerationForm({ planId, revisionId, screen }: { planId: string;
         </Notice>
       )}
 
-      <fieldset className="auto-section">
-        <legend>Perguntas obrigatórias</legend>
+      <ol className="auto-steps" aria-label="Etapas da geração">
+        {STEPS.map((label, index) => (
+          <li key={label}>
+            <button
+              type="button"
+              className={step === index ? "auto-step current" : "auto-step"}
+              aria-current={step === index ? "step" : undefined}
+              onClick={() => setStep(index as Step)}
+            >
+              <span className="auto-step-number" aria-hidden="true">
+                {index + 1}
+              </span>
+              {label}
+              {index === 0 && open.length > 0 && <span className="auto-step-flag">{open.length} {open.length === 1 ? "pendência" : "pendências"}</span>}
+            </button>
+          </li>
+        ))}
+      </ol>
+
+      <fieldset className="auto-section" hidden={step !== 0}>
+        <legend>Diretrizes: o que falta responder</legend>
         <p className="small muted">
           {open.length
             ? `${open.length} ${open.length === 1 ? "resposta falta" : "respostas faltam"} para gerar.`
@@ -267,8 +291,8 @@ export function GenerationForm({ planId, revisionId, screen }: { planId: string;
           })}
       </fieldset>
 
-      <fieldset className="auto-section">
-        <legend>Doses</legend>
+      <fieldset className="auto-section" hidden={step !== 1}>
+        <legend>Políticas de dose</legend>
         <p className="small">
           <Pill tone="warning">{BASIS_LABELS.HEURISTIC}</Pill> {NOT_UNIVERSAL} Cada valor proposto mostra a sua base e você revisa tudo antes de aplicar.
         </p>
@@ -290,7 +314,8 @@ export function GenerationForm({ planId, revisionId, screen }: { planId: string;
             </select>
           </label>
         </div>
-        <details className="auto-details" open>
+        {/* Closed by default (GEN-02): the defaults of the engine version apply without opening anything; opening is for editing. */}
+        <details className="auto-details">
           <summary>Política de doses ({screen.rules.id} {screen.rules.version}) · editável</summary>
           <p className="small muted">
             Dose inicial por estímulo, modalidade e medida. “Qualquer estímulo” vale para os estímulos sem linha própria. Mudar um valor
@@ -324,8 +349,8 @@ export function GenerationForm({ planId, revisionId, screen }: { planId: string;
         </details>
       </fieldset>
 
-      <fieldset className="auto-section">
-        <legend>Progressão semanal</legend>
+      <fieldset className="auto-section" hidden={step !== 2}>
+        <legend>Progressão semanal (opcional)</legend>
         <p className="small muted">
           Opcional, por fase. Sem progressão, a dose é a mesma em todas as semanas da fase. A progressão vale para os exercícios cuja
           dose tem o parâmetro escolhido; os demais ficam como estão, com aviso.
@@ -404,7 +429,7 @@ export function GenerationForm({ planId, revisionId, screen }: { planId: string;
       </fieldset>
 
       {screen.targetSuggestions.length > 0 && (
-        <details className="auto-details" open={form.coverage.length > 0 || form.coverageByWorkout.length > 0}>
+        <details className="auto-details" hidden={step !== 2} open={form.coverage.length > 0 || form.coverageByWorkout.length > 0}>
           <summary>Alvos por fase (opcional)</summary>
           <div className="auto-section">
             <p className="small muted">
@@ -467,7 +492,7 @@ export function GenerationForm({ planId, revisionId, screen }: { planId: string;
         </details>
       )}
 
-      <details className="auto-details">
+      <details className="auto-details" hidden={step !== 2}>
         <summary>Ajustes opcionais</summary>
         <div className="auto-section">
           <div className="field-grid">
@@ -531,7 +556,7 @@ export function GenerationForm({ planId, revisionId, screen }: { planId: string;
       </details>
 
       {info.length > 0 && (
-        <div className="auto-section">
+        <div className="auto-section" hidden={step !== 2}>
           <h3 className="small-heading">O que falta nos registros (não impede a geração)</h3>
           <ul className="auto-list">
             {info.map((q) => (
@@ -551,6 +576,16 @@ export function GenerationForm({ planId, revisionId, screen }: { planId: string;
         </div>
       )}
       <div className="auto-submit">
+        {step > 0 && (
+          <button type="button" className="button secondary" disabled={pending} onClick={() => setStep((step - 1) as Step)}>
+            Voltar
+          </button>
+        )}
+        {step < 2 && (
+          <button type="button" className="button secondary" disabled={pending} onClick={() => setStep((step + 1) as Step)}>
+            Continuar
+          </button>
+        )}
         <button className="button primary" disabled={pending || open.length > 0}>
           <Sparkles size={17} aria-hidden="true" /> {pending ? "Gerando…" : "Gerar prescrição automática"}
         </button>

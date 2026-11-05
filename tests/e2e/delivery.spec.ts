@@ -2,10 +2,12 @@ import { readFile } from "node:fs/promises";
 import { test, expect, type Page } from "@playwright/test";
 import {
   addStudent,
+  approveAndDeliver,
   createProfessional,
   localIP,
   newActor,
   noHorizontalOverflow,
+  openDeliverDialog,
   password,
   uniqueEmail,
   expectNoTermsBox, showStudentTab
@@ -56,8 +58,7 @@ test("a plan reaches the client only after the professional approves and deliver
     await page.getByRole("button", { name: "Copiar mesociclo" }).click();
     await expect(page.getByText("Mesociclo copiado.")).toBeVisible();
   }
-  await page.getByRole("button", { name: "Marcar estrutura como pronta" }).click();
-  await expect(page.getByRole("heading", { name: "Aprovar esta revisão" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Aprovar e entregar", exact: true })).toBeEnabled();
   const revisionURL = page.url();
 
   // The client gets access, and sees nothing yet.
@@ -76,33 +77,34 @@ test("a plan reaches the client only after the professional approves and deliver
   await client.page.getByRole("button", { name: "Aceitar convite" }).click();
   await expect(client.page.getByText("Nenhum treino liberado ainda.")).toBeVisible();
 
-  // Approval is a deliberate act: the screening warning has to be acknowledged.
+  // Approval is a deliberate act: the screening warning has to be acknowledged, inside the one confirmation.
   await page.goto(revisionURL);
-  await expect(page.getByText("Triagem não registrada.")).toBeVisible();
-  const approve = page.getByRole("button", { name: "Aprovar revisão" });
-  await expect(approve).toBeDisabled();
-  await page.getByLabel(/Confirmo que não há triagem registrada/).check();
-  await approve.click();
-  await expect(page.getByRole("heading", { name: "Entregar ao aluno" })).toBeVisible();
-  await expect(page.getByText("O aluno ainda não vê este plano.")).toBeVisible();
-  // Approved is not delivered: the client still sees nothing.
+  const confirmation = await openDeliverDialog(page);
+  await expect(confirmation.getByText("Triagem não registrada.")).toBeVisible();
+  await expect(confirmation.getByText("Esta ação não envia aviso ao aluno.")).toBeVisible();
+  const confirm = confirmation.getByRole("button", { name: "Confirmar e entregar" });
+  await expect(confirm).toBeDisabled();
+  // Cancelling changes nothing: the client still sees nothing.
+  await confirmation.getByRole("button", { name: "Cancelar" }).click();
+  await expect(page.getByRole("button", { name: "Aprovar e entregar", exact: true })).toBeVisible();
   await client.page.goto("./aluno/treino");
   await expect(client.page.getByText("Nenhum treino liberado ainda.")).toBeVisible();
 
-  await page.getByRole("button", { name: "Entregar ao aluno" }).click();
-  await expect(page.getByRole("heading", { name: "Entregue ao aluno" })).toBeVisible();
+  // One confirmation approves and delivers the same revision.
+  await approveAndDeliver(page);
   await expect(page.getByText("Revisão entregue ao aluno. Ela não muda mais.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Aprovar e entregar" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Editar|Remover|Duplicar|Adicionar/ })).toHaveCount(0);
 
   // The professional downloads the delivered revision as a PDF, and it is only offered now.
   const proDownload = page.waitForEvent("download");
-  await page.getByRole("link", { name: "Baixar PDF desta revisão" }).click();
+  await page.getByRole("link", { name: "Baixar PDF" }).click();
   const pro = await proDownload;
   expect(pro.suggestedFilename()).toBe("plano-Plano-entregue-rev1.pdf");
   const proFile = await readFile((await pro.path())!);
   expect(proFile.subarray(0, 5).toString()).toBe("%PDF-");
   expect(proFile.length).toBeGreaterThan(1500);
-  await expect(page.getByRole("heading", { name: "Entregue ao aluno" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Entregue ao aluno" })).toBeVisible();
 
   // Now the client sees exactly what was delivered.
   await client.page.goto("./aluno");

@@ -113,6 +113,14 @@ export type DeliverOutcome =
   | { status: "delivered" }
   | { status: "review_required"; assessedOn: string }
   | { status: "not_found" };
+/** READY to DELIVERED in one write. `already_delivered` makes a repeated click or a retry converge on the stored state. */
+export type ApproveDeliverOutcome =
+  | { status: "delivered" }
+  | { status: "already_delivered" }
+  | { status: "screening_acknowledgement_required" }
+  | { status: "review_required"; assessedOn: string }
+  | { status: "screening_changed" }
+  | { status: "not_found" };
 export type NewRevisionResult =
   | { status: "created"; revisionId: string }
   | { status: "draft_open" }
@@ -734,6 +742,72 @@ export function plansFor(
           return { status: "review_required", assessedOn: standing.assessedOn };
       }
       return { status: "not_found" };
+    },
+
+    /**
+     * READY (or APPROVED) to DELIVERED as ONE write: approval and delivery of the same revision, or neither (0.96 "Aprovar e entregar").
+     * It keeps every guard of `approve` and `deliver`: the screening standing is read the same way and the statements keep their
+     * `AND state = ...` conditions, so a second call, a double click or a retry after a timeout changes nothing and answers
+     * `already_delivered`. From APPROVED (the exception "Aprovar sem entregar") it only delivers and does not ask the approval again.
+     */
+    async approveAndDeliver(
+      planId: string,
+      revisionId: string,
+      acknowledgement: { screeningNotRecorded: boolean },
+      now = new Date(),
+    ): Promise<ApproveDeliverOutcome> {
+      const detail = await this.findRevision(planId, revisionId);
+      if (!detail) return { status: "not_found" };
+      if (detail.revision.state === "DELIVERED") return { status: "already_delivered" };
+      if (detail.revision.state === "APPROVED") {
+        const delivered = await this.deliver(planId, revisionId, now);
+        return delivered.status === "delivered"
+          ? { status: "delivered" }
+          : delivered.status === "review_required"
+            ? delivered
+            : { status: "not_found" };
+      }
+      if (detail.revision.state !== "READY") return { status: "not_found" };
+      const standing = await screeningStanding(db, organizationId, detail.plan.studentId);
+      if (standing?.risk === "REVIEW_REQUIRED" && !standing.reviewed)
+        return { status: "review_required", assessedOn: standing.assessedOn };
+      if (!standing && !acknowledgement.screeningNotRecorded)
+        return { status: "screening_acknowledgement_required" };
+      const screening = !standing
+        ? "NOT_RECORDED"
+        : standing.risk === "CLEAR"
+          ? "CLEAR"
+          : "REVIEW_REQUIRED_REVIEWED";
+      const stamp = now.toISOString();
+      const results = await db.batch([
+        db
+          .prepare(
+            `UPDATE plan_revisions
+             SET state = 'APPROVED', approved_at = ?3, approved_by_user_id = ?2,
+               approval_screening = ?6, approval_assessment_id = ?7, updated_at = ?3
+             WHERE organization_id = ?1 AND id = ?4 AND plan_id = ?5 AND state = 'READY'
+               AND ${revisionGate("plan_revisions")}
+               AND ${latestRecordedSql("plan_revisions.organization_id", studentOf)} IS ?7`,
+          )
+          .bind(organizationId, userId, stamp, revisionId, planId, screening, standing?.assessmentId ?? null),
+        eventAfterChange("APPROVED", revisionId, stamp),
+        // Same batch, same transaction: this one only matches the row the statement above has just approved.
+        db
+          .prepare(
+            `UPDATE plan_revisions
+             SET state = 'DELIVERED', delivered_at = ?3, delivered_by_user_id = ?2, updated_at = ?3
+             WHERE organization_id = ?1 AND id = ?4 AND plan_id = ?5 AND state = 'APPROVED' AND approved_at = ?3
+               AND ${revisionGate("plan_revisions")}
+               AND NOT ${unreviewedAlertSql("plan_revisions.organization_id", studentOf)}`,
+          )
+          .bind(organizationId, userId, stamp, revisionId, planId),
+        eventAfterChange("DELIVERED", revisionId, stamp),
+      ]);
+      if (results[0].meta.changes > 0 && results[2].meta.changes > 0) return { status: "delivered" };
+      // Something moved under us. Read what is stored: a concurrent click that won has delivered it already.
+      const still = await this.findRevision(planId, revisionId);
+      if (still?.revision.state === "DELIVERED") return { status: "already_delivered" };
+      return still?.revision.state === "READY" ? { status: "screening_changed" } : { status: "not_found" };
     },
 
     /**

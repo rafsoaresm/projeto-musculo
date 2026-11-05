@@ -1,6 +1,6 @@
 import zlib from "node:zlib";
 import { totpCode } from "../helpers/totp";
-import { expect, type Browser, type Page } from "@playwright/test";
+import { expect, type Browser, type Locator, type Page } from "@playwright/test";
 
 export const password = "only-for-local-browser-testing";
 
@@ -252,7 +252,7 @@ export async function browserJpeg(page: Page): Promise<Buffer> {
 }
 
 const yesterday = () => new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
-/** A small READY plan for the student at `studentURL`, waiting on the approval step. Returns the revision address. */
+/** A small plan (a revision with its exercises) for the student at `studentURL`, ready for "Aprovar e entregar". Returns the revision address. */
 export async function readyPlan(page: Page, studentURL: string, title: string) {
   await page.goto(studentURL);
   await showStudentTab(page, "Periodização");
@@ -278,8 +278,7 @@ export async function readyPlan(page: Page, studentURL: string, title: string) {
     await page.getByRole("button", { name: "Copiar mesociclo" }).click();
     await expect(page.getByText("Mesociclo copiado.")).toBeVisible();
   }
-  await page.getByRole("button", { name: "Marcar estrutura como pronta" }).click();
-  await expect(page.getByRole("heading", { name: "Aprovar esta revisão" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Aprovar e entregar", exact: true })).toBeEnabled();
   return page.url();
 }
 
@@ -290,4 +289,43 @@ export async function openStructure(page: Page) {
   if (!(await details.evaluate((node) => (node as HTMLDetailsElement).open)))
     await details.locator("summary").click();
   await expect(details.getByLabel("Data de início")).toBeVisible();
+}
+
+/** 0.96: opens the one confirmation of "Aprovar e entregar" (or "Entregar ao aluno" on an approved revision) and returns the dialog. */
+export async function openDeliverDialog(page: Page, name = "Aprovar e entregar") {
+  await page.getByRole("button", { name, exact: true }).click();
+  const dialog = page.getByRole("dialog", { name });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+/** Confirms the open delivery dialog; `acknowledge` ticks the warning about the missing screening first. */
+export async function confirmDelivery(page: Page, dialog: Locator, acknowledge = false) {
+  if (acknowledge) await dialog.getByLabel(/Confirmo que não há triagem registrada/).check();
+  await dialog.getByRole("button", { name: /^Confirmar (e entregar|entrega)$/ }).click();
+  await expect(page.getByRole("region", { name: "Entregue ao aluno" })).toBeVisible();
+}
+
+/** Approve and deliver in the one step, from a draft, a ready or an approved revision. */
+export async function approveAndDeliver(page: Page, acknowledge = true) {
+  const dialog = await openDeliverDialog(page);
+  await confirmDelivery(page, dialog, acknowledge);
+}
+
+/** A new draft from a closed revision: the primary button on a delivered one, "Mais ações" on a ready or approved one. */
+export async function createNewRevision(page: Page) {
+  const direct = page.getByRole("button", { name: "Criar nova revisão", exact: true });
+  if (!(await direct.isVisible())) await page.getByRole("button", { name: "Mais ações" }).click();
+  await page.getByRole("button", { name: /^Criar nova revisão/ }).click();
+}
+
+/** The exception under "Mais ações": the revision is closed and approved, and the student sees nothing. */
+export async function approveWithoutDelivering(page: Page, acknowledge = true) {
+  await page.getByRole("button", { name: "Mais ações" }).click();
+  await page.getByRole("button", { name: /^Aprovar sem entregar/ }).click();
+  const dialog = page.getByRole("dialog", { name: "Aprovar sem entregar" });
+  await expect(dialog).toBeVisible();
+  if (acknowledge) await dialog.getByLabel(/Confirmo que não há triagem registrada/).check();
+  await dialog.getByRole("button", { name: "Aprovar sem entregar" }).click();
+  await expect(page.getByRole("region", { name: "Aprovada, não entregue" })).toBeVisible();
 }

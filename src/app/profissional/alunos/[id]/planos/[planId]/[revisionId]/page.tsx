@@ -14,11 +14,7 @@ import { Notice, PageHeading, Pill } from "@/components/ui";
 import { proposalsFor } from "@/db/prescription-proposals";
 import { AppliedProposalNotes, AutoPrescriptionCard } from "@/modules/prescricao/automatica/auto-card";
 import { formatCalendarDate } from "@/modules/training/format";
-import {
-  createRevision,
-  markReady,
-  saveDraft,
-} from "@/modules/planos/actions";
+import { createRevision, saveDraft } from "@/modules/planos/actions";
 import { PlanReadOnly } from "@/modules/planos/plan-readonly";
 import { DraftWorkspace } from "@/modules/planos/draft-workspace";
 import { stateLabel } from "@/modules/planos/labels";
@@ -90,25 +86,31 @@ export default async function PlanRevision({
   const automatic = items.some((item) => item.origin === "SYSTEM" || item.origin === "SYSTEM_EDITED")
     ? await prescriptionFor(db, context).automaticCounts(planId, revisionId)
     : { total: 0, edited: 0 };
+  // 0.96: one strip for approval and delivery. Same data for a draft, a ready, an approved and a delivered revision.
+  const approval = {
+    planId,
+    revisionId,
+    revisionNumber: revision.revisionNumber,
+    below: progress.filter((slot) => slot.status === "BELOW").length,
+    workouts: progress.length,
+    approvedAt: revision.approvedAt,
+    deliveredAt: revision.deliveredAt,
+    deliveredByName: revision.deliveredByName,
+    deliveredOrganizationName: revision.deliveredOrganizationName,
+    portal: access?.access ?? "NONE",
+    studentHref: `/profissional/alunos/${student.id}`,
+    screening,
+    pdfHref: `/profissional/alunos/${student.id}/planos/${planId}/${revisionId}/pdf`,
+    automatic: automatic.total ? automatic : null,
+    historyHref: perSession ? `${selfHref}/automatica` : null,
+    openProposal: Boolean(openProposal),
+  } as const;
   const decision =
-    revision.state === "READY" ||
-    revision.state === "APPROVED" ||
-    revision.state === "DELIVERED" ? (
+    revision.state === "READY" || revision.state === "APPROVED" || revision.state === "DELIVERED" ? (
       <ApprovalPanel
-        planId={planId}
-        revisionId={revisionId}
+        {...approval}
         state={revision.state}
-        below={progress.filter((slot) => slot.status === "BELOW").length}
-        workouts={progress.length}
-        approvedAt={revision.approvedAt}
-        deliveredAt={revision.deliveredAt}
-        deliveredByName={revision.deliveredByName}
-        deliveredOrganizationName={revision.deliveredOrganizationName}
-        portal={access?.access ?? "NONE"}
-        studentHref={`/profissional/alunos/${student.id}`}
-        screening={screening}
-        pdfHref={`/profissional/alunos/${student.id}/planos/${planId}/${revisionId}/pdf`}
-        automatic={automatic.total ? automatic : null}
+        createRevision={createRevision.bind(null, planId, revisionId)}
       />
     ) : null;
   const editor = (
@@ -142,7 +144,7 @@ export default async function PlanRevision({
         title={detail.plan.title}
         description={
           revision.state === "DRAFT"
-            ? "Rascunho em edição. Prescreva os exercícios de cada treino; a estrutura do ciclo fica logo abaixo. Quando estiver certo, marque como pronta: depois disso a revisão não aceita mais edição."
+            ? "Rascunho em edição. Prescreva os exercícios de cada treino; a estrutura do ciclo fica logo abaixo. Quando estiver certo, use Aprovar e entregar: depois disso a revisão não aceita mais edição."
             : revision.state === "DELIVERED"
               ? "Revisão entregue ao aluno. Ela não muda mais."
               : "Revisão fechada para edição."
@@ -150,7 +152,7 @@ export default async function PlanRevision({
         aside={<Pill tone={label.tone}>{label.text}</Pill>}
       />
       {one("aplicada") === "1" && revision.state === "DRAFT" && (
-        <Notice>Proposta aplicada ao rascunho. Revise, edite, marque como pronta e aprove como de costume.</Notice>
+        <Notice>Proposta aplicada ao rascunho. Revise, edite e use Aprovar e entregar quando estiver certo.</Notice>
       )}
       {/* 0.93: the prescription is the main content of a draft; the structure is folded under it. */}
       {revision.state === "DRAFT" ? (
@@ -165,18 +167,14 @@ export default async function PlanRevision({
           input={revision.input}
           structureSummary={`${revision.schedule.phases.length} ${revision.schedule.phases.length === 1 ? "fase" : "fases"} · ${revision.schedule.totalWeeks} ${revision.schedule.totalWeeks === 1 ? "semana" : "semanas"} · ${formatCalendarDate(revision.schedule.startDate)} a ${formatCalendarDate(revision.schedule.endDate)}`}
           save={saveDraft.bind(null, planId, revisionId)}
-          markReady={markReady.bind(null, planId, revisionId)}
+          approval={approval}
         />
       ) : (
         <>
           {decision}
           {notes}
           {editor}
-          <PlanReadOnly
-            state={revision.state}
-            schedule={revision.schedule}
-            createRevision={createRevision.bind(null, planId, revisionId)}
-          />
+          <PlanReadOnly schedule={revision.schedule} />
         </>
       )}
       <Link href={`/profissional/alunos/${student.id}?aba=periodizacao`} className="button secondary">

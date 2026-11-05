@@ -1,6 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
 import {
   addStudent,
+  approveWithoutDelivering,
+  createNewRevision,
   createProfessional,
   localIP,
   noHorizontalOverflow, openStructure, showStudentTab
@@ -110,16 +112,15 @@ test("a professional prescribes by hand, reorders, copies and revises without lo
   await page.reload();
   await expect(workout(page, "C").getByText("Só no C")).toBeVisible();
 
-  // Mark the revision ready: it becomes read-only, exercises included.
-  await page.getByRole("button", { name: "Marcar estrutura como pronta" }).click();
-  await expect(page.getByText("Estrutura pronta", { exact: true }).first()).toBeVisible();
+  // Approve it without delivering (the exception): it becomes read-only, exercises included.
+  await approveWithoutDelivering(page);
   const frozen = workout(page, "A");
   await expect(frozen.getByText("Meu exercício")).toBeVisible();
   await expect(frozen.getByRole("button", { name: /Editar|Remover|Duplicar|Adicionar/ })).toHaveCount(0);
   await expect(page.getByText("Esta revisão está fechada")).toBeVisible();
 
   // A new revision carries the exercises; editing it leaves the closed one intact.
-  await page.getByRole("button", { name: "Criar nova revisão" }).click();
+  await createNewRevision(page);
   await expect(page.getByText("Revisão 2", { exact: false }).first()).toBeVisible();
   const copy = workout(page, "A");
   await expect(copy.getByText("Meu exercício")).toBeVisible();

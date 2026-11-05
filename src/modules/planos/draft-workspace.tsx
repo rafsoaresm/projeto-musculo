@@ -1,33 +1,32 @@
 "use client";
-import { useCallback, useState, useTransition, type ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 import type { PeriodizationInput } from "@/modules/training/contracts";
 import { Planner, type PlannerPersistence } from "@/modules/training/components/planner";
-import type { PlanActionResult } from "./actions";
+import { ApprovalPanel, type ApprovalPanelProps } from "./approval-panel";
 
 /**
  * A draft revision (0.93): the prescription is the main content and comes first; the structure of the cycle is
- * secondary, folded under it, and the step that closes the draft ("Marcar estrutura como pronta") comes last.
- * Marking ready waits while the folded structure has changes that are not saved, as the planner did before.
+ * secondary, folded under it, and the strip that approves and delivers comes last (it closes the draft inside that one operation).
+ * It waits while the folded structure has changes that are not saved, as the planner did before.
  */
 export function DraftWorkspace({
   editor,
   input,
   structureSummary,
   save,
-  markReady,
+  approval,
 }: {
   editor: ReactNode;
   input: PeriodizationInput;
   /** One line about the SAVED structure, shown on the folded header. */
   structureSummary: string;
   save: PlannerPersistence["save"];
-  markReady: () => Promise<PlanActionResult>;
+  /** The strip that approves and delivers (0.96): the draft is closed inside that one operation. */
+  approval: Omit<ApprovalPanelProps, "holdReason" | "state" | "createRevision">;
 }) {
   const [dirty, setDirty] = useState(false);
   const [open, setOpen] = useState(false);
-  const [error, setError] = useState("");
-  const [pending, startTransition] = useTransition();
   const onDirtyChange = useCallback((value: boolean) => setDirty(value), []);
   return (
     <>
@@ -54,36 +53,11 @@ export function DraftWorkspace({
           />
         </div>
       </details>
-      <section className="panel" aria-labelledby="concluir-rascunho">
-        <h2 id="concluir-rascunho">Concluir o rascunho</h2>
-        <p className="muted">
-          Quando a estrutura e os exercícios estiverem certos, marque a estrutura como pronta. Depois disso esta
-          revisão não aceita mais edição. Ainda não é aprovação nem liberação: o aluno não recebe nada nesta etapa.
-        </p>
-        {dirty && (
-          <p className="small muted" role="status">
-            Salve as mudanças da estrutura do ciclo antes de marcar como pronta.
-          </p>
-        )}
-        {error && (
-          <p className="error-message" role="alert">
-            {error}
-          </p>
-        )}
-        <button
-          className="button secondary"
-          type="button"
-          disabled={pending || dirty}
-          onClick={() =>
-            startTransition(async () => {
-              const outcome = await markReady();
-              setError(outcome?.error ?? "");
-            })
-          }
-        >
-          {pending ? "Marcando…" : "Marcar estrutura como pronta"}
-        </button>
-      </section>
+      <ApprovalPanel
+        {...approval}
+        state="DRAFT"
+        holdReason={dirty ? "Salve as mudanças da estrutura do ciclo antes de aprovar e entregar." : null}
+      />
     </>
   );
 }

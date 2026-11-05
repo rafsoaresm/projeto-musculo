@@ -150,3 +150,46 @@ export async function deliverRevision(
   }
   refresh();
 }
+
+/**
+ * The main way out of a reviewed revision (0.96): approve and deliver the SAME revision in one write, one confirmation. A DRAFT is
+ * closed first (the step "Marcar estrutura como pronta" becomes an internal one; it fails when the revision is not a draft and is then
+ * simply skipped). Every guard of approve and deliver is kept in the repository; a repeated call answers with the stored state.
+ */
+export async function approveAndDeliverRevision(
+  planId: string,
+  revisionId: string,
+  screeningNotRecorded: boolean,
+): Promise<PlanActionResult> {
+  const { db, context } = await requireWorkspace();
+  const plans = plansFor(db, context);
+  try {
+    await plans.markReady(planId, revisionId); // false when it is not a draft: the next call decides
+    const result = await plans.approveAndDeliver(planId, revisionId, { screeningNotRecorded });
+    if (result.status === "screening_acknowledgement_required")
+      return { error: "Confirme o aviso sobre a triagem para aprovar." };
+    if (result.status === "review_required")
+      return { error: `${REVIEW_REQUIRED_TEXT} Registre a revisão na avaliação de ${formatCalendarDate(result.assessedOn)}.` };
+    if (result.status === "screening_changed")
+      return { error: "Uma avaliação foi registrada enquanto você aprovava. Recarregue a página e confira a triagem." };
+    if (result.status === "not_found") return { error: "Esta revisão não pode ser aprovada e entregue agora." };
+  } catch (error) {
+    return { error: messageFor(error) };
+  }
+  refresh();
+}
+
+/** The exception "Aprovar sem entregar": the revision is closed and approved, and nothing becomes visible to the student. */
+export async function approveRevisionOnly(
+  planId: string,
+  revisionId: string,
+  screeningNotRecorded: boolean,
+): Promise<PlanActionResult> {
+  const { db, context } = await requireWorkspace();
+  try {
+    await plansFor(db, context).markReady(planId, revisionId);
+  } catch (error) {
+    return { error: messageFor(error) };
+  }
+  return approveRevision(planId, revisionId, screeningNotRecorded);
+}
