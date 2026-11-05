@@ -234,8 +234,8 @@ export function Diretrizes({ screen, form, setForm, questions, phone, expanded, 
           </button>
         </section>
 
-        <section className="fig-gen-card fig-gen-eq" role="group" aria-labelledby="fig-gen-eq-title" data-expanded={expanded}>
-          <h2 id="fig-gen-eq-title" className="fig-gen-card-title fig-gen-d">
+        <section className="fig-gen-card fig-gen-eq" role="group" aria-label="Equipamentos disponíveis" data-expanded={expanded}>
+          <h2 className="fig-gen-card-title fig-gen-d">
             02 / Equipamentos
           </h2>
           <p className="fig-gen-hint fig-gen-d">Escolha pelo menos uma opção ou ‘Sem equipamento’.</p>

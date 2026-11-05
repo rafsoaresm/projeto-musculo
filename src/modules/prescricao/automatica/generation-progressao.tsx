@@ -48,7 +48,7 @@ export interface ProgressaoProps {
  * its field.
  */
 export function Progressao(props: ProgressaoProps) {
-  const { screen, form, setForm, open, fieldErrors, clearError, advancedOpen, setAdvancedOpen, onGoTo } = props;
+  const { screen, form, setForm, open, fieldErrors, clearError, onGoTo } = props;
   const items = pendingItems(open);
   const progressionOf = (phaseIndex: number): ProgressionForm => form.progression.find((p) => p.phaseIndex === phaseIndex) ?? EMPTY_PROGRESSION;
   const setProgression = (phaseIndex: number, patch: Partial<ProgressionForm>) => {

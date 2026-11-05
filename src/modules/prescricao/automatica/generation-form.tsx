@@ -179,7 +179,7 @@ export function GenerationForm({ planId, revisionId, screen, header }: { planId:
   }
 
   function submit() {
-    if (step !== 2 || sub) return;
+    if (step !== 2 || sub || open.length > 0) return;
     const found = formFieldErrors(form);
     setFieldErrors(found);
     const stale = unsaved.map((r) => policyTitle(r, screen.policy));
