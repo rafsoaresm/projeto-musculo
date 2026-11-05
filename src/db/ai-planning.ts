@@ -771,6 +771,17 @@ export function aiPlanningFor(db: D1Database, context: AuthenticatedContext | nu
       return changesOf(claim) === 1 ? { decision, allowed: true, probe: true } : { decision: "BLOCK", allowed: false, probe: false };
     },
 
+    /** The caller that won the probe sent nothing (busy, quota, unreadable key): give the probe back, so the circuit does not stay blocked until the probe goes stale. */
+    async circuitReleaseProbe(kind: string, modelId: string, probeStartedAt: Date): Promise<void> {
+      await db
+        .prepare(
+          `UPDATE ai_circuit_state SET state = 'OPEN', probe_started_at = NULL, updated_at = ?5
+            WHERE provider_kind = ?3 AND model_id = ?4 AND state = 'HALF_OPEN' AND probe_started_at IS ?5 AND ${MEMBER("?1", "?2")}`,
+        )
+        .bind(organizationId, userId, kind, modelId, iso(probeStartedAt))
+        .run();
+    },
+
     /** Records a provider failure. Only SERVER_ERROR / NETWORK / TIMEOUT count; a failed probe re-opens immediately. */
     async circuitFailure(kind: string, modelId: string, code: ProviderErrorCode, now: Date): Promise<void> {
       if (!countsForCircuit(code)) return;

@@ -170,6 +170,12 @@ describe("build-time constants", () => {
     void bundle;
   });
 
+  it("fixedTokens(schemas) is built once per distinct schema set (the planner passes the same schema on every call)", () => {
+    const one = fixedTokens([wire("openai")]);
+    expect(fixedTokens([wire("openai")])).toBe(one);
+    expect(fixedTokens([wire("anthropic")])).not.toBe(fixedTokens());
+  });
+
   it("fixedTokens() covers every word the real payloads are made of (a new code must be added on purpose)", async () => {
     const fixed = fixedTokens([wire("openai")]);
     const alias = /^[xtf]\d+$/;

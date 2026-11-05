@@ -211,7 +211,7 @@ function TaskCard({ row, connections, mockEnabled, canWrite, callsBlocked, secre
         {row.task === "ADJUSTMENTS" && (
           <label className="check-row check-row-tap">
             <input type="checkbox" checked={v.sendSystemExerciseNames} onChange={(e) => set("sendSystemExerciseNames", e.target.checked)} disabled={locked} />
-            <span>Enviar nomes dos exercícios da biblioteca do sistema (nomes de exercícios da organização nunca são enviados).</span>
+            <span>Enviar nomes dos exercícios da biblioteca do sistema (nomes de exercícios da organização nunca são enviados). <strong>Ainda sem efeito:</strong> só será lido quando os ajustes assistidos existirem; hoje o planejador envia apenas códigos.</span>
           </label>
         )}
         <label className="check-row check-row-tap">

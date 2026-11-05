@@ -393,8 +393,15 @@ export function plannerService(db: D1Database, context: AuthenticatedContext, de
     const need = { input: reservation.input, output: reservation.output, costMicros: reservation.costMicros };
     const full = evaluateAiGate(gateStateFor(snapshot, env, { minor: bundle.minor, need, perAttemptTokens: reservation.perAttemptTokens }), "PLANNER");
     if (full !== "READY") return fail(GATE_TO_FAILURE[full]);
+    // The reservation sweep uses the SAME cutoff as the gate read (the widest window of the environment): shortening this task's timeout in the panel
+    // must not make a call that is still alive look dead and turn its reservation into an unknown charge.
+    const sweepMs = Math.max(staleMs, staleAfterMs(env.hardTimeoutMs, 1));
     const circuit = await repo.circuitCheck(kind, modelId, now, staleMs);
     if (!circuit.allowed) return fail("circuit_open");
+    /** Nothing was sent: a probe won above goes back, or the circuit stays blocked until the probe goes stale. */
+    const giveBackProbe = async () => {
+      if (circuit.probe) await repo.circuitReleaseProbe(kind, modelId, now);
+    };
 
     let runId: string;
     let attempt: number;
@@ -403,7 +410,7 @@ export function plannerService(db: D1Database, context: AuthenticatedContext, de
       const claimed = await repo.takeoverRun({
         runId: takeover.id, expectedStartedAt: takeover.startedAt, expectedAttempt: takeover.attempt, oldLedgerId: takeover.ledgerId,
         oldInputEstimate: request.estimatedInputTokens,
-        reserve: { planId: p.planId, revisionId: p.revisionId, task: "PLANNER", providerKind: kind, modelId, reservation, prices: task.prices, now, staleMs, runId: takeover.id, newLedgerId: ledgerId },
+        reserve: { planId: p.planId, revisionId: p.revisionId, task: "PLANNER", providerKind: kind, modelId, reservation, prices: task.prices, now, staleMs: sweepMs, runId: takeover.id, newLedgerId: ledgerId },
       });
       if (!claimed.ok) {
         if (claimed.claimed && claimed.attempt !== undefined) {
@@ -412,8 +419,10 @@ export function plannerService(db: D1Database, context: AuthenticatedContext, de
             ledger: null,
             run: { runId: takeover.id, planId: p.planId, revisionId: p.revisionId, attempt: claimed.attempt, status: "FAILED", failureCode: encodeFailure("limit_reached"), cacheHit: false, responseHash: null, blueprintHash: null, usageJson: null, ledgerId: null, now },
           });
+          await giveBackProbe();
           return fail("limit_reached", { runId: takeover.id });
         }
+        await giveBackProbe();
         return fail("in_progress", { runId: takeover.id });
       }
       runId = takeover.id;
@@ -430,16 +439,20 @@ export function plannerService(db: D1Database, context: AuthenticatedContext, de
           started = await repo.runStart(runStartInput(runId));
         }
       }
-      if (!started.ok) return startFailure(p, started.reason, cacheKey);
+      if (!started.ok) {
+        await giveBackProbe();
+        return startFailure(p, started.reason, cacheKey);
+      }
       const reserved = await repo.reserve({
         planId: p.planId, revisionId: p.revisionId, task: "PLANNER", ledgerId, requestKey: `${runId}:${attempt}`, runId, providerKind: kind, modelId, reservation,
-        prices: task.prices, now, staleMs,
+        prices: task.prices, now, staleMs: sweepMs,
       });
       if (!reserved.ok) {
         // a predicate of the reserve refused: re-read the gate to say which (a switch flipped, the allowance, or the per-minute limit)
         const again = await freshGate(p.planId, p.revisionId, now, env);
         const why = evaluateAiGate(gateStateFor(again, env, { minor: bundle.minor, need, perAttemptTokens: reservation.perAttemptTokens }), "PLANNER");
         const reason: PlanFailure = why === "READY" ? "limit_reached" : GATE_TO_FAILURE[why];
+        await giveBackProbe();
         await repo.finishRun({
           ledger: null,
           run: { runId, planId: p.planId, revisionId: p.revisionId, attempt, status: "FAILED", failureCode: encodeFailure(reason, why === "READY" ? "RATE" : undefined), cacheHit: false, responseHash: null, blueprintHash: null, usageJson: null, ledgerId: null, now },
@@ -464,7 +477,8 @@ export function plannerService(db: D1Database, context: AuthenticatedContext, de
         if (!sealed) throw new Error("NO_KEY");
         apiKey = await openSecret(sealed, kind, env.secrets);
       } catch {
-        // nothing was sent: the reservation is released
+        // nothing was sent: the reservation is released (and a probe that was won goes back)
+        await giveBackProbe();
         return finishFailed({ kind: "RELEASE", ledgerId, errorCode: "KEY_UNREADABLE", countAsFailure: true, now }, "not_configured", undefined, null, now);
       }
     }

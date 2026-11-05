@@ -1097,6 +1097,19 @@ describe("circuit breaker (per provider and model)", () => {
     expect(await state("probe-model")).toMatchObject({ state: "HALF_OPEN", probe_started_at: crashed.toISOString() });
   });
 
+  it("a probe that sent nothing is given back: the next caller wins it at once, and a stale or foreign release changes nothing", async () => {
+    for (let i = 0; i < 5; i += 1) await fail("SERVER_ERROR", at(200_000 + i * 100), "give-model");
+    const t = at(200_400 + CIRCUIT_OPEN_MS);
+    expect((await ai().circuitCheck("openai", "give-model", t, STALE)).probe).toBe(true);
+    expect((await ai().circuitCheck("openai", "give-model", at(200_500 + CIRCUIT_OPEN_MS), STALE)).allowed).toBe(false);
+    // a release for a probe that is not the current one does nothing
+    await ai().circuitReleaseProbe("openai", "give-model", at(1));
+    expect(await state("give-model")).toMatchObject({ state: "HALF_OPEN", probe_started_at: t.toISOString() });
+    await ai().circuitReleaseProbe("openai", "give-model", t);
+    expect(await state("give-model")).toMatchObject({ state: "OPEN", probe_started_at: null, opened_at: at(200_400).toISOString() });
+    expect((await ai().circuitCheck("openai", "give-model", at(200_500 + CIRCUIT_OPEN_MS), STALE)).probe).toBe(true);
+  });
+
   it("only an active member may move or read the circuit", async () => {
     await ai("stranger").circuitSuccess("openai", M, NOW, NOW);
     await ai("stranger").circuitFailure("openai", "stranger-model", "SERVER_ERROR", NOW);

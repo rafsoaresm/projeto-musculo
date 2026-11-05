@@ -23,6 +23,8 @@ export function OrganizationsPanel({ organizations, plans, canWrite, ackText }: 
   const [enabling, setEnabling] = useState<OrganizationAiRow | null>(null);
   const [ack, setAck] = useState(false);
   const [pick, setPick] = useState("");
+  // The plan select only STAGES a choice; saving is an explicit button (changing a select with the arrow keys must not write on every step).
+  const [staged, setStaged] = useState<Record<string, string>>({});
   const live = plans.filter((p) => !p.archivedAt);
   // No plan, or a plan that was archived: the gestor must choose a live one here (the row's select is not required first).
   const needsPick = enabling !== null && (!enabling.quotaPlanId || !live.some((p) => p.id === enabling.quotaPlanId));
@@ -81,20 +83,46 @@ export function OrganizationsPanel({ organizations, plans, canWrite, ackText }: 
                       </label>
                     </td>
                     <td data-label="Plano de IA">
-                      <select
-                        aria-label={`Plano de IA de ${org.organizationName}`}
-                        value={org.quotaPlanId ?? ""}
-                        disabled={!canWrite || pending}
-                        onChange={(event) => run(() => setOrganizationAi(org.organizationId, { quotaPlanId: event.target.value || null }, org.version))}
-                      >
-                        <option value="">Sem plano</option>
-                        {live.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name}
-                          </option>
-                        ))}
-                        {plan?.archivedAt && <option value={plan.id}>{plan.name} (arquivado)</option>}
-                      </select>
+                      <div className="inline-form">
+                        <select
+                          aria-label={`Plano de IA de ${org.organizationName}`}
+                          value={staged[org.organizationId] ?? org.quotaPlanId ?? ""}
+                          disabled={!canWrite || pending}
+                          onChange={(event) => setStaged((prev) => ({ ...prev, [org.organizationId]: event.target.value }))}
+                        >
+                          <option value="">Sem plano</option>
+                          {live.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}
+                            </option>
+                          ))}
+                          {plan?.archivedAt && <option value={plan.id}>{plan.name} (arquivado)</option>}
+                        </select>
+                        {staged[org.organizationId] !== undefined && staged[org.organizationId] !== (org.quotaPlanId ?? "") && (
+                          <button
+                            type="button"
+                            className="button primary small"
+                            disabled={!canWrite || pending}
+                            aria-label={`Aplicar plano de IA a ${org.organizationName}`}
+                            onClick={() => {
+                              const quotaPlanId = staged[org.organizationId] || null;
+                              run(
+                                () => setOrganizationAi(org.organizationId, { quotaPlanId }, org.version),
+                                (result) => {
+                                  if (!result.ok) return;
+                                  setStaged((prev) => {
+                                    const next = { ...prev };
+                                    delete next[org.organizationId];
+                                    return next;
+                                  });
+                                },
+                              );
+                            }}
+                          >
+                            Aplicar plano
+                          </button>
+                        )}
+                      </div>
                     </td>
                     <td data-label="Uso do mês">
                       <div className="ai-use">

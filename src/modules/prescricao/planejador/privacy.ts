@@ -76,10 +76,18 @@ function buildFixedTokens(extra: Iterable<string> = []): Set<string> {
   return set;
 }
 let FIXED: Set<string> | null = null;
+const BY_SCHEMAS = new Map<string, ReadonlySet<string>>();
 /** Memoised; the extra words are the enum values and keys of the wire schemas (supplied by `fixedTokensFromSchemas`). */
 export function fixedTokens(schemas: readonly unknown[] = []): ReadonlySet<string> {
   if (schemas.length === 0) return (FIXED ??= buildFixedTokens());
-  return buildFixedTokens(schemaWords(schemas));
+  // Schemas are module constants: one entry per distinct set (bounded, in case a caller ever builds them on the fly).
+  const key = JSON.stringify(schemas);
+  const hit = BY_SCHEMAS.get(key);
+  if (hit) return hit;
+  const built = buildFixedTokens(schemaWords(schemas));
+  if (BY_SCHEMAS.size >= 16) BY_SCHEMAS.clear();
+  BY_SCHEMAS.set(key, built);
+  return built;
 }
 function schemaWords(schemas: readonly unknown[]): string[] {
   const out: string[] = [];

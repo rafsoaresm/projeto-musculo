@@ -151,9 +151,13 @@ export async function aiPanelScenario(manager: Page, professional: Page, studio:
   await expect(orgRow.getByText("Restam 100.000 tokens")).toBeVisible();
   await expect(orgRow.locator("progress")).toHaveCount(1);
   await noHorizontalOverflow(manager);
+  // choosing in the select only stages: nothing is saved until "Aplicar plano"
   await orgRow.getByLabel(`Plano de IA de ${studio}`).selectOption({ label: "Sem plano" });
+  await expect(orgRow.getByText("IA não incluída no plano")).toHaveCount(0);
+  await orgRow.getByRole("button", { name: `Aplicar plano de IA a ${studio}` }).click();
   await expect(orgRow.getByText("IA não incluída no plano")).toBeVisible();
   await orgRow.getByLabel(`Plano de IA de ${studio}`).selectOption({ label: planName });
+  await orgRow.getByRole("button", { name: `Aplicar plano de IA a ${studio}` }).click();
   await expect(orgRow.getByText("Ativa")).toBeVisible();
 
   // The general switch stops everything, panel tests included, and says who and when.
