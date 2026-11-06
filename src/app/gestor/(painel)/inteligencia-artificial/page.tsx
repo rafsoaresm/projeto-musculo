@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { requirePlatformAdmin } from "@/modules/auth/server";
 import { aiPlatformFor } from "@/db/ai-platform";
+import { aiReportsFor } from "@/db/ai-reports";
 import { PageHeading } from "@/components/ui";
 import { AiPanelFrame } from "@/modules/gestor/ai-panel";
 import { ModelsPanel } from "@/modules/gestor/ai-models";
@@ -8,6 +9,7 @@ import { OrganizationsPanel } from "@/modules/gestor/ai-organizations";
 import { PlansPanel } from "@/modules/gestor/ai-plans";
 import { ProvidersPanel } from "@/modules/gestor/ai-providers";
 import { UsagePanel } from "@/modules/gestor/ai-usage";
+import { quotaAlerts } from "@/modules/gestor/ai-report-view";
 import { callsBlocked, recentMonths, tabOf } from "@/modules/gestor/ai-view";
 import { AI_ORG_ACK_TEXT } from "@/modules/prescricao/planejador/copy";
 import { loadAiEnv } from "@/modules/prescricao/planejador/env";
@@ -49,10 +51,12 @@ export default async function ArtificialIntelligence({ searchParams }: { searchP
     const [organizations, plans] = await Promise.all([repo.listOrganizations(thisMonth), repo.listPlans()]);
     body = <OrganizationsPanel organizations={organizations} plans={plans} canWrite={canWrite} ackText={AI_ORG_ACK_TEXT} />;
   } else {
-    const [rows, circuits, audit, organizations] = await Promise.all([repo.usage(month), repo.listCircuits(), repo.listAuditAi(30), repo.listOrganizations(thisMonth)]);
+    const [rows, circuits, audit, organizations, plans, operational] = await Promise.all([
+      repo.usage(month), repo.listCircuits(), repo.listAuditAi(30), repo.listOrganizations(thisMonth), repo.listPlans(), aiReportsFor(db, context).operational(month),
+    ]);
     const names = new Map(organizations.map((o) => [o.organizationId, o.organizationName]));
     const readable = audit.map((a) => ({ ...a, subject: names.get(a.subject) ?? a.subject }));
-    body = <UsagePanel month={month} months={months} rows={rows} circuits={circuits} audit={readable} />;
+    body = <UsagePanel month={month} months={months} rows={rows} circuits={circuits} audit={readable} operational={operational} alerts={quotaAlerts(organizations, plans)} />;
   }
 
   return (

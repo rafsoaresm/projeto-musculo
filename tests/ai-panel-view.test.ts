@@ -297,7 +297,7 @@ describe("components never print a key", () => {
       { organizationId: "o3", organizationName: "Studio C", task: "ADJUSTMENTS", requests: 2, cacheHits: 0, errors: 0, inputTokens: 10, outputTokens: 5, costMicros: 500_000, currency: "USD", unpricedCalls: 1, mixedCurrency: false },
     ];
     const circuits: CircuitView[] = [{ providerKind: "openai", modelId: "m-1", state: "OPEN", consecutiveFailures: 5, since: "2026-11-05T12:00:00.000Z" }];
-    const page = html(createElement(UsagePanel, { month: "2026-11", months: recentMonths("2026-11"), rows, circuits, audit: [{ id: "a1", action: "AI_PROVIDER_ROTATED", createdAt: "2026-11-05T12:00:00.000Z", actorEmail: "gestor@example.test", subject: "openai" }] }));
+    const page = html(createElement(UsagePanel, { month: "2026-11", months: recentMonths("2026-11"), rows, circuits, audit: [{ id: "a1", action: "AI_PROVIDER_ROTATED", createdAt: "2026-11-05T12:00:00.000Z", actorEmail: "gestor@example.test", subject: "openai" }], operational: { month: "2026-11", rows: [], latencyTruncated: false }, alerts: [] }));
     expect(page).toContain("novembro de 2026");
     expect(page).toContain("custo desconhecido");
     expect(page).toMatch(/Custo[\s\S]*—/);
@@ -308,6 +308,33 @@ describe("components never print a key", () => {
     expect(page).toContain("Chave trocada");
     expect(page).toContain("nunca entram nele");
     expect(page).not.toContain(CANARY);
+  });
+
+  it("usage reports: latency, cache rate, error rate and causes, with a dash when there is no sample; quota alerts in words", () => {
+    const rows: UsageRow[] = [
+      { organizationId: "o1", organizationName: "Studio A", task: "PLANNER", requests: 3, cacheHits: 1, errors: 1, inputTokens: 9000, outputTokens: 4000, costMicros: null, currency: null, unpricedCalls: 3, mixedCurrency: false },
+      { organizationId: "o2", organizationName: "Studio B", task: "ADJUSTMENTS", requests: 0, cacheHits: 0, errors: 0, inputTokens: 0, outputTokens: 0, costMicros: null, currency: null, unpricedCalls: 0, mixedCurrency: false },
+    ];
+    const operational = {
+      month: "2026-11", latencyTruncated: true,
+      rows: [{ organizationId: "o1", task: "PLANNER" as const, errorsByCode: [{ code: "TIMEOUT", count: 1 }], latency: { samples: 3, p50Ms: 850, p95Ms: 12_400, maxMs: 12_400 }, byModel: [] }],
+    };
+    const alerts = [{ organizationId: "o1", organizationName: "Studio A", level: "WARNING" as const, percent: 85, message: "Studio A: 85% da franquia do mês já foi usada." }];
+    const page = html(createElement(UsagePanel, { month: "2026-11", months: recentMonths("2026-11"), rows, circuits: [], audit: [], operational, alerts }));
+    expect(page).toContain("Alertas de franquia");
+    expect(page).toContain("85% usado");
+    expect(page).toContain("Studio A: 85% da franquia do mês já foi usada.");
+    expect(page).toContain("850 ms");
+    expect(page).toContain("12,4 s");
+    expect(page).toContain("25%"); // 1 cache hit of 4 lookups
+    expect(page).toContain("tempo esgotado: 1");
+    expect(page).toContain("a amostra foi limitada");
+    expect(page).toMatch(/Studio B[\s\S]*—[\s\S]*—/);
+    const none = html(createElement(UsagePanel, { month: "2026-11", months: recentMonths("2026-11"), rows: [], circuits: [], audit: [], operational: { month: "2026-11", rows: [], latencyTruncated: false }, alerts: [] }));
+    expect(none).toContain("Nenhuma organização perto do limite do plano neste mês.");
+    expect(none).toContain("Sem chamadas neste mês.");
+    expect(none).toContain("Retenção e exclusão");
+    expect(none).toContain("14 dias por padrão");
   });
 
   it("the frame explains honestly what is sent and what it costs, and the kill switch shows who and when", () => {

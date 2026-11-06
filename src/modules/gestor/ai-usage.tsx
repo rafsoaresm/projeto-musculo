@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { Pill, formatDateTime } from "@/components/ui";
 import type { AiAuditRow, CircuitView, UsageRow } from "@/db/ai-platform";
+import { AI_CACHE_TTL_DEFAULT_DAYS, AI_CACHE_TTL_MAX_DAYS } from "@/modules/prescricao/planejador/quota";
+import type { OperationalReport } from "@/db/ai-reports";
+import { cacheHitRate, errorCodeLabel, errorRate, formatLatency, formatPercent, type QuotaAlert } from "./ai-report-view";
 import { TASK_LABEL, formatMoney, formatTokens, monthLabel } from "./ai-view";
 
 const AUDIT_LABEL: Record<string, string> = {
@@ -23,13 +26,30 @@ const CIRCUIT_LABEL = { CLOSED: "Fechado (normal)", OPEN: "Aberto (chamadas susp
 
 /** Month totals per organization and task, the circuit of each provider/model, and the AI slice of the audit trail. Read-only. */
 export function UsagePanel({
-  month, months, rows, circuits, audit,
-}: { month: string; months: string[]; rows: UsageRow[]; circuits: CircuitView[]; audit: AiAuditRow[] }) {
+  month, months, rows, circuits, audit, operational, alerts,
+}: { month: string; months: string[]; rows: UsageRow[]; circuits: CircuitView[]; audit: AiAuditRow[]; operational: OperationalReport; alerts: QuotaAlert[] }) {
+  const ops = new Map(operational.rows.map((o) => [`${o.organizationId}/${o.task}`, o]));
   const anyUnknownCost = rows.some((r) => r.costMicros === null && !r.mixedCurrency);
   const anyPartialCost = rows.some((r) => r.costMicros !== null && r.unpricedCalls > 0);
   const anyMixedCurrency = rows.some((r) => r.mixedCurrency);
   return (
     <>
+      <section className="panel" aria-labelledby="ai-alerts-title">
+        <h2 id="ai-alerts-title">Alertas de franquia</h2>
+        {alerts.length === 0 ? (
+          <p className="muted">Nenhuma organização perto do limite do plano neste mês.</p>
+        ) : (
+          <ul className="ai-plain-list" role="list">
+            {alerts.map((a) => (
+              <li key={a.organizationId}>
+                <Pill tone={a.level === "LIMIT" ? "danger" : "warning"}>{a.level === "LIMIT" ? "Limite atingido" : `${a.percent}% usado`}</Pill> {a.message}
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="small muted">Os alertas valem para o mês corrente: aviso a partir de 80% da franquia e bloqueio em 100%, os mesmos números da aba Organizações.</p>
+      </section>
+
       <section className="panel" aria-labelledby="ai-usage-title">
         <div className="panel-title">
           <h2 id="ai-usage-title">Uso em {monthLabel(month)}</h2>
@@ -92,6 +112,52 @@ export function UsagePanel({
         </p>
       </section>
 
+      <section className="panel" aria-labelledby="ai-ops-title">
+        <h2 id="ai-ops-title">Latência, erros e reaproveitamento</h2>
+        {rows.length === 0 ? (
+          <p className="muted">Sem chamadas neste mês.</p>
+        ) : (
+          <div className="table-wrap">
+            <table className="data-table stack">
+              <caption className="sr-only">Latência, erros e cache por organização e tarefa</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Organização</th>
+                  <th scope="col">Tarefa</th>
+                  <th scope="col" className="num">Latência mediana</th>
+                  <th scope="col" className="num">Latência p95</th>
+                  <th scope="col" className="num">Reaproveitamento (cache)</th>
+                  <th scope="col" className="num">Taxa de erro</th>
+                  <th scope="col">Erros por causa</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => {
+                  const o = ops.get(`${r.organizationId}/${r.task}`);
+                  return (
+                    <tr key={`${r.organizationId}-${r.task}`}>
+                      <th scope="row" data-label="Organização">{r.organizationName}</th>
+                      <td data-label="Tarefa">{TASK_LABEL[r.task]}</td>
+                      <td data-label="Latência mediana" className="num">{formatLatency(o?.latency.p50Ms ?? null)}</td>
+                      <td data-label="Latência p95" className="num">{formatLatency(o?.latency.p95Ms ?? null)}</td>
+                      <td data-label="Reaproveitamento (cache)" className="num">{formatPercent(cacheHitRate(r.cacheHits, r.requests))}</td>
+                      <td data-label="Taxa de erro" className="num">{formatPercent(errorRate(r.errors, r.requests))}</td>
+                      <td data-label="Erros por causa">
+                        {o && o.errorsByCode.length > 0 ? o.errorsByCode.map((e) => `${errorCodeLabel(e.code)}: ${e.count}`).join(" · ") : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="small muted">
+          A latência é o tempo até o provedor responder, só das chamadas que chegaram a ele (cache não tem latência). “—” é sem amostra.
+          {operational.latencyTruncated ? " Neste mês a amostra foi limitada às primeiras chamadas." : ""} Nada aqui contém texto de pedido, resposta ou dado de aluno: só contagens, tempos e códigos.
+        </p>
+      </section>
+
       <section className="panel" aria-labelledby="ai-circuits-title">
         <h2 id="ai-circuits-title">Estado de cada provedor e modelo</h2>
         {circuits.length === 0 ? (
@@ -107,6 +173,15 @@ export function UsagePanel({
           </ul>
         )}
         <p className="small muted">Depois de 5 falhas de disponibilidade seguidas o modelo é suspenso por 1 minuto e a ferramenta tenta de novo com uma única chamada de prova.</p>
+      </section>
+
+      <section className="panel" aria-labelledby="ai-retention-title">
+        <h2 id="ai-retention-title">Retenção e exclusão</h2>
+        <ul className="ai-plain-list">
+          <li>As respostas guardadas para reaproveitar (cache) expiram sozinhas: {AI_CACHE_TTL_DEFAULT_DAYS} dias por padrão, ajustável pela variável AI_CACHE_TTL_DAYS (até {AI_CACHE_TTL_MAX_DAYS} dias). Não há processo em segundo plano: as vencidas são apagadas quando a organização faz uma nova chamada.</li>
+          <li>Quando o profissional cumpre um pedido de exclusão de dados do aluno, a ferramenta também apaga o cache, as respostas guardadas do planejador e os ajustes assistidos daquele aluno. Planejamentos, aceites e este registro de uso ficam, porque guardam só contagens, códigos e resumos criptográficos.</li>
+          <li>O pedido enviado ao provedor nunca é guardado aqui. Quanto tempo o provedor o retém depende do contrato com ele e ainda precisa de confirmação (veja as pendências).</li>
+        </ul>
       </section>
 
       <section className="panel" aria-labelledby="ai-audit-title">

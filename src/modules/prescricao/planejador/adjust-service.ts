@@ -535,7 +535,7 @@ export function adjustService(db: D1Database, context: AuthenticatedContext, dep
         const usageJson = JSON.stringify({ inputTokens: 0, outputTokens: 0, source: "CACHE", attempts: 0 });
         const finished = await repo.finish({
           requestId: id, planId, revisionId, attempt: 1, status: recorded ? "SUCCEEDED" : "FAILED", failureCode: recorded ? null : "not_found", cacheHit: true, responseHash: cached.responseHash, usageJson,
-          ledgerId: recorded ? ledgerId : null, now, ...(recorded ? { payloadJson: JSON.stringify(resolved.stored) } : {}),
+          ledgerId: recorded ? ledgerId : null, now, ...(recorded ? { payloadJson: JSON.stringify(resolved.stored), retentionDays: env.cacheTtlDays } : {}),
         });
         if (!recorded || !finished) return fail("not_found");
         const row = await repo.requestById(planId, revisionId, id);
@@ -644,7 +644,7 @@ export function adjustService(db: D1Database, context: AuthenticatedContext, dep
         planId, revisionId, cacheKey, task: "ADJUSTMENTS", providerKind: kind, modelId, promptVersion: ADJUST_PROMPT_VERSION, responseJson: JSON.stringify(result.json), responseHash: wireHash,
         inputTokens: settle.inputTokens, outputTokens: settle.outputTokens, now: done, expiresAt: new Date(done.getTime() + env.cacheTtlDays * DAY_MS),
       },
-      payloadJson: JSON.stringify(resolved.stored),
+      payloadJson: JSON.stringify(resolved.stored), retentionDays: env.cacheTtlDays,
     });
     if (!finished) return fail("in_progress");
     const row = await repo.requestById(planId, revisionId, requestId);

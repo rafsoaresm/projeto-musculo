@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { aiPlanningFor } from "@/db/ai-planning";
 import { dataRequestsFor, studentRequestsFor } from "@/db/data-requests";
 import { plansFor } from "@/db/plans";
+import { blueprintService } from "@/modules/prescricao/planejador/accept";
 import { ANSWERS, BASE_ENV, createPlannerEnv, NOW, type PlannerEnv } from "./helpers/ai-planner-env";
 import { PATTERN_CODES } from "@/modules/prescricao/planejador/vocab";
 import type { PlanningOutcome } from "@/modules/prescricao/planejador/orchestration";
@@ -157,6 +158,13 @@ describe("erasure follows the data-subject request", () => {
     expect(await svcA.plan(d1.planId, d1.revisionId, { idempotencyKey: key1.idempotency_key, baseContentVersion: key1.base_content_version, mode: "AI", answers: ANSWERS } as never)).toMatchObject({ ok: false });
     expect(await svcA.latest(d1.planId, d1.revisionId)).toBeNull();
     expect(await svcA.state(d1.planId, d1.revisionId)).toEqual({ state: "NONE" });
+    // PR 5.1 end to end: accepting from the erased run is refused as erased (never a half-working blueprint), and the refusal changes nothing
+    const acceptances = await t.n("SELECT COUNT(*) AS n FROM blueprint_acceptances");
+    const refused = await blueprintService(t.db, t.org("tech-a"), { now: () => NOW }).accept(d1.planId, d1.revisionId, {
+      idempotencyKey: t.id("acc"), runId: run1.runId, strategyId: "S1", phases: [], baseContentVersion: await t.contentVersion(d1.revisionId),
+    } as never);
+    expect(refused).toMatchObject({ ok: false });
+    expect(await t.n("SELECT COUNT(*) AS n FROM blueprint_acceptances")).toBe(acceptances);
     expect(rules1.runId).not.toBe(run1.runId);
     // the proposal and the prescription are still readable: only the AI's derived data went
     expect(await plansFor(t.db, t.org("tech-a")).findRevision(d1.planId, d1.revisionId)).toMatchObject({ revision: { state: "DRAFT" } });

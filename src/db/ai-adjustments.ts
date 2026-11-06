@@ -1,7 +1,7 @@
 import type { D1Database, D1PreparedStatement } from "@cloudflare/workers-types";
 import type { AiTask } from "@/modules/prescricao/planejador/provedores/port";
 import {
-  AI_MAX_RUNNING_PER_ORG, cachePutStatements, changesOf, iso, ledgerStatements, MEMBER, reserveStatements,
+  AI_CACHE_PURGE_BATCH, AI_MAX_RUNNING_PER_ORG, cachePutStatements, changesOf, iso, ledgerStatements, MEMBER, reserveStatements,
   type CachePutInput, type LedgerAction, type ReserveInput, type ReserveResult,
 } from "./ai-planning";
 import { revisionGate } from "./revision-gates";
@@ -95,7 +95,15 @@ export interface AdjustmentFinishInput {
   cache?: CachePutInput;
   /** The suggestion (ops with real ids, reason codes, diff). Deletable with the student's data. */
   payloadJson?: string;
+  /**
+   * Retention of DECIDED suggestions (applied, rejected or expired): when this call stores a suggestion it also deletes up to
+   * `AI_CACHE_PURGE_BATCH` suggestions of THIS organization decided more than this many days ago (default: the cache validity). Undecided
+   * suggestions are never purged by age: the professional may still be looking at them.
+   */
+  retentionDays?: number;
 }
+
+export const ADJUSTMENT_PAYLOAD_RETENTION_DEFAULT_DAYS = 14;
 
 export function aiAdjustmentsFor(db: D1Database, context: AuthenticatedContext | null) {
   const { userId, organizationId } = assertContext(context);
@@ -201,6 +209,18 @@ export function aiAdjustmentsFor(db: D1Database, context: AuthenticatedContext |
                   AND EXISTS (SELECT 1 FROM adjustment_requests WHERE id = ?3 AND organization_id = ?1 AND status = 'SUCCEEDED' AND attempt = ?8)`,
             )
             .bind(organizationId, userId, input.requestId, input.revisionId, input.payloadJson, iso(input.now), input.planId, input.attempt),
+        );
+      }
+      if (input.payloadJson !== undefined && input.status === "SUCCEEDED") {
+        const cutoff = new Date(input.now.getTime() - (input.retentionDays ?? ADJUSTMENT_PAYLOAD_RETENTION_DEFAULT_DAYS) * 86_400_000);
+        statements.push(
+          db
+            .prepare(
+              `DELETE FROM adjustment_payloads WHERE rowid IN (
+                 SELECT p.rowid FROM adjustment_payloads p JOIN adjustment_decisions d ON d.organization_id = p.organization_id AND d.request_id = p.request_id
+                  WHERE p.organization_id = ?1 AND d.decided_at <= ?3 LIMIT ${AI_CACHE_PURGE_BATCH}) AND ${MEMBER("?1", "?2")}`,
+            )
+            .bind(organizationId, userId, iso(cutoff)),
         );
       }
       const results = await db.batch(statements);

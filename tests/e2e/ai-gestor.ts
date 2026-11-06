@@ -206,3 +206,27 @@ export async function aiPanelScenario(manager: Page, professional: Page, studio:
   expect(await manager.content()).not.toContain(KEY_CANARY);
   expect(leaks).toEqual([]);
 }
+
+/**
+ * PR 5.1: after the professional's planning and adjustment flows ran through the simulated provider, the manager's "Uso" tab shows what the
+ * ledger holds: totals, latency, cache, errors by cause, quota alerts and the circuit; and none of it carries student data. Runs after
+ * `aiFlowScenario` / `aiAdjustScenario` inside the gestor spec (same manager, same database).
+ */
+export async function aiUsageReportScenario(manager: Page, studio: string, studentName: string) {
+  await manager.goto("./gestor/inteligencia-artificial?aba=uso");
+  await expect(manager.getByRole("heading", { name: /^Uso em / })).toBeVisible();
+  await expect(manager.getByRole("heading", { name: "Alertas de franquia" })).toBeVisible();
+  await expect(manager.getByText("Nenhuma organização perto do limite do plano neste mês.")).toBeVisible();
+  const usage = manager.getByRole("table", { name: "Uso de IA por organização e tarefa" });
+  await expect(usage.getByRole("row", { name: new RegExp(`${studio}.*Planejador de treino`) })).toBeVisible();
+  await expect(manager.getByText("Nenhum uso de IA registrado neste mês.")).toHaveCount(0);
+  const ops = manager.getByRole("table", { name: "Latência, erros e cache por organização e tarefa" });
+  const row = ops.getByRole("row", { name: new RegExp(`${studio}.*Planejador de treino`) });
+  await expect(row).toBeVisible();
+  await expect(row.getByRole("cell", { name: /\d+ ms|\d+,\d s/ }).first()).toBeVisible();
+  await expect(row.getByRole("cell", { name: /^\d+%$|^—$/ }).first()).toBeVisible();
+  await expect(manager.getByText("Nada aqui contém texto de pedido, resposta ou dado de aluno", { exact: false })).toBeVisible();
+  // no prompt, no student: only counts, times and codes
+  expect(await manager.content()).not.toContain(studentName);
+  await noHorizontalOverflow(manager);
+}

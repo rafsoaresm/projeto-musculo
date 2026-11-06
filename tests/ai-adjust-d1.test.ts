@@ -475,3 +475,30 @@ describe("isolation and side effects", () => {
     expect((await proposalState(f)).header).toMatchObject({ version: f.version });
   });
 });
+
+describe("retention of decided suggestions (PR 5.1)", () => {
+  it("a new suggestion purges decided ones older than the retention window of ITS organization, never an undecided one and never the decision", async () => {
+    const f1 = await fixture();
+    const f2 = await fixture();
+    const alts1 = await firstAlternative(f1);
+    const decided = ok(await svc().suggest(f1.planId, f1.revisionId, body(f1, substitution(f1, { replacementExerciseId: alts1[0].exerciseId }))));
+    expect(await svc().reject(f1.planId, f1.revisionId, { adjustmentId: decided.adjustmentId })).toEqual({ ok: true });
+    const alts2 = await firstAlternative(f2);
+    const undecided = ok(await svc().suggest(f2.planId, f2.revisionId, body(f2, substitution(f2, { replacementExerciseId: alts2[0].exerciseId }))));
+    const payloads = (id: string) => t.n("SELECT COUNT(*) AS n FROM adjustment_payloads WHERE request_id = ?1", id);
+    // inside the window (14 days by default): nothing is purged by a later suggestion
+    const f3 = await fixture();
+    const alts3 = await firstAlternative(f3);
+    const soon = new Date(NOW.getTime() + 13 * 86_400_000);
+    ok(await svc("tech-a", "org-a", { now: () => soon }).suggest(f3.planId, f3.revisionId, body(f3, substitution(f3, { replacementExerciseId: alts3[0].exerciseId }))));
+    expect([await payloads(decided.adjustmentId), await payloads(undecided.adjustmentId)]).toEqual([1, 1]);
+    // past the window: the decided payload goes, the undecided one stays, the request and its decision stay
+    const f4 = await fixture();
+    const alts4 = await firstAlternative(f4);
+    const late = new Date(NOW.getTime() + 15 * 86_400_000);
+    ok(await svc("tech-a", "org-a", { now: () => late }).suggest(f4.planId, f4.revisionId, body(f4, substitution(f4, { replacementExerciseId: alts4[0].exerciseId }))));
+    expect([await payloads(decided.adjustmentId), await payloads(undecided.adjustmentId)]).toEqual([0, 1]);
+    expect(await t.n("SELECT COUNT(*) AS n FROM adjustment_requests WHERE id = ?1", decided.adjustmentId)).toBe(1);
+    expect(await t.n("SELECT COUNT(*) AS n FROM adjustment_decisions WHERE request_id = ?1", decided.adjustmentId)).toBe(1);
+  });
+});

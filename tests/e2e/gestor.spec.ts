@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { aiAdjustScenario } from "./adjust-flow";
 import { aiFlowScenario } from "./ai-flow";
-import { aiPanelScenario } from "./ai-gestor";
+import { aiPanelScenario, aiUsageReportScenario } from "./ai-gestor";
 import {
   addStudent,
   createProfessional,
@@ -252,6 +252,8 @@ test("the platform manager is activated once and manages organizations without s
   await aiFlowScenario(pro.page, "Aluno confidencial gestor");
   // Motor V4, PR 4.3: assisted adjustments on that proposal, through the simulated provider (the adjustments task is mapped in the panel scenario).
   await aiAdjustScenario(pro.page);
+  // Motor V4, PR 5.1: the manager's usage reports show that traffic (latency, cache, errors, alerts) without any student data.
+  await aiUsageReportScenario(manager.page, studio, "Aluno confidencial gestor");
 
   // The terms: the text in force is the approved one, and the manager can change it on a page of its own.
   // This is the last thing the scenario does: publishing a text asks everyone to accept again.
