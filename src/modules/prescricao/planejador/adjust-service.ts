@@ -238,11 +238,14 @@ export function adjustService(db: D1Database, context: AuthenticatedContext, dep
     return item && item.exerciseId ? { item, label: parsed.label } : null;
   }
 
+  /** Rank wide, filter by the catalog-level constraints, and only then cap: the 9th ranked machine must not be lost to eight free weights. */
+  const ADJUST_RANK_POOL = 200;
+
   function alternativesOf(work: Workbench, intent: AdjustIntent): Alternative[] {
     const t = intent.target;
     return alternativesFor(work.built.input, work.previous, {
       phaseIndex: t.phaseIndex, slotKey: t.slotKey, ...(intent.scope === "OCCURRENCE" && t.week !== undefined && t.slot !== undefined ? { week: t.week, slot: t.slot } : {}),
-    }, ADJUST_MAX_ALTERNATIVES);
+    }, ADJUST_RANK_POOL, ADJUST_RANK_POOL);
   }
 
   /** Catalog-level constraints (same pattern, equipment) prune the options offered to the model; the engine still checks everything afterwards. */
@@ -419,7 +422,7 @@ export function adjustService(db: D1Database, context: AuthenticatedContext, dep
     const found = targetItem(work, intent);
     if (!found) return fail("invalid_target");
     const constraints = intent.constraints as ResolvedConstraint[];
-    const offered = prune(alternativesOf(work, intent), catalog.get(found.item.exerciseId as string), constraints, catalog);
+    const offered = prune(alternativesOf(work, intent), catalog.get(found.item.exerciseId as string), constraints, catalog).slice(0, ADJUST_MAX_ALTERNATIVES);
     if (!offered.length) {
       // Nothing to choose from: no provider is called and nothing is reserved. The answer is recorded like any other suggestion.
       const stored: Stored = {
@@ -679,7 +682,10 @@ export function adjustService(db: D1Database, context: AuthenticatedContext, dep
       if (!found || !target) return fail("invalid_target");
       const catalog = catalogOf(work.ctx.catalog);
       const constraints = intent.constraints as ResolvedConstraint[];
-      const list = alternativesOf(work, intent).slice(0, 6);
+      const ranked = alternativesOf(work, intent);
+      // Candidates that fit the catalog-level constraints come first (still in engine order); the rest follow and show their violated checks.
+      const fits = new Set(prune(ranked, catalog.get(found.item.exerciseId as string), constraints, catalog).map((a) => a.exerciseId));
+      const list = [...ranked.filter((a) => fits.has(a.exerciseId)), ...ranked.filter((a) => !fits.has(a.exerciseId))].slice(0, 6);
       const alternatives: AlternativeView[] = list.map((a) => {
         const ops: ResolvedOp[] = [{ kind: "SUBSTITUTE_EXERCISE", target, fromExerciseId: found.item.exerciseId as string, newExerciseId: a.exerciseId }];
         const sim = simulateAdjustments(work.built.input, work.previous, ops);

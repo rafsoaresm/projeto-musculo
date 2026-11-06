@@ -374,7 +374,7 @@ describe("AI path with the mock provider", () => {
 });
 
 describe("gates: the same as the planner's", () => {
-  it("the kill switch, an unmapped task and an organization without AI close the AI button and write nothing; the structured path keeps working", async () => {
+  it("the kill switch closes the AI button and write nothing; the structured path keeps working", async () => {
     const f = await fixture();
     const spy = t.spy();
     const c0 = await counts();

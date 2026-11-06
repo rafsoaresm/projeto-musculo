@@ -199,7 +199,7 @@ export function evaluateConstraints(
           const limit = constraint.kind === "MAX_SESSION_MINUTES" ? constraint.minutes : b?.estimatedMinutes ?? null;
           if (o.estimatedMinutes === null || limit === null) { unknown = true; continue; }
           if (o.estimatedMinutes > limit) worse.push(`≈ ${o.estimatedMinutes} min na semana ${o.week}, sessão ${o.slot} (limite ${limit} min)`);
-          else if (!o.durationComplete && constraint.kind === "MAX_SESSION_MINUTES") unknown = true;
+          else if (!o.durationComplete || (constraint.kind === "NO_DURATION_INCREASE" && b && !b.durationComplete)) unknown = true;
         }
         if (worse.length) return { constraint, status: "VIOLATED", detail: `Violaria: ${worse.slice(0, 3).join("; ")}${worse.length > 3 ? ` e mais ${worse.length - 3}` : ""}.` };
         if (unknown) return { constraint, status: "UNCHECKABLE", detail: "Não dá para verificar: a duração é parcial (dose vazia ou descanso não informado)." };

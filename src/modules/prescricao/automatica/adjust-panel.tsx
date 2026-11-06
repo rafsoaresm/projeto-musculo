@@ -48,7 +48,11 @@ export function AdjustPanel({
   const [errors, setErrors] = useState<string[]>([]);
   const [acknowledge, setAcknowledge] = useState(false);
   const [applied, setApplied] = useState<number | null>(null);
-  const [now] = useState(() => new Date());
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(t);
+  }, []);
   const ids = { item: useId(), op: useId(), scope: useId(), reason: useId(), aiReason: useId() };
 
   const target = options.find((o) => o.slotKey === state.itemKey) ?? null;
@@ -162,11 +166,16 @@ export function AdjustPanel({
   function discard() {
     if (!suggestion) return;
     const id = suggestion.adjustmentId;
-    setSuggestion(null);
-    setAcknowledge(false);
     startTransition(async () => {
       try {
-        await rejectAdjustment(planId, revisionId, { adjustmentId: id });
+        const out = await rejectAdjustment(planId, revisionId, { adjustmentId: id });
+        setSuggestion(null);
+        setAcknowledge(false);
+        if (!out.ok) {
+          setMessage({ tone: "error", text: "Esta sugestão já tinha sido decidida ou não existe mais. Confira a versão da proposta." });
+          router.refresh();
+          return;
+        }
         setMessage({ tone: "notice", text: "Sugestão descartada. A proposta continua como estava." });
       } catch {
         setMessage({ tone: "error", text: NETWORK_ERROR });

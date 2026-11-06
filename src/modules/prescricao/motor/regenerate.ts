@@ -200,7 +200,7 @@ export function changeDoses(input: EngineInput, previous: EngineResult, targets:
 
 // ---------- alternativas ----------
 
-export function alternativesFor(input: EngineInput, previous: EngineResult, target: AlternativeTarget, limit: number): Alternative[] {
+export function alternativesFor(input: EngineInput, previous: EngineResult, target: AlternativeTarget, limit: number, cap: number = TECHNICAL_LIMITS.MAX_ALTERNATIVES): Alternative[] {
   const ctx = prepare(input);
   if (!ctx) return [];
   const parsed = parseSlotKey(target.slotKey);
@@ -213,7 +213,7 @@ export function alternativesFor(input: EngineInput, previous: EngineResult, targ
   const exercise = item?.exerciseId ? ctx.byId.get(item.exerciseId) ?? null : null;
   const exclude = new Set(occs.flatMap((o) => o.items.map((i) => i.exerciseId)).filter((id): id is string => Boolean(id)));
   const plan = poolOf(ctx, where.phase, where.workout);
-  return rankAlternatives(ctx.log, exercise, exercise ? metricFor(exercise, input.parameters).metric : null, plan.pool, exclude, Math.min(limit, TECHNICAL_LIMITS.MAX_ALTERNATIVES));
+  return rankAlternatives(ctx.log, exercise, exercise ? metricFor(exercise, input.parameters).metric : null, plan.pool, exclude, Math.min(limit, cap));
 }
 
 // ---------- regeneração ----------

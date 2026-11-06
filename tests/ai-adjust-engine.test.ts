@@ -151,6 +151,14 @@ describe("dose operations (no provider involved)", () => {
     expect(dur.detail).toMatch(/≈ \d+ min na semana/);
   });
 
+  it("NO_DURATION_INCREASE is UNCHECKABLE when the simulated or the previous duration is only a lower bound", () => {
+    const rest = simulateAdjustments(input, before, [{ kind: "DOSE", op: "CHANGE_REST", phaseIndex: 1, label: "B", slotKey: pulldown.slotKey, exerciseId: "ex-pulldown", patch: { values: { restSeconds: 30 } } }]);
+    if (!rest.ok) throw new Error(rest.message);
+    const partial = { ...rest.result, occurrences: rest.result.occurrences.map((o) => (o.label === "B" ? { ...o, durationComplete: false } : o)) };
+    const [dur] = evaluateConstraints(before, partial, [{ kind: "NO_DURATION_INCREASE" }], catalog, []);
+    expect(dur.status).toBe("UNCHECKABLE");
+  });
+
   it("noEffect when a weekly ramp overwrites the typed value in every week", () => {
     const ramped = xintusInput(DEFAULT_RULESET, {
       catalog: CATALOG,
