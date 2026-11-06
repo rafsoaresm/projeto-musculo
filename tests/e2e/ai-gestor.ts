@@ -229,4 +229,14 @@ export async function aiUsageReportScenario(manager: Page, studio: string, stude
   // no prompt, no student: only counts, times and codes
   expect(await manager.content()).not.toContain(studentName);
   await noHorizontalOverflow(manager);
+  // Optional evidence for the validation notes: screenshots of the tab at the review widths (only when AI_SHOTS_DIR is set).
+  const shots = process.env.AI_SHOTS_DIR;
+  if (shots) {
+    for (const width of [1440, 1280, 1024, 768, 390]) {
+      await manager.setViewportSize({ width, height: 900 });
+      await noHorizontalOverflow(manager);
+      await manager.screenshot({ path: `${shots}/uso-${width}.png`, fullPage: true });
+    }
+    await manager.setViewportSize({ width: 1280, height: 800 });
+  }
 }
