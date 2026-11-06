@@ -61,7 +61,7 @@ test("dose profiles by opt-in: varied doses in the proposal and the dose 'Por qu
   // "Por quê?" of the dose of one exercise: rule, profile, reasons and what would change it.
   const panel = page.locator("aside.rx-exercise");
   await panel.locator(".why-details summary").first().click();
-  const doseWhy = panel.getByRole("group", { name: "Por que esta dose" }).or(panel.locator('[aria-label="Por que esta dose"]'));
+  const doseWhy = panel.getByRole("group", { name: "Por que esta dose" });
   await expect(doseWhy).toBeVisible();
   await expect(doseWhy.locator("[data-dose-why]")).toHaveCount(4);
   await expect(doseWhy.locator('[data-dose-why="rest"]')).toContainText("Regra: Perfis de dose · perfil HYP_");

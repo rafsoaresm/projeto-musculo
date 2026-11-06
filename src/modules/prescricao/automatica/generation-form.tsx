@@ -336,7 +336,7 @@ export function GenerationForm({ planId, revisionId, screen, header }: { planId:
         <Notice>
           <span>
             Há respostas da geração anterior em {shortDate(screen.lastAnswers.createdAt.slice(0, 10))}.{" "}
-            <button type="button" className="link-button" onClick={() => setForm(formFromAnswers(screen.lastAnswers?.answers, screen.structure, screen.policy))}>
+            <button type="button" className="link-button" onClick={() => setForm((f) => ({ ...formFromAnswers(screen.lastAnswers?.answers, screen.structure, screen.policy), doseProfiles: f.doseProfiles }))}>
               Usar as respostas da geração anterior
             </button>
           </span>

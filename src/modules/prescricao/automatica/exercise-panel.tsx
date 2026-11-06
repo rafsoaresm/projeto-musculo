@@ -192,7 +192,7 @@ export function ExercisePanel({
           </div>
         ))}
         {doseWhy.dose.length > 0 && (
-          <div className="why-block why-section" aria-label="Por que esta dose">
+          <div className="why-block why-section" role="group" aria-label="Por que esta dose">
             <h4 className="small-heading">Por que esta dose</h4>
             <ul className="auto-list">
               {doseWhy.dose.map((line) => (
