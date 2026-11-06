@@ -19,6 +19,7 @@ import { DOSE_PROFILE_CODES as PLANNER_CODES, EXERCISE_CLASSES as PLANNER_CLASSE
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { baseInput, exercise, parameters, structure } from "./helpers/motor-fixtures";
+import { substitute, regenerate } from "@/modules/prescricao/motor";
 import { xintusInput } from "./helpers/xintus";
 
 const V6 = { id: "gymgital-base", version: "2026.11.6" } as const;
@@ -251,7 +252,7 @@ describe("precedência", () => {
     const sets = r.params.find((p) => p.param === "sets")!;
     expect(sets).toMatchObject({ ruleId: "DOSE_DEFAULTS", changeIf: "Muda com a progressão da fase ou se o profissional editar." });
     for (const k of ["repsMin", "repsMax", "rirMin", "rirMax", "restSeconds"] as const)
-      expect(r.params.find((p) => p.param === k), k).toMatchObject({ basis: "HEURISTIC", ruleId: "DOSE_PROFILES", profileId: "HYP_COMPOUND_HEAVY", reasons: ["COMPOUND", "HEAVY_PATTERN"], origin: "RULES_HEURISTIC" });
+      expect(r.params.find((p) => p.param === k), k).toMatchObject({ basis: "HEURISTIC", ruleId: "DOSE_PROFILES", profileId: "HYP_COMPOUND_HEAVY", reasons: ["COMPOUND", "HEAVY_PATTERN", "HIGH_DIFFICULTY"], origin: "RULES_HEURISTIC" });
   });
 
   it("o ajuste do profissional vence o perfil (base PROFESSIONAL), só no parâmetro que ele escreveu", () => {
@@ -312,7 +313,7 @@ describe("ajustes por experiência e sessão curta", () => {
     expect(base.restSeconds).toBe(150);
     const short = dose(squat, { budget: 45 });
     expect((short.dose as { restSeconds: number }).restSeconds).toBe(130);
-    expect(short.params.find((p) => p.param === "restSeconds")?.reasons).toEqual(["COMPOUND", "HEAVY_PATTERN", "TIME_BUDGET_SHORT"]);
+    expect(short.params.find((p) => p.param === "restSeconds")?.reasons).toEqual(["COMPOUND", "HEAVY_PATTERN", "HIGH_DIFFICULTY", "TIME_BUDGET_SHORT"]);
     for (const e of [squat, press, curl, calf, lunge]) {
       const r = (dose(e, { budget: 30 }).dose as { restSeconds: number }).restSeconds;
       expect(r % 5, e.id).toBe(0);
@@ -426,3 +427,70 @@ describe("proposta completa (Xintus, hipertrofia, 4 sessões de 60 min)", () => 
 });
 
 const HASH_2026_11_6 = "eb21d47c58c406c878ac90e16995ef5b141acf12c4b8ffcd0cf23db5e2383e0e";
+
+describe("revisão da 3.1: motivos do ramo, aviso de metadado após troca e auditoria", () => {
+  const row = exercise({ id: "t-row2", name: "Remada", primaryMuscles: ["LATS"], patterns: ["HORIZONTAL_PULL"], compound: true, difficulty: 3 });
+  const hinge = exercise({ id: "t-hinge", name: "Terra", primaryMuscles: ["HAMSTRINGS"], patterns: ["HINGE"], compound: true, difficulty: 2 });
+
+  it("o motivo do perfil pesado diz o ramo que casou: padrão, dificuldade ou os dois", () => {
+    const reasons = (e: CatalogExercise) => dose(e).params.find((p) => p.param === "restSeconds")?.reasons;
+    expect(reasons(hinge)).toEqual(["COMPOUND", "HEAVY_PATTERN"]);
+    expect(reasons(row)).toEqual(["COMPOUND", "HIGH_DIFFICULTY"]);
+    expect(reasons(squat)).toEqual(["COMPOUND", "HEAVY_PATTERN", "HIGH_DIFFICULTY"]);
+    expect(choose(row).reasons).not.toContain("HEAVY_PATTERN");
+    expect(choose(curl).reasons).toEqual(byId("HYP_ISOLATION").reasons);
+  });
+
+  const unk1 = exercise({ id: "ex-unk1", name: "Sem metadado 1", primaryMuscles: ["BICEPS"], patterns: ["ELBOW_FLEXION"], compound: null, difficulty: 1, equipment: [] });
+  const unk2 = exercise({ id: "ex-unk2", name: "Sem metadado 2", primaryMuscles: ["TRICEPS"], patterns: ["ELBOW_EXTENSION"], compound: null, difficulty: 1, equipment: [] });
+  const ok2 = exercise({ id: "ex-ok2", name: "Completo", primaryMuscles: ["SHOULDERS"], patterns: ["VERTICAL_PUSH"], compound: false, difficulty: 1, equipment: [] });
+  const input = (catalog = [unk1, unk2, ok2]) => baseInput({
+    rules: V6, catalog,
+    structure: structure("2026-11-09", [{ weeks: 3, sessionsPerWeek: 1, stimulus: "HYPERTROPHY", workouts: [{ label: "A", exerciseTarget: 2 }] }]),
+  });
+  const uncertain = (r: ReturnType<typeof generate>) => r.issues.filter((i) => i.code === "DOSE_PROFILE_UNCERTAIN");
+  const swap = (inp: EngineInput, prev: ReturnType<typeof generate>, from: string, to: string) => {
+    const slotKey = prev.occurrences[0].items.find((i) => i.exerciseId === from)!.slotKey;
+    const out = substitute(inp, prev, { phaseIndex: 1, slotKey, applies: { kind: "PHASE" } }, to);
+    if (!out.ok) throw new Error(out.message);
+    return out.result;
+  };
+
+  it("trocar um exercício refaz a contagem do aviso e nunca deixa dois avisos no mesmo treino", () => {
+    const first = generate(input([unk1, unk2]));
+    const inp = input();
+    const ids = first.occurrences[0].items.map((i) => i.exerciseId);
+    expect(ids).toEqual(expect.arrayContaining(["ex-unk1", "ex-unk2"]));
+    expect(uncertain(first)).toHaveLength(1);
+    expect(uncertain(first)[0].count).toBe(2);
+    const one = swap(inp, first, "ex-unk1", "ex-ok2");
+    expect(uncertain(one)).toHaveLength(1);
+    expect(uncertain(one)[0]).toMatchObject({ count: 1, path: "phases.1.workouts.A" });
+    const back = swap(inp, one, "ex-ok2", "ex-unk1");
+    expect(uncertain(back)).toHaveLength(1);
+    expect(uncertain(back)[0].count).toBe(2);
+    const none = swap(inp, swap(inp, first, "ex-unk1", "ex-ok2"), "ex-unk2", "ex-unk1");
+    expect(uncertain(none)[0].count).toBe(1);
+  });
+
+  it("regenerar parte da proposta mantém um único aviso por treino com a contagem dos itens finais", () => {
+    const first = generate(input([unk1, unk2]));
+    const inp = input([unk1, unk2]);
+    const out = regenerate(inp, first, { kind: "WEEK", phaseIndex: 1, week: 2 });
+    if (!out.ok) throw new Error(out.message);
+    expect(uncertain(out.result)).toHaveLength(1);
+    const finalMissing = new Set(out.result.occurrences.flatMap((o) => o.items).filter((i) => i.trace.params.some((x) => (x.reasons ?? []).some((r) => r.startsWith("METADATA_MISSING")))).map((i) => i.exerciseId));
+    expect(uncertain(out.result)[0].count).toBe(finalMissing.size);
+  });
+
+  it("acessório de força (8-12 repetições do perfil) não gera 'estímulo fora da faixa' na auditoria; dose do profissional segue marcada", () => {
+    const strength = baseInput({
+      rules: V6, catalog: [press, curl, calf, squat],
+      structure: structure("2026-11-09", [{ weeks: 3, sessionsPerWeek: 1, stimulus: "STRENGTH", workouts: [{ label: "A", exerciseTarget: 4 }] }]),
+    });
+    const r = generate(strength);
+    const items = r.occurrences.flatMap((o) => o.items).filter(isReps);
+    expect(items.some((i) => i.trace.params.some((x) => x.profileId === "STR_ACCESSORY"))).toBe(true);
+    expect((r.audit?.findings ?? []).filter((f) => f.code === "AUDIT_DOSE_STIMULUS_MISMATCH")).toEqual([]);
+  });
+});

@@ -17,7 +17,7 @@ import { existingFor, metadataOf, nameKeyOf, parseSlotKey, rankAlternatives, sel
 import { targetSuggestion } from "./targets";
 import { planPhaseMicrocycle, type GenerateOptions, type ReservedSubstitution } from "./microcycle";
 import { ruleLogFor, RuleLog, uniqueIssues, DOSE_UNCERTAIN_CODE, DOSE_UNCERTAIN_SEGMENT } from "./trace";
-import { PROFILE_FIELD_LABELS } from "./dose-profile";
+import { uncertaintyMessage } from "./dose-profile";
 import { validateInput } from "./validate";
 import { volumeFor } from "./volume";
 import { cmp, codeOf, labelsOf, MODALITY_LABELS, MUSCLE_LABELS, normalizeText, numberText, PATTERN_LABELS, STIMULUS_LABELS, VOCABULARY_VERSION } from "./vocabulary";
@@ -502,7 +502,7 @@ export function itemFor(ctx: EngineContext, plan: { phase: StructurePhase; worko
   if (r.profile?.uncertain.length)
     issues.push({
       severity: "INFO", code: DOSE_UNCERTAIN_CODE, path: `${workoutPath}${DOSE_UNCERTAIN_SEGMENT}${exercise.id}`, phaseIndex: plan.phase.index, label: plan.workout.label, stage: "SELECTION",
-      message: `${exercise.name}: falta ${r.profile.uncertain.map((f) => PROFILE_FIELD_LABELS[f]).join(", ")} na biblioteca para escolher o perfil de dose.`,
+      message: uncertaintyMessage(exercise.name, r.profile.uncertain),
     });
   const stimTrace: ParamTrace[] = stimulus ? [{ param: "stimulus", value: stimulus.value, basis: stimulus.basis, ...(stimulus.ruleId ? { ruleId: stimulus.ruleId } : {}) }] : [];
   return { ...base, dose: r.dose, display: toDisplayFields(r.dose), trace: { selection: slot.selection, params: [...stimTrace, ...r.params] } };

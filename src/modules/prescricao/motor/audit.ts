@@ -823,9 +823,11 @@ function doseStimulus(pc: PhaseContext, p: number): void {
     const bandMax = row?.values.repsMax;
     if (!row || bandMin === undefined || bandMax === undefined) continue;
     const bandRest = row.values.restSeconds;
-    const repsOff = dose.reps.max < bandMin || dose.reps.min > bandMax;
+    // Valor que o perfil de dose (2026.11.6+) escreveu é a própria regra, não um desvio dela: não se compara à faixa genérica.
+    const fromProfile = (param: string) => f.item.trace.params.some((x) => x.param === param && x.ruleId === "DOSE_PROFILES" && x.basis !== "PROFESSIONAL");
+    const repsOff = !(fromProfile("repsMin") && fromProfile("repsMax")) && (dose.reps.max < bandMin || dose.reps.min > bandMax);
     const rest = dose.restSeconds;
-    const restOff = rest !== null && bandRest !== undefined && (Math.min(rest, bandRest) === 0 ? rest !== bandRest : Math.max(rest, bandRest) / Math.min(rest, bandRest) > pc.t.doseRestFactorMax);
+    const restOff = !fromProfile("restSeconds") && rest !== null && bandRest !== undefined && (Math.min(rest, bandRest) === 0 ? rest !== bandRest : Math.max(rest, bandRest) / Math.min(rest, bandRest) > pc.t.doseRestFactorMax);
     if (!repsOff && !restOff) continue;
     const status = professionalDose(f.item, ["repsMin", "repsMax", "restSeconds"]) ? "BY_DESIGN" : "OPEN";
     const key = `${stim}|${status}`;

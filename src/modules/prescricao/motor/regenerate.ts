@@ -13,7 +13,8 @@ import {
 } from "./generate";
 import { blueprintSupplyIssue, fixedWorkoutFrom, laneKey, type FixedWorkout, type GenerateOptions, type ReservedSubstitution } from "./microcycle";
 import { existingFor, metadataOf, nameKeyOf, parseSlotKey, rankAlternatives, selectExercises, slotKeyOf } from "./select";
-import { uniqueIssues } from "./trace";
+import { doseUncertaintyIssues } from "./dose-profile";
+import { DOSE_UNCERTAIN_CODE, uniqueIssues } from "./trace";
 import type {
   Alternative, AlternativeTarget, EngineInput, EngineOutcome, EngineResult, Issue, ItemOut, OccurrenceOut,
   RegenerationScope, StructureOccurrence, StructurePhase, StructureWorkout, SubstitutionTarget,
@@ -134,7 +135,18 @@ function substituteWith(
       .map((i) => ctx.byId.get(i.exerciseId as string)).filter((e): e is NonNullable<typeof e> => Boolean(e))));
   const supply = offCounts.reduce<Issue | null>((a, b) => ((b?.count ?? 0) > (a?.count ?? 0) ? b : a), null);
   const kept = previous.issues.filter((i) => !(i.code === "BLUEPRINT_FOCUS_SUPPLY_LOW" && i.phaseIndex === target.phaseIndex && i.label === parsed.label));
-  return { ok: true, result: finalize(ctx, { ...previous, occurrences, issues: uniqueIssues([...kept, ...(supply ? [supply] : []), ...issues]) }) };
+  return { ok: true, result: finalize(ctx, { ...previous, occurrences, issues: withDoseUncertainty([...kept, ...(supply ? [supply] : []), ...issues], occurrences) }) };
+}
+
+/**
+ * O aviso "perfil de dose sem metadado" descreve os itens do treino (contagem por treino): depois de trocar ou regenerar parte da
+ * proposta o gravado fica velho (contagem errada, ou um aviso agregado e outro novo no mesmo treino). Todos saem e são refeitos
+ * dos itens finais; sem perfil de dose nas regras da versão não há nada a refazer e a lista segue como está.
+ */
+function withDoseUncertainty(issues: Issue[], occurrences: readonly OccurrenceOut[]): Issue[] {
+  const fresh = doseUncertaintyIssues(occurrences);
+  if (!fresh.length && !issues.some((i) => i.code === DOSE_UNCERTAIN_CODE)) return uniqueIssues(issues);
+  return uniqueIssues([...issues.filter((i) => i.code !== DOSE_UNCERTAIN_CODE), ...fresh]);
 }
 
 /** Substitui o exercício de um item no escopo pedido; a dose é recalculada para o novo exercício. */
@@ -292,7 +304,7 @@ export function regenerate(input: EngineInput, previous: EngineResult, scope: Re
     ...fresh.workouts.filter((w) => touchedSet.has(w.phaseIndex) && !isFixed(w)),
   ].sort((a, b) => input.structure.phases.findIndex((p) => p.index === a.phaseIndex) - input.structure.phases.findIndex((p) => p.index === b.phaseIndex));
   const merged: EngineResult = {
-    ...fresh, phases: phaseSummaries(input), workouts, occurrences, issues: uniqueIssues(issues),
+    ...fresh, phases: phaseSummaries(input), workouts, occurrences, issues: withDoseUncertainty(issues, occurrences),
     rulesUsed: [...previous.rulesUsed, ...fresh.rulesUsed.filter((r) => !previous.rulesUsed.some((p) => p.ruleId === r.ruleId))],
   };
   return { ok: true, result: finalize(ctx, merged) };

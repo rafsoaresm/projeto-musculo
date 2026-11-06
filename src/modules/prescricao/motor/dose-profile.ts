@@ -11,7 +11,8 @@
 import type { RuleLog } from "./trace";
 import type { DoseProfile, DoseProfileCriteria } from "./rules";
 import type { DoseDraft } from "./dose";
-import type { CatalogExercise, DoseParam, Experience, ExerciseClass, Metric, ParamTrace } from "./types";
+import type { CatalogExercise, DoseParam, Experience, ExerciseClass, Issue, Metric, OccurrenceOut, ParamTrace } from "./types";
+import { DOSE_UNCERTAIN_CODE, DOSE_UNCERTAIN_SEGMENT } from "./trace";
 
 /** Campos de metadado que um perfil pode ler; quando nulos viram incerteza. */
 export type ProfileField = "compound" | "laterality" | "difficulty" | "patterns" | "primaryMuscles";
@@ -97,9 +98,28 @@ function specificityOf(p: DoseProfile): { tier: number; count: number } {
   return { tier: Math.max(0, ...keys.map((k) => TIER[k] ?? 0)), count: Object.keys(base).length + (anyOf?.length ? 1 : 0) };
 }
 
+/** Motivo de cada critério de um ramo `anyOf`. Os códigos aqui são os mesmos que o arquivo de regras usa nos `reasons`. */
+const BRANCH_REASONS: Partial<Record<keyof DoseProfileCriteria, string>> = { patternsAny: "HEAVY_PATTERN", difficultyMin: "HIGH_DIFFICULTY" };
+
+/**
+ * Motivos do perfil para um exercício. Um perfil com `anyOf` casa por mais de um caminho (ex.: padrão pesado OU dificuldade alta)
+ * e o arquivo de regras (imutável) lista um motivo fixo; aqui o motivo de ramo é trocado pelo(s) ramo(s) que de fato casaram,
+ * para o traço nunca dizer "padrão pesado" de um supino que entrou só pela dificuldade.
+ */
+export function reasonsFor(p: DoseProfile, e: CatalogExercise): string[] {
+  const branches = p.match.anyOf;
+  if (!branches?.length) return [...p.reasons];
+  const branchCodes = new Set(Object.values(BRANCH_REASONS));
+  const matched = branches.flatMap((g) => (criterion(g, e).v === "YES" ? Object.keys(g).map((k) => BRANCH_REASONS[k as keyof DoseProfileCriteria]).filter((c): c is string => Boolean(c)) : []));
+  const base = p.reasons.filter((r) => !branchCodes.has(r));
+  return [...base, ...new Set(matched)];
+}
+
 export interface ProfileChoice {
   /** O perfil aplicado, ou null (padrão genérico). */
   profile: DoseProfile | null;
+  /** Motivos do perfil aplicado para ESTE exercício (ver `reasonsFor`); vazio sem perfil. */
+  reasons: string[];
   /** Existia ao menos um perfil para este estímulo, modalidade e métrica (senão nada era esperado). */
   expected: boolean;
   /** Metadados que faltaram e poderiam mudar a escolha, em ordem fixa. */
@@ -116,13 +136,13 @@ export function profileFor(profiles: readonly DoseProfile[], exercise: CatalogEx
   const pool = profiles
     .map((p, index) => ({ p, index, spec: specificityOf(p) }))
     .filter(({ p }) => p.match.stimulus.includes(stimulus) && p.match.modality === modality && p.match.metric === metric);
-  if (!pool.length) return { profile: null, expected: false, uncertain: [] };
+  if (!pool.length) return { profile: null, reasons: [], expected: false, uncertain: [] };
   const better = (a: (typeof pool)[number], b: (typeof pool)[number]) => b.spec.tier - a.spec.tier || b.spec.count - a.spec.count || a.index - b.index;
   const evaluated = pool.map((x) => ({ ...x, t: evaluate(x.p, exercise) })).sort(better);
   const chosen = evaluated.find((x) => x.t.v === "YES") ?? null;
   const outranking = evaluated.filter((x) => x.t.v === "UNKNOWN" && (!chosen || better(x, chosen) < 0));
   const fields = new Set(outranking.flatMap((x) => x.t.unknown));
-  return { profile: chosen ? chosen.p : null, expected: true, uncertain: FIELD_ORDER.filter((f) => fields.has(f)) };
+  return { profile: chosen ? chosen.p : null, reasons: chosen ? reasonsFor(chosen.p, exercise) : [], expected: true, uncertain: FIELD_ORDER.filter((f) => fields.has(f)) };
 }
 
 // ---------- aplicação no rascunho da dose ----------
@@ -167,11 +187,11 @@ export function profileValues(log: RuleLog, profile: DoseProfile, ctx: ProfileCo
 }
 
 /** Escreve o perfil no rascunho (depois do padrão genérico e antes dos ajustes do profissional). */
-export function applyProfile(log: RuleLog, draft: DoseDraft, profile: DoseProfile, ctx: ProfileContext): void {
+export function applyProfile(log: RuleLog, draft: DoseDraft, profile: DoseProfile, ctx: ProfileContext, profileReasons: readonly string[] = profile.reasons): void {
   const { values, reasons } = profileValues(log, profile, ctx);
   const basis = log.basis("DOSE_PROFILES");
   const trace = (param: DoseParam | null) => ({
-    basis, ruleId: "DOSE_PROFILES", profileId: profile.id, reasons: [...profile.reasons, ...(param ? reasons[param] ?? [] : [])], changeIf: profile.changeIf, origin: "RULES_HEURISTIC" as const,
+    basis, ruleId: "DOSE_PROFILES", profileId: profile.id, reasons: [...profileReasons, ...(param ? reasons[param] ?? [] : [])], changeIf: profile.changeIf, origin: "RULES_HEURISTIC" as const,
   });
   for (const [k, v] of Object.entries(values) as Array<[DoseParam, number]>) draft.set(k, v, trace(k));
   if (profile.loadInstruction !== undefined) draft.setExtra("loadInstruction", profile.loadInstruction, trace(null));
@@ -185,8 +205,34 @@ export function profileTrace(log: RuleLog, choice: ProfileChoice): ParamTrace[] 
   const basis = log.basis("DOSE_PROFILES");
   const out: ParamTrace[] = [];
   if (choice.profile)
-    out.push({ param: "profile", value: choice.profile.id, basis, ruleId: "DOSE_PROFILES", profileId: choice.profile.id, reasons: choice.profile.reasons, changeIf: choice.profile.changeIf, origin: "RULES_HEURISTIC" });
+    out.push({ param: "profile", value: choice.profile.id, basis, ruleId: "DOSE_PROFILES", profileId: choice.profile.id, reasons: choice.reasons, changeIf: choice.profile.changeIf, origin: "RULES_HEURISTIC" });
   if (choice.uncertain.length)
     out.push({ param: "profile", value: choice.profile ? choice.profile.id : null, basis, ruleId: "DOSE_PROFILES", reasons: choice.uncertain.map((f) => `METADATA_MISSING:${f}`), changeIf: UNCERTAIN_CHANGE_IF, origin: "RULES_HEURISTIC" });
+  return out;
+}
+
+/** Texto do aviso por exercício (juntado por treino em `uniqueIssues`). */
+export const uncertaintyMessage = (name: string, fields: readonly ProfileField[]): string =>
+  `${name}: falta ${fields.map((f) => PROFILE_FIELD_LABELS[f]).join(", ")} na biblioteca para escolher o perfil de dose.`;
+
+/**
+ * Avisos de metadado ausente refeitos a partir dos itens FINAIS (o traço de cada item guarda o que faltou). Depois de trocar ou
+ * regenerar parte da proposta, os avisos gravados descrevem itens que já não existem; quem tem os itens finais refaz o conjunto
+ * (um por exercício e treino, juntado depois em `uniqueIssues`), em vez de somar ao que estava gravado.
+ */
+export function doseUncertaintyIssues(occurrences: readonly OccurrenceOut[]): Issue[] {
+  const out: Issue[] = [];
+  const seen = new Set<string>();
+  for (const o of occurrences)
+    for (const i of o.items) {
+      if (!i.exerciseId) continue;
+      const missing = i.trace.params.filter((x) => x.param === "profile" && x.ruleId === "DOSE_PROFILES").flatMap((x) => x.reasons ?? [])
+        .filter((r) => r.startsWith("METADATA_MISSING:")).map((r) => r.slice("METADATA_MISSING:".length) as ProfileField);
+      if (!missing.length) continue;
+      const path = `phases.${o.phaseIndex}.workouts.${o.label}${DOSE_UNCERTAIN_SEGMENT}${i.exerciseId}`;
+      if (seen.has(path)) continue;
+      seen.add(path);
+      out.push({ severity: "INFO", code: DOSE_UNCERTAIN_CODE, path, phaseIndex: o.phaseIndex, label: o.label, stage: "SELECTION", message: uncertaintyMessage(i.exerciseName, FIELD_ORDER.filter((f) => missing.includes(f))) });
+    }
   return out;
 }

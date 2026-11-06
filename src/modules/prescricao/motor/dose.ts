@@ -226,7 +226,7 @@ export function resolveDose(log: RuleLog, parameters: GenerationParameters, req:
   if (profiles) {
     choice = profileFor(profiles, req.exercise, req.stimulus, modality, metric);
     if (choice.profile) {
-      applyProfile(log, draft, choice.profile, { experience: req.experience ?? null, budgetMinutes: req.budgetMinutes ?? null });
+      applyProfile(log, draft, choice.profile, { experience: req.experience ?? null, budgetMinutes: req.budgetMinutes ?? null }, choice.reasons);
       const sets = draft.trace.get("sets");
       if (sets && sets.ruleId === "DOSE_DEFAULTS") draft.trace.set("sets", { ...sets, changeIf: SETS_CHANGE_IF });
     }
