@@ -1,5 +1,5 @@
 import type { OrganizationAiRow, PlanRow } from "@/db/ai-platform";
-import { organizationState, organizationUsage } from "./ai-view";
+import { organizationState } from "./ai-view";
 
 /**
  * Pure read-model helpers of the usage reports (PR 5.1): latency percentiles, rates and quota alerts. Nothing here reads a payload: the inputs
@@ -33,8 +33,9 @@ export function cacheHitRate(cacheHits: number, requests: number): number | null
 }
 
 /** Errors over calls that reached the provider (settled or failed); null without calls. */
-export function errorRate(errors: number, requests: number): number | null {
-  const total = errors + requests;
+export function errorRate(errors: number, requests: number, chargedUnknown = 0): number | null {
+  // A CHARGED_UNKNOWN call is in both `requests` and `errors`: count it once.
+  const total = errors + requests - chargedUnknown;
   return total === 0 ? null : errors / total;
 }
 
@@ -75,6 +76,21 @@ export interface QuotaAlert {
   message: string;
 }
 
+/** Largest used share (tokens used + reserved, or typed cost against the cap) of the month, unrounded; 0 when nothing is measurable. */
+function usedRatio(org: OrganizationAiRow, plan: PlanRow): number {
+  const ratios: number[] = [];
+  if (plan.mode === "TOTAL") {
+    if ((plan.totalTokens ?? 0) > 0) ratios.push((org.usedTokens + org.reservedTokens) / plan.totalTokens!);
+  } else {
+    if ((plan.inputTokens ?? 0) > 0) ratios.push((org.usedInput + org.reservedInput) / plan.inputTokens!);
+    if ((plan.outputTokens ?? 0) > 0) ratios.push((org.usedOutput + org.reservedOutput) / plan.outputTokens!);
+  }
+  if (plan.costCapMicros !== null && plan.costCapMicros > 0 && (org.costCurrency === null || org.costCurrency === plan.costCapCurrency)) {
+    ratios.push((org.costMicros + org.reservedCostMicros) / plan.costCapMicros);
+  }
+  return ratios.length ? Math.min(1, Math.max(...ratios)) : 0;
+}
+
 /** Alerts for organizations with AI on and a measurable allowance: 80% of the plan used (or reserved) and 100% (limit reached). */
 export function quotaAlerts(organizations: readonly OrganizationAiRow[], plans: readonly PlanRow[]): QuotaAlert[] {
   const byId = new Map(plans.map((p) => [p.id, p]));
@@ -82,13 +98,16 @@ export function quotaAlerts(organizations: readonly OrganizationAiRow[], plans: 
   for (const org of organizations) {
     if (!org.enabled) continue;
     const plan = org.quotaPlanId ? (byId.get(org.quotaPlanId) ?? null) : null;
+    // An archived plan gives no AI (the gate is closed), so it raises no usage alert.
     const state = organizationState(org, plan);
+    if (!plan || plan.archivedAt || (state.code !== "ACTIVE" && state.code !== "LIMIT_REACHED")) continue;
     if (state.code === "LIMIT_REACHED") {
       alerts.push({ organizationId: org.organizationId, organizationName: org.organizationName, level: "LIMIT", percent: 100, message: `${org.organizationName}: limite do plano atingido. Novos pedidos de IA ficam bloqueados até o próximo mês ou até trocar o plano.` });
       continue;
     }
-    const percent = organizationUsage(org, plan).percent;
-    if (percent !== null && percent >= QUOTA_WARN_PERCENT) {
+    // Exact ratio, rounded DOWN: 79.5% is not yet 80% and 99.9% is not yet the limit.
+    const percent = Math.floor(usedRatio(org, plan) * 100);
+    if (percent >= QUOTA_WARN_PERCENT) {
       alerts.push({ organizationId: org.organizationId, organizationName: org.organizationName, level: "WARNING", percent, message: `${org.organizationName}: ${percent}% da franquia do mês já foi usada.` });
     }
   }

@@ -52,6 +52,7 @@ describe("pure read-model helpers", () => {
     expect(cacheHitRate(1, 3)).toBe(0.25);
     expect(errorRate(0, 0)).toBeNull();
     expect(errorRate(1, 3)).toBe(0.25);
+    expect(errorRate(1, 1, 1)).toBe(1); // one CHARGED_UNKNOWN call is in both counts
     expect(formatPercent(null)).toBe("—");
     expect(formatPercent(0.256)).toBe("26%");
     expect(formatLatency(null)).toBe("—");
@@ -84,6 +85,13 @@ describe("pure read-model helpers", () => {
     expect(alerts.map((a) => [a.organizationId, a.level, a.percent])).toEqual([["limit", "LIMIT", 100], ["reserved", "WARNING", 90], ["warn", "WARNING", 80]]);
     expect(alerts[0]!.message).toContain("limite do plano atingido");
   });
+  it("archived plan, rounding and cost-cap warnings", () => {
+    expect(quotaAlerts([org({ usedTokens: 1500 })], [plan({ archivedAt: "2026-11-01T00:00:00.000Z" })])).toEqual([]);
+    expect(quotaAlerts([org({ usedTokens: 795 })], [plan()])).toEqual([]);
+    expect(quotaAlerts([org({ usedTokens: 999 })], [plan()]).map((a) => [a.level, a.percent])).toEqual([["WARNING", 99]]);
+    const capped = plan({ costCapMicros: 1_000_000, costCapCurrency: "USD" });
+    expect(quotaAlerts([org({ costMicros: 850_000, costCurrency: "USD" })], [capped]).map((a) => a.level)).toEqual(["WARNING"]);
+  });
   it("split allowance alerts on the worst side; a reached cost cap is a limit", () => {
     const split = plan({ mode: "SPLIT", totalTokens: null, inputTokens: 1000, outputTokens: 100 });
     expect(quotaAlerts([org({ usedInput: 100, usedOutput: 85 })], [split]).map((a) => a.level)).toEqual(["WARNING"]);
@@ -105,12 +113,12 @@ describe("operational report over the ledger (D1)", () => {
     const report = await aiReportsFor(t.db, { userId: "g1" }).operational(MONTH);
     expect(report.latencyTruncated).toBe(false);
     const a = report.rows.find((r) => r.organizationId === "org-a" && r.task === "PLANNER")!;
-    // 8 non-cache rows with latency: 50, 60, 100, 200, 300, 400, 1000, 2000
-    expect(a.latency).toEqual({ samples: 8, p50Ms: 200, p95Ms: 2000, maxMs: 2000 });
+    // failed calls (2000, 50, 60) count as errors and stay out of the percentiles of answered calls
+    expect(a.latency).toEqual({ samples: 5, p50Ms: 300, p95Ms: 1000, maxMs: 1000 });
     expect(a.errorsByCode).toEqual([{ code: "RATE_LIMIT", count: 2 }, { code: "TIMEOUT", count: 1 }]);
     expect(a.byModel).toEqual([
-      { providerKind: "mock", modelId: "m-1", requests: 7, errors: 2, p95Ms: 2000 },
-      { providerKind: "mock", modelId: "m-2", requests: 1, errors: 1, p95Ms: 60 },
+      { providerKind: "mock", modelId: "m-1", requests: 7, errors: 2, p95Ms: 1000 },
+      { providerKind: "mock", modelId: "m-2", requests: 1, errors: 1, p95Ms: null },
     ]);
     expect(report.rows.find((r) => r.organizationId === "org-a" && r.task === "ADJUSTMENTS")!.latency.p50Ms).toBe(70);
     expect(report.rows.find((r) => r.organizationId === "org-b")!.latency.p95Ms).toBe(5000);

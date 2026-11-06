@@ -125,6 +125,8 @@ export interface UsageRow {
   requests: number;
   cacheHits: number;
   errors: number;
+  /** Calls counted both in `requests` and in `errors` (tokens spent, outcome unknown): the error rate counts them once. */
+  chargedUnknown?: number;
   inputTokens: number;
   outputTokens: number;
   /** Null when no call of the group was priced, or when the priced calls used more than one currency: shown as unknown, never 0. */
@@ -493,6 +495,7 @@ export function aiPlatformFor(db: D1Database, context: PlatformContext) {
                   SUM(CASE WHEN l.cache_hit = 0 AND l.state IN ('SETTLED','CHARGED_UNKNOWN') THEN 1 ELSE 0 END) AS requests,
                   SUM(l.cache_hit) AS cacheHits,
                   SUM(CASE WHEN l.state IN ('RELEASED','CHARGED_UNKNOWN') THEN 1 ELSE 0 END) AS errors,
+                  SUM(CASE WHEN l.cache_hit = 0 AND l.state = 'CHARGED_UNKNOWN' THEN 1 ELSE 0 END) AS chargedUnknown,
                   COALESCE(SUM(l.input_tokens), 0) AS inputTokens, COALESCE(SUM(l.output_tokens), 0) AS outputTokens,
                   CASE WHEN COUNT(DISTINCT l.currency) > 1 THEN NULL ELSE SUM(l.cost_micros) END AS costMicros,
                   CASE WHEN COUNT(DISTINCT l.currency) > 1 THEN NULL ELSE MAX(l.currency) END AS currency,

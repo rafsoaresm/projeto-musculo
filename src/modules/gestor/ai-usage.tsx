@@ -141,7 +141,7 @@ export function UsagePanel({
                       <td data-label="Latência mediana" className="num">{formatLatency(o?.latency.p50Ms ?? null)}</td>
                       <td data-label="Latência p95" className="num">{formatLatency(o?.latency.p95Ms ?? null)}</td>
                       <td data-label="Reaproveitamento (cache)" className="num">{formatPercent(cacheHitRate(r.cacheHits, r.requests))}</td>
-                      <td data-label="Taxa de erro" className="num">{formatPercent(errorRate(r.errors, r.requests))}</td>
+                      <td data-label="Taxa de erro" className="num">{formatPercent(errorRate(r.errors, r.requests, r.chargedUnknown ?? 0))}</td>
                       <td data-label="Erros por causa">
                         {o && o.errorsByCode.length > 0 ? o.errorsByCode.map((e) => `${errorCodeLabel(e.code)}: ${e.count}`).join(" · ") : "—"}
                       </td>
@@ -154,7 +154,7 @@ export function UsagePanel({
         )}
         <p className="small muted">
           A latência é o tempo até o provedor responder, só das chamadas que chegaram a ele (cache não tem latência). “—” é sem amostra.
-          {operational.latencyTruncated ? " Neste mês a amostra foi limitada às primeiras chamadas." : ""} Nada aqui contém texto de pedido, resposta ou dado de aluno: só contagens, tempos e códigos.
+          {operational.latencyTruncated ? " Neste mês a amostra foi limitada às chamadas mais recentes de cada organização e tarefa." : ""} Nada aqui contém texto de pedido, resposta ou dado de aluno: só contagens, tempos e códigos.
         </p>
       </section>
 
@@ -180,6 +180,7 @@ export function UsagePanel({
         <ul className="ai-plain-list">
           <li>As respostas guardadas para reaproveitar (cache) expiram sozinhas: {AI_CACHE_TTL_DEFAULT_DAYS} dias por padrão, ajustável pela variável AI_CACHE_TTL_DAYS (até {AI_CACHE_TTL_MAX_DAYS} dias). Não há processo em segundo plano: as vencidas são apagadas quando a organização faz uma nova chamada.</li>
           <li>Quando o profissional cumpre um pedido de exclusão de dados do aluno, a ferramenta também apaga o cache, as respostas guardadas do planejador e os ajustes assistidos daquele aluno. Planejamentos, aceites e este registro de uso ficam, porque guardam só contagens, códigos e resumos criptográficos.</li>
+          <li>As sugestões de ajuste assistido já decididas (aplicadas, recusadas ou vencidas) são apagadas depois de {AI_CACHE_TTL_DEFAULT_DAYS} dias por padrão (mesma variável), quando a organização guarda uma nova sugestão; as ainda não decididas nunca são apagadas por idade.</li>
           <li>O pedido enviado ao provedor nunca é guardado aqui. Quanto tempo o provedor o retém depende do contrato com ele e ainda precisa de confirmação (veja as pendências).</li>
         </ul>
       </section>
