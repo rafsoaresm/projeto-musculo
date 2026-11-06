@@ -440,6 +440,10 @@ function dynamicTerms(
       from(rule.offFocus, "MICRO_OFF_FOCUS", () => `Fora do foco do treino ${label} (${roleText(bp.role)}): nenhum músculo principal nem padrão do foco, de apoio ou de transbordo`);
     else if (!bp.fullBody && !primary.some((m) => bp.dominant.has(m)) && primary.some((m) => bp.supporting.has(m)))
       from(rule.supportingBonus, "MICRO_SUPPORTING", () => `Trabalho de apoio do treino ${label} (${roleText(bp.role)}): ${primary.filter((m) => bp.supporting.has(m)).map(muscleText).join(", ")}`);
+    if (bp.fullBody) {
+      const again = patternsOf(e).filter((p) => bp.targetPatterns.has(p) && here.has(p));
+      if (again.length) from(rule.fullBodyPatternRepeat * again.length, "MICRO_FULL_BODY_PATTERN_REPEAT", () => `Corpo inteiro: ${again.map(patternText).join(", ")} já presente no treino ${label}; cada treino cobre os padrões-base antes de repetir um`);
+    }
     if (bp.candidates.has(e.id)) from(rule.candidateBonus, "MICRO_CANDIDATE", () => `Exercício nomeado pela estratégia para o treino ${label}`);
   }
   return { score: total, trace };

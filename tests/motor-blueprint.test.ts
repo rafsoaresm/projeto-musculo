@@ -54,7 +54,7 @@ describe("ruleset gymgital-base@2026.11.5", () => {
     for (const [id, entry] of Object.entries(old.rules)) expect(NEW.rules[id as keyof typeof NEW.rules], id).toEqual(entry);
     expect(Object.keys(NEW.rules).filter((k) => !(k in old.rules)).sort()).toEqual(["AUDIT_STRATEGY", "BLUEPRINT_ROLE_FOCUS", "BLUEPRINT_STRATEGY_TEMPLATES", "MICROCYCLE_BLUEPRINT"]);
     expect(NEW.rules.AUDIT_THRESHOLDS).toEqual(old.rules.AUDIT_THRESHOLDS);
-    expect(NEW.rules.MICROCYCLE_BLUEPRINT).toMatchObject({ basis: "HEURISTIC", value: { offFocus: -18, supportingBonus: 4, candidateBonus: 6, maxCandidatesPerWorkout: 6 } });
+    expect(NEW.rules.MICROCYCLE_BLUEPRINT).toMatchObject({ basis: "HEURISTIC", value: { offFocus: -18, supportingBonus: 4, candidateBonus: 6, fullBodyPatternRepeat: -20, maxCandidatesPerWorkout: 6 } });
   });
 
   it("a tabela de papéis das regras é a tabela interina do planejador (até a constante sair)", () => {

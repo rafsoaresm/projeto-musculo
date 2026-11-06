@@ -356,22 +356,24 @@ describe("patchAnswers: a estratégia de uma replanejada parcial não reescreve 
 
 describe("a origem de cada item", () => {
   const trace = (basis: "HEURISTIC" | "STUDENT_DATA" | "PROFESSIONAL", code = "RANK") => ({ selection: [{ code, basis, detail: "" }], params: [] as Array<{ param: string; value: unknown; basis: "HEURISTIC" | "PROFESSIONAL"; ruleId?: string }> });
-  const cov = (source: "AI_SUGGESTED" | "RULES_HEURISTIC" | "PROFESSIONAL") => ({
+  const cov = (source: "AI_SUGGESTED" | "RULES_HEURISTIC" | "PROFESSIONAL", candidates: string[] = []) => ({
     muscles: [], patterns: [], basis: "HEURISTIC_ACCEPTED" as const, origin: "BLUEPRINT_FOCUS" as const,
-    blueprint: { role: "UPPER" as const, source, strategyId: "S1", supporting: [], spillover: [], candidates: [] },
+    blueprint: { role: "UPPER" as const, source, strategyId: "S1", supporting: [], spillover: [], candidates },
   });
 
   it("profissional, regra, IA e dado do aluno aparecem em facetas separadas, e a IA nunca vira evidência", () => {
-    const engine = itemProvenance({ origin: "ENGINE", trace: trace("HEURISTIC") }, { coverage: cov("AI_SUGGESTED") });
-    expect(engine).toMatchObject({ decidedBy: "AI_SUGGESTED", focus: "AI_SUGGESTED", selection: "RULES_HEURISTIC", dose: "RULES_HEURISTIC", studentData: false });
-    expect(engine.labels).toMatchObject({ decidedBy: "Sugestão da IA", focus: "Sugestão da IA", selection: "Padrão por regras (editável)", studentData: null });
+    const engine = itemProvenance({ origin: "ENGINE", exerciseId: "e1", trace: trace("HEURISTIC") }, { coverage: cov("AI_SUGGESTED") });
+    expect(engine).toMatchObject({ decidedBy: "RULES_HEURISTIC", focus: "AI_SUGGESTED", selection: "RULES_HEURISTIC", dose: "RULES_HEURISTIC", studentData: false });
+    const nominated = itemProvenance({ origin: "ENGINE", exerciseId: "e1", trace: trace("HEURISTIC") }, { coverage: cov("AI_SUGGESTED", ["e1"]) });
+    expect(nominated.decidedBy).toBe("AI_SUGGESTED");
+    expect(engine.labels).toMatchObject({ decidedBy: "Padrão por regras (editável)", focus: "Sugestão da IA", selection: "Padrão por regras (editável)", studentData: null });
     expect(JSON.stringify(engine.labels)).not.toMatch(/evidência/i);
-    const rules = itemProvenance({ origin: "ENGINE", trace: trace("STUDENT_DATA", "HISTORY_CONTINUITY") }, { coverage: cov("RULES_HEURISTIC") });
+    const rules = itemProvenance({ origin: "ENGINE", exerciseId: "e1", trace: trace("STUDENT_DATA", "HISTORY_CONTINUITY") }, { coverage: cov("RULES_HEURISTIC") });
     expect(rules).toMatchObject({ decidedBy: "RULES_HEURISTIC", focus: "RULES_HEURISTIC", studentData: true });
     expect(rules.labels.studentData).toBe("Dado do aluno");
     for (const origin of ["PRESERVED", "LOCKED", "SUBSTITUTED"] as const)
-      expect(itemProvenance({ origin, trace: trace("HEURISTIC") }, { coverage: cov("AI_SUGGESTED") }).decidedBy).toBe("PROFESSIONAL");
-    const noFocus = itemProvenance({ origin: "ENGINE", trace: { selection: [], params: [{ param: "sets", value: 3, basis: "PROFESSIONAL" }] } }, { coverage: null });
+      expect(itemProvenance({ origin, exerciseId: "e1", trace: trace("HEURISTIC") }, { coverage: cov("AI_SUGGESTED") }).decidedBy).toBe("PROFESSIONAL");
+    const noFocus = itemProvenance({ origin: "ENGINE", exerciseId: null, trace: { selection: [], params: [{ param: "sets", value: 3, basis: "PROFESSIONAL" }] } }, { coverage: null });
     expect(noFocus).toMatchObject({ decidedBy: "RULES_HEURISTIC", focus: null, dose: "PROFESSIONAL" });
     expect(noFocus.labels.focus).toBeNull();
   });

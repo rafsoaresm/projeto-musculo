@@ -127,6 +127,8 @@ export interface MicrocycleBlueprint {
   supportingBonus: number;
   /** Bônus (≥ 0) de um exercício nomeado pela estratégia. */
   candidateBonus: number;
+  /** Desconto (≤ 0) de repetir, no mesmo treino de corpo inteiro, um padrão-alvo que o treino já tem. */
+  fullBodyPatternRepeat: number;
   /** Limite técnico de candidatos por treino (1 a 6). */
   maxCandidatesPerWorkout: number;
 }
@@ -371,6 +373,7 @@ function blueprintRuleProblems(rules: RuleSet): string[] {
     if (!(typeof b.offFocus === "number" && b.offFocus <= 0)) problems.push("MICROCYCLE_BLUEPRINT.offFocus: desconto, deve ser ≤ 0");
     if (!(typeof b.supportingBonus === "number" && b.supportingBonus >= 0)) problems.push("MICROCYCLE_BLUEPRINT.supportingBonus: deve ser ≥ 0");
     if (!(typeof b.candidateBonus === "number" && b.candidateBonus >= 0)) problems.push("MICROCYCLE_BLUEPRINT.candidateBonus: deve ser ≥ 0");
+    if (!(typeof b.fullBodyPatternRepeat === "number" && b.fullBodyPatternRepeat <= 0)) problems.push("MICROCYCLE_BLUEPRINT.fullBodyPatternRepeat: desconto, deve ser ≤ 0");
     if (!(Number.isInteger(b.maxCandidatesPerWorkout) && b.maxCandidatesPerWorkout >= 1 && b.maxCandidatesPerWorkout <= 6))
       problems.push("MICROCYCLE_BLUEPRINT.maxCandidatesPerWorkout: inteiro de 1 a 6");
   }

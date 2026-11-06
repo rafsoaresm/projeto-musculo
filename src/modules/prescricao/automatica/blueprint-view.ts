@@ -70,7 +70,7 @@ export function proposalBlueprintView(parameters: unknown, links: readonly Bluep
 // ---------- origin of each item ----------
 
 export interface ItemProvenance {
-  /** Who decided the item: the professional (kept/locked/substituted rows), else the one that drove its choice. */
+  /** Who decided the item: the professional (kept/locked/substituted rows); the AI only for an exercise it nominated; else the rules. */
   decidedBy: OriginKind;
   /** Where the workout's focus came from (null when the workout has no strategy focus). */
   focus: OriginKind | null;
@@ -88,13 +88,15 @@ export interface ItemProvenance {
  * a preserved, locked or substituted row is the professional's; the focus is `coverage.blueprint.source` for a strategy workout; the
  * ranking weights are always rules; the dose is the professional's only where a trace says so; traces of the student's own data (history, pain, assessment) mark student data.
  */
-export function itemProvenance(item: Pick<ItemOut, "origin" | "trace">, workout: Pick<WorkoutSummary, "coverage"> | null): ItemProvenance {
+export function itemProvenance(item: Pick<ItemOut, "origin" | "trace" | "exerciseId">, workout: Pick<WorkoutSummary, "coverage"> | null): ItemProvenance {
   const professional = item.origin === "PRESERVED" || item.origin === "LOCKED" || item.origin === "SUBSTITUTED";
   const bp = workout?.coverage?.origin === "BLUEPRINT_FOCUS" ? workout.coverage.blueprint : undefined;
   const focus: OriginKind | null = bp ? bp.source : null;
   const studentData = item.trace.selection.some((t) => t.basis === "STUDENT_DATA");
   const dose: OriginKind = item.trace.params.some((p) => p.basis === "PROFESSIONAL") ? "PROFESSIONAL" : "RULES_HEURISTIC";
-  const decidedBy: OriginKind = professional ? "PROFESSIONAL" : focus === "AI_SUGGESTED" ? "AI_SUGGESTED" : "RULES_HEURISTIC";
+  // The AI only names the focus and (optionally) candidates; the ranking is the rules'. An item is the AI's only when it nominated that exact exercise.
+  const nominated = !!bp && item.exerciseId !== null && bp.candidates.includes(item.exerciseId);
+  const decidedBy: OriginKind = professional ? "PROFESSIONAL" : focus === "AI_SUGGESTED" && nominated ? "AI_SUGGESTED" : "RULES_HEURISTIC";
   return {
     decidedBy, focus, selection: "RULES_HEURISTIC", dose, studentData,
     labels: {

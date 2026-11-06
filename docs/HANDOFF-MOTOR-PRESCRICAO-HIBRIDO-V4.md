@@ -221,3 +221,9 @@ Legenda: FEITO = código, testes locais e documentação; PARCIAL = existe mas f
 10. Lint, TS, vitest, build cloud, e2e nos dois mounts: ver `VALIDACAO.md`; benchmark de CPU e memória e Worker/D1 remoto: NÃO FEITO.
 11. Interface a 390 e 1440 px: só o painel do gestor; as telas V4 do profissional são da PR 4.
 12. Nada apresentado como homologado: ATENDIDO (rótulo "Heurística operacional (editável)"; validação do Técnico aberta em `PENDENCIAS.md`).
+
+### Atualização da PR 2 (06/11/2026, versão 0.98.0, branch `feat/motor-v4-pr2-blueprint-motor-20261105`, não publicada)
+
+- **F3 Compilador do blueprint: FEITO no servidor e nos testes, sem tela.** Regras `gymgital-base@2026.11.5` (sem estratégia dá o resultado da `2026.11.4`), compilador, seleção por microciclo guiada pelo foco do treino, aceite idempotente e geração a partir dele (`planejador/accept.ts`), "voltar à estratégia", aderência à estratégia na auditoria `1.1.0`, vínculo gravado (migration 0048) e origem de cada item em facetas.
+- **Critérios após a PR 2:** 1 (A e B diferentes, Xintus pelo servidor, IA simulada e regras) e o respeito ao corpo inteiro explícito: ATENDIDOS no servidor e nos testes; 2 (fases com divisões distintas): ATENDIDO no servidor; 5 (reprodução determinística de um blueprint aceito): ATENDIDO nos testes locais; 3 e 4 (doses): PR 3; 7 (telas): PR 4. Nenhuma ação do navegador chama o aceite nem a geração ainda.
+- **Não verificado:** Workers (CPU, memória), D1 remoto, provedor real, Figma. Ver `VALIDACAO.md`.

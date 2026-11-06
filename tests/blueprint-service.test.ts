@@ -148,7 +148,8 @@ describe("Xintus com a IA (mock) pelo servidor: superior/inferior, corpo inteiro
       for (const occ of snap.result.occurrences.filter((o) => o.phaseIndex === w.phaseIndex && o.label === w.label))
         for (const item of occ.items) {
           const p = itemProvenance(item, w);
-          expect(p.decidedBy).toBe("AI_SUGGESTED");
+          const nominated = !!w.coverage?.blueprint?.candidates.includes(item.exerciseId ?? "");
+          expect(p.decidedBy).toBe(nominated ? "AI_SUGGESTED" : "RULES_HEURISTIC");
           expect(p.focus).toBe("AI_SUGGESTED");
           expect(p.selection).toBe("RULES_HEURISTIC");
         }
@@ -177,6 +178,18 @@ describe("Xintus com a IA (mock) pelo servidor: superior/inferior, corpo inteiro
       expect(p.has("SQUAT") || p.has("HINGE") || p.has("LUNGE"), label).toBe(true);
       expect(p.has("HORIZONTAL_PUSH") || p.has("VERTICAL_PUSH"), label).toBe(true);
     }
+    // B is not the leftover of A: in every phase each full-body workout spreads over the base patterns (no 3 presses + 2 squats)
+    for (const phase of [1, 2, 3])
+      for (const label of ["A", "B"]) {
+        const first = snap.result.occurrences.filter((o) => o.phaseIndex === phase && o.label === label).sort((a, b) => a.week - b.week)[0];
+        const items = first.items;
+        const perPattern = new Map<string, number>();
+        for (const i of items) for (const x of exercise.get(i.exerciseId!)?.patterns ?? []) perPattern.set(x, (perPattern.get(x) ?? 0) + 1);
+        expect(perPattern.size, `${phase}${label}`).toBeGreaterThanOrEqual(5);
+        expect(Math.max(...perPattern.values()), `${phase}${label}`).toBeLessThanOrEqual(2);
+        expect(perPattern.has("HINGE") || perPattern.has("LUNGE"), `${phase}${label}`).toBe(true);
+        expect(perPattern.has("VERTICAL_PULL") || perPattern.has("HORIZONTAL_PULL"), `${phase}${label}`).toBe(true);
+      }
     expect(snap.result.occurrences.flatMap((o) => o.items).every((i) => !i.trace.selection.some((e) => e.code === "MICRO_OFF_FOCUS"))).toBe(true);
     expect(snap.result.audit!.findings.filter((f) => f.code === "AUDIT_STRATEGY_ADHERENCE_LOW" && (f as { status?: string }).status === "OPEN")).toEqual([]);
   });

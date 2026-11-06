@@ -681,11 +681,12 @@
     },
     "MICROCYCLE_BLUEPRINT": {
       "basis": "HEURISTIC",
-      "description": "Seleção guiada pela estratégia aceita: cada treino tem um foco dominante (músculos e padrões) e só ele puxa os exercícios do próprio treino; os alvos semanais da fase continuam globais. São pesos de pontuação, não proibições: um exercício fora do foco continua possível (offFocus é um desconto; se faltar oferta, o treino é completado e o fato é registrado). supportingBonus: músculo de apoio do treino, abaixo do dominante; candidateBonus: exercício nomeado pela estratégia (preferência leve, abaixo da escolha do profissional); padrões de transbordo não recebem desconto nem bônus; maxCandidatesPerWorkout: limite técnico de candidatos por treino.",
+      "description": "Seleção guiada pela estratégia aceita: cada treino tem um foco dominante (músculos e padrões) e só ele puxa os exercícios do próprio treino; os alvos semanais da fase continuam globais. São pesos de pontuação, não proibições: um exercício fora do foco continua possível (offFocus é um desconto; se faltar oferta, o treino é completado e o fato é registrado). supportingBonus: músculo de apoio do treino, abaixo do dominante; candidateBonus: exercício nomeado pela estratégia (preferência leve, abaixo da escolha do profissional); fullBodyPatternRepeat: em corpo inteiro, desconto de um padrão-alvo que o próprio treino já tem (cada treino cobre os padrões-base antes de repetir um); padrões de transbordo não recebem desconto nem bônus; maxCandidatesPerWorkout: limite técnico de candidatos por treino.",
       "value": {
         "offFocus": -18,
         "supportingBonus": 4,
         "candidateBonus": 6,
+        "fullBodyPatternRepeat": -20,
         "maxCandidatesPerWorkout": 6
       }
     },
