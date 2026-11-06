@@ -115,6 +115,7 @@ export const ISSUE_LABELS: Record<string, string> = {
   METRIC_MISSING: "Exercício sem métrica",
   DOSE_POLICY_MISSING: "Sem regra de dose",
   DOSE_INVALID: "Dose inválida",
+  DOSE_PROFILE_UNCERTAIN: "Perfil de dose sem metadado da biblioteca",
   PROGRESSION_INVALID: "Progressão inválida",
   PROGRESSION_PARAM_MISSING: "Progressão sobre parâmetro ausente",
   DURATION_UNKNOWN: "Duração não calculável",

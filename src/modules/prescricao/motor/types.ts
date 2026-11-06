@@ -141,6 +141,18 @@ export interface WeeklyProgression {
   deload?: { weeks: number[]; setsMultiplier: number; patch?: DosePatch };
 }
 
+/** Classes de exercício para a política de dose (o vocabulário fechado das estratégias; um teste mantém as duas listas iguais). */
+export const EXERCISE_CLASSES = [
+  "COMPOUND_UPPER_PUSH", "COMPOUND_UPPER_PULL", "COMPOUND_LOWER", "ISOLATION_UPPER", "ISOLATION_LOWER", "CORE", "CONDITIONING", "MOBILITY", "OTHER",
+] as const;
+export type ExerciseClass = (typeof EXERCISE_CLASSES)[number];
+/** Códigos de perfil de dose que uma estratégia pode pedir (o mesmo vocabulário fechado das estratégias). */
+export const DOSE_PROFILE_CODES = [
+  "COMPOUND_HEAVY", "COMPOUND_MODERATE", "ISOLATION_STANDARD", "ISOLATION_HIGH_REP", "UNILATERAL_STANDARD", "CORE_STABILITY",
+  "TIME_BASED", "CONDITIONING_CONTINUOUS", "CONDITIONING_INTERVALS", "MOBILITY_HOLD", "SKILL_PRACTICE",
+] as const;
+export type DoseProfileCode = (typeof DOSE_PROFILE_CODES)[number];
+
 export interface RuleSetRef {
   id: string;
   version: string;
@@ -443,6 +455,13 @@ export interface ParamTrace {
   basis: Basis;
   ruleId?: string;
   refs?: string[];
+  /** Perfil de dose que definiu o valor (2026.11.6+; ausente nas versões anteriores). */
+  profileId?: string;
+  /** Códigos do porquê (ex.: COMPOUND, EXPERIENCE_BEGINNER, TIME_BUDGET_SHORT, METADATA_MISSING:compound). */
+  reasons?: string[];
+  /** O que mudaria este valor, em pt-BR. */
+  changeIf?: string;
+  origin?: "RULES_HEURISTIC" | "AI_SUGGESTED" | "PROFESSIONAL";
 }
 
 /** REVIEWED; INCLUDES_INFERRED = "Inferido (não revisado)"; PENDING = sem curadoria; NOT_APPLICABLE = linha sem exercício da biblioteca. */

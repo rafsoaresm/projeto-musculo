@@ -117,13 +117,34 @@ const GOLDEN: Record<string, Record<string, string>> = {
     "rebase": "c981a8383c613e09747546b111bc767012660477962c7cd0e77179e925f0e5a2",
     "alternatives": "1d0ce3f318f7c3b6f9f3088908f2d28ad133ca6bde1e58fd6e180f8969df065e",
   },
+  // Calculados em 06/11/2026 sobre o motor 2.3.0 (fim da PR 2), ANTES da política de dose por perfil (PR 3.1): provam que a 2026.11.5
+  // (padrão das gerações novas) segue com as doses de sempre. Sem os casos "substitute:*": na 2026.11.5 a seleção já usa o exercício
+  // de troca desses casos. Nunca troque.
+  "2026.11.5": {
+    "variety:base": "61f4e937b1f6fd12b470c3537c6a9244720ee926c47f05e7b65346ba6b78f753",
+    "variety:linear": "eaabbb516c1524ddbb03ec579e6821f3a3150fd6a15dd2c4244fe6120433c59d",
+    "variety:cardio-mobility": "0604149b5bc2eee349f0f46a8183564d9aa267f700e6cf3d4ad40b70e0ab6bd0",
+    "xintus": "3dad32f8fbb435d6236e12d796351875048ba7ec4bc3c88e75d012e6a068228f",
+    "xintus:previous": "b32f184efb041287756d8bbf2d7f52a80695943e7a03b63a38d5a6f5ea0e9faa",
+    "big-abc": "135b55d1dc5624c2d8250c9752b8d84aa169cf6d237d78ee5ff6968d10cec559",
+    "regenerate:item": "e8512c7d85a1516d3b305bcc35ffb2ca0a2bfae8a3d5a45a357fa23507717fb0",
+    "regenerate:week": "335e57550ec1952dc40708a2da412a2e4e66e4d5ca0bb0cee051d4eba93b1ec0",
+    "regenerate:workout": "1c43c8b54bcd78b3639ccfb42fdafa68c37f4acb69d7669a95c7fd0acb634a5e",
+    "regenerate:phase": "488664599da5ec8abe545e622673529b07f6369ba1ec5bd3853b0e0cc68125de",
+    "regenerate:from-phase": "03808abdeb0bcf60f4d47fcce33db4d719b321c11836a75e3928e95284981690",
+    "rebase": "4901a3a8b9dde18f32e36a871e44d96940d0b39596008ee38a34029b6d17d09d",
+    "alternatives": "87cd09edd2ffc8abf6e4301a32ea65506d5fc555fc9464a93ef2fee05ea8b892",
+  },
 };
+
+/** Casos que não se aplicam a uma versão (a troca de exercício dos casos antigos já está na sessão com a seleção desta versão). */
+const SKIPPED: Record<string, string[]> = { "2026.11.5": ["substitute:occurrence", "substitute:from-week", "substitute:phase"] };
 
 describe("motor: versões publicadas reproduzem byte a byte (exceto engineVersion)", () => {
   for (const version of Object.keys(GOLDEN)) {
     it(`gymgital-base@${version}`, async () => {
       const got: Record<string, string> = {};
-      for (const [name, run] of cases({ id: "gymgital-base", version })) got[name] = await sha256Hex(String(run()));
+      for (const [name, run] of cases({ id: "gymgital-base", version })) if (!(SKIPPED[version] ?? []).includes(name)) got[name] = await sha256Hex(String(run()));
       if (process.env.PRINT_GOLDEN) console.log(version, JSON.stringify(got, null, 2));
       expect(got).toEqual(GOLDEN[version]);
     });

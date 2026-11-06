@@ -8,8 +8,10 @@ import base2 from "./gymgital-base-2026.11.2.json";
 import base3 from "./gymgital-base-2026.11.3.json";
 import base4 from "./gymgital-base-2026.11.4.json";
 import base5 from "./gymgital-base-2026.11.5.json";
+import base6 from "./gymgital-base-2026.11.6.json";
 import referencesFile from "./references.json";
-import type { Basis, BlueprintRole, DoseParam, Experience, LoadBasis, Metric, RuleSetRef } from "../types";
+import { DOSE_PROFILE_CODES, EXERCISE_CLASSES } from "../types";
+import type { Basis, BlueprintRole, DoseParam, DoseProfileCode, Experience, ExerciseClass, LoadBasis, Metric, RuleSetRef, WeeklyProgression } from "../types";
 import { MUSCLE_LABELS, PATTERN_LABELS } from "../vocabulary";
 
 export interface DoseDefault {
@@ -168,11 +170,55 @@ export interface AuditStrategy {
   exposureMinPerWeek: number;
 }
 
+/** Critérios de um perfil de dose; todos os informados precisam valer. Metadado nulo na biblioteca = critério desconhecido (nunca palpite). */
+export interface DoseProfileCriteria {
+  compound?: boolean;
+  laterality?: "UNILATERAL" | "BILATERAL";
+  classes?: ExerciseClass[];
+  patternsAny?: string[];
+  primaryMusclesAny?: string[];
+  difficultyMin?: number;
+  difficultyMax?: number;
+  exerciseIds?: string[];
+}
+export interface DoseProfileMatch extends DoseProfileCriteria {
+  stimulus: string[];
+  modality: string;
+  metric: Metric;
+  /** Pelo menos um destes grupos de critérios precisa valer (além dos critérios acima). */
+  anyOf?: DoseProfileCriteria[];
+}
+/** Perfil de dose (2026.11.6). `values` nunca traz séries; a carga nunca é proposta. */
+export interface DoseProfile {
+  id: string;
+  code: DoseProfileCode | null;
+  match: DoseProfileMatch;
+  values: Partial<Record<DoseParam, number>>;
+  loadInstruction?: string;
+  reasons: string[];
+  changeIf: string;
+}
+export interface DoseModifiers {
+  experience: Partial<Record<Experience, { rirShift: number; capRir: number }>>;
+  shortSession: { sessionMinutesMax: number; restScale: number };
+}
+export interface ProgressionTemplate {
+  applied: boolean;
+  progression?: WeeklyProgression;
+  loadInstruction?: string;
+}
+export interface AuditDose {
+  exerciseJumpSets: number;
+  restJumpFraction: number;
+}
+
 /**
  * Regras que só existem a partir de uma versão: uma versão anterior não as tem e o motor segue sem elas.
  * 2026.11.2: EXTERNAL_LOAD_STIMULI. 2026.11.3: AUDIT_* (auditoria técnica do plano). 2026.11.4: MICROCYCLE_SELECTION,
  * MICROCYCLE_TARGET_SUGGESTIONS e FINDING_OBSERVATION_MAP (seleção por microciclo, alvos sugeridos, observações da avaliação).
  * 2026.11.5: MICROCYCLE_BLUEPRINT, BLUEPRINT_ROLE_FOCUS, BLUEPRINT_STRATEGY_TEMPLATES e AUDIT_STRATEGY (estratégia aceita guia a seleção).
+ * 2026.11.6: DOSE_PROFILES, DOSE_MODIFIERS e DOSE_CLASS_MAP (política de dose por perfil, lida pelo motor desde a 3.1);
+ * PROGRESSION_TEMPLATES e AUDIT_DOSE (dados lidos a partir da 3.2).
  */
 export interface OptionalRuleValues {
   EXTERNAL_LOAD_STIMULI: string[];
@@ -187,6 +233,11 @@ export interface OptionalRuleValues {
   BLUEPRINT_ROLE_FOCUS: Record<BlueprintRole, BlueprintRoleFocus>;
   BLUEPRINT_STRATEGY_TEMPLATES: BlueprintStrategyTemplates;
   AUDIT_STRATEGY: AuditStrategy;
+  DOSE_PROFILES: DoseProfile[];
+  DOSE_MODIFIERS: DoseModifiers;
+  DOSE_CLASS_MAP: Record<ExerciseClass, DoseProfileCode[]>;
+  PROGRESSION_TEMPLATES: Record<string, ProgressionTemplate>;
+  AUDIT_DOSE: AuditDose;
 }
 
 export type RequiredRuleId = keyof RuleValues;
@@ -248,7 +299,13 @@ const GYMGITAL_BASE_2026_11_4 = deepFreeze(JSON.parse(JSON.stringify(base4)) as 
  * estratégia por regras (BLUEPRINT_STRATEGY_TEMPLATES) e limiares da aderência à estratégia (AUDIT_STRATEGY). Todas as regras da
  * 2026.11.4 estão iguais; sem uma estratégia aceita na entrada o resultado é o da 2026.11.4.
  */
-const GYMGITAL_BASE = deepFreeze(JSON.parse(JSON.stringify(base5)) as RuleSet);
+const GYMGITAL_BASE_2026_11_5 = deepFreeze(JSON.parse(JSON.stringify(base5)) as RuleSet);
+/**
+ * 2026.11.6: 2026.11.5 + política de dose por perfil (DOSE_PROFILES, DOSE_MODIFIERS, DOSE_CLASS_MAP) e os dados da progressão e da
+ * auditoria de doses (PROGRESSION_TEMPLATES, AUDIT_DOSE; consumidos na 3.2). NÃO é o padrão: só entra por escolha explícita do
+ * profissional (`OPT_IN_RULESETS`), até o Técnico validar a tabela. Sem DOSE_PROFILES a dose é a da 2026.11.5, byte a byte.
+ */
+const GYMGITAL_BASE_2026_11_6 = deepFreeze(JSON.parse(JSON.stringify(base6)) as RuleSet);
 
 /** Conjuntos publicados. Uma versão publicada nunca muda: novos números entram como nova versão. */
 export const RULESETS: Readonly<Record<string, RuleSet>> = deepFreeze({
@@ -256,11 +313,24 @@ export const RULESETS: Readonly<Record<string, RuleSet>> = deepFreeze({
   [`${GYMGITAL_BASE_2026_11_2.id}@${GYMGITAL_BASE_2026_11_2.version}`]: GYMGITAL_BASE_2026_11_2,
   [`${GYMGITAL_BASE_2026_11_3.id}@${GYMGITAL_BASE_2026_11_3.version}`]: GYMGITAL_BASE_2026_11_3,
   [`${GYMGITAL_BASE_2026_11_4.id}@${GYMGITAL_BASE_2026_11_4.version}`]: GYMGITAL_BASE_2026_11_4,
-  [`${GYMGITAL_BASE.id}@${GYMGITAL_BASE.version}`]: GYMGITAL_BASE,
+  [`${GYMGITAL_BASE_2026_11_5.id}@${GYMGITAL_BASE_2026_11_5.version}`]: GYMGITAL_BASE_2026_11_5,
+  [`${GYMGITAL_BASE_2026_11_6.id}@${GYMGITAL_BASE_2026_11_6.version}`]: GYMGITAL_BASE_2026_11_6,
 });
 
 /** A versão usada nas gerações novas (a mais recente); propostas gravadas seguem com a versão delas. */
-export const DEFAULT_RULESET: RuleSetRef = { id: GYMGITAL_BASE.id, version: GYMGITAL_BASE.version };
+export const DEFAULT_RULESET: RuleSetRef = { id: GYMGITAL_BASE_2026_11_5.id, version: GYMGITAL_BASE_2026_11_5.version };
+
+/**
+ * Versões publicadas que uma geração nova só usa por escolha explícita do profissional (nunca por padrão). A 2026.11.6 traz doses
+ * por perfil que o Técnico ainda não validou (docs/PENDENCIAS.md): trocar o padrão é decisão separada.
+ */
+export const OPT_IN_RULESETS: readonly RuleSetRef[] = Object.freeze([{ id: GYMGITAL_BASE_2026_11_6.id, version: GYMGITAL_BASE_2026_11_6.version }]);
+
+/** A versão de uma geração nova: o padrão, ou a versão de adesão escolhida (qualquer outra é recusada com null). */
+export function rulesetForNewGeneration(rulesVersion?: string | null): RuleSetRef | null {
+  if (rulesVersion === undefined || rulesVersion === null || rulesVersion === DEFAULT_RULESET.version) return DEFAULT_RULESET;
+  return OPT_IN_RULESETS.find((r) => r.version === rulesVersion) ?? null;
+}
 
 export function getRuleSet(ref: RuleSetRef): RuleSet | null {
   return RULESETS[`${ref.id}@${ref.version}`] ?? null;
@@ -324,6 +394,7 @@ export function validateRuleSet(rules: RuleSet): string[] {
   problems.push(...auditRuleProblems(rules));
   problems.push(...microcycleRuleProblems(rules));
   problems.push(...blueprintRuleProblems(rules));
+  problems.push(...doseRuleProblems(rules));
   return problems;
 }
 
@@ -414,6 +485,104 @@ function blueprintRuleProblems(rules: RuleSet): string[] {
   return problems;
 }
 
+const PROFILE_PARAMS: readonly DoseParam[] = ["repsMin", "repsMax", "durationMin", "durationMax", "distanceMin", "distanceMax", "restSeconds", "rirMin", "rirMax", "rpeMin", "rpeMax"];
+
+function criteriaProblems(c: DoseProfileCriteria, where: string, out: string[]): void {
+  for (const k of Object.keys(c))
+    if (!["compound", "laterality", "classes", "patternsAny", "primaryMusclesAny", "difficultyMin", "difficultyMax", "exerciseIds"].includes(k)) out.push(`${where}: critério desconhecido ${k}`);
+  if (c.compound !== undefined && typeof c.compound !== "boolean") out.push(`${where}.compound: booleano`);
+  if (c.laterality !== undefined && c.laterality !== "UNILATERAL" && c.laterality !== "BILATERAL") out.push(`${where}.laterality: UNILATERAL ou BILATERAL`);
+  for (const x of c.classes ?? []) if (!EXERCISE_CLASSES.includes(x)) out.push(`${where}.classes: classe desconhecida ${x}`);
+  for (const x of c.patternsAny ?? []) if (!PATTERN_LABELS[x]) out.push(`${where}.patternsAny: padrão desconhecido ${x}`);
+  for (const x of c.primaryMusclesAny ?? []) if (!MUSCLE_LABELS[x]) out.push(`${where}.primaryMusclesAny: músculo desconhecido ${x}`);
+  for (const k of ["classes", "patternsAny", "primaryMusclesAny", "exerciseIds"] as const) if (c[k] && !c[k]!.length) out.push(`${where}.${k}: lista vazia`);
+  if (c.exerciseIds && new Set(c.exerciseIds).size !== c.exerciseIds.length) out.push(`${where}.exerciseIds: ids repetidos`);
+  for (const k of ["difficultyMin", "difficultyMax"] as const)
+    if (c[k] !== undefined && !(Number.isInteger(c[k]) && (c[k] as number) >= 1 && (c[k] as number) <= 5)) out.push(`${where}.${k}: inteiro de 1 a 5`);
+  if (c.difficultyMin !== undefined && c.difficultyMax !== undefined && c.difficultyMin > c.difficultyMax) out.push(`${where}: difficultyMin > difficultyMax`);
+}
+
+/** Política de dose (2026.11.6+): perfis válidos, sem séries, sem carga, intervalos coerentes, ids e exercícios únicos, códigos conhecidos. */
+function doseRuleProblems(rules: RuleSet): string[] {
+  const problems: string[] = [];
+  const profiles = rules.rules.DOSE_PROFILES?.value;
+  if (profiles) {
+    const ids = new Set<string>();
+    const exerciseIds = new Map<string, string>();
+    for (const [i, p] of profiles.entries()) {
+      const where = `DOSE_PROFILES[${p.id ?? i}]`;
+      if (!p.id?.trim()) problems.push(`${where}: sem id`);
+      if (ids.has(p.id)) problems.push(`${where}: id repetido`);
+      ids.add(p.id);
+      if (p.code !== null && !DOSE_PROFILE_CODES.includes(p.code)) problems.push(`${where}: código desconhecido ${String(p.code)}`);
+      if (!p.match.stimulus?.length) problems.push(`${where}.match.stimulus: vazio`);
+      if (!p.match.modality?.trim()) problems.push(`${where}.match.modality: vazio`);
+      const { stimulus: _s, modality: _m, metric: _t, anyOf: _a, ...criteria } = p.match;
+      void _s; void _m; void _t; void _a;
+      criteriaProblems(criteria, `${where}.match`, problems);
+      if (!["REPS", "TIME", "DISTANCE", "INTERVALS", "CONTINUOUS"].includes(p.match.metric)) problems.push(`${where}.match.metric: métrica desconhecida ${String(p.match.metric)}`);
+      for (const [j, alt] of (p.match.anyOf ?? []).entries()) {
+        criteriaProblems(alt, `${where}.match.anyOf[${j}]`, problems);
+        if (!Object.keys(alt).length) problems.push(`${where}.match.anyOf[${j}]: grupo vazio`);
+      }
+      for (const id of [...(p.match.exerciseIds ?? []), ...(p.match.anyOf ?? []).flatMap((a) => a.exerciseIds ?? [])]) {
+        const other = exerciseIds.get(id);
+        if (other && other !== p.id) problems.push(`${where}: exercício ${id} também está no perfil ${other}`);
+        exerciseIds.set(id, p.id);
+      }
+      if ("sets" in p.values) problems.push(`${where}.values: perfil não define séries`);
+      if (!Object.keys(p.values).length && !p.loadInstruction) problems.push(`${where}.values: vazio`);
+      for (const [k, v] of Object.entries(p.values)) {
+        if (!PROFILE_PARAMS.includes(k as DoseParam)) problems.push(`${where}.values.${k}: parâmetro não permitido em perfil`);
+        else if (typeof v !== "number" || !Number.isFinite(v) || v < 0) problems.push(`${where}.values.${k}: negativo ou inválido`);
+      }
+      for (const [min, max] of DOSE_RANGES) {
+        const a = p.values[min];
+        const b = p.values[max];
+        if (a !== undefined && b !== undefined && a > b) problems.push(`${where}: ${min} > ${max}`);
+        if ((a === undefined) !== (b === undefined) && min !== "rpeMin") problems.push(`${where}: ${min} e ${max} vão juntos`);
+      }
+      if ((p.values.rirMax ?? 0) > 10 || (p.values.rpeMax ?? 0) > 10) problems.push(`${where}: RIR/RPE acima de 10`);
+      if (/\d\s*kg|\bkg\b/i.test(p.loadInstruction ?? "")) problems.push(`${where}.loadInstruction: não propõe quilos`);
+      if (!p.reasons?.length) problems.push(`${where}.reasons: vazio`);
+      if (!p.changeIf?.trim()) problems.push(`${where}.changeIf: vazio`);
+    }
+  }
+  const m = rules.rules.DOSE_MODIFIERS?.value;
+  if (m) {
+    for (const [lvl, e] of Object.entries(m.experience)) {
+      if (!["BEGINNER", "INTERMEDIATE", "ADVANCED"].includes(lvl)) problems.push(`DOSE_MODIFIERS.experience: nível desconhecido ${lvl}`);
+      if (!(Number.isInteger(e.rirShift) && Math.abs(e.rirShift) <= 3)) problems.push(`DOSE_MODIFIERS.experience.${lvl}.rirShift: inteiro de -3 a 3`);
+      if (!(Number.isInteger(e.capRir) && e.capRir >= 0 && e.capRir <= 10)) problems.push(`DOSE_MODIFIERS.experience.${lvl}.capRir: inteiro de 0 a 10`);
+    }
+    if (!(Number.isInteger(m.shortSession.sessionMinutesMax) && m.shortSession.sessionMinutesMax >= 1)) problems.push("DOSE_MODIFIERS.shortSession.sessionMinutesMax: inteiro ≥ 1");
+    if (!(m.shortSession.restScale > 0 && m.shortSession.restScale <= 1)) problems.push("DOSE_MODIFIERS.shortSession.restScale: em (0, 1]");
+  }
+  const map = rules.rules.DOSE_CLASS_MAP?.value;
+  if (map) {
+    for (const cls of EXERCISE_CLASSES) if (!map[cls]) problems.push(`DOSE_CLASS_MAP.${cls}: classe sem entrada`);
+    const known = new Set((profiles ?? []).map((p) => p.code).filter(Boolean));
+    for (const [cls, codes] of Object.entries(map)) {
+      if (!EXERCISE_CLASSES.includes(cls as ExerciseClass)) problems.push(`DOSE_CLASS_MAP: classe desconhecida ${cls}`);
+      for (const c of codes) {
+        if (!DOSE_PROFILE_CODES.includes(c)) problems.push(`DOSE_CLASS_MAP.${cls}: código desconhecido ${c}`);
+        else if (profiles && !known.has(c)) problems.push(`DOSE_CLASS_MAP.${cls}: nenhum perfil tem o código ${c}`);
+      }
+    }
+  }
+  for (const [intent, t] of Object.entries(rules.rules.PROGRESSION_TEMPLATES?.value ?? {})) {
+    if (t.applied && !t.progression) problems.push(`PROGRESSION_TEMPLATES.${intent}: aplicada sem progressão`);
+    if (!t.applied && (t.progression || t.loadInstruction)) problems.push(`PROGRESSION_TEMPLATES.${intent}: não aplicada não traz progressão`);
+    if (t.progression?.deload) problems.push(`PROGRESSION_TEMPLATES.${intent}: a descarga nunca é gerada`);
+  }
+  const a = rules.rules.AUDIT_DOSE?.value;
+  if (a) {
+    if (!(Number.isInteger(a.exerciseJumpSets) && a.exerciseJumpSets >= 1)) problems.push("AUDIT_DOSE.exerciseJumpSets: inteiro ≥ 1");
+    if (!(typeof a.restJumpFraction === "number" && a.restJumpFraction > 0 && a.restJumpFraction <= 1)) problems.push("AUDIT_DOSE.restJumpFraction: em (0, 1]");
+  }
+  return problems;
+}
+
 const AUDIT_FRACTIONS = ["weekJumpFraction", "phaseJumpFraction", "uniformShare", "regionShareMax", "workoutShareMax", "durationUnderuseFraction"] as const;
 const AUDIT_COUNTS = ["uniformMinItems", "patternRepeatInSession", "maxFindings"] as const;
 
@@ -474,6 +643,10 @@ export function renderRulesTable(rules: RuleSet): string {
       lines.push(`| ${id} | ${BASIS_TEXT[entry.basis]} | ${cell(entry.description)} | ver tabela de doses |`);
       continue;
     }
+    if (id === "DOSE_PROFILES") {
+      lines.push(`| ${id} | ${BASIS_TEXT[entry.basis]} | ${cell(entry.description)} | ver tabela de perfis de dose |`);
+      continue;
+    }
     lines.push(`| ${id} | ${BASIS_TEXT[entry.basis]} | ${cell(entry.description)} | \`${cell(entry.value)}\` |`);
   }
   lines.push("", "Doses padrão (`DOSE_DEFAULTS`):", "", "| Estímulo | Modalidade | Métrica | Valores |", "|---|---|---|---|");
@@ -482,6 +655,14 @@ export function renderRulesTable(rules: RuleSet): string {
       .filter(Boolean)
       .join("; ");
     lines.push(`| ${d.stimulus} | ${d.modality} | ${d.metric} | \`${cell(d.values)}\`${extras ? ` ${cell(extras)}` : ""} |`);
+  }
+  const profiles = rules.rules.DOSE_PROFILES?.value;
+  if (profiles) {
+    lines.push("", "Perfis de dose (`DOSE_PROFILES`; escolhe o mais específico, depois o de mais critérios, depois a ordem da tabela; nunca definem séries nem carga):", "", "| Perfil | Código | Estímulo | Critérios | Valores | Por quê |", "|---|---|---|---|---|---|");
+    for (const p of profiles) {
+      const { stimulus, modality, metric, ...criteria } = p.match;
+      lines.push(`| ${p.id} | ${p.code ?? "—"} | ${stimulus.join(", ")} (${modality}/${metric}) | \`${cell(criteria)}\` | \`${cell(p.values)}\`${p.loadInstruction ? ` "${cell(p.loadInstruction)}"` : ""} | ${p.reasons.join(", ")} |`);
+    }
   }
   lines.push("", "Referências:", "", "| Id | Citação | Estado |", "|---|---|---|");
   for (const r of REFERENCES) lines.push(`| ${r.id} | ${cell(r.citation)} | ${r.status === "VERIFIED" ? "Verificada" : "NÃO VERIFICADA (não aparece para usuários)"} |`);

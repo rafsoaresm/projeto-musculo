@@ -171,6 +171,7 @@ describe("motor: regras, bases e referências", () => {
       "gymgital-base@2026.11.3": "fd1571c27b5d1430f03e89a68c71467d8591ccb72b88cbb1d9802589576a8033",
       "gymgital-base@2026.11.4": "caeb13c80abf9121e5b0d9ee7d9d2363e504888822cd8aad35a55d23135efba1",
       "gymgital-base@2026.11.5": "c28a5a661bc67a2050e280ec8a5225f36eeef06e3a9b4603f3bd380fef055977",
+      "gymgital-base@2026.11.6": "eb21d47c58c406c878ac90e16995ef5b141acf12c4b8ffcd0cf23db5e2383e0e",
     };
     for (const [id, rules] of Object.entries(RULESETS)) {
       expect(PUBLISHED[id], `${id} sem hash fixado`).toBeDefined();

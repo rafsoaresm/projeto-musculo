@@ -30,7 +30,7 @@ import type { AuthenticatedContext } from "@/db/students";
 import { generate, workUnits } from "@/modules/prescricao/motor/generate";
 import { canonicalInput, canonicalJson, canonicalRequest, sha256Hex } from "@/modules/prescricao/motor/hash";
 import { alternativesFor, rebase, regenerate, substitute } from "@/modules/prescricao/motor/regenerate";
-import { DEFAULT_RULESET, getRuleSet } from "@/modules/prescricao/motor/rules";
+import { DEFAULT_RULESET, getRuleSet, rulesetForNewGeneration } from "@/modules/prescricao/motor/rules";
 import { cmp, STIMULUS_LABELS } from "@/modules/prescricao/motor/vocabulary";
 import { structureFingerprint } from "@/modules/prescricao/planejador/hashes";
 import { proposalBlueprintView, type ProposalBlueprintView } from "./blueprint-view";
@@ -97,7 +97,8 @@ const substitutionTargetSchema = z
   })
   .strict();
 
-const generateSchema = z.object({ idempotencyKey: intentId, baseContentVersion: z.number().int().min(0), answers: z.unknown() }).strict();
+/** `rulesVersion`: adesão explícita a uma versão publicada que não é o padrão (hoje só a das doses por perfil); ausente = o padrão. */
+const generateSchema = z.object({ idempotencyKey: intentId, baseContentVersion: z.number().int().min(0), answers: z.unknown(), rulesVersion: z.string().trim().min(1).max(40).optional() }).strict();
 const continueSchema = z.object({ proposalId: z.string().min(1).max(64), idempotencyKey: intentId, writeId: intentId, expectedVersion: version }).strict();
 const regenerateSchema = continueSchema.extend({ scope: regenerationScopeSchema, answers: z.unknown().optional() }).strict();
 /** "Voltar à estratégia": the scope is a phase, from a phase on, or the whole proposal. The compiled block is NOT part of it (server-side only). */
@@ -853,14 +854,18 @@ export function proposalService(
       // The compiled strategy only enters through the server's own argument (never the payload): see `InternalBlueprint`.
       const answers = parseAnswers(internal ? { ...(parsed.data.answers ?? {}), blueprint: internal.blueprint } : parsed.data.answers);
       if (!answers) return fail("invalid", { message: "Confira as respostas: algum valor não é aceito (código, número ou lista)." });
+      // Só o padrão ou uma versão de adesão publicada: qualquer outra é recusada (nunca uma versão antiga por engano).
+      const rules = rulesetForNewGeneration(parsed.data.rulesVersion);
+      if (!rules) return fail("invalid", { message: "Versão de regras não disponível para novas gerações." });
       const now = clock();
       const key = {
         idempotencyKey: parsed.data.idempotencyKey,
-        requestHash: await requestHash("GENERATE", { planId, revisionId, baseContentVersion: parsed.data.baseContentVersion, answers }),
+        // A versão entra na impressão só quando difere do padrão: pedidos antigos continuam com o mesmo hash.
+        requestHash: await requestHash("GENERATE", { planId, revisionId, baseContentVersion: parsed.data.baseContentVersion, answers, ...(rules.version !== DEFAULT_RULESET.version ? { rulesVersion: rules.version } : {}) }),
       };
       const replay = await repo.replayOf(planId, revisionId, key);
       if (replay) return fromGenerate(replay);
-      const prepared = await prepare(db, context, planId, revisionId, answers, [], now);
+      const prepared = await prepare(db, context, planId, revisionId, answers, [], now, rules);
       if (!prepared.ok) return prepared.outcome;
       const { ctx, built } = prepared;
       if (ctx.revision.contentVersion !== parsed.data.baseContentVersion) return fail("revision_changed", { contentVersion: ctx.revision.contentVersion });

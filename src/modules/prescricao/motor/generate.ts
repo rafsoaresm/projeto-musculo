@@ -16,7 +16,8 @@ export { occurrenceStimulus, progressionFor } from "./occurrence";
 import { existingFor, metadataOf, nameKeyOf, parseSlotKey, rankAlternatives, selectExercises, slotKeyOf, type Coverage, type SelectionRequest } from "./select";
 import { targetSuggestion } from "./targets";
 import { planPhaseMicrocycle, type GenerateOptions, type ReservedSubstitution } from "./microcycle";
-import { ruleLogFor, RuleLog, uniqueIssues } from "./trace";
+import { ruleLogFor, RuleLog, uniqueIssues, DOSE_UNCERTAIN_CODE, DOSE_UNCERTAIN_SEGMENT } from "./trace";
+import { PROFILE_FIELD_LABELS } from "./dose-profile";
 import { validateInput } from "./validate";
 import { volumeFor } from "./volume";
 import { cmp, codeOf, labelsOf, MODALITY_LABELS, MUSCLE_LABELS, normalizeText, numberText, PATTERN_LABELS, STIMULUS_LABELS, VOCABULARY_VERSION } from "./vocabulary";
@@ -42,7 +43,7 @@ import type {
   WorkoutSummary,
 } from "./types";
 
-export const ENGINE_VERSION = "2.3.0";
+export const ENGINE_VERSION = "2.4.0";
 
 // ---------- contexto ----------
 
@@ -230,7 +231,7 @@ export function dosePreview(ctx: EngineContext, plan: { phase: StructurePhase; w
     ...fixedExisting.map((x) => ({ dose: x.dose, exercise: x.exerciseId ? ctx.byId.get(x.exerciseId) ?? null : null })),
     ...exercises.filter((e) => !fixedIds.has(e.id)).map((e) => ({
       exercise: e,
-      dose: resolveDose(ctx.log, ctx.input.parameters, { exercise: e, stimulus: stim?.value ?? null, phaseIndex: plan.phase.index, label: plan.workout.label, week: occ.week, phaseWeeks: plan.phase.weeks, progression: prog }).dose,
+      dose: resolveDose(ctx.log, ctx.input.parameters, { exercise: e, stimulus: stim?.value ?? null, phaseIndex: plan.phase.index, label: plan.workout.label, week: occ.week, phaseWeeks: plan.phase.weeks, progression: prog, experience: ctx.experience, budgetMinutes: budgetFor(ctx.input, plan.workout)?.minutes ?? null }).dose,
     })),
   ];
   const r = occurrenceMinutes(ctx.log, items);
@@ -492,9 +493,17 @@ export function itemFor(ctx: EngineContext, plan: { phase: StructurePhase; worko
   const r = resolveDose(ctx.log, ctx.input.parameters, {
     exercise, stimulus: stimulus?.value ?? null, phaseIndex: plan.phase.index, label: plan.workout.label,
     week: occ.week, phaseWeeks: plan.phase.weeks, progression: progressionFor(ctx.input, plan.phase),
+    experience: ctx.experience, budgetMinutes: budgetFor(ctx.input, plan.workout)?.minutes ?? null,
   });
+  const workoutPath = `phases.${plan.phase.index}.workouts.${plan.workout.label}`;
   for (const i of r.issues)
-    issues.push({ ...i, path: `phases.${plan.phase.index}.workouts.${plan.workout.label}`, phaseIndex: plan.phase.index, label: plan.workout.label, stage: "SELECTION" });
+    issues.push({ ...i, path: workoutPath, phaseIndex: plan.phase.index, label: plan.workout.label, stage: "SELECTION" });
+  // Metadado que falta na biblioteca e que escolheria um perfil mais específico: um aviso por exercício, juntado por treino em `uniqueIssues`.
+  if (r.profile?.uncertain.length)
+    issues.push({
+      severity: "INFO", code: DOSE_UNCERTAIN_CODE, path: `${workoutPath}${DOSE_UNCERTAIN_SEGMENT}${exercise.id}`, phaseIndex: plan.phase.index, label: plan.workout.label, stage: "SELECTION",
+      message: `${exercise.name}: falta ${r.profile.uncertain.map((f) => PROFILE_FIELD_LABELS[f]).join(", ")} na biblioteca para escolher o perfil de dose.`,
+    });
   const stimTrace: ParamTrace[] = stimulus ? [{ param: "stimulus", value: stimulus.value, basis: stimulus.basis, ...(stimulus.ruleId ? { ruleId: stimulus.ruleId } : {}) }] : [];
   return { ...base, dose: r.dose, display: toDisplayFields(r.dose), trace: { selection: slot.selection, params: [...stimTrace, ...r.params] } };
 }

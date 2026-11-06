@@ -214,6 +214,31 @@ describe("generating a proposal (ledger, rows, replay)", () => {
     expect(await count("SELECT COUNT(*) AS n FROM proposal_decisions WHERE proposal_id = ?1 AND action = 'CONTINUED'", out.proposalId)).toBe(1);
   });
 
+  it("rulesVersion opts a new generation into the dose profiles (2026.11.6): kept by the proposal and by every later operation; other versions are refused", async () => {
+    const d = await newDraft();
+    const base = await contentVersion(d);
+    for (const bad of ["2026.11.4", "2026.11.7", "latest"])
+      expect(failure(await service().generate(d.planId, d.revisionId, { idempotencyKey: id("gen"), baseContentVersion: base, answers: ANSWERS, rulesVersion: bad }))).toBe("invalid");
+    expect(await count("SELECT COUNT(*) AS n FROM prescription_proposals WHERE revision_id = ?1", d.revisionId)).toBe(0);
+    // Without the choice the proposal is born with the default rules and no profile reaches any item.
+    const dPlain = await newDraft();
+    const plainSnap = await snapshot(dPlain, (await generated(dPlain)).proposalId);
+    expect(plainSnap.header.rulesVersion).toBe("2026.11.5");
+    expect(plainSnap.result.occurrences.flatMap((o) => o.items).some((i) => i.trace.params.some((p) => p.profileId || p.param === "profile"))).toBe(false);
+    const small = service("tech-a", "org-a", 6 * 64);
+    const out = ok(await small.generate(d.planId, d.revisionId, { idempotencyKey: id("gen"), baseContentVersion: base, answers: ANSWERS, rulesVersion: "2026.11.6" }));
+    expect(out.complete).toBe(false);
+    expect((await snapshot(d, out.proposalId)).header).toMatchObject({ rulesId: "gymgital-base", rulesVersion: "2026.11.6" });
+    ok(await small.continue(d.planId, d.revisionId, { proposalId: out.proposalId, idempotencyKey: id("key"), ...cas(1) }));
+    const snap = await snapshot(d, out.proposalId);
+    expect(snap.header.rulesVersion).toBe("2026.11.6");
+    expect(snap.result.rules).toEqual({ id: "gymgital-base", version: "2026.11.6" });
+    const items = snap.result.occurrences.flatMap((o) => o.items).filter((i) => i.dose?.metric === "REPS");
+    expect(items.length).toBeGreaterThan(0);
+    expect(items.every((i) => i.trace.params.some((p) => p.param === "profile" || p.ruleId === "DOSE_DEFAULTS"))).toBe(true);
+    expect(items.some((i) => i.trace.params.some((p) => p.profileId))).toBe(true);
+  });
+
   it("chunks rows by bytes, never splitting a row", () => {
     const rows = Array.from({ length: 10 }, (_, n) => ({ n, text: "x".repeat(100) }));
     const chunks = jsonChunks(rows, 300);
