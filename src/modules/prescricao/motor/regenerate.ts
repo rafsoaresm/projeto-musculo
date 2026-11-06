@@ -156,6 +156,48 @@ export function substitute(input: EngineInput, previous: EngineResult, target: S
   return substituteWith(ctx, previous, target, nextExerciseId, "PROFESSIONAL");
 }
 
+// ---------- ajuste de dose de um item ----------
+
+export interface DoseChangeTarget {
+  phaseIndex: number;
+  slotKey: string;
+}
+
+/**
+ * Refaz a dose dos itens indicados (todas as sessões da fase e do treino que têm a linha) com os ajustes de dose que a entrada
+ * já traz em `parameters.doseOverrides` (o chamador os acrescentou). O exercício, a posição, a origem e o traço da escolha ficam;
+ * só a dose e o traço dos parâmetros são recalculados, e tudo é revalidado no fim (duração, volume, auditoria). Linhas travadas e
+ * preservadas nunca mudam. Não regenera nada além dos itens pedidos.
+ */
+export function changeDoses(input: EngineInput, previous: EngineResult, targets: readonly DoseChangeTarget[]): EngineOutcome {
+  const ctx = prepare(input);
+  if (!ctx) return { ok: true, result: unknownRules(input) };
+  const issues: Issue[] = [];
+  let occurrences = previous.occurrences;
+  for (const target of targets) {
+    const parsed = parseSlotKey(target.slotKey);
+    if (!parsed || parsed.phaseIndex !== target.phaseIndex) return fail("TARGET_NOT_FOUND", "Item não encontrado na proposta.");
+    const where = locate(ctx, target.phaseIndex, parsed.label);
+    if (!where) return fail("TARGET_NOT_FOUND", "Treino não encontrado na estrutura.");
+    const hits = occurrences.filter((o) => o.phaseIndex === target.phaseIndex && o.label === parsed.label && o.items.some((i) => i.slotKey === target.slotKey));
+    if (!hits.length) return fail("TARGET_NOT_FOUND", "Nenhuma sessão da fase tem este item.");
+    if (isLocked(ctx, target.phaseIndex, target.slotKey) || hits.some((o) => o.items.some((i) => i.slotKey === target.slotKey && i.origin === "LOCKED")))
+      return fail("TARGET_LOCKED", "Este item está travado; destrave antes de mudar a dose.");
+    if (hits.some((o) => o.items.some((i) => i.slotKey === target.slotKey && i.origin === "PRESERVED")))
+      return fail("TARGET_PRESERVED", "Esta linha já estava na revisão e é mantida; edite-a na prescrição.");
+    occurrences = occurrences.map((o) => {
+      if (!hits.includes(o)) return o;
+      const old = o.items.find((i) => i.slotKey === target.slotKey) as ItemOut;
+      const exercise = old.exerciseId ? ctx.byId.get(old.exerciseId) : undefined;
+      if (!exercise) return o;
+      const slot: SlotPlan = { slotKey: old.slotKey, exercise, existing: null, origin: old.origin, selection: old.trace.selection, alternatives: old.alternatives };
+      const fresh = itemFor(ctx, where, slot, old.position, asStructureOcc(o), o.stimulus, issues);
+      return { ...o, items: o.items.map((i) => (i.slotKey === target.slotKey ? { ...old, dose: fresh.dose, display: fresh.display, trace: { selection: old.trace.selection, params: fresh.trace.params } } : i)) };
+    });
+  }
+  return { ok: true, result: finalize(ctx, { ...previous, occurrences, issues: withDoseUncertainty([...previous.issues, ...issues], occurrences) }) };
+}
+
 // ---------- alternativas ----------
 
 export function alternativesFor(input: EngineInput, previous: EngineResult, target: AlternativeTarget, limit: number): Alternative[] {
