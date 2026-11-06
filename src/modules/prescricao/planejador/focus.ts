@@ -63,3 +63,11 @@ export function deriveDelta(role: WorkoutRole, focus: ExpandedFocus, table: Role
   };
   return isEmptyDelta(delta) ? null : delta;
 }
+
+/** Each list deduplicated and sorted by code point; `null` when nothing is left (the canonical form that is hashed and stored). */
+export function normalizeDeltaOf(delta: FocusDelta | null): FocusDelta | null {
+  if (!delta) return null;
+  const out = emptyDelta();
+  for (const k of DELTA_KEYS) out[k] = [...new Set(delta[k])].sort(cmp);
+  return isEmptyDelta(out) ? null : out;
+}

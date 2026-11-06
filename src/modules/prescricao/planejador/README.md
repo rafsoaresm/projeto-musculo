@@ -12,6 +12,7 @@ Camada que, antes de qualquer exercício ser escolhido, produz **estratégias su
 | `secrets.ts`, `env.ts`, `config.ts` | Chaves cifradas (AES-256-GCM), leitura do ambiente (só servidor) |
 | `quota.ts`, `gate.ts`, `circuit.ts` | Planos de IA, estimativa e reserva em tokens, portões em ordem fixa, disjuntor |
 | `orchestration.ts`, `actions.ts`, `strategy-view.ts`, `copy.ts` | `plannerService` (plan, estados, disponibilidade), ações de servidor e vista segura para o navegador |
+| `accept.ts`, `blueprint-actions.ts`, `compile.ts` | Aceitar a estratégia (linha só de acréscimo), gerar a partir do aceite e voltar à estratégia (`blueprintService`), ações de servidor, e o compilador puro do aceite |
 | `rules-mode/` | Produtor por regras: `ruleset-templates.ts` lê os modelos e a tabela de papéis das regras `2026.11.5` (heurística operacional a validar pelo Técnico); `templates.ts` guarda as constantes `interim-1`, que um teste mantém iguais às regras |
 
 Persistência: `src/db/ai-planning.ts` e `src/db/ai-platform.ts` (migrations 0046 e 0047). Painel: `src/modules/gestor/ai-*` e `src/app/gestor/(painel)/inteligencia-artificial/`.

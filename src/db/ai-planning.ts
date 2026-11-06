@@ -228,6 +228,51 @@ const RUN_COLUMNS = `r.id, r.plan_id AS planId, r.revision_id AS revisionId, r.i
   r.started_at AS startedAt, r.finished_at AS finishedAt`;
 const toRun = (raw: RunRaw): RunRow => ({ ...raw, cacheHit: raw.cacheHit === 1 });
 
+
+// ---------- acceptances (the professional's choice from a run; append-only) ----------
+
+export interface AcceptanceRow {
+  id: string;
+  planId: string;
+  revisionId: string;
+  runId: string;
+  idempotencyKey: string;
+  requestHash: string;
+  strategyId: "S1" | "S2" | "S3" | "CUSTOM";
+  splitFamily: string;
+  finalJson: string;
+  dosingJson: string;
+  editsJson: string;
+  acceptanceHash: string;
+  structureFingerprint: string;
+  baseContentVersion: number;
+  acceptedByUserId: string;
+  acceptedAt: string;
+}
+export interface AcceptanceInsert {
+  id: string;
+  planId: string;
+  revisionId: string;
+  runId: string;
+  idempotencyKey: string;
+  requestHash: string;
+  strategyId: AcceptanceRow["strategyId"];
+  splitFamily: string;
+  finalJson: string;
+  dosingJson: string;
+  editsJson: string;
+  acceptanceHash: string;
+  structureFingerprint: string;
+  baseContentVersion: number;
+  now: Date;
+}
+export type AcceptanceInsertResult = { ok: true } | { ok: false; reason: "duplicate_key" | "revision_changed" | "run_invalid" | "not_found" };
+
+const ACCEPTANCE_COLUMNS = `a.id, a.plan_id AS planId, a.revision_id AS revisionId, a.run_id AS runId, a.idempotency_key AS idempotencyKey, a.request_hash AS requestHash,
+  a.strategy_id AS strategyId, a.split_family AS splitFamily, a.final_json AS finalJson, a.dosing_json AS dosingJson, a.edits_json AS editsJson,
+  a.acceptance_hash AS acceptanceHash, a.structure_fingerprint AS structureFingerprint, a.base_content_version AS baseContentVersion,
+  a.accepted_by_user_id AS acceptedByUserId, a.accepted_at AS acceptedAt`;
+
 const iso = (d: Date) => d.toISOString();
 const changesOf = (result: { meta?: { changes?: number } } | undefined) => result?.meta?.changes ?? 0;
 
@@ -414,6 +459,14 @@ export function aiPlanningFor(db: D1Database, context: AuthenticatedContext | nu
       .bind(organizationId, userId, planId, revisionId, ...binds)
       .first<RunRaw>();
     return row ? toRun(row) : null;
+  }
+
+
+  async function acceptance(planId: string, revisionId: string, where: string, bind: unknown, tail = ""): Promise<AcceptanceRow | null> {
+    return db
+      .prepare(`SELECT ${ACCEPTANCE_COLUMNS} FROM blueprint_acceptances a WHERE a.organization_id = ?1 AND a.plan_id = ?3 AND a.revision_id = ?4 AND ${revisionGate("ANY")} AND ${where} ${tail}`)
+      .bind(organizationId, userId, planId, revisionId, bind)
+      .first<AcceptanceRow>();
   }
 
   return {
@@ -723,6 +776,57 @@ export function aiPlanningFor(db: D1Database, context: AuthenticatedContext | nu
         .bind(organizationId, userId, planId, revisionId, runId)
         .first<{ json: string }>();
       return row?.json ?? null;
+    },
+
+
+    // ---------- acceptances ----------
+
+    async acceptanceByKey(planId: string, revisionId: string, idempotencyKey: string): Promise<AcceptanceRow | null> {
+      return acceptance(planId, revisionId, "a.idempotency_key = ?5", idempotencyKey);
+    },
+    async acceptanceById(planId: string, revisionId: string, acceptanceId: string): Promise<AcceptanceRow | null> {
+      return acceptance(planId, revisionId, "a.id = ?5", acceptanceId);
+    },
+    /** The newest acceptance of the revision: a new acceptance supersedes the earlier ones. */
+    async latestAcceptance(planId: string, revisionId: string): Promise<AcceptanceRow | null> {
+      return acceptance(planId, revisionId, "1 = ?5", 1, "ORDER BY a.accepted_at DESC, a.rowid DESC LIMIT 1");
+    },
+
+    /**
+     * Records an acceptance (append-only). The insert itself holds what makes it valid: the revision is a DRAFT the acting user reaches, its content
+     * version is still the one the strategy was planned for, and the run is a SUCCEEDED run of this revision for that version and structure.
+     * UNIQUE (organization, revision, idempotency key) turns a duplicate into a typed answer; the caller compares the request hash.
+     */
+    async insertAcceptance(input: AcceptanceInsert): Promise<AcceptanceInsertResult> {
+      const binds = [
+        organizationId, userId, input.planId, input.revisionId, input.id, input.runId, input.idempotencyKey, input.requestHash, input.strategyId, input.splitFamily,
+        input.finalJson, input.dosingJson, input.editsJson, input.acceptanceHash, input.structureFingerprint, input.baseContentVersion, iso(input.now),
+      ];
+      try {
+        const result = await db
+          .prepare(
+            `INSERT INTO blueprint_acceptances (id, organization_id, plan_id, revision_id, run_id, idempotency_key, request_hash, strategy_id, split_family, final_json,
+               dosing_json, edits_json, acceptance_hash, structure_fingerprint, base_content_version, accepted_by_user_id, accepted_at)
+             SELECT ?5, ?1, ?3, ?4, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?2, ?17
+              WHERE ${revisionGate("DRAFT")}
+                AND EXISTS (SELECT 1 FROM plan_revisions v WHERE v.organization_id = ?1 AND v.id = ?4 AND v.plan_id = ?3 AND v.content_version = ?16)
+                AND EXISTS (SELECT 1 FROM planning_runs pr WHERE pr.organization_id = ?1 AND pr.id = ?6 AND pr.revision_id = ?4 AND pr.plan_id = ?3 AND pr.status = 'SUCCEEDED'
+                              AND pr.base_content_version = ?16 AND pr.structure_fingerprint = ?15)`,
+          )
+          .bind(...binds)
+          .run();
+        if (changesOf(result) === 1) return { ok: true };
+      } catch {
+        if (await acceptance(input.planId, input.revisionId, "a.idempotency_key = ?5", input.idempotencyKey)) return { ok: false, reason: "duplicate_key" };
+        throw new Error("ACCEPTANCE_INSERT_FAILED");
+      }
+      const reach = await db.prepare(`SELECT 1 AS ok WHERE ${revisionGate("DRAFT")}`).bind(organizationId, userId, input.planId, input.revisionId).first();
+      if (!reach) return { ok: false, reason: "not_found" };
+      const version = await db
+        .prepare("SELECT 1 AS ok FROM plan_revisions v WHERE v.organization_id = ?1 AND v.id = ?2 AND v.plan_id = ?3 AND v.content_version = ?4")
+        .bind(organizationId, input.revisionId, input.planId, input.baseContentVersion)
+        .first();
+      return { ok: false, reason: version ? "run_invalid" : "revision_changed" };
     },
 
     // ---------- usage (professional, read only, no costs) ----------

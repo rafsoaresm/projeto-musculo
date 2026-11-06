@@ -20,7 +20,7 @@ import type { Issue, RuleSetRef, StructureFacts } from "@/modules/prescricao/mot
 import { cmp } from "@/modules/prescricao/motor/vocabulary";
 import { blueprintAnswersSchema, type BlueprintAnswers, type GenerationAnswers } from "@/modules/prescricao/automatica/contracts";
 import type { BlueprintAcceptance, TrainingBlueprint } from "./blueprint";
-import { DELTA_KEYS, emptyDelta, isEmptyDelta, type FocusDelta } from "./focus";
+import { normalizeDeltaOf } from "./focus";
 import { acceptanceHash, blueprintHash, structureFingerprint } from "./hashes";
 import { PLANNER_MAX_CANDIDATES_PER_WORKOUT } from "./versions";
 
@@ -50,12 +50,6 @@ export const COMPILE_MESSAGES = {
 const fail = (code: Extract<CompileOutcome, { ok: false }>["code"]): CompileOutcome => ({ ok: false, code, message: COMPILE_MESSAGES[code] });
 
 const sortedUnique = (list: readonly string[]): string[] => [...new Set(list)].sort(cmp);
-const normalizeDelta = (delta: FocusDelta | null): FocusDelta | null => {
-  if (!delta) return null;
-  const out = emptyDelta();
-  for (const k of DELTA_KEYS) out[k] = sortedUnique(delta[k]);
-  return isEmptyDelta(out) ? null : out;
-};
 const key = (phaseIndex: number, label: string) => `${phaseIndex}|${label}`;
 type CompiledWorkout = BlueprintAnswers["workouts"][number];
 const byWorkout = (a: { phaseIndex: number; label: string }, b: { phaseIndex: number; label: string }) => a.phaseIndex - b.phaseIndex || cmp(a.label, b.label);
@@ -162,7 +156,7 @@ export async function compileAcceptance(i: CompileInput): Promise<CompileOutcome
       emitted.push({
         phaseIndex: p.phaseIndex, label: w.label, acceptanceId: acceptance.id, role: w.role,
         source: custom || w.source === "PROFESSIONAL" || edited.has(key(p.phaseIndex, w.label)) ? "PROFESSIONAL" : provenance,
-        focusDelta: normalizeDelta(w.focusDelta), candidateExerciseIds: known,
+        focusDelta: normalizeDeltaOf(w.focusDelta), candidateExerciseIds: known,
       });
     }
   issues.push(...blueprintStructureIssues(structure, planned, saved, new Set(acceptance.phases.map((p) => p.phaseIndex))));

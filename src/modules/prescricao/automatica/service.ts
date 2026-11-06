@@ -100,6 +100,10 @@ const substitutionTargetSchema = z
 const generateSchema = z.object({ idempotencyKey: intentId, baseContentVersion: z.number().int().min(0), answers: z.unknown() }).strict();
 const continueSchema = z.object({ proposalId: z.string().min(1).max(64), idempotencyKey: intentId, writeId: intentId, expectedVersion: version }).strict();
 const regenerateSchema = continueSchema.extend({ scope: regenerationScopeSchema, answers: z.unknown().optional() }).strict();
+/** "Voltar à estratégia": the scope is a phase, from a phase on, or the whole proposal. The compiled block is NOT part of it (server-side only). */
+const replanSchema = continueSchema
+  .extend({ scope: z.discriminatedUnion("kind", [z.object({ kind: z.literal("PHASE"), phaseIndex }).strict(), z.object({ kind: z.literal("FROM_PHASE"), phaseIndex }).strict(), z.object({ kind: z.literal("FULL") }).strict()]) })
+  .strict();
 const substituteSchema = continueSchema.extend({ target: substitutionTargetSchema, newExerciseId: z.string().trim().min(1).max(80) }).strict();
 const casSchema = z.object({ proposalId: z.string().min(1).max(64), writeId: intentId, expectedVersion: version }).strict();
 const lockSchema = casSchema
@@ -127,6 +131,7 @@ export type AlternativesPayload = z.input<typeof alternativesSchema>;
 export type ApplyPayload = z.input<typeof applySchema>;
 export type ContinuePayload = z.input<typeof continueSchema>;
 export type RegeneratePayload = z.input<typeof regenerateSchema>;
+export type ReplanPayload = z.input<typeof replanSchema>;
 export type SubstitutePayload = z.input<typeof substituteSchema>;
 export type CasPayload = z.input<typeof casSchema>;
 export type LockPayload = z.input<typeof lockSchema>;
@@ -263,7 +268,7 @@ const MESSAGES: Record<ProposalFailure, string> = {
     "A operação passa do limite técnico de um pedido. Regenere uma fase por vez, ou reduza a quantidade de sessões ou de exercícios.",
 };
 
-const fail = (reason: ProposalFailure, extra: Partial<Extract<ProposalOutcome, { ok: false }>> = {}): ProposalOutcome => ({
+export const fail = (reason: ProposalFailure, extra: Partial<Extract<ProposalOutcome, { ok: false }>> = {}): ProposalOutcome => ({
   ok: false,
   reason,
   message: extra.message ?? MESSAGES[reason],
@@ -812,6 +817,22 @@ export function proposalService(
     return outcome.ok && !outcome.replayed ? { ...outcome, progress: progressOf(result) } : outcome;
   }
 
+  /** The engine step of a regeneration of `typed` (shared by `regenerate` and `replan`): the touched phases must exist, be generated and fit one request. */
+  function regenerateStep(typed: RegenerationScope) {
+    return ({ header, previous, built }: { header: ProposalHeader; previous: EngineResult; built: Built }) => {
+      const order = built.input.structure.phases.map((ph) => ph.index);
+      const touched = typed.kind === "FROM_PHASE" ? order.slice(Math.max(0, order.indexOf(typed.phaseIndex))) : [typed.phaseIndex];
+      if (!order.includes(typed.phaseIndex)) return { ok: false as const, outcome: fail("invalid_target") };
+      if (touched.some((i) => !header.phasesGenerated.includes(i)))
+        return { ok: false as const, outcome: typed.kind === "FROM_PHASE" ? fail("incomplete") : fail("invalid_target", { message: "Esta fase ainda não foi gerada: continue a geração primeiro." }) };
+      if ((typed.kind === "PHASE" || typed.kind === "FROM_PHASE") && workUnits({ ...built.input, scope: { kind: "PHASES", phaseIndexes: touched } }) > budget && touched.length > 1)
+        return { ok: false as const, outcome: fail("too_large") };
+      const out = engineOk(regenerate(built.input, previous, typed));
+      if (!out.ok) return out;
+      return { ok: true as const, scope: typed.kind as GenerationScopeKind, scopeJson: typed as unknown, input: built.input, result: out.result, target: typed as unknown };
+    };
+  }
+
   return {
     /**
      * "Gerar prescrição automática": reads the real data, asks what is missing, runs the engine on the phases that fit one
@@ -873,25 +894,34 @@ export function proposalService(
       const { proposalId, expectedVersion, scope, answers } = parsed.data;
       if (carriesBlueprint(answers)) return fail("invalid", { message: CLIENT_BLUEPRINT_REFUSED });
       const typed = scope as RegenerationScope;
+      return change(planId, revisionId, parsed.data, "REGENERATE", { proposalId, expectedVersion, scope, answers: answers ?? null }, regenerateStep(typed), { answersPatch: answers });
+    },
+
+    /**
+     * "Voltar à estratégia" (design §4.6): applies a compiled strategy to a phase, from a phase on, or to the whole proposal, regenerating
+     * the touched phases. Same path as `regenerate` (locked, preserved and substituted items stay; the answers keep every earlier decision),
+     * with the compiled block merged into the stored one by (phase, label) and by acceptance (a FULL replan replaces the block). The block is
+     * the server's own argument, like `generate`'s: never in the payload.
+     */
+    async replan(planId: string, revisionId: string, payload: ReplanPayload, internal: InternalBlueprint): Promise<ProposalOutcome> {
+      const parsed = replanSchema.safeParse(payload);
+      if (!parsed.success) return fail("invalid");
+      const { proposalId, expectedVersion, scope } = parsed.data;
+      const blueprintDigest = await sha256Hex(canonicalJson(internal.blueprint));
       return change(
         planId,
         revisionId,
         parsed.data,
-        "REGENERATE",
-        { proposalId, expectedVersion, scope, answers: answers ?? null },
-        ({ header, previous, built }) => {
-          const order = built.input.structure.phases.map((ph) => ph.index);
-          const touched = typed.kind === "FROM_PHASE" ? order.slice(Math.max(0, order.indexOf(typed.phaseIndex))) : [typed.phaseIndex];
-          if (!order.includes(typed.phaseIndex)) return { ok: false, outcome: fail("invalid_target") };
-          if (touched.some((i) => !header.phasesGenerated.includes(i)))
-            return { ok: false, outcome: typed.kind === "FROM_PHASE" ? fail("incomplete") : fail("invalid_target", { message: "Esta fase ainda não foi gerada: continue a geração primeiro." }) };
-          if ((typed.kind === "PHASE" || typed.kind === "FROM_PHASE") && workUnits({ ...built.input, scope: { kind: "PHASES", phaseIndexes: touched } }) > budget && touched.length > 1)
-            return { ok: false, outcome: fail("too_large") };
-          const out = engineOk(regenerate(built.input, previous, typed));
-          if (!out.ok) return out;
-          return { ok: true, scope: typed.kind, scopeJson: typed, input: built.input, result: out.result, target: typed };
+        "REPLAN",
+        { proposalId, expectedVersion, scope, blueprint: blueprintDigest },
+        (args) => {
+          // FULL = every generated phase: from the first one on.
+          const order = args.built.input.structure.phases.map((ph) => ph.index);
+          const first = order.find((i) => args.header.phasesGenerated.includes(i));
+          const typed: RegenerationScope = scope.kind === "FULL" ? { kind: "FROM_PHASE", phaseIndex: first ?? order[0] } : scope;
+          return regenerateStep(typed)(args);
         },
-        { answersPatch: answers },
+        { answersPatch: { blueprint: internal.blueprint }, replaceBlueprint: scope.kind === "FULL" },
       );
     },
 

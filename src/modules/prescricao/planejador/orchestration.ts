@@ -152,7 +152,7 @@ function usageOf(json: string | null): { inputTokens: number; outputTokens: numb
   }
 }
 
-function readBlueprint(json: string | null): TrainingBlueprint | null {
+export function readBlueprint(json: string | null): TrainingBlueprint | null {
   if (!json) return null;
   try {
     const parsed = trainingBlueprintSchema.safeParse(JSON.parse(json));
