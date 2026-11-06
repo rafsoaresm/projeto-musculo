@@ -96,6 +96,15 @@ export async function aiPanelScenario(manager: Page, professional: Page, studio:
   await expect(planner.getByText("Aguarde alguns segundos", { exact: false })).toBeVisible();
   await noHorizontalOverflow(manager);
 
+  // The second task (assisted adjustments, sub-stage 4.3): the same simulated provider; nothing is prefilled either.
+  const adjustments = manager.getByRole("article", { name: "Ajustes assistidos" });
+  await expect(adjustments.getByLabel("Modelo", { exact: true })).toHaveValue("");
+  await adjustments.getByLabel("Provedor").selectOption({ label: "Simulado (testes)" });
+  await adjustments.getByLabel("Modelo", { exact: true }).fill("mock-ok");
+  await adjustments.getByLabel(/Tarefa ligada/).check();
+  await adjustments.getByRole("button", { name: "Salvar configuração" }).click();
+  await expect(adjustments.getByText("Configuração salva.")).toBeVisible();
+
   // The provider that the task uses cannot be removed (OpenAI is not used: it can).
   await tab("Provedores").click();
   await expect(manager.getByRole("article", { name: "Simulado (testes)" })).toBeVisible();

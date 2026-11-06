@@ -37,6 +37,8 @@ import {
 } from "./review-view";
 import { ReferenceTab } from "./reference-tab";
 import { SubstituteDialog, type LibraryEntry, type SubstituteTarget } from "./substitute-dialog";
+import { AdjustPanel } from "./adjust-panel";
+import type { AdjustAvailabilityView } from "@/modules/prescricao/planejador/adjust-actions";
 import { suggestionAnchor } from "./target-suggestions";
 import { NETWORK_ERROR, useIntent } from "./use-intent";
 import {
@@ -105,7 +107,7 @@ export interface ProposalViewProps {
   phaseIndex: number;
   week: number;
   /** From the address: the tab, the session (slot) and the item (slot key) to restore. */
-  initial: { tab: RxTab; slot?: string; item?: string };
+  initial: { tab: RxTab; slot?: string; item?: string; adjust?: boolean };
   library: LibraryEntry[];
   /** The plan audit: recorded with the proposal, or computed now for one generated before it; null when there is none. */
   audit: AuditSource | null;
@@ -121,6 +123,8 @@ export interface ProposalViewProps {
    * minimum adherence; `patterns` maps an exercise to its movement patterns (from the library). Null for a proposal without a strategy.
    */
   strategy?: { name: string | null; adherenceMin: number | null; patterns: Record<string, string[]> } | null;
+  /** Assisted adjustments (RX-02 / M-02): whether the AI button can be offered and the primary muscles of the listed exercises (the constraint chips). */
+  adjust?: { availability: AdjustAvailabilityView | null; muscles: Record<string, string[]> } | null;
 }
 
 /** The workbench is rebuilt when the phase changes (its data comes from the server per phase); everything else is state. */
@@ -139,7 +143,7 @@ const WIDE_QUERY = "(min-width: 861px)";
  * proposal stays reachable: regenerate (session, week, workout, phase, from the phase on), the plan audit and its suggested
  * targets, the weekly volume and the progression, the alert decisions, rebase, discard and continue. No dose is edited here.
  */
-function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, crumb, header, summary, occurrences, phaseIndex, week: initialWeek, initial, library, audit, acceptSuggestions, targetSuggestions = [], apply, strategy = null }: ProposalViewProps) {
+function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, crumb, header, summary, occurrences, phaseIndex, week: initialWeek, initial, library, audit, acceptSuggestions, targetSuggestions = [], apply, strategy = null, adjust = null }: ProposalViewProps) {
   const router = useRouter();
   const intent = useIntent();
   const [pending, startTransition] = useTransition();
@@ -147,6 +151,7 @@ function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, cr
   const [substituting, setSubstituting] = useState<SubstituteTarget | null>(null);
   const [menu, setMenu] = useState(false);
   const [replanOpen, setReplanOpen] = useState(false);
+  const [adjusting, setAdjusting] = useState(Boolean(initial.adjust));
   const menuTitle = useId();
   const [tab, setTab] = useState<RxTab>(initial.tab);
   const [week, setWeek] = useState(initialWeek);
@@ -189,6 +194,7 @@ function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, cr
   const sessionWorkout = session ? workoutOf(session.label) : null;
   const focusChip = withStrategy && session ? sessionFocusChip(audit?.report.strategy, phaseIndex, session.label, session.week, strategy.adherenceMin) : null;
   const auditWord = withStrategy ? "Auditoria" : "Alertas";
+  const showAdjust = adjusting && tab === "sessoes" && adjust !== null;
 
   // The address keeps the selection (tab, phase, week, session and item) without a request: only the query string changes.
   useEffect(() => {
@@ -198,8 +204,9 @@ function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, cr
     if (slot !== null) q.set("sessao", String(slot));
     if (itemKey) q.set("item", itemKey);
     if (tab !== "sessoes") q.set("aba", tab);
+    if (adjusting && tab === "sessoes") q.set("ajustar", "1");
     window.history.replaceState(null, "", `${window.location.pathname}?${q.toString()}${window.location.hash}`);
-  }, [phaseIndex, week, slot, itemKey, tab]);
+  }, [phaseIndex, week, slot, itemKey, tab, adjusting]);
 
   // A link to the suggested targets (`#alvos-sugeridos-fase-N`) lands on the audit, which lives in the alerts tab.
   useEffect(() => {
@@ -316,15 +323,22 @@ function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, cr
         <div className="rx-heading-row">
           <div>
             <h1>
-              <span className="rx-desktop">{heading.title}</span>
-              <span className="rx-mobile">{heading.phoneTitle}</span>
+              <span className="rx-desktop">{showAdjust ? "Ajustar a proposta" : heading.title}</span>
+              <span className="rx-mobile">{showAdjust ? "Ajustar com IA" : heading.phoneTitle}</span>
             </h1>
-            <p className="rx-sub rx-desktop">{heading.sub}</p>
-            <p className="rx-sub rx-mobile">{withStrategy ? heading.phoneSub : `${crumb.student} • ${crumb.plan} • ${totalWeeks(summary.phases)} semanas`}</p>
+            <p className="rx-sub rx-desktop">{showAdjust ? "Uma mudança por vez, com o efeito calculado antes; nunca aplica automaticamente." : heading.sub}</p>
+            <p className="rx-sub rx-mobile">{showAdjust ? "Escolha uma mudança e compare o impacto antes de aceitar." : withStrategy ? heading.phoneSub : `${crumb.student} • ${crumb.plan} • ${totalWeeks(summary.phases)} semanas`}</p>
           </div>
-          <Link href={revisionHref} className="rx-btn rx-btn-line rx-desktop">
-            Voltar à revisão
-          </Link>
+          <div className="rx-head-actions">
+            {adjust && !showAdjust && header.complete && (
+              <button type="button" className="rx-btn rx-btn-line rx-desktop" onClick={() => setAdjusting(true)} data-testid="adjust-open">
+                Ajustar com IA
+              </button>
+            )}
+            <Link href={revisionHref} className="rx-btn rx-btn-line rx-desktop">
+              Voltar à revisão
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -551,6 +565,28 @@ function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, cr
           </span>
         </div>
 
+        {adjust && !showAdjust && header.complete && (
+          <button type="button" className="rx-card rx-adjust-entry rx-mobile" onClick={() => setAdjusting(true)} data-testid="adjust-open-mobile">
+            <strong>Ajustar com IA</strong>
+            <span className="rx-sub">Escolha uma mudança e compare o impacto antes de aceitar.</span>
+            <span className="rx-sub rx-adjust-strong">Só sugere; o motor revalida</span>
+          </button>
+        )}
+        {showAdjust && adjust ? (
+          <AdjustPanel
+            planId={planId}
+            revisionId={revisionId}
+            proposalId={header.id}
+            version={header.version}
+            phaseIndex={phaseIndex}
+            week={week}
+            session={session}
+            initialItem={itemKey}
+            muscles={adjust.muscles}
+            availability={adjust.availability}
+            onClose={() => setAdjusting(false)}
+          />
+        ) : (
         <div className="rx-split" data-detail={detail.sessoes ? "open" : "closed"}>
           <section className="rx-card rx-list rx-sessions" aria-labelledby="rx-semana-titulo">
             <header className="rx-card-head rx-card-head-row">
@@ -791,6 +827,7 @@ function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, cr
             </aside>
           )}
         </div>
+        )}
       </div>
 
       <div role="tabpanel" id={panelId("alertas")} aria-labelledby={tabId("alertas")} hidden={tab !== "alertas"} className="rx-tabpanel">
@@ -855,6 +892,7 @@ function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, cr
         </div>
       ))}
 
+      {!showAdjust && (
       <ApplyPanel
         planId={planId}
         revisionId={revisionId}
@@ -877,6 +915,7 @@ function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, cr
                 : undefined
         }
       />
+      )}
 
       <Sheet open={menu} onClose={() => setMenu(false)} titleId={menuTitle} variant="menu" busy={pending}>
         <h2 id={menuTitle} className="sheet-title">

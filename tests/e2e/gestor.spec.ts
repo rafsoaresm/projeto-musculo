@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import { aiAdjustScenario } from "./adjust-flow";
 import { aiFlowScenario } from "./ai-flow";
 import { aiPanelScenario } from "./ai-gestor";
 import {
@@ -249,6 +250,8 @@ test("the platform manager is activated once and manages organizations without s
   await aiPanelScenario(manager.page, pro.page, studio);
   // Motor V4, PR 4.1: with the organization enabled, the generation flow offers the AI (simulated provider) and walks it to a proposal.
   await aiFlowScenario(pro.page, "Aluno confidencial gestor");
+  // Motor V4, PR 4.3: assisted adjustments on that proposal, through the simulated provider (the adjustments task is mapped in the panel scenario).
+  await aiAdjustScenario(pro.page);
 
   // The terms: the text in force is the approved one, and the manager can change it on a page of its own.
   // This is the last thing the scenario does: publishing a text asks everyone to accept again.

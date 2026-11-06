@@ -13,6 +13,7 @@ import { stateLabel } from "@/modules/planos/labels";
 import { proposalService } from "@/modules/prescricao/automatica/service";
 import { GenerationFlow } from "@/modules/prescricao/automatica/generation-flow";
 import { getPlanningAvailability } from "@/modules/prescricao/planejador/actions";
+import { getAdjustAvailability } from "@/modules/prescricao/planejador/adjust-actions";
 import { getStrategyAcceptance } from "@/modules/prescricao/planejador/blueprint-actions";
 import { ProposalView, type ProposalHeaderView } from "@/modules/prescricao/automatica/proposal-view";
 import { canAcceptSuggestions, pageAudit, phasesWithoutTargets, pickPhase, pickWeek } from "@/modules/prescricao/automatica/view";
@@ -196,6 +197,11 @@ export default async function AutomaticPrescription({
       patterns: patterns.status === "ok" ? patterns.byId : {},
     };
   }
+  // Assisted adjustments (RX-02): whether the AI button can be offered, and the primary muscles of the listed exercises for the constraint chips.
+  const [adjustAvailability, adjustMuscles] = await Promise.all([
+    getAdjustAvailability(planId, revisionId),
+    service.musclesOf(planId, revisionId, [...new Set(page.occurrences.flatMap((o) => o.items.map((i) => i.exerciseId).filter((x): x is string => x !== null)))]),
+  ]);
   return (
     <ProposalView
       planId={planId}
@@ -209,7 +215,8 @@ export default async function AutomaticPrescription({
       occurrences={page.occurrences}
       phaseIndex={phaseIndex}
       week={week}
-      initial={{ tab, slot: one("sessao"), item: one("item") }}
+      initial={{ tab, slot: one("sessao"), item: one("item"), adjust: one("ajustar") === "1" }}
+      adjust={{ availability: adjustAvailability, muscles: adjustMuscles.status === "ok" ? adjustMuscles.byId : {} }}
       library={library.map((exercise) => ({ id: exercise.id, name: exercise.name, category: exercise.category }))}
       audit={audit}
       acceptSuggestions={acceptSuggestions}
