@@ -32,6 +32,10 @@ export interface FocusSets {
  * Classe de um exercício frente ao foco: ON_FOCUS se um músculo principal é dominante; senão SUPPORTING se é de apoio; senão
  * SPILLOVER se um padrão é alvo ou de transbordo; senão OFF_FOCUS. Mesma partição do desconto `MICRO_OFF_FOCUS` do motor.
  */
+/** Total week rows kept in the audit block (≈ 190 B each: ≈ 115 KB at most), and the floor per workout. */
+const STRATEGY_WEEK_ROWS_MAX = 600;
+const MIN_WEEK_ROWS_PER_WORKOUT = 4;
+
 export function classifyFocus(focus: FocusSets, primary: readonly string[], patterns: readonly string[]): FocusClass {
   if (focus.open) return "ON_FOCUS";
   if (primary.some((m) => focus.dominant.has(m))) return "ON_FOCUS";
@@ -115,6 +119,7 @@ export function strategyAudit(a: StrategyAuditInput): { strategy: StrategyAdhere
   const items = countedItems(a);
   const findings: AuditFinding[] = [];
   const workoutsOut: StrategyAdherence["workouts"] = [];
+  let rowsTotal = 0;
   const overlaps: StrategyAdherence["overlaps"] = [];
   const exposures: StrategyAdherence["exposures"] = [];
   const basisOf = (source: BlueprintSource) => (source === "PROFESSIONAL" ? ("PROFESSIONAL" as const) : ("HEURISTIC_ACCEPTED" as const));
@@ -154,6 +159,7 @@ export function strategyAudit(a: StrategyAuditInput): { strategy: StrategyAdhere
         phaseIndex: p, label: w.label, role: f.role, source: f.source, strategyId: f.strategyId, weeks,
         adherenceMin: rates.length ? r2(Math.min(...rates)) : null,
       });
+      rowsTotal += weeks.length;
       const at = { phaseIndex: p, label: w.label };
       const refs = [`rule:AUDIT_STRATEGY`, `coverage:${p}:${w.label}`];
       const low = weeks.filter((x) => x.items > 0 && (x.items - x.offFocus) / x.items < a.rule.adherenceMin);
@@ -262,6 +268,17 @@ export function strategyAudit(a: StrategyAuditInput): { strategy: StrategyAdhere
       }));
   }
   if (!workoutsOut.length) return null;
+  // Technical bound (summary_json ≤ 500000): the per-week rows are descriptive and one row costs ≈ 190 B, so a very long plan keeps only
+  // the weeks with the lowest adherence per workout (findings and `adherenceMin` were already computed from every week).
+  if (rowsTotal > STRATEGY_WEEK_ROWS_MAX) {
+    const keep = Math.max(MIN_WEEK_ROWS_PER_WORKOUT, Math.floor(STRATEGY_WEEK_ROWS_MAX / workoutsOut.length));
+    for (const w of workoutsOut) {
+      if (w.weeks.length <= keep) continue;
+      const kept = [...w.weeks].sort((x, y) => (x.adherence ?? 2) - (y.adherence ?? 2) || x.week - y.week).slice(0, keep).sort((x, y) => x.week - y.week);
+      w.weeksOmitted = w.weeks.length - kept.length;
+      w.weeks = kept;
+    }
+  }
   return {
     strategy: {
       strategyIds: [...new Set(lanes.map((l) => l.f.strategyId))].sort(cmp),

@@ -807,6 +807,8 @@ export interface StrategyAdherence {
     strategyId: string;
     weeks: StrategyWeek[];
     adherenceMin: number | null;
+    /** Weeks left out of `weeks` by the size bound of a very long plan (the ones with the highest adherence go first); absent when none. */
+    weeksOmitted?: number;
   }>;
   /** Por fase e par de treinos de papéis diferentes, a semana completa de maior sobreposição de músculos principais (Jaccard). */
   overlaps: Array<{ phaseIndex: number; week: number; a: string; b: string; jaccard: number; byDesign: boolean }>;

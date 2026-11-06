@@ -67,8 +67,8 @@ async function seedAcceptance(d: Draft, over: { mode?: "AI" | "RULES"; student?:
   const responseHash = mode === "AI" ? hex("e") : null;
   const blueprintHash = hex("b");
   await run(
-    `INSERT INTO planning_runs(id,organization_id,plan_id,revision_id,idempotency_key,request_hash,mode,status,base_content_version,structure_fingerprint,context_hash,response_hash,blueprint_hash,requested_by_user_id,started_at)
-     VALUES (?1,?2,?3,?4,?5,?6,?7,'SUCCEEDED',1,?8,?9,?10,?11,'tech-a','x')`,
+    `INSERT INTO planning_runs(id,organization_id,plan_id,revision_id,idempotency_key,request_hash,mode,status,base_content_version,structure_fingerprint,context_hash,response_hash,blueprint_hash,requested_by_user_id,started_at,templates_version)
+     VALUES (?1,?2,?3,?4,?5,?6,?7,'SUCCEEDED',1,?8,?9,?10,?11,'tech-a','x','gymgital-base@2026.11.5')`,
     runId, over.orgId ?? "org-a", d.planId, d.revisionId, `runkey-${String(n).padStart(12, "0")}`, hex("a"), mode, "f".repeat(32), hex("c"), responseHash, blueprintHash,
   );
   await run(
@@ -153,7 +153,7 @@ describe("a geração com a estratégia aceita grava o bloco e o vínculo no mes
     expect(links).toEqual([
       {
         generationId: gen.id, acceptanceId: s.acceptanceId, runId: s.runId, compiledHash: await sha256Hex(canonicalJson(b)), blueprintHash: s.blueprintHash,
-        responseHash: s.responseHash, rulesId: "gymgital-base", rulesVersion: "2026.11.5", createdAt: NOW.toISOString(),
+        responseHash: s.responseHash, rulesId: "gymgital-base", rulesVersion: "2026.11.5", templatesVersion: "gymgital-base@2026.11.5", createdAt: NOW.toISOString(),
       },
     ]);
     expect(gen).toMatchObject({ r: "gymgital-base", v: "2026.11.5" });
@@ -172,7 +172,7 @@ describe("a geração com a estratégia aceita grava o bloco e o vínculo no mes
     expect(view.blueprint.workouts.filter((w) => w.phaseIndex === 1).map((w) => [w.label, w.roleLabel, w.originLabel])).toEqual([
       ["A", "Superior", "Padrão por regras (editável)"], ["B", "Inferior", "Padrão por regras (editável)"],
     ]);
-    expect(view.blueprint.record.runs).toEqual([{ acceptanceId: s.acceptanceId, runId: s.runId, blueprintHash: s.blueprintHash, responseHash: null, kind: "RULES" }]);
+    expect(view.blueprint.record.runs).toEqual([{ acceptanceId: s.acceptanceId, runId: s.runId, blueprintHash: s.blueprintHash, responseHash: null, templatesVersion: "gymgital-base@2026.11.5", kind: "RULES" }]);
     expect(view.blueprint.record.generations).toHaveLength(1);
     // an AI run is labelled as such and carries its response hash
     const d2 = await newDraft();
@@ -222,6 +222,27 @@ describe("atomicidade, aceite de outra revisão e isolamento", () => {
     // the revision is free: the right acceptance still generates
     const mine = await seedAcceptance(d);
     ok(await generatedWith(d, block(mine)));
+  });
+
+  it("um bloco que cita o aceite certo mas outros hashes, outra execução ou outra periodização é recusado inteiro", async () => {
+    const d = await newDraft();
+    const s = await seedAcceptance(d);
+    const other = await seedAcceptance(d);
+    const tamper = (f: (b: BlueprintAnswers) => void) => {
+      const b = block(s);
+      f(b);
+      return b;
+    };
+    const before = await count("SELECT COUNT(*) AS n FROM prescription_proposals WHERE revision_id = ?1", d.revisionId);
+    for (const b of [
+      tamper((x) => { x.acceptances[0].acceptanceHash = hex("9"); }),
+      tamper((x) => { x.acceptances[0].blueprintHash = hex("8"); }),
+      tamper((x) => { x.acceptances[0].runId = other.runId; }),
+      tamper((x) => { x.structureFingerprint = "e".repeat(32); }),
+    ])
+      expect(failure(await generatedWith(d, b))).toBe("blueprint_invalid");
+    expect(await count("SELECT COUNT(*) AS n FROM prescription_proposals WHERE revision_id = ?1", d.revisionId)).toBe(before);
+    ok(await generatedWith(d, block(s)));
   });
 
   it("os vínculos são imutáveis (sem UPDATE nem DELETE) e só ligam gerações da própria proposta", async () => {

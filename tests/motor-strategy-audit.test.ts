@@ -288,3 +288,18 @@ describe("sem estratégia nada muda", () => {
     expect(fromRules.UPPER.dominantMuscles).toEqual(TABLE.UPPER.dominantMuscles);
   });
 });
+
+describe("limite técnico do bloco de auditoria (summary_json ≤ 500000)", () => {
+  it("num plano muito longo mantém por treino só as semanas de menor aderência, avisa quantas ficaram de fora e não muda o mínimo", () => {
+    const plan: Plan = { A: ["ex-bench", "ex-curl", "ex-plank", "ex-lunge", "ex-goblet"], B: ["ex-squat", "ex-rdl", "ex-legcurl", "ex-legpress"] };
+    const { result } = built([phase({ weeks: 400 })], { A: "UPPER", B: "LOWER" }, plan);
+    const s = audit(result).strategy!;
+    for (const w of s.workouts) {
+      expect(w.weeks).toHaveLength(300);
+      expect(w.weeksOmitted).toBe(100);
+      expect(w.weeks.map((x) => x.week)).toEqual([...w.weeks.map((x) => x.week)].sort((x, y) => x - y));
+    }
+    expect(s.workouts.find((w) => w.label === "A")!.adherenceMin).toBe(0.6);
+    expect(JSON.stringify(s).length).toBeLessThan(150000);
+  });
+});

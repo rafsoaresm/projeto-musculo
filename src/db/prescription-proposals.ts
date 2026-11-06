@@ -60,7 +60,8 @@ export interface GenerationRecord {
    * The accepted strategy this generation compiled (`parameters.blueprint`): one `proposal_blueprint_links` row per acceptance is written
    * in the SAME batch as the generation row. An acceptance that is not the revision's own makes the whole write fail (`blueprint_invalid`).
    */
-  blueprintLink?: { compiledHash: string; acceptanceIds: string[] };
+  /** What the compiled block claims about each acceptance; the insert holds it against the stored acceptance and run (a mismatch aborts the batch). */
+  blueprintLink?: { compiledHash: string; acceptances: Array<{ acceptanceId: string; runId: string; acceptanceHash: string; blueprintHash: string; structureFingerprint: string }> };
 }
 
 export type GenerateOutcome =
@@ -197,8 +198,11 @@ export interface BlueprintLinkRow {
   blueprintHash: string | null;
   /** SHA-256 of the model's raw response; null for a rules-mode run (no model was called). */
   responseHash: string | null;
+  /** The ENGINE's rule set the generation ran with (not the planner's templates: see `templatesVersion`). */
   rulesId: string;
   rulesVersion: string;
+  /** The planner's templates version of the run (e.g. gymgital-base@2026.11.5), read from the run itself; null when it recorded none. */
+  templatesVersion: string | null;
   createdAt: string;
 }
 
@@ -802,23 +806,30 @@ export function proposalsFor(db: D1Database, context: AuthenticatedContext | nul
       );
     // The strategy link: built from the acceptance and its planner run in SQL (the run's hashes are never taken from the caller). The
     // LEFT JOINs always produce a row; a missing acceptance leaves run_id NULL and the NOT NULL aborts the whole batch.
-    for (const acceptanceId of rec.blueprintLink?.acceptanceIds ?? [])
+    // The block is held against the stored rows: the run, the acceptance's hash, the planner's blueprint hash and the structure
+    // fingerprint it cites must be the ones recorded (a block compiled from another acceptance, or from a stale one, aborts the batch).
+    for (const claim of rec.blueprintLink?.acceptances ?? [])
       out.push(
         g(
           `INSERT INTO proposal_blueprint_links (id, organization_id, proposal_id, generation_id, acceptance_id, run_id, compiled_hash,
              blueprint_hash, response_hash, rules_id, rules_version, created_at)
-           SELECT ?8, ?1, ?5, ?9, ?10, a.run_id, ?11, r.blueprint_hash, r.response_hash, ?12, ?13, ?14
+           SELECT ?8, ?1, ?5, ?9, ?10, r.id, ?11, r.blueprint_hash, r.response_hash, ?12, ?13, ?14
            FROM (SELECT 1) one
            LEFT JOIN blueprint_acceptances a ON a.organization_id = ?1 AND a.id = ?10 AND a.revision_id = ?4
-           LEFT JOIN planning_runs r ON r.organization_id = ?1 AND r.id = a.run_id
+             AND a.run_id = ?15 AND a.acceptance_hash = ?16 AND a.structure_fingerprint = ?18
+           LEFT JOIN planning_runs r ON r.organization_id = ?1 AND r.id = a.run_id AND r.blueprint_hash = ?17 AND r.structure_fingerprint = ?18
            WHERE ${token}`,
           crypto.randomUUID(),
           generationId,
-          acceptanceId,
+          claim.acceptanceId,
           rec.blueprintLink!.compiledHash,
           result.rules.id,
           result.rules.version,
           stamp,
+          claim.runId,
+          claim.acceptanceHash,
+          claim.blueprintHash,
+          claim.structureFingerprint,
         ),
       );
     return out;
@@ -1448,8 +1459,9 @@ export function proposalsFor(db: D1Database, context: AuthenticatedContext | nul
         .prepare(
           `SELECT l.generation_id AS generationId, l.acceptance_id AS acceptanceId, l.run_id AS runId, l.compiled_hash AS compiledHash,
              l.blueprint_hash AS blueprintHash, l.response_hash AS responseHash, l.rules_id AS rulesId, l.rules_version AS rulesVersion,
-             l.created_at AS createdAt
+             pr.templates_version AS templatesVersion, l.created_at AS createdAt
            FROM proposal_blueprint_links l
+           JOIN planning_runs pr ON pr.organization_id = l.organization_id AND pr.id = l.run_id
            JOIN prescription_proposals p ON p.organization_id = l.organization_id AND p.id = l.proposal_id
            WHERE l.organization_id = ?1 AND p.plan_id = ?3 AND p.revision_id = ?4 AND p.id = ?5 AND ${any}
            ORDER BY l.created_at, l.rowid`,

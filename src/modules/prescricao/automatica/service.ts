@@ -547,7 +547,9 @@ async function record(
     inputJson: stored.length <= GENERATION_INPUT_MAX ? stored : null,
     parameters: answers,
     ...(answers.blueprint
-      ? { blueprintLink: { compiledHash: await sha256Hex(canonicalJson(answers.blueprint)), acceptanceIds: answers.blueprint.acceptances.map((a) => a.acceptanceId) } }
+      ? { blueprintLink: { compiledHash: await sha256Hex(canonicalJson(answers.blueprint)), acceptances: answers.blueprint.acceptances.map((a) => ({
+          acceptanceId: a.acceptanceId, runId: a.runId, acceptanceHash: a.acceptanceHash, blueprintHash: a.blueprintHash, structureFingerprint: answers.blueprint!.structureFingerprint,
+        })) } }
       : {}),
   };
 }

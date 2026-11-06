@@ -29,8 +29,8 @@ export interface ProposalBlueprintView {
   workouts: Array<{ phaseIndex: number; label: string; role: string; roleLabel: string; source: OriginKind; originLabel: string; strategyId: string }>;
   /** What was recorded with each generation: the hashes that make it reproducible (the model's response itself is stored apart, deletable). */
   record: {
-    generations: Array<{ generationId: string; createdAt: string; compiledHash: string; rules: { id: string; version: string } }>;
-    runs: Array<{ acceptanceId: string; runId: string; blueprintHash: string | null; responseHash: string | null; kind: "AI" | "RULES" }>;
+    generations: Array<{ generationId: string; createdAt: string; compiledHash: string; engineRules: { id: string; version: string } }>;
+    runs: Array<{ acceptanceId: string; runId: string; blueprintHash: string | null; responseHash: string | null; /** The planner's templates (e.g. gymgital-base@2026.11.5), from the run. */ templatesVersion: string | null; kind: "AI" | "RULES" }>;
   };
 }
 
@@ -49,11 +49,11 @@ export function proposalBlueprintView(parameters: unknown, links: readonly Bluep
   const generations = new Map<string, ProposalBlueprintView["record"]["generations"][number]>();
   for (const l of links)
     if (!generations.has(l.generationId))
-      generations.set(l.generationId, { generationId: l.generationId, createdAt: l.createdAt, compiledHash: l.compiledHash, rules: { id: l.rulesId, version: l.rulesVersion } });
+      generations.set(l.generationId, { generationId: l.generationId, createdAt: l.createdAt, compiledHash: l.compiledHash, engineRules: { id: l.rulesId, version: l.rulesVersion } });
   const ordered = [...generations.values()];
   const latest = links.length ? links[links.length - 1].generationId : null;
   const latestRuns = links.filter((l) => l.generationId === latest);
-  const runs = latestRuns.map((l) => ({ acceptanceId: l.acceptanceId, runId: l.runId, blueprintHash: l.blueprintHash, responseHash: l.responseHash, kind: l.responseHash ? ("AI" as const) : ("RULES" as const) }));
+  const runs = latestRuns.map((l) => ({ acceptanceId: l.acceptanceId, runId: l.runId, blueprintHash: l.blueprintHash, responseHash: l.responseHash, templatesVersion: l.templatesVersion, kind: l.responseHash ? ("AI" as const) : ("RULES" as const) }));
   const originOf = (s: OriginKind) => ORIGIN_LABELS[s];
   return {
     strategies: block.acceptances.map((a) => ({
