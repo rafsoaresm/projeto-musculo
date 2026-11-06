@@ -144,6 +144,9 @@ export function GenerationFlow({
   // The planning and the acceptance (all restored from the server on a refresh).
   const [mode, setMode] = useState<Mode>(initial ? initial.run.producer : panel.defaultMode);
   const [list, setList] = useState<StrategyListView | null>(initial?.run ?? null);
+  // The answers the shown strategies were planned for: a different set of answers means the list is stale. Null until known (a restored run).
+  const [plannedFor, setPlannedFor] = useState<string | null>(null);
+  const [pollGaveUp, setPollGaveUp] = useState(false);
   const [planning, setPlanning] = useState<PlanningUi>(initial ? { state: "READY", list: initial.run } : { state: "IDLE" });
   const [choice, setChoice] = useState<StrategyChoice>(initial ? (initial.acceptance?.strategyId ?? defaultChoice(initial.run)) : "NONE");
   const [draft, setDraft] = useState<AcceptanceDraft | null>(() => (initial?.acceptance ? draftFromAcceptance(initial.run, initial.acceptance, screen.structure) : null));
@@ -159,12 +162,18 @@ export function GenerationFlow({
   useEffect(() => {
     try {
       const saved = window.sessionStorage.getItem(storeKey);
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- read after hydration on purpose: the server renders the empty form
-      if (saved) setForm({ ...EMPTY_FORM, ...(JSON.parse(saved) as Partial<FormState>) });
+      if (saved) {
+        const restoredForm = { ...EMPTY_FORM, ...(JSON.parse(saved) as Partial<FormState>) };
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- read after hydration on purpose: the server renders the empty form
+        setForm(restoredForm);
+        const built = answersFromForm(restoredForm, screen.policy);
+        if (built.ok) setPlannedFor((current) => current ?? JSON.stringify(built.answers));
+      }
     } catch {
       /* storage unavailable or damaged: the form starts empty */
     }
     restored.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeKey]);
   useEffect(() => {
     // Never write the untouched initial form: a remount right after hydration would read it back and lose what was saved.
@@ -184,6 +193,8 @@ export function GenerationFlow({
     () => [...screen.questions, ...serverQuestions.filter((q) => !screen.questions.some((s) => s.code === q.code && s.phaseIndex === q.phaseIndex && s.label === q.label))],
     [screen.questions, serverQuestions],
   );
+  const aiClosed = panel.options.some((o) => o.id === "AI" && o.disabled);
+  const modeNow: Mode = aiClosed && mode === "AI" ? "RULES" : mode;
   const open = openRequired(questions, form);
   const info = questions.filter((q) => !q.required);
   const total = screen.structure.length;
@@ -200,7 +211,10 @@ export function GenerationFlow({
   if (step !== "contexto" && !list) step = "contexto";
   else if (step === "focos" && !draft) step = "estrategia";
   else if (step === "previa" && !readyToPreview) step = "estrategia";
+  const inProgress = planning.state === "FAILED" && planning.reason === "in_progress";
   const stepperIndex = pillOf(step);
+  // "Planejamento em andamento" gives no way out while it is still being looked at; once the looking stopped it offers the same two as a failure.
+  const bannerActions: Banner["actions"] = banner && inProgress && pollGaveUp && banner.actions.length === 0 ? ["retry", "rules"] : (banner?.actions ?? []);
 
   function go(next: FlowStep) {
     setSub(null);
@@ -225,7 +239,6 @@ export function GenerationFlow({
   }, [focus]);
 
   // "Já existe um planejamento em andamento": look again every 2 s, at most 30 times.
-  const inProgress = planning.state === "FAILED" && planning.reason === "in_progress";
   useEffect(() => {
     if (!inProgress) return;
     let tries = 0;
@@ -235,7 +248,10 @@ export function GenerationFlow({
       if (state?.state === "READY") {
         clearInterval(timer);
         showList(state.view);
-      } else if (tries >= 30 || state?.state === "FAILED") clearInterval(timer);
+      } else if (tries >= 30 || state?.state === "FAILED") {
+        clearInterval(timer);
+        setPollGaveUp(true);
+      }
     }, 2000);
     return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -324,12 +340,14 @@ export function GenerationFlow({
         const outcome = await planStrategies(planId, revisionId, { idempotencyKey: mine.key, baseContentVersion: screen.contentVersion, mode: planMode, answers: built.answers });
         intent.done();
         if (outcome.ok) {
+          setPlannedFor(JSON.stringify(built.answers));
           showList(outcome.blueprint);
           return;
         }
         if (outcome.questions) setServerQuestions(outcome.questions);
         setPlanning({ state: "FAILED", reason: outcome.reason, message: outcome.message, canContinueByRules: outcome.canContinueByRules });
         setBanner(planningBanner(outcome, planMode));
+        setPollGaveUp(false);
       } catch {
         setPlanning({ state: "IDLE" });
         setErrors([NETWORK_ERROR]);
@@ -338,17 +356,19 @@ export function GenerationFlow({
   }
   function continueFromContext() {
     if (open.length > 0) return;
-    if (list && planning.state === "READY" && list.producer === mode && list.baseContentVersion === screen.contentVersion) {
+    const built = answersFromForm(form, screen.policy);
+    const sameAnswers = built.ok && plannedFor !== null && plannedFor === JSON.stringify(built.answers);
+    if (list && planning.state === "READY" && list.producer === modeNow && list.baseContentVersion === screen.contentVersion && sameAnswers) {
       go("estrategia");
       return;
     }
-    runPlan(mode);
+    runPlan(modeNow);
   }
   function runBannerAction(action: Banner["actions"][number]) {
     if (action === "rules") runPlan("RULES");
     else if (action === "retry") {
       intent.done();
-      runPlan(mode);
+      runPlan(modeNow);
     } else {
       setList(null);
       setPlanning({ state: "IDLE" });
@@ -464,6 +484,12 @@ export function GenerationFlow({
           acceptanceId = again.id;
           setAccepted({ id: again.id, dosing: JSON.stringify(dosing) });
         }
+        if (choice !== "NONE" && !acceptanceId) {
+          // Never fall back to the legacy generation with a strategy chosen: the blueprint has to be accepted again first.
+          setProgress("");
+          setErrors(["Os focos mudaram desde o último aceite. Volte a Conferir blueprint para aceitar de novo."]);
+          return;
+        }
         const what = `generate:${choice}:${acceptanceId ?? "none"}:${JSON.stringify(built.answers)}${rulesVersion ? `:${rulesVersion}` : ""}`;
         const firstTry = intent.take(what);
         const run = (): Promise<ProposalActionResult> =>
@@ -500,7 +526,7 @@ export function GenerationFlow({
   }
 
   // ----- what each screen says -----
-  const heading = headingFor(step, mode);
+  const heading = headingFor(step, modeNow);
   const cards = useMemo(() => contextCards(screen.summary, screen.structure, screen.considered), [screen]);
   const strategyList = useMemo(() => (list ? strategyCards(list, screen.structure) : []), [list, screen.structure]);
   const chosen = list?.strategies.find((s) => s.strategyId === choice) ?? null;
@@ -508,7 +534,7 @@ export function GenerationFlow({
   const running = planning.state === "RUNNING";
   const problems = draft ? draftProblems(draft).length : 0;
   const footerBase = footerFor({
-    step, openAnswers: open.length, running: running || (pending && step === "contexto"), mode, choice, choiceName: chosen?.displayName ?? null,
+    step, openAnswers: open.length, running: running || (pending && step === "contexto"), mode: modeNow, choice, choiceName: chosen?.displayName ?? null,
     choiceAcceptable: choiceCard ? !choiceCard.disabled : false, problems, generating: pending && step === "previa", phone,
   });
   // On the first step the footer says exactly what is missing ("4 respostas faltam: 3 estímulos e equipamentos"), each also a link on step 3.
@@ -636,19 +662,19 @@ export function GenerationFlow({
             {banner.text}
             {banner.detail ? <span className="fig-gen-hint"> ({banner.detail})</span> : null}
           </p>
-          {banner.actions.length > 0 && (
+          {bannerActions.length > 0 && (
             <div className="fig-gen-notice-actions">
-              {banner.actions.includes("retry") && (
+              {bannerActions.includes("retry") && (
                 <button type="button" className="fig-gen-btn small" disabled={pending} onClick={() => runBannerAction("retry")}>
                   Tentar de novo
                 </button>
               )}
-              {banner.actions.includes("rules") && (
+              {bannerActions.includes("rules") && (
                 <button type="button" className="fig-gen-btn small primary" disabled={pending} onClick={() => runBannerAction("rules")}>
                   Continuar por regras
                 </button>
               )}
-              {banner.actions.includes("replan") && (
+              {bannerActions.includes("replan") && (
                 <button type="button" className="fig-gen-btn small primary" disabled={pending} onClick={() => runBannerAction("replan")}>
                   Planejar de novo
                 </button>
@@ -676,7 +702,7 @@ export function GenerationFlow({
                 ))}
                 <StudentOrigin considered={screen.considered} freeText={screen.freeText} assumptions={screen.assumptions} />
               </section>
-              <ModePicker panel={panel} mode={mode} onChange={setMode} />
+              <ModePicker panel={panel} mode={modeNow} onChange={setMode} />
             </div>
           </div>
         )}
@@ -716,7 +742,11 @@ export function GenerationFlow({
         {step === "focos" && draft && (
           <PhaseFocus
             draft={draft}
-            onChange={setDraft}
+            onChange={(next) => {
+              // Any edit of the focus makes the written acceptance stale: it is written again at "Conferir blueprint", never reused silently.
+              setDraft(next);
+              setAccepted(null);
+            }}
             structure={screen.structure}
             phase={phase}
             onPhase={setPhase}
