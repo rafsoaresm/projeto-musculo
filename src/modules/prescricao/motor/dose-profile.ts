@@ -11,7 +11,7 @@
 import type { RuleLog } from "./trace";
 import type { DoseProfile, DoseProfileCriteria } from "./rules";
 import type { DoseDraft } from "./dose";
-import type { CatalogExercise, DoseParam, Experience, ExerciseClass, Issue, Metric, OccurrenceOut, ParamTrace } from "./types";
+import type { CatalogExercise, DoseParam, DoseProfileCode, Experience, ExerciseClass, Issue, Metric, OccurrenceOut, ParamTrace } from "./types";
 import { DOSE_UNCERTAIN_CODE, DOSE_UNCERTAIN_SEGMENT } from "./trace";
 
 /** Campos de metadado que um perfil pode ler; quando nulos viram incerteza. */
@@ -115,6 +115,27 @@ export function reasonsFor(p: DoseProfile, e: CatalogExercise): string[] {
   return [...base, ...new Set(matched)];
 }
 
+/** Pedido de perfil da estratégia aceita para a classe do exercício (só o que o profissional confirmou). */
+export interface ProfileRequest {
+  exerciseClass: ExerciseClass;
+  code: DoseProfileCode;
+  origin: "AI_SUGGESTED" | "RULES_HEURISTIC";
+  /** Perfis que a política admite por classe (DOSE_CLASS_MAP); ausente = a política não admite pedido nenhum. */
+  classMap: Partial<Record<ExerciseClass, readonly DoseProfileCode[]>> | undefined;
+}
+
+/**
+ * O que aconteceu com o pedido: SAME = o perfil escolhido pela especificidade já tinha esse código (nada a mudar); HONOURED =
+ * o pedido trocou o perfil por outro de mesmo estímulo, modalidade e métrica que o exercício confirma; REJECTED = fora da política
+ * (NOT_IN_CLASS_MAP: a classe não admite o código; NO_MATCHING_PROFILE: nenhum perfil deste estímulo com esse código serve a ele).
+ */
+export interface IntentOutcome {
+  exerciseClass: ExerciseClass;
+  code: DoseProfileCode;
+  outcome: "SAME" | "HONOURED" | "REJECTED";
+  why?: "NOT_IN_CLASS_MAP" | "NO_MATCHING_PROFILE";
+}
+
 export interface ProfileChoice {
   /** O perfil aplicado, ou null (padrão genérico). */
   profile: DoseProfile | null;
@@ -124,6 +145,10 @@ export interface ProfileChoice {
   expected: boolean;
   /** Metadados que faltaram e poderiam mudar a escolha, em ordem fixa. */
   uncertain: ProfileField[];
+  /** Presente só quando havia pedido da estratégia para a classe do exercício. */
+  intent?: IntentOutcome;
+  /** Quem escolheu o perfil quando foi o pedido da estratégia (HONOURED): vai para a origem do traço. */
+  via?: { origin: "AI_SUGGESTED" | "RULES_HEURISTIC" };
 }
 
 /**
@@ -132,18 +157,79 @@ export interface ProfileChoice {
  * depois a ordem da tabela. Um perfil mais específico que não pôde ser avaliado (metadado nulo) NÃO é aplicado; o metadado vira
  * incerteza.
  */
-export function profileFor(profiles: readonly DoseProfile[], exercise: CatalogExercise, stimulus: string, modality: string, metric: Metric): ProfileChoice {
+const admits = (r: ProfileRequest): boolean => Boolean(r.classMap?.[r.exerciseClass]?.includes(r.code));
+
+export function profileFor(
+  profiles: readonly DoseProfile[], exercise: CatalogExercise, stimulus: string, modality: string, metric: Metric, request?: ProfileRequest,
+): ProfileChoice {
   const pool = profiles
     .map((p, index) => ({ p, index, spec: specificityOf(p) }))
     .filter(({ p }) => p.match.stimulus.includes(stimulus) && p.match.modality === modality && p.match.metric === metric);
-  if (!pool.length) return { profile: null, reasons: [], expected: false, uncertain: [] };
+  if (!pool.length) {
+    // Sem perfil para este estímulo/modalidade/métrica o pedido não tem onde pousar: é o caso "fora da política", explicado ao profissional.
+    return {
+      profile: null, reasons: [], expected: false, uncertain: [],
+      ...(request ? { intent: { exerciseClass: request.exerciseClass, code: request.code, outcome: "REJECTED" as const, why: admits(request) ? ("NO_MATCHING_PROFILE" as const) : ("NOT_IN_CLASS_MAP" as const) } } : {}),
+    };
+  }
   const better = (a: (typeof pool)[number], b: (typeof pool)[number]) => b.spec.tier - a.spec.tier || b.spec.count - a.spec.count || a.index - b.index;
   const evaluated = pool.map((x) => ({ ...x, t: evaluate(x.p, exercise) })).sort(better);
-  const chosen = evaluated.find((x) => x.t.v === "YES") ?? null;
+  let chosen = evaluated.find((x) => x.t.v === "YES") ?? null;
+  let intent: IntentOutcome | undefined;
+  let via: ProfileChoice["via"];
+  if (request) {
+    const base = { exerciseClass: request.exerciseClass, code: request.code };
+    if (chosen?.p.code === request.code) intent = { ...base, outcome: "SAME" };
+    else if (!admits(request)) intent = { ...base, outcome: "REJECTED", why: "NOT_IN_CLASS_MAP" };
+    else {
+      // Entre os perfis com o código pedido vale só o que o exercício confirma (YES), do mais específico ao menos.
+      const wanted = evaluated.find((x) => x.p.code === request.code && x.t.v === "YES");
+      if (wanted) {
+        chosen = wanted;
+        intent = { ...base, outcome: "HONOURED" };
+        via = { origin: request.origin };
+      } else intent = { ...base, outcome: "REJECTED", why: "NO_MATCHING_PROFILE" };
+    }
+  }
   const outranking = evaluated.filter((x) => x.t.v === "UNKNOWN" && (!chosen || better(x, chosen) < 0));
   const fields = new Set(outranking.flatMap((x) => x.t.unknown));
-  return { profile: chosen ? chosen.p : null, reasons: chosen ? reasonsFor(chosen.p, exercise) : [], expected: true, uncertain: FIELD_ORDER.filter((f) => fields.has(f)) };
+  const reasons = chosen ? [...reasonsFor(chosen.p, exercise), ...(via ? [INTENT_REASON] : [])] : [];
+  return {
+    profile: chosen ? chosen.p : null, reasons, expected: true, uncertain: FIELD_ORDER.filter((f) => fields.has(f)),
+    ...(intent ? { intent } : {}), ...(via ? { via } : {}),
+  };
 }
+
+/** Código de motivo quando o perfil foi o pedido pela estratégia aceita (e não o que a especificidade escolheria). */
+export const INTENT_REASON = "BLUEPRINT_INTENT";
+const INTENT_CHANGE_IF = "Muda se o pedido de perfil for desmarcado na estratégia, se o exercício trocar de classe ou se o profissional editar a dose.";
+
+/**
+ * Aviso explicado de um pedido que a política não pôde atender (um por classe e código por fase, juntado por `uniqueIssues`
+ * pelo caminho). O texto diz o que foi pedido, por que não serviu e o que ficou valendo.
+ */
+export function intentRejectedIssue(intent: IntentOutcome, phaseIndex: number): Omit<Issue, "stage"> {
+  const cls = CLASS_LABELS[intent.exerciseClass];
+  const code = PROFILE_CODE_LABELS[intent.code] ?? intent.code;
+  const why = intent.why === "NOT_IN_CLASS_MAP"
+    ? `a política desta versão não admite esse perfil para ${cls}`
+    : `nenhum perfil com esse código serve ao exercício no estímulo e na métrica desta fase`;
+  return {
+    severity: "INFO", code: "DOSE_INTENT_REJECTED", phaseIndex, path: `phases.${phaseIndex}.dose-intent.${intent.exerciseClass}.${intent.code}`,
+    message: `Fase ${phaseIndex}: a estratégia pediu o perfil "${code}" para ${cls}, mas ${why}. Foi usado o perfil que a política escolhe pelos dados do exercício (ou a dose padrão).`,
+  };
+}
+
+export const CLASS_LABELS: Record<ExerciseClass, string> = {
+  COMPOUND_UPPER_PUSH: "exercícios multiarticulares de empurrar", COMPOUND_UPPER_PULL: "exercícios multiarticulares de puxar", COMPOUND_LOWER: "exercícios multiarticulares de membros inferiores",
+  ISOLATION_UPPER: "exercícios isolados de membros superiores", ISOLATION_LOWER: "exercícios isolados de membros inferiores", CORE: "exercícios de tronco",
+  CONDITIONING: "exercícios de condicionamento", MOBILITY: "exercícios de mobilidade", OTHER: "exercícios sem classe definida na biblioteca",
+};
+export const PROFILE_CODE_LABELS: Record<DoseProfileCode, string> = {
+  COMPOUND_HEAVY: "multiarticular pesado", COMPOUND_MODERATE: "multiarticular moderado", ISOLATION_STANDARD: "isolado padrão", ISOLATION_HIGH_REP: "isolado de muitas repetições",
+  UNILATERAL_STANDARD: "unilateral padrão", CORE_STABILITY: "estabilidade de tronco", TIME_BASED: "por tempo", CONDITIONING_CONTINUOUS: "condicionamento contínuo",
+  CONDITIONING_INTERVALS: "condicionamento intervalado", MOBILITY_HOLD: "mobilidade com sustentação", SKILL_PRACTICE: "prática de habilidade",
+};
 
 // ---------- aplicação no rascunho da dose ----------
 
@@ -187,11 +273,14 @@ export function profileValues(log: RuleLog, profile: DoseProfile, ctx: ProfileCo
 }
 
 /** Escreve o perfil no rascunho (depois do padrão genérico e antes dos ajustes do profissional). */
-export function applyProfile(log: RuleLog, draft: DoseDraft, profile: DoseProfile, ctx: ProfileContext, profileReasons: readonly string[] = profile.reasons): void {
+export function applyProfile(
+  log: RuleLog, draft: DoseDraft, profile: DoseProfile, ctx: ProfileContext, profileReasons: readonly string[] = profile.reasons, via?: ProfileChoice["via"],
+): void {
   const { values, reasons } = profileValues(log, profile, ctx);
   const basis = log.basis("DOSE_PROFILES");
   const trace = (param: DoseParam | null) => ({
-    basis, ruleId: "DOSE_PROFILES", profileId: profile.id, reasons: [...profileReasons, ...(param ? reasons[param] ?? [] : [])], changeIf: profile.changeIf, origin: "RULES_HEURISTIC" as const,
+    basis, ruleId: "DOSE_PROFILES", profileId: profile.id, reasons: [...profileReasons, ...(param ? reasons[param] ?? [] : [])],
+    changeIf: via ? INTENT_CHANGE_IF : profile.changeIf, origin: via ? via.origin : ("RULES_HEURISTIC" as const),
   });
   for (const [k, v] of Object.entries(values) as Array<[DoseParam, number]>) draft.set(k, v, trace(k));
   if (profile.loadInstruction !== undefined) draft.setExtra("loadInstruction", profile.loadInstruction, trace(null));
@@ -205,7 +294,10 @@ export function profileTrace(log: RuleLog, choice: ProfileChoice): ParamTrace[] 
   const basis = log.basis("DOSE_PROFILES");
   const out: ParamTrace[] = [];
   if (choice.profile)
-    out.push({ param: "profile", value: choice.profile.id, basis, ruleId: "DOSE_PROFILES", profileId: choice.profile.id, reasons: choice.reasons, changeIf: choice.profile.changeIf, origin: "RULES_HEURISTIC" });
+    out.push({
+      param: "profile", value: choice.profile.id, basis, ruleId: "DOSE_PROFILES", profileId: choice.profile.id, reasons: choice.reasons,
+      changeIf: choice.via ? INTENT_CHANGE_IF : choice.profile.changeIf, origin: choice.via ? choice.via.origin : "RULES_HEURISTIC",
+    });
   if (choice.uncertain.length)
     out.push({ param: "profile", value: choice.profile ? choice.profile.id : null, basis, ruleId: "DOSE_PROFILES", reasons: choice.uncertain.map((f) => `METADATA_MISSING:${f}`), changeIf: UNCERTAIN_CHANGE_IF, origin: "RULES_HEURISTIC" });
   return out;

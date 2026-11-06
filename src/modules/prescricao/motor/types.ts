@@ -13,6 +13,10 @@ export interface Fact<T> {
   ref?: string;
   basis: Basis;
   ruleId?: string;
+  /** Quem sugeriu o fato, quando veio de uma intenção da estratégia aceita (2026.11.6+; ausente nas versões anteriores). */
+  origin?: "RULES_HEURISTIC" | "AI_SUGGESTED";
+  /** Instrução de carga que acompanha o fato (só texto; o motor nunca propõe quilos). Intenções de progressão LOAD_FIRST e REPS_THEN_LOAD. */
+  loadInstruction?: string;
 }
 
 export interface Range {
@@ -387,6 +391,18 @@ export interface GenerationParameters {
    * Só é emitido com regras que têm MICROCYCLE_BLUEPRINT (2026.11.5+): versões anteriores nunca o recebem nem o leem.
    */
   blueprintFocus?: BlueprintFocusFact[];
+  /**
+   * Perfil de dose pedido pela estratégia aceita por classe de exercício (só o que o profissional confirmou). Emitido apenas com
+   * regras que têm DOSE_PROFILES (2026.11.6+) e só com o que a política admite para a classe; o resto vira aviso no adaptador.
+   */
+  doseIntentByClass?: Array<{ exerciseClass: ExerciseClass; profileCode: DoseProfileCode; origin: "AI_SUGGESTED" | "RULES_HEURISTIC" }>;
+  /**
+   * Intenção de progressão por fase (só o que o profissional confirmou), já traduzida pelo modelo PROGRESSION_TEMPLATES das regras
+   * fixadas. NUNCA entra em `progressionByPhase`: vale só onde a fase não tem progressão do profissional nem gravada na estrutura.
+   */
+  progressionIntentByPhase?: Array<{
+    phaseIndex: number; intent: string; origin: "AI_SUGGESTED" | "RULES_HEURISTIC"; progression: WeeklyProgression; loadInstruction?: string;
+  }>;
 }
 
 /** Papel de um treino numa estratégia (mesma união do vocabulário do módulo de estratégia; um teste confere a igualdade, porque o motor não importa esse módulo). */
@@ -666,6 +682,8 @@ export type AuditCode =
   | "AUDIT_PHASE_VOLUME_JUMP"
   | "AUDIT_UNIFORM_SET_STEP"
   | "AUDIT_DOSE_UNIFORM"
+  | "AUDIT_DOSE_PROFILE_FALLBACK"
+  | "AUDIT_DOSE_EXERCISE_JUMP"
   | "AUDIT_INTENSITY_MISSING"
   | "AUDIT_DURATION_UNDERUSED"
   | "AUDIT_PARTIAL_WEEK"
@@ -873,4 +891,9 @@ export interface ProgressionSettings {
   incrementKg: number | null;
   /** Janela de histórico considerada, em dias antes de `today`. */
   windowDays: number;
+  /**
+   * Regras com política de dose (2026.11.6+): além do critério de sucesso, o esforço e as repetições REGISTRADOS contam. RIR abaixo
+   * do prescrito ou repetições abaixo da faixa em todas as séries das últimas execuções viram REVIEW, nunca aumento.
+   */
+  conditional?: boolean;
 }

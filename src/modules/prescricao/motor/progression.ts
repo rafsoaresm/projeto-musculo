@@ -42,11 +42,17 @@ export function proposeProgression(
   if (sets.some((s) => s.loadKg === null || s.loadBasis === null || s.rir === null || s.reps === null))
     return proposal("INSUFFICIENT_DATA", null, "Faltam carga, base da carga, repetições ou RIR por série.", n);
   if (sets.some((s) => s.loadBasis !== prescribed.loadBasis)) return proposal("REVIEW", null, "A base da carga registrada difere da prescrita.", n);
+  // Política de dose (2026.11.6+): o que o aluno REGISTROU (repetições e RIR por série) pode pedir revisão da dose antes de qualquer
+  // aumento. Só leitura de registros reais; nada aqui escreve dose, e o aumento segue exigindo o aceite do profissional.
+  if (settings.conditional && sets.every((s) => (s.reps as number) < prescribed.reps.min))
+    return proposal("REVIEW", null, `As repetições registradas ficaram abaixo da faixa prescrita (${prescribed.reps.min}–${prescribed.reps.max}) em ${n} execuções: rever a dose antes de progredir.`, n);
   const loads = [...new Set(sets.map((s) => s.loadKg as number))];
   if (loads.length !== 1) return proposal("REVIEW", null, "Cargas diferentes entre séries ou execuções: conferir antes de progredir.", n);
   const load = loads[0];
   const target = prescribed.intensity?.kind === "RIR" ? prescribed.intensity.range.min : null;
   if (target === null) return proposal("INSUFFICIENT_DATA", null, "A dose não usa RIR: sem como comparar o esforço registrado.", n);
+  if (settings.conditional && sets.every((s) => (s.rir as number) < target))
+    return proposal("REVIEW", null, `O esforço registrado ficou acima do indicado (RIR menor que o prescrito, ${target}) em ${n} execuções: rever a dose antes de progredir.`, n);
   if (!sets.every((s) => (s.reps as number) >= prescribed.reps.max && (s.rir as number) >= target))
     return proposal("MAINTAIN", load, "Ainda não atingiu o topo da faixa com o esforço indicado em todas as séries.", n);
   const inc = settings.incrementKg;

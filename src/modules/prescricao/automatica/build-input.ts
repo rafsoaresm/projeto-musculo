@@ -7,12 +7,15 @@
  * without a default modality all become questions (`required` ones block generation). What the engine will do without an
  * optional fact is written as an assumption.
  */
+import { CLASS_LABELS, PROFILE_CODE_LABELS } from "@/modules/prescricao/motor/dose-profile";
 import { DEFAULT_RULESET, getRuleSet } from "@/modules/prescricao/motor/rules";
 import { targetSuggestion, type TargetSuggestion } from "@/modules/prescricao/motor/targets";
 import { codeOf, normalizeText, STIMULUS_LABELS } from "@/modules/prescricao/motor/vocabulary";
 import type {
   Assumption,
+  DoseProfileCode,
   EngineInput,
+  ExerciseClass,
   GenerationParameters,
   Issue,
   ItemTarget,
@@ -128,7 +131,7 @@ function withWorkoutCoverage(structure: StructureFacts, entries: GenerationAnswe
  * The engine's parameters from the answers: only what the professional answered, plus the two defaults decided on 04/11/2026.
  * `audited`: the rule set has the audit (AUDIT_THRESHOLDS); only then do weekly targets reach the engine.
  */
-function engineParameters(answers: GenerationAnswers, audited: boolean, roleFocus?: RoleFocusTable): GenerationParameters {
+function engineParameters(answers: GenerationAnswers, audited: boolean, roleFocus?: RoleFocusTable, intents?: DoseIntents): GenerationParameters {
   const blueprintFocus = roleFocus ? expandedBlueprint(answers, roleFocus) : [];
   return {
     doseMode: answers.doseMode ?? "FILL_FROM_POLICY",
@@ -157,7 +160,71 @@ function engineParameters(answers: GenerationAnswers, audited: boolean, roleFocu
     // Only with rules that read it (2026.11.5+) and only with an accepted strategy: otherwise the key does not exist and the
     // canonical input is exactly what it was before (hash of every earlier proposal unchanged).
     ...(blueprintFocus.length ? { blueprintFocus } : {}),
+    // Same rule for the dose/progression intents (2026.11.6+): only what the professional ticked AND the pinned policy admits.
+    ...(intents?.doseIntentByClass.length ? { doseIntentByClass: intents.doseIntentByClass } : {}),
+    ...(intents?.progressionIntentByPhase.length ? { progressionIntentByPhase: intents.progressionIntentByPhase } : {}),
   };
+}
+
+export interface DoseIntents {
+  doseIntentByClass: NonNullable<GenerationParameters["doseIntentByClass"]>;
+  progressionIntentByPhase: NonNullable<GenerationParameters["progressionIntentByPhase"]>;
+  /** Explained notes for what the policy did not take (never blocking). */
+  issues: Issue[];
+}
+
+/**
+ * The strategy's dose and progression intents that reach the engine: ONLY the items the professional ticked
+ * (`answers.blueprint.dosing`) and only what the pinned ruleset admits. Whatever the policy does not take is dropped with an
+ * explained INFO issue (never an error, never silently): a profile code the class does not admit, a rule set without the dose
+ * policy, an intent that is informative only (UNDULATING, BLOCKS), a phase whose progression is the professional's or is saved in
+ * the structure (the intent never replaces those; precedence is professional > structure > intent). The intent is carried in its own
+ * parameter and NEVER written into `progressionByPhase` (that would silently replace the saved periodization).
+ */
+export function doseIntentsOf(answers: GenerationAnswers, ruleSet: NonNullable<ReturnType<typeof getRuleSet>>, structure: StructureFacts): DoseIntents {
+  const out: DoseIntents = { doseIntentByClass: [], progressionIntentByPhase: [], issues: [] };
+  const dosing = answers.blueprint?.dosing;
+  if (!dosing) return out;
+  const origin = answers.blueprint!.acceptances.some((a) => a.source === "AI_SUGGESTED") ? "AI_SUGGESTED" : "RULES_HEURISTIC";
+  const note = (code: string, path: string, message: string, phaseIndex?: number) =>
+    out.issues.push({ severity: "INFO", code, stage: "INPUT", path, message, ...(phaseIndex !== undefined ? { phaseIndex } : {}) });
+
+  const profiles = ruleSet.rules.DOSE_PROFILES;
+  const classMap = ruleSet.rules.DOSE_CLASS_MAP?.value;
+  for (const d of dosing.byClass) {
+    const cls = CLASS_LABELS[d.exerciseClass as ExerciseClass];
+    const code = PROFILE_CODE_LABELS[d.profileCode as DoseProfileCode];
+    if (!profiles || !classMap) {
+      note("DOSE_INTENT_REJECTED", `dosing.byClass.${d.exerciseClass}`, `A estratégia pediu o perfil "${code}" para ${cls}, mas as regras fixadas desta proposta não têm política de dose por perfil. Pedido ignorado; valem as doses padrão.`);
+      continue;
+    }
+    if (!classMap[d.exerciseClass as ExerciseClass]?.includes(d.profileCode as DoseProfileCode)) {
+      note("DOSE_INTENT_REJECTED", `dosing.byClass.${d.exerciseClass}`, `A estratégia pediu o perfil "${code}" para ${cls}, mas a política desta versão não admite esse perfil para a classe. Pedido ignorado; vale o perfil que a política escolhe pelos dados de cada exercício.`);
+      continue;
+    }
+    out.doseIntentByClass.push({ exerciseClass: d.exerciseClass as ExerciseClass, profileCode: d.profileCode as DoseProfileCode, origin });
+  }
+
+  const templates = ruleSet.rules.PROGRESSION_TEMPLATES?.value;
+  const savedPhases = new Map(structure.phases.map((p) => [p.index, p]));
+  for (const d of [...dosing.progression].sort((a, b) => a.phaseIndex - b.phaseIndex)) {
+    const where = `phases.${d.phaseIndex}.progression`;
+    const template = templates?.[d.intent];
+    if (!template?.applied || !template.progression) {
+      note("PROGRESSION_INTENT_NOT_APPLIED", where, `Fase ${d.phaseIndex}: a estratégia sugere a progressão "${d.intent}". Sugestão informativa; defina a progressão da fase para aplicar.`, d.phaseIndex);
+      continue;
+    }
+    const byProfessional = answers.progressionByPhase.some((p) => p.phaseIndex === d.phaseIndex);
+    if (byProfessional || savedPhases.get(d.phaseIndex)?.progression) {
+      note("PROGRESSION_INTENT_SUPERSEDED", where, `Fase ${d.phaseIndex}: a fase já tem progressão ${byProfessional ? "definida por você nesta geração" : "gravada na periodização"}; a intenção "${d.intent}" da estratégia não foi aplicada.`, d.phaseIndex);
+      continue;
+    }
+    out.progressionIntentByPhase.push({
+      phaseIndex: d.phaseIndex, intent: d.intent, origin, progression: template.progression,
+      ...(template.loadInstruction !== undefined ? { loadInstruction: template.loadInstruction } : {}),
+    });
+  }
+  return out;
 }
 
 /** The ruleset's role table in the shape `expandFocus` reads (`spilloverPatterns` is the table's name for `allowedSpilloverPatterns`). */
@@ -237,6 +304,7 @@ export function buildEngineInput(ctx: GenerationContext, answers: GenerationAnsw
   answers.exerciseCountByWorkout.forEach((c) => checkWorkout(c.phaseIndex, c.label));
   answers.coverageByWorkout.forEach((c) => checkWorkout(c.phaseIndex, c.label));
   answers.blueprint?.workouts.forEach((w) => checkWorkout(w.phaseIndex, w.label));
+  answers.blueprint?.dosing?.progression.forEach((p) => checkPhase(p.phaseIndex));
   answers.policyOverrides.forEach((o) => {
     if (o.phaseIndex !== undefined && o.label !== undefined) checkWorkout(o.phaseIndex, o.label);
     else if (o.phaseIndex !== undefined) checkPhase(o.phaseIndex);
@@ -269,7 +337,8 @@ export function buildEngineInput(ctx: GenerationContext, answers: GenerationAnsw
 
   // 2. The engine's parameters: only what the professional answered, plus the two defaults decided on 04/11/2026.
   const roleTable = ruleSet.rules.MICROCYCLE_BLUEPRINT && ruleSet.rules.BLUEPRINT_ROLE_FOCUS ? roleFocusTableOf(ruleSet.rules.BLUEPRINT_ROLE_FOCUS.value) : undefined;
-  const parameters = engineParameters(answers, Boolean(ruleSet.rules.AUDIT_THRESHOLDS), roleTable);
+  const intents = doseIntentsOf(answers, ruleSet, baseStructure);
+  const parameters = engineParameters(answers, Boolean(ruleSet.rules.AUDIT_THRESHOLDS), roleTable, intents);
   // 2b. A suggestion accepted as is must be exactly what the rule suggests for that phase today (same omission rule for the
   // sessions per week), or it is the professional's choice and must say so. `suggestedTargets` computes the card's suggestion
   // from these same two pieces (structure and parameters), so what "Aceitar" sends is what is checked here.
@@ -417,7 +486,7 @@ export function buildEngineInput(ctx: GenerationContext, answers: GenerationAnsw
   assumptions.push({ code: "CHECKINS_NOT_USED", text: "Check-ins do aluno ficam de fora da geração (decidido em 04/11/2026, Q6).", basis: "PROFESSIONAL" });
 
   // 5. Facts in the records worth a look (never blocking).
-  const issues: Issue[] = [];
+  const issues: Issue[] = [...intents.issues];
   const days = p?.daysPerWeek ?? null;
   if (days !== null)
     for (const phase of structure.phases)

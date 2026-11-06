@@ -17,7 +17,7 @@ import { existingFor, metadataOf, nameKeyOf, parseSlotKey, rankAlternatives, sel
 import { targetSuggestion } from "./targets";
 import { planPhaseMicrocycle, type GenerateOptions, type ReservedSubstitution } from "./microcycle";
 import { ruleLogFor, RuleLog, uniqueIssues, DOSE_UNCERTAIN_CODE, DOSE_UNCERTAIN_SEGMENT } from "./trace";
-import { uncertaintyMessage } from "./dose-profile";
+import { intentRejectedIssue, uncertaintyMessage } from "./dose-profile";
 import { validateInput } from "./validate";
 import { volumeFor } from "./volume";
 import { cmp, codeOf, labelsOf, MODALITY_LABELS, MUSCLE_LABELS, normalizeText, numberText, PATTERN_LABELS, STIMULUS_LABELS, VOCABULARY_VERSION } from "./vocabulary";
@@ -504,6 +504,9 @@ export function itemFor(ctx: EngineContext, plan: { phase: StructurePhase; worko
       severity: "INFO", code: DOSE_UNCERTAIN_CODE, path: `${workoutPath}${DOSE_UNCERTAIN_SEGMENT}${exercise.id}`, phaseIndex: plan.phase.index, label: plan.workout.label, stage: "SELECTION",
       message: uncertaintyMessage(exercise.name, r.profile.uncertain),
     });
+  // Pedido de perfil da estratégia que a política não atendeu: aviso explicado, um por classe e código por fase (`uniqueIssues` junta pelo caminho).
+  if (r.profile?.intent?.outcome === "REJECTED")
+    issues.push({ ...intentRejectedIssue(r.profile.intent, plan.phase.index), label: plan.workout.label, stage: "SELECTION" });
   const stimTrace: ParamTrace[] = stimulus ? [{ param: "stimulus", value: stimulus.value, basis: stimulus.basis, ...(stimulus.ruleId ? { ruleId: stimulus.ruleId } : {}) }] : [];
   return { ...base, dose: r.dose, display: toDisplayFields(r.dose), trace: { selection: slot.selection, params: [...stimTrace, ...r.params] } };
 }
@@ -658,7 +661,7 @@ function historySuggestions(ctx: EngineContext, occurrences: OccurrenceOut[]): H
       if (!exercise) continue;
       out.push({
         phaseIndex: o.phaseIndex, slotKey: item.slotKey, exerciseId: item.exerciseId,
-        proposal: proposeProgression(ctx.input.history, exercise, item.dose, { consecutiveSuccesses: H.consecutiveSuccesses, maximumIncrementFraction: H.maximumIncrementFraction, incrementKg: null, windowDays: window }, ctx.input.asOf),
+        proposal: proposeProgression(ctx.input.history, exercise, item.dose, { consecutiveSuccesses: H.consecutiveSuccesses, maximumIncrementFraction: H.maximumIncrementFraction, incrementKg: null, windowDays: window, ...(ctx.log.optional("DOSE_PROFILES") ? { conditional: true } : {}) }, ctx.input.asOf),
       });
     }
   return out;
