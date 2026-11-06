@@ -37,7 +37,7 @@ import {
 import type { GenerationScreen } from "./service";
 import { NETWORK_ERROR, useIntent } from "./use-intent";
 import { usePhone } from "./use-phone";
-import { EMPTY_FORM, answersFromForm, formFromAnswers, openRequired, shortDate, type GenerationForm as FormState } from "./view";
+import { DOSE_PROFILES_RULES_VERSION, EMPTY_FORM, answersFromForm, formFromAnswers, openRequired, shortDate, type GenerationForm as FormState } from "./view";
 
 /**
  * "Gerar prescrição automática" (design §6.1 `generation-form`, UI items 1 and 2), as the Figma GEN-01..08 draw it: three steps
@@ -209,8 +209,11 @@ export function GenerationForm({ planId, revisionId, screen, header }: { planId:
     startTransition(async () => {
       setProgress(`Gerando a proposta (${total} ${total === 1 ? "fase" : "fases"})…`);
       try {
-        const firstTry = intent.take(`generate:${JSON.stringify(built.answers)}`);
-        let result = await generateProposal(planId, revisionId, { idempotencyKey: firstTry.key, baseContentVersion: screen.contentVersion, answers: built.answers });
+        const rulesVersion = form.doseProfiles ? DOSE_PROFILES_RULES_VERSION : undefined;
+        const firstTry = intent.take(`generate:${JSON.stringify(built.answers)}${rulesVersion ? `:${rulesVersion}` : ""}`);
+        let result = await generateProposal(planId, revisionId, {
+          idempotencyKey: firstTry.key, baseContentVersion: screen.contentVersion, answers: built.answers, ...(rulesVersion ? { rulesVersion } : {}),
+        });
         intent.done();
         if (result.data?.questions) setServerQuestions(result.data.questions);
         // A long periodization is generated in parts (technical limit per request): continue until every phase is there.

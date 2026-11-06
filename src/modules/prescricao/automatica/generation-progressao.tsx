@@ -239,6 +239,17 @@ function Advanced({ screen, form, setForm, setField, info, pending, fieldErrors,
           </div>
         </div>
 
+        <div className="fig-gen-field">
+          <label className="fig-gen-check">
+            <input type="checkbox" checked={form.doseProfiles} onChange={(e) => setField("doseProfiles", e.target.checked)} />
+            <span>Usar perfis de dose (heurística a validar)</span>
+          </label>
+          <p className="fig-gen-hint">
+            Repetições, RIR e descanso passam a depender do tipo de exercício (composto pesado, unilateral, isolamento…), sem mexer nas séries nem inventar cargas. São pontos de partida da
+            ferramenta (heurística operacional editável), ainda a validar pelo Técnico; desmarcado, vale a política de doses acima. A escolha fica gravada na proposta.
+          </p>
+        </div>
+
         {screen.targetSuggestions.length > 0 && (
           <details className="fig-gen-sub-details" open={form.coverage.length > 0 || form.coverageByWorkout.length > 0}>
             <summary>Alvos por fase (opcional)</summary>

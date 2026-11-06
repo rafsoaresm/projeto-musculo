@@ -34,6 +34,7 @@ import {
   PROPOSAL_ORIGIN_LABELS,
   METADATA_LABELS,
   contributionView,
+  itemWhy,
   durationText,
   labelsOf,
   proposalProgression,
@@ -689,6 +690,7 @@ function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, cr
               phaseIndex={phaseIndex}
               experienceUnknown={experienceUnknown}
               contribution={contributionView(item, audit?.report ?? null, phaseIndex, session.week)}
+              doseWhy={itemWhy(item, summary.workouts.find((w) => w.phaseIndex === phaseIndex && w.label === session.label) ?? null, audit?.report ?? null, { rulesUsed: summary.rulesUsed, phaseIndex })}
               suggestions={summary.historySuggestions ?? []}
               rulesUsed={summary.rulesUsed}
               locked={lockedKeys.has(item.slotKey) || item.origin === "LOCKED"}

@@ -11,6 +11,7 @@ import {
   contributionView,
   historySuggestionText,
   itemBasisGroups,
+  type ItemWhy,
   ruleLabel,
   traceParamLabel,
   traceValue,
@@ -34,6 +35,7 @@ export function ExercisePanel({
   week,
   experienceUnknown,
   contribution,
+  doseWhy,
   suggestions,
   rulesUsed,
   locked,
@@ -51,6 +53,8 @@ export function ExercisePanel({
   week: number;
   experienceUnknown: boolean;
   contribution: ReturnType<typeof contributionView>;
+  /** Dose "Por quê?" and origin pills (empty dose lines on proposals made before the dose policy). */
+  doseWhy: ItemWhy;
   suggestions: readonly HistorySuggestion[];
   rulesUsed: readonly RuleUse[];
   locked: boolean;
@@ -187,6 +191,24 @@ export function ExercisePanel({
             </ul>
           </div>
         ))}
+        {doseWhy.dose.length > 0 && (
+          <div className="why-block why-section" aria-label="Por que esta dose">
+            <h4 className="small-heading">Por que esta dose</h4>
+            <ul className="auto-list">
+              {doseWhy.dose.map((line) => (
+                <li key={line.param} className="small" data-dose-why={line.param}>
+                  <strong>{line.question}</strong> <Pill tone={BASIS_TONES[line.basis]}>{BASIS_LABELS[line.basis]}</Pill>{" "}
+                  <span>
+                    Regra: {line.rule}
+                    {line.profile ? ` · perfil ${line.profile}` : ""}.
+                  </span>
+                  {line.reasons.length > 0 && <span> Motivos: {line.reasons.join(", ")}.</span>}
+                  {line.changeIf && <span className="muted"> Muda se: {line.changeIf.replace(/^Muda\s+(com|se)\s+/i, "")}</span>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {item.trace.params.length > 0 && (
           <details className="auto-details">
             <summary>Todos os valores propostos e suas bases</summary>

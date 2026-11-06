@@ -1016,3 +1016,80 @@ describe("Motor V3 S2: the plan audit with the proposal", () => {
     expect(phasesWithoutTargets({ report: out.audit, source: out.source, rules: out.rules }, true)).toEqual([]);
   });
 });
+
+describe("Motor V4 PR 3.3: the professional's dose decisions on a 2026.11.6 proposal", () => {
+  const OVERRIDE = { stimulus: "HYPERTROPHY", patch: { values: { restSeconds: 100 } } };
+  const restOf = (i: { dose: unknown }) => ((i.dose as { restSeconds?: number } | null)?.restSeconds ?? null);
+  const repsDose = (i: { dose: unknown }) => (i.dose as { metric?: string } | null)?.metric === "REPS";
+  const trace = (i: { trace: { params: Array<{ param: string; basis: string; profileId?: string; reasons?: string[] }> } }, param: string) => i.trace.params.find((p) => p.param === param);
+
+  it("an override, a substitution, a lock and a regeneration of the phase keep what the professional decided; the other phases never move", async () => {
+    const d = await newDraft();
+    const answers: GenerationAnswersInput = { ...ANSWERS, policyOverrides: [OVERRIDE] };
+    const out = ok(await service().generate(d.planId, d.revisionId, { idempotencyKey: id("gen"), baseContentVersion: await contentVersion(d), answers, rulesVersion: "2026.11.6" }));
+    const s0 = await snapshot(d, out.proposalId);
+    expect(s0.header.rulesVersion).toBe("2026.11.6");
+    const phase1 = (snap: typeof s0) => snap.result.occurrences.filter((o) => o.phaseIndex === 1).flatMap((o) => o.items).filter(repsDose);
+    // The override is the professional's, on the rest only; the profile still sets reps and RIR where one matches.
+    expect(phase1(s0).length).toBeGreaterThan(0);
+    expect(phase1(s0).every((i) => restOf(i) === 100 && trace(i, "restSeconds")?.basis === "PROFESSIONAL")).toBe(true);
+    expect(phase1(s0).some((i) => i.trace.params.some((p) => p.profileId))).toBe(true);
+    // Strength phases (another stimulus) are not touched by the hypertrophy override: their rest comes from rules.
+    const phase2 = s0.result.occurrences.filter((o) => o.phaseIndex === 2).flatMap((o) => o.items).filter(repsDose);
+    expect(phase2.every((i) => trace(i, "restSeconds")?.basis !== "PROFESSIONAL")).toBe(true);
+
+    // Substitute one exercise of workout A in the whole phase: the new row has ITS dose, with the override re-applied.
+    const a = s0.result.occurrences.filter((o) => o.phaseIndex === 1 && o.label === "A");
+    const item = a[0].items[0];
+    const used = new Set(a.flatMap((o) => o.items.map((i) => i.exerciseId)));
+    const chosen = item.alternatives.find((x) => !used.has(x))!;
+    expect(chosen).toBeTruthy();
+    ok(await service().substitute(d.planId, d.revisionId, { proposalId: out.proposalId, idempotencyKey: id("key"), ...cas(1), newExerciseId: chosen, target: { phaseIndex: 1, slotKey: item.slotKey, applies: { kind: "PHASE" } } }));
+    const s1 = await snapshot(d, out.proposalId);
+    const swapped = s1.result.occurrences.filter((o) => o.phaseIndex === 1 && o.label === "A").map((o) => o.items.find((i) => i.exerciseId === chosen)!);
+    expect(swapped.every((i) => i && i.origin === "SUBSTITUTED" && restOf(i) === 100 && trace(i, "restSeconds")?.basis === "PROFESSIONAL")).toBe(true);
+    expect(swapped.every((i) => !repsDose(i) || (trace(i, "profile") !== undefined) || i.trace.params.some((p) => p.reasons?.length))).toBe(true);
+
+    // Lock an item of workout B and regenerate the phase with a NEW override value: the locked row keeps its stored dose, the rest follows.
+    const b = s1.result.occurrences.filter((o) => o.phaseIndex === 1 && o.label === "B");
+    const locked = b[0].items.find(repsDose)!;
+    ok(await service().lock(d.planId, d.revisionId, { proposalId: out.proposalId, ...cas(2), targets: [{ phaseIndex: 1, slotKey: locked.slotKey }], locked: true }));
+    ok(await service().regenerate(d.planId, d.revisionId, {
+      proposalId: out.proposalId, idempotencyKey: id("key"), ...cas(3), scope: { kind: "PHASE", phaseIndex: 1 },
+      answers: { policyOverrides: [{ ...OVERRIDE, patch: { values: { restSeconds: 110 } } }] } as GenerationAnswersInput,
+    }));
+    const s2 = await snapshot(d, out.proposalId);
+    const lockedAfter = s2.result.occurrences.filter((o) => o.phaseIndex === 1 && o.label === "B").map((o) => o.items.find((i) => i.slotKey === locked.slotKey)!);
+    expect(lockedAfter.every((i) => i && i.origin === "LOCKED" && restOf(i) === restOf(locked))).toBe(true);
+    const others = s2.result.occurrences.filter((o) => o.phaseIndex === 1).flatMap((o) => o.items).filter((i) => repsDose(i) && i.slotKey !== locked.slotKey);
+    expect(others.every((i) => restOf(i) === 110)).toBe(true);
+    // The professional's substitution survived the regeneration with the new override.
+    const swapped2 = s2.result.occurrences.filter((o) => o.phaseIndex === 1 && o.label === "A").map((o) => o.items.find((i) => i.exerciseId === chosen)!);
+    expect(swapped2.every((i) => i && i.origin === "SUBSTITUTED" && restOf(i) === 110)).toBe(true);
+    // Phases 2 and 3: identical to the first generation (same rows, same doses).
+    for (const o of s2.result.occurrences.filter((x) => x.phaseIndex > 1))
+      expect(o.items.map((i) => [i.exerciseId, i.dose])).toEqual(s0.result.occurrences.find((x) => x.phaseIndex === o.phaseIndex && x.week === o.week && x.slot === o.slot)!.items.map((i) => [i.exerciseId, i.dose]));
+    // The override lives in the stored answers: it is the one later operations read.
+    expect((await repo().asEngineResult(d.planId, d.revisionId, out.proposalId))!.header.rulesVersion).toBe("2026.11.6");
+    // No load is ever invented by a profile or an override.
+    expect(s2.result.occurrences.flatMap((o) => o.items).every((i) => (i.dose as { loadKg?: number | null } | null)?.loadKg == null)).toBe(true);
+  });
+
+  it("a rebase after a manual edit of the draft keeps every dose and override of the proposal; the new row is preserved with its own dose", async () => {
+    const d = await newDraft();
+    const out = ok(await service().generate(d.planId, d.revisionId, { idempotencyKey: id("gen"), baseContentVersion: await contentVersion(d), answers: { ...ANSWERS, policyOverrides: [OVERRIDE] }, rulesVersion: "2026.11.6" }));
+    const before = await snapshot(d, out.proposalId);
+    await prescriptionFor(db, scope("tech-a")).add(d.planId, d.revisionId, { phaseIndex: 1, workoutLabel: "A" }, { customName: "Alongamento do professor" });
+    ok(await service().rebase(d.planId, d.revisionId, { proposalId: out.proposalId, idempotencyKey: id("key"), ...cas(1) }));
+    const after = await snapshot(d, out.proposalId);
+    const strip = (o: (typeof before.result.occurrences)[number]) => o.items.filter((i) => i.origin !== "PRESERVED").map((i) => [i.slotKey, i.dose]);
+    for (const o of after.result.occurrences) expect(strip(o)).toEqual(strip(before.result.occurrences.find((x) => x.phaseIndex === o.phaseIndex && x.week === o.week && x.slot === o.slot)!));
+    expect(after.result.occurrences.filter((o) => o.phaseIndex === 1 && o.label === "A").every((o) => o.items.some((i) => i.origin === "PRESERVED" && i.exerciseName === "Alongamento do professor"))).toBe(true);
+    // Later regeneration still applies the override (kept in the proposal's answers).
+    ok(await service().regenerate(d.planId, d.revisionId, { proposalId: out.proposalId, idempotencyKey: id("key"), ...cas(2), scope: { kind: "WEEK", phaseIndex: 1, week: 2 } }));
+    const last = await snapshot(d, out.proposalId);
+    const week2 = last.result.occurrences.filter((o) => o.phaseIndex === 1 && o.week === 2).flatMap((o) => o.items).filter((i) => i.origin === "ENGINE" && repsDose(i));
+    expect(week2.length).toBeGreaterThan(0);
+    expect(week2.every((i) => restOf(i) === 100)).toBe(true);
+  });
+});
