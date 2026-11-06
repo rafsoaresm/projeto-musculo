@@ -1,4 +1,7 @@
-# Planejador híbrido V4 (PR 1, versão 0.97.0, não publicada)
+# Planejador híbrido V4 (PR 1 a 4, versão 0.100.0, não publicada)
+
+**PR 4:** acrescentou `adjust.ts`, `adjust-context.ts`, `adjust-diff.ts`, `adjust-service.ts` e `adjust-actions.ts` (ajustes assistidos de um ponto: a IA só escolhe entre alternativas que o motor ofereceu; o motor valida e recalcula; aplicar é decisão do profissional; migration 0049) e a resposta `ADJUSTMENTS` do provedor simulado. As telas ficam em `../automatica/` (fluxo, revisão e `adjust-panel.tsx`).
+
 
 Camada que, antes de qualquer exercício ser escolhido, produz **estratégias sugeridas** (divisão por fase e foco por treino) como um `TrainingBlueprint` v1, **com IA ou por regras**. Não aprova, não libera, não aplica e não escreve em plano, revisão ou proposta; o motor determinístico (`../motor/`, 2.3.0) não importa este diretório. `compile.ts` transforma o aceite do profissional no bloco `answers.blueprint` que o motor lê (regras 2026.11.5+); nunca edita a periodização. Documentação: [`docs/MOTOR-PRESCRICAO.md`](../../../../docs/MOTOR-PRESCRICAO.md) (seções "Planejador híbrido V4") e [`docs/HANDOFF-MOTOR-PRESCRICAO-HIBRIDO-V4.md`](../../../../docs/HANDOFF-MOTOR-PRESCRICAO-HIBRIDO-V4.md).
 

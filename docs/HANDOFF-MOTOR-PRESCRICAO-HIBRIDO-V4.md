@@ -205,7 +205,7 @@ Legenda: FEITO = código, testes locais e documentação; PARCIAL = existe mas f
 | F2 IA planejadora real | PARCIAL | porta + `mock` e 3 adaptadores (só com `fetch` simulado), prompt versionado, saída estruturada, portões, cota por plano, reserva e livro, cache, idempotência, voo único, disjuntor, falhas com "continuar por regras", painel do gestor | primeira chamada real a cada provedor (pendência do Responsável); tela do profissional (PR 4); relatórios (PR 5) |
 | F3 Compilador do blueprint | NÃO FEITO | o modo por regras já produz o blueprint | aceite, compilação, regras `2026.11.5` (PR 2) |
 | F4 Doses adaptativas | NÃO FEITO | `doseIntent` existe só no contrato | PR 3 |
-| F5 UX e orquestração | NÃO FEITO | ações de servidor `getPlanningAvailability`, `planStrategies`, `getPlanningState`, `getLatestStrategies` (sem botão) | telas GEN/RX/M e ajustes por linguagem natural (PR 4) |
+| F5 UX e orquestração | NÃO FEITO nesta data (feito na PR 4, ver abaixo) | ações de servidor `getPlanningAvailability`, `planStrategies`, `getPlanningState`, `getLatestStrategies` (sem botão) | telas GEN/RX/M e ajustes por linguagem natural (PR 4) |
 | F6 Observabilidade | NÃO FEITO | uso por organização e mês no painel | PR 5 |
 
 **Critérios de aceite (seção 8) após a PR 1:**
@@ -234,3 +234,11 @@ Legenda: FEITO = código, testes locais e documentação; PARCIAL = existe mas f
 - **Critérios após a PR 3:** 3 (doses deixam de ser uniformes quando há justificativa): ATENDIDO no servidor e nos testes, **só com adesão explícita à 2026.11.6**; o padrão das gerações novas continua a `2026.11.5` até o Técnico validar os números (PENDENCIAS). 4 (motor determinístico a partir de blueprint aceito e versionado): ATENDIDO nos testes locais, agora também com a 2026.11.6. 6 (origem explicável): PARCIAL, traço com "por quê" e "o que mudaria" por dose; a tela das justificativas gerais é da PR 4. 7 (telas Figma): NÃO FEITO (PR 4).
 - **Não feito:** botão de adesão e marcação de intenção de dose na tela (PR 4.1d); `dosingIntent`/`progressionIntent` só seriam preenchidos pela IA real, nunca testada (provedor simulado e regras devolvem `[]`); "Por que esta dose" não foi visto na tela de celular; validação dos números pelo Técnico.
 - **Não verificado:** Workers (CPU, memória; o traço da 2026.11.6 é ~55 % maior, medida local de Node), D1 remoto, provedor real, Figma. Ver `VALIDACAO.md`.
+
+### Atualização da PR 4 (06/11/2026, versão 0.100.0, branch `feat/motor-v4-pr4-telas-ajustes-20261105`, empilhada sobre a PR 3, não publicada)
+
+- **F5 UX e orquestração: FEITO nos testes locais e no navegador de teste, com provedor simulado.** 4.1 fluxo GEN-01..04/M-01 (contexto e modo IA ou regras, até três estratégias, foco por fase, prévia, aceite em "Conferir blueprint", geração em "Gerar proposta", adesão aos perfis de dose); 4.2 RX-01/M-02 (foco respeitado, "Por quê?", pílulas de origem, seção "Estratégia" na auditoria, estados da geração, "Rever estratégia"); 4.3 RX-02/M-02 ajustes assistidos (migration 0049, prompt `adjust-2026.11.1`, diff antes/depois, aplicar só o ponto como nova versão, nunca aprova nem entrega).
+- **Critérios após a PR 4:** 1 a 4 e 8 a 10 como nas PR 1 a 3 (4 e 3 dependem da adesão à 2026.11.6). 5 (alterar sem perder decisões): ATENDIDO nos testes locais (travados, trocados e doses sobrevivem; ajuste vira versão N+1). 6 (origem explicável): ATENDIDO na tela. 7 (desktop e celular como o Figma): ATENDIDO com diferenças conscientes listadas em `VALIDACAO.md`; sem comparação pixel a pixel.
+- **Não feito:** texto livre nos ajustes (bloqueado por decisão da ferramenta, a confirmar); nomes de exercício ao provedor; doses por provedor; atomicidade aplicar+decisão; retenção de `adjustment_payloads`, relatórios, benchmark e matriz de regressão (PR 5); primeira chamada real a qualquer provedor e autorização do Responsável/Usuário; validação do Técnico (papéis, perfis de dose, limiares, textos dos ajustes).
+- **Não verificado:** Workers (CPU, memória), D1 remoto, provedor real, leitor de tela, Figma pixel a pixel.
+
