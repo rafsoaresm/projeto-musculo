@@ -29,9 +29,11 @@ import {
 import type { AuthenticatedContext } from "@/db/students";
 import { generate, workUnits } from "@/modules/prescricao/motor/generate";
 import { canonicalInput, canonicalJson, canonicalRequest, sha256Hex } from "@/modules/prescricao/motor/hash";
+import { evaluateConstraints, overrideOf, simulateAdjustments, type ResolvedConstraint, type ResolvedOp } from "@/modules/prescricao/motor/adjust";
 import { alternativesFor, rebase, regenerate, substitute } from "@/modules/prescricao/motor/regenerate";
 import { DEFAULT_RULESET, getRuleSet, rulesetForNewGeneration } from "@/modules/prescricao/motor/rules";
 import { cmp, STIMULUS_LABELS } from "@/modules/prescricao/motor/vocabulary";
+import { mergeDoseOverrides } from "@/modules/prescricao/motor/adjust";
 import { structureFingerprint } from "@/modules/prescricao/planejador/hashes";
 import { proposalBlueprintView, type ProposalBlueprintView } from "./blueprint-view";
 import { ruleLogFor, uniqueIssues } from "@/modules/prescricao/motor/trace";
@@ -157,7 +159,8 @@ export type ProposalFailure =
   | "already_complete"
   | "structure_changed"
   | "blueprint_invalid"
-  | "too_large";
+  | "too_large"
+  | "adjustment_blocked";
 
 export type ProposalOutcome =
   | {
@@ -267,6 +270,7 @@ const MESSAGES: Record<ProposalFailure, string> = {
   blueprint_invalid: "O aceite da estratégia não pertence a esta revisão ou não existe mais. Aceite a estratégia de novo antes de gerar.",
   too_large:
     "A operação passa do limite técnico de um pedido. Regenere uma fase por vez, ou reduza a quantidade de sessões ou de exercícios.",
+  adjustment_blocked: "O ajuste não pode ser aplicado como foi simulado. Peça de novo para ver o efeito atual.",
 };
 
 export const fail = (reason: ProposalFailure, extra: Partial<Extract<ProposalOutcome, { ok: false }>> = {}): ProposalOutcome => ({
@@ -524,7 +528,7 @@ export function phasesThatFit(input: EngineInput, candidates: number[], budget =
   return picked;
 }
 
-function lockedOf(result: EngineResult): ItemTarget[] {
+export function lockedOf(result: EngineResult): ItemTarget[] {
   const seen = new Map<string, ItemTarget>();
   for (const o of result.occurrences)
     for (const i of o.items) if (i.origin === "LOCKED") seen.set(`${o.phaseIndex}|${i.slotKey}`, { phaseIndex: o.phaseIndex, slotKey: i.slotKey });
@@ -574,7 +578,7 @@ async function record(
   };
 }
 
-function parseAnswers(raw: unknown): GenerationAnswers | null {
+export function parseAnswers(raw: unknown): GenerationAnswers | null {
   try {
     return parseGenerationAnswers(raw);
   } catch (error) {
@@ -583,19 +587,19 @@ function parseAnswers(raw: unknown): GenerationAnswers | null {
   }
 }
 
-type Built = Extract<ReturnType<typeof buildEngineInput>, { ok: true }>;
+export type Built = Extract<ReturnType<typeof buildEngineInput>, { ok: true }>;
 
 const BLUEPRINT_STALE = "A periodização salva mudou depois que a estratégia foi aceita. Aceite a estratégia de novo antes de gerar.";
 const RULES_GONE = "As regras com que esta proposta foi gerada não estão mais disponíveis. Descarte e gere de novo.";
 
 /** The rule set a proposal was born with: every later change of it runs with the same one (docs/MOTOR-PRESCRICAO.md). */
-const rulesOf = (header: Pick<ProposalHeader, "rulesId" | "rulesVersion">): RuleSetRef => ({ id: header.rulesId, version: header.rulesVersion });
+export const rulesOf = (header: Pick<ProposalHeader, "rulesId" | "rulesVersion">): RuleSetRef => ({ id: header.rulesId, version: header.rulesVersion });
 
 /**
  * Reads the real data again and builds the engine input; any failure is an outcome. `rules`: the default for a new proposal, the
  * proposal's own rule set for every change of an open one (continue, regenerate, substitute, rebase, alternatives).
  */
-async function prepare(
+export async function prepare(
   db: D1Database,
   context: AuthenticatedContext,
   planId: string,
@@ -632,7 +636,7 @@ async function prepare(
  * and the targets of a workout by phase and workout. A patch that is not an object is passed on as is, so the strict parse
  * refuses it.
  */
-export function patchAnswers(stored: unknown, patch: unknown, options: { replaceBlueprint?: boolean } = {}): unknown {
+export function patchAnswers(stored: unknown, patch: unknown, options: { replaceBlueprint?: boolean; mergePolicyOverrides?: boolean } = {}): unknown {
   if (!patch || typeof patch !== "object" || Array.isArray(patch)) return patch;
   const base = stored && typeof stored === "object" && !Array.isArray(stored) ? (stored as Record<string, unknown>) : {};
   const next = patch as Record<string, unknown>;
@@ -659,6 +663,10 @@ export function patchAnswers(stored: unknown, patch: unknown, options: { replace
     ...("acceptedFlagDecisions" in next && !Array.isArray(next.acceptedFlagDecisions) ? { acceptedFlagDecisions: next.acceptedFlagDecisions } : {}),
     ...merge("phaseCoverage", (r) => JSON.stringify(r?.phaseIndex ?? null)),
     ...merge("coverageByWorkout", (r) => JSON.stringify([r?.phaseIndex ?? null, r?.label ?? null])),
+    // Only an assisted adjustment merges the dose adjustments (by item, phase, workout and parameters); a form patch still replaces the list.
+    ...(options.mergePolicyOverrides === true && Array.isArray(next.policyOverrides)
+      ? { policyOverrides: mergeDoseOverrides(rows(base.policyOverrides) as never[], rows(next.policyOverrides) as never[]) }
+      : {}),
     ...("blueprint" in next ? { blueprint: mergeBlueprint(base.blueprint, next.blueprint, options.replaceBlueprint === true) } : {}),
   };
 }
@@ -794,7 +802,7 @@ export function proposalService(
       built: Built;
       answers: GenerationAnswers;
     }) => { ok: true; scope: GenerationScopeKind; scopeJson: unknown; input: EngineInput; result: EngineResult; target: unknown } | { ok: false; outcome: ProposalOutcome },
-    opts: { answersPatch?: unknown; rebase?: boolean; replaceBlueprint?: boolean } = {},
+    opts: { answersPatch?: unknown; rebase?: boolean; replaceBlueprint?: boolean; mergePolicyOverrides?: boolean } = {},
   ): Promise<ProposalOutcome> {
     const now = clock();
     const key = { idempotencyKey: p.idempotencyKey, requestHash: await requestHash(kind, { planId, revisionId, ...(hashPayload as object) }) };
@@ -805,7 +813,7 @@ export function proposalService(
     const { header, result: previous } = snap;
     if (header.state !== "OPEN") return fail("closed");
     if (header.version !== p.expectedVersion) return fail("conflict", { version: header.version });
-    const answers = parseAnswers(opts.answersPatch === undefined ? header.parameters : patchAnswers(header.parameters, opts.answersPatch, { replaceBlueprint: opts.replaceBlueprint === true }));
+    const answers = parseAnswers(opts.answersPatch === undefined ? header.parameters : patchAnswers(header.parameters, opts.answersPatch, { replaceBlueprint: opts.replaceBlueprint === true, mergePolicyOverrides: opts.mergePolicyOverrides === true }));
     if (!answers) return fail("invalid", { message: "As respostas desta proposta não são mais aceitas pelas regras atuais. Descarte e gere de novo." });
     const prepared = await prepare(db, context, planId, revisionId, answers, lockedOf(previous), now, rulesOf(header));
     if (!prepared.ok) {
@@ -963,6 +971,51 @@ export function proposalService(
         if (!out.ok) return out;
         return { ok: true, scope: "SUBSTITUTE", scopeJson: { target, newExerciseId }, input: built.input, result: out.result, target: { target, newExerciseId } };
       });
+    },
+
+    /**
+     * "Aplicar ajuste à proposta" (assisted adjustments, design V4 §6.6): applies ONLY the point change the professional saw, as a new version of the
+     * proposal through the same compare-and-set path as a substitution, without regenerating anything else. The operations are re-simulated on the
+     * CURRENT stored proposal (the stored diff is never trusted): a violated constraint, an operation without effect, or an unchecked constraint the
+     * professional did not acknowledge refuses the write. Dose operations are also appended to `answers.policyOverrides`, so a later regeneration
+     * keeps them. It never approves, applies to the draft or delivers; a delivered revision is `not_open`.
+     */
+    async applyAdjustment(
+      planId: string,
+      revisionId: string,
+      payload: { proposalId: string; idempotencyKey: string; writeId: string; expectedVersion: number },
+      adjustment: { adjustmentId: string; ops: readonly ResolvedOp[]; constraints: readonly ResolvedConstraint[]; acknowledgeUncheckable: boolean },
+    ): Promise<ProposalOutcome> {
+      const parsed = continueSchema.safeParse(payload);
+      if (!parsed.success || !adjustment.ops.length) return fail("invalid");
+      const { proposalId, expectedVersion } = parsed.data;
+      const doseOps = adjustment.ops.filter((o): o is Extract<ResolvedOp, { kind: "DOSE" }> => o.kind === "DOSE");
+      return change(
+        planId,
+        revisionId,
+        parsed.data,
+        "ADJUST",
+        { proposalId, expectedVersion, adjustmentId: adjustment.adjustmentId },
+        ({ ctx, previous, built }) => {
+          const sim = simulateAdjustments(built.input, previous, adjustment.ops);
+          if (!sim.ok) return { ok: false, outcome: fail("engine_refused", { message: sim.message }) };
+          if (sim.noEffect.length) return { ok: false, outcome: fail("adjustment_blocked", { message: "A progressão da fase define este valor: o ajuste não teria efeito." }) };
+          const checks = evaluateConstraints(previous, sim.result, adjustment.constraints, new Map(ctx.catalog.map((e) => [e.id, e])), adjustment.ops);
+          if (checks.some((c) => c.status === "VIOLATED"))
+            return { ok: false, outcome: fail("adjustment_blocked", { message: checks.find((c) => c.status === "VIOLATED")?.detail ?? MESSAGES.adjustment_blocked }) };
+          if (checks.some((c) => c.status === "UNCHECKABLE") && !adjustment.acknowledgeUncheckable)
+            return { ok: false, outcome: fail("adjustment_blocked", { message: "Há restrições que não puderam ser verificadas: confirme para aplicar mesmo assim." }) };
+          return {
+            ok: true,
+            scope: doseOps.length ? "ITEM" : "SUBSTITUTE",
+            scopeJson: { adjustment: adjustment.adjustmentId, operations: adjustment.ops.length },
+            input: built.input,
+            result: sim.result,
+            target: { adjustment: adjustment.adjustmentId },
+          };
+        },
+        doseOps.length ? { answersPatch: { policyOverrides: doseOps.map(overrideOf) }, mergePolicyOverrides: true } : {},
+      );
     },
 
     /**

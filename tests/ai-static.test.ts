@@ -134,7 +134,7 @@ describe("boundaries of the module", () => {
       const touchesTenantTable = /\b(ai_planner_cache|planning_runs|planning_run_payloads|ai_usage_ledger|ai_usage_month|blueprint_acceptances)\b/.test(sql);
       if (touchesTenantTable) expect(sql, `tenant filter: ${sql.slice(0, 80)}`).toMatch(/organization_id/);
     }
-    expect(read(join(ROOT, "src/app/api/health/route.ts"))).toContain('.bind("0048_proposal_blueprints")');
+    expect(read(join(ROOT, "src/app/api/health/route.ts"))).toContain('.bind("0049_ai_adjustments")');
     expect(stripComments(read(join(ROOT, "src/modules/prescricao/planejador/provedores/http.ts")))).toContain('redirect: "error"');
   });
 
@@ -145,12 +145,12 @@ describe("boundaries of the module", () => {
     for (const sql of statements) expect(sql, sql.slice(0, 80)).toMatch(/\$\{writer\}|adminGuard\(/);
   });
 
-  it("the migrations are additive: 0046, 0047 and 0048 create tables, indexes and triggers only", () => {
-    for (const file of ["0046_ai_platform.sql", "0047_ai_planning.sql", "0048_proposal_blueprints.sql"]) {
+  it("the migrations are additive: 0046 to 0049 create tables, indexes and triggers only", () => {
+    for (const file of ["0046_ai_platform.sql", "0047_ai_planning.sql", "0048_proposal_blueprints.sql", "0049_ai_adjustments.sql"]) {
       const sql = read(join(ROOT, "migrations", file));
       expect(sql, file).not.toMatch(/^\s*(ALTER|DROP)\s/im);
       expect(sql, file).not.toMatch(/\b(DELETE FROM|UPDATE\s+\w+\s+SET)\b/i);
-      expect(sql.trim().split("\n").at(-1), file).toMatch(/INSERT INTO app_schema_versions\(version\) VALUES \('004[678]_/);
+      expect(sql.trim().split("\n").at(-1), file).toMatch(/INSERT INTO app_schema_versions\(version\) VALUES \('004[6789]_/);
     }
   });
 });
@@ -158,9 +158,9 @@ describe("boundaries of the module", () => {
 describe("planning orchestration (sub-stage 1.3)", () => {
   const importsOf = (text: string) => [...stripComments(text).matchAll(/(?:from|import)\s+["']([^"']+)["']/g)].map((m) => m[1]);
 
-  it("nothing reaches a provider outside a gate: only orchestration.ts (planning gate) and the gestor service (panel gate, no student data) import the adapters or the registry", () => {
+  it("nothing reaches a provider outside a gate: only orchestration.ts (planning gate), adjust-service.ts (adjustment gate) and the gestor service (panel gate, no student data) import the adapters or the registry", () => {
     const importers = SRC.filter((f) => !f.includes("/planejador/provedores/") && importsOf(read(f)).some((i) => /provedores\/(registry|openai|anthropic|google|mock)$/.test(i))).map(rel);
-    expect(importers).toEqual(["src/modules/gestor/ai-service.ts", "src/modules/prescricao/planejador/orchestration.ts"]);
+    expect(importers).toEqual(["src/modules/gestor/ai-service.ts", "src/modules/prescricao/planejador/adjust-service.ts", "src/modules/prescricao/planejador/orchestration.ts"]);
     // the panel's calls: body-less model listing and one constant prompt; each only after `ready()` (writer + both kill switches), and the
     // service can reach no student: it imports neither the context builder, nor the generation loader, nor the orchestration
     const panel = stripComments(read(join(ROOT, "src/modules/gestor/ai-service.ts")));
@@ -177,6 +177,24 @@ describe("planning orchestration (sub-stage 1.3)", () => {
     expect(text).toMatch(/async function callGated\(\s*proof: Reserved,/);
     expect(text.match(/callGated\(/g)).toHaveLength(2); // the definition and the single call
     expect(text.match(/\.call\(/g) ?? []).toHaveLength(0);
+  });
+
+  it("the adjustment service has the same shape: one provider call, taken only with a reservation as proof, no SQL, no approval or delivery", () => {
+    const raw = read(join(ROOT, "src/modules/prescricao/planejador/adjust-service.ts"));
+    const text = stripComments(raw);
+    expect(text).toMatch(/^import "server-only";/m);
+    expect(text.match(/callWithPolicy\(/g)).toHaveLength(1);
+    expect(text).toMatch(/async function callGated\(proof: Reserved,/);
+    expect(text.match(/callGated\(/g)).toHaveLength(2);
+    expect(text.match(/\.call\(/g) ?? []).toHaveLength(0);
+    const db = importsOf(raw).filter((i) => i.startsWith("@/db/"));
+    expect(db.sort()).toEqual(["@/db/ai-adjustments", "@/db/ai-planning", "@/db/prescription-proposals", "@/db/students"]);
+    for (const i of importsOf(raw)) expect(i, i).not.toMatch(/approv|aprova|deliver|entrega|planos\/actions|\/db\/plans|\/db\/prescription$/i);
+    expect(text).not.toMatch(/\.prepare\(|\.batch\(|INSERT INTO|UPDATE \w+ SET|DELETE FROM/);
+    // the only write to the proposal is the proposal service's compare-and-set path
+    expect(text.match(/applyAdjustment\(/g)).toHaveLength(1);
+    expect(text).not.toMatch(/\.apply\(planId, revisionId, \{ proposalId/);
+    expect(text).not.toContain("eraseStudentAi");
   });
 
   it("the orchestration reads and writes only through the AI repositories, the student reader and the generation loader", () => {

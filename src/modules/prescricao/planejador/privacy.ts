@@ -18,7 +18,7 @@ import { sha256Hex, canonicalJson } from "@/modules/prescricao/motor/hash";
 import { normalizeText } from "@/modules/prescricao/motor/vocabulary";
 import { FLEXITEST_CODES } from "@/modules/avaliacoes/v2/flexitest";
 import type { DenyList } from "./context-types";
-import { PLANNER_SYSTEM_PROMPT } from "./prompt";
+import { ADJUST_SYSTEM_PROMPT, PLANNER_SYSTEM_PROMPT } from "./prompt";
 import { estimateTokens } from "./quota";
 import type { AiTask, ProviderKind, SafeProviderRequest, WireSchema } from "./provedores/port";
 import {
@@ -57,6 +57,11 @@ const STRUCTURE_WORDS = [
   "REVIEWED", "INFERRED", "REPS", "TIME", "DISTANCE", "INTERVALS", "CONTINUOUS", "BY_TIME", "STUDENT_DECLARED", "ASSESSED", "PROFESSIONAL_DECISION", "UNKNOWN",
   "FLEXITEST", "ASSESSMENT", "FINDING", "SCREENING", "SCORE", "CAUTION", "TAG", "RESTRICTION", "REFERRAL", "PROFESSIONAL_REVIEW", "CLEARED", "CAUTION_ADVISED",
   "REFERRED", "ACCEPT", "DEFER", "MOVEMENT", "POSTURE", "FLEXIBILITY", "ANAMNESIS", "ASSESSMENT_CONTEXT", "fixed", "true", "false", "null",
+  // the adjustment context (sub-stage 4.3b)
+  "proposalVersion", "request", "op", "SUBSTITUTE_EXERCISE", "target", "workout", "item", "scope", "week", "slot", "OCCURRENCE", "FROM_WEEK", "PHASE", "weeklyVolume",
+  "weighted", "minutes", "origin", "sets", "repsMin", "repsMax", "rirMin", "rirMax", "rest", "locked", "alternatives", "primary", "secondary", "equipment", "muscles",
+  "maxWeighted", "ENGINE", "PRESERVED", "LOCKED", "SUBSTITUTED", "NO_WEEKLY_SETS_INCREASE", "MAX_WEEKLY_SETS", "NO_DURATION_INCREASE", "MAX_SESSION_MINUTES", "SAME_PATTERN",
+  "EQUIPMENT_CLASS",
 ] as const;
 
 /** Tokens of the closed vocabulary: a deny-list word equal to one of these never blocks (a code is never derived from a name). */
@@ -72,6 +77,7 @@ function buildFixedTokens(extra: Iterable<string> = []): Set<string> {
     list.forEach(add);
   }
   PLANNER_SYSTEM_PROMPT.split(/\s+/).forEach(add);
+  ADJUST_SYSTEM_PROMPT.split(/\s+/).forEach(add);
   for (const w of extra) add(w);
   return set;
 }

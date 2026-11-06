@@ -779,9 +779,9 @@ describe("cache: tenant segregated, with TTL", () => {
     await put(D.a3, key("s"));
     expect(await n("SELECT COUNT(*) AS n FROM ai_planner_cache WHERE student_id = 'st-2'")).toBe(1);
     const stOneBefore = await n("SELECT COUNT(*) AS n FROM ai_planner_cache WHERE student_id = 'st-1'");
-    expect(await ai("stranger").eraseStudentAi("st-2")).toEqual({ cache: 0, payloads: 0 });
-    expect(await ai("tech-b", "org-b").eraseStudentAi("st-2")).toEqual({ cache: 0, payloads: 0 });
-    expect(await ai().eraseStudentAi("st-2")).toEqual({ cache: 1, payloads: 0 });
+    expect(await ai("stranger").eraseStudentAi("st-2")).toEqual({ cache: 0, payloads: 0, adjustments: 0 });
+    expect(await ai("tech-b", "org-b").eraseStudentAi("st-2")).toEqual({ cache: 0, payloads: 0, adjustments: 0 });
+    expect(await ai().eraseStudentAi("st-2")).toEqual({ cache: 1, payloads: 0, adjustments: 0 });
     expect(await n("SELECT COUNT(*) AS n FROM ai_planner_cache WHERE student_id = 'st-2'")).toBe(0);
     expect(await n("SELECT COUNT(*) AS n FROM ai_planner_cache WHERE student_id = 'st-1'")).toBe(stOneBefore);
     expect(await n("SELECT COUNT(*) AS n FROM ai_planner_cache WHERE organization_id = 'org-b'")).toBeGreaterThan(0);

@@ -28,7 +28,7 @@ import { activeUser, assertContext, technicalAccessExists, type AuthenticatedCon
  * Binding convention of the reserve family: ?1 organization, ?2 user, ?3 plan, ?4 revision (the shared gate), then statement-specific.
  */
 
-const MEMBER = (org: string, user: string) =>
+export const MEMBER = (org: string, user: string) =>
   `(${activeUser(user)} AND EXISTS (SELECT 1 FROM memberships m WHERE m.organization_id = ${org} AND m.user_id = ${user}
      AND m.revoked_at IS NULL AND m.role IN ('OWNER','MANAGER','TECHNICAL')))`;
 
@@ -273,8 +273,8 @@ const ACCEPTANCE_COLUMNS = `a.id, a.plan_id AS planId, a.revision_id AS revision
   a.acceptance_hash AS acceptanceHash, a.structure_fingerprint AS structureFingerprint, a.base_content_version AS baseContentVersion,
   a.accepted_by_user_id AS acceptedByUserId, a.accepted_at AS acceptedAt`;
 
-const iso = (d: Date) => d.toISOString();
-const changesOf = (result: { meta?: { changes?: number } } | undefined) => result?.meta?.changes ?? 0;
+export const iso = (d: Date) => d.toISOString();
+export const changesOf = (result: { meta?: { changes?: number } } | undefined) => result?.meta?.changes ?? 0;
 
 // ---------- statement builders (shared by the single operations and the composed batches) ----------
 
@@ -300,7 +300,7 @@ function sweepStatements(db: D1Database, gateSql: string, gateBinds: unknown[], 
 }
 
 /** The reserve family: ensure month row, sweep, conditional reserve, ledger insert. `extra` is ANDed into the reserve predicate (takeover CAS). */
-function reserveStatements(db: D1Database, ctx: { organizationId: string; userId: string }, input: ReserveInput, extra: { sql: string; binds: unknown[] } | null): D1PreparedStatement[] {
+export function reserveStatements(db: D1Database, ctx: { organizationId: string; userId: string }, input: ReserveInput, extra: { sql: string; binds: unknown[] } | null): D1PreparedStatement[] {
   const month = monthKey(input.now);
   const gate = revisionGate("DRAFT");
   const gateBinds = [ctx.organizationId, ctx.userId, input.planId, input.revisionId];
@@ -354,7 +354,7 @@ function reserveStatements(db: D1Database, ctx: { organizationId: string; userId
 }
 
 /** Settles / releases / charges ONE ledger row: counters first (they read the RESERVED row), then the flip. Guarded by state = 'RESERVED'. */
-function ledgerStatements(db: D1Database, ctx: { organizationId: string; userId: string }, action: LedgerAction): D1PreparedStatement[] {
+export function ledgerStatements(db: D1Database, ctx: { organizationId: string; userId: string }, action: LedgerAction): D1PreparedStatement[] {
   const member = MEMBER("?1", "?2");
   const owned = `SELECT 1 FROM ai_usage_ledger WHERE id = ?3 AND organization_id = ?1 AND state = 'RESERVED'`;
   const monthOf = `(SELECT month FROM ai_usage_ledger WHERE id = ?3 AND organization_id = ?1)`;
@@ -413,7 +413,7 @@ function ledgerStatements(db: D1Database, ctx: { organizationId: string; userId:
   ];
 }
 
-function cachePutStatements(db: D1Database, ctx: { organizationId: string; userId: string }, c: CachePutInput, guard: { sql: string; binds: unknown[] } | null): D1PreparedStatement[] {
+export function cachePutStatements(db: D1Database, ctx: { organizationId: string; userId: string }, c: CachePutInput, guard: { sql: string; binds: unknown[] } | null): D1PreparedStatement[] {
   const gate = revisionGate("ANY");
   const gateBinds = [ctx.organizationId, ctx.userId, c.planId, c.revisionId];
   const guardSql = guard ? ` AND ${guard.sql}` : "";
@@ -927,13 +927,15 @@ export function aiPlanningFor(db: D1Database, context: AuthenticatedContext | nu
      * Removes what the AI layer keeps ABOUT a student: cache rows and model payloads. Runs, ledger and acceptances (hashes, counts, codes) stay.
      * Reach is the same as for the student's own data: the acting professional needs the active technical assignment over THIS student.
      */
-    async eraseStudentAi(studentId: string): Promise<{ cache: number; payloads: number }> {
+    async eraseStudentAi(studentId: string): Promise<{ cache: number; payloads: number; adjustments: number }> {
       const reach = `EXISTS (SELECT 1 FROM students s WHERE s.organization_id = ?1 AND s.id = ?3 AND ${technicalAccessExists("s", "?2")})`;
-      const [cache, payloads] = await db.batch([
+      const [cache, payloads, adjustments] = await db.batch([
         db.prepare(`DELETE FROM ai_planner_cache WHERE organization_id = ?1 AND student_id = ?3 AND ${MEMBER("?1", "?2")} AND ${reach}`).bind(organizationId, userId, studentId),
         db.prepare(`DELETE FROM planning_run_payloads WHERE organization_id = ?1 AND student_id = ?3 AND ${MEMBER("?1", "?2")} AND ${reach}`).bind(organizationId, userId, studentId),
+        // The assisted adjustments' suggestions (real ids, exercise names, diff) go with the student; the requests, ledger and decisions stay (codes and hashes only).
+        db.prepare(`DELETE FROM adjustment_payloads WHERE organization_id = ?1 AND student_id = ?3 AND ${MEMBER("?1", "?2")} AND ${reach}`).bind(organizationId, userId, studentId),
       ]);
-      return { cache: changesOf(cache), payloads: changesOf(payloads) };
+      return { cache: changesOf(cache), payloads: changesOf(payloads), adjustments: changesOf(adjustments) };
     },
   };
 }

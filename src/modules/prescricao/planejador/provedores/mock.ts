@@ -6,7 +6,11 @@
  *
  *   mock-ok (default) · mock-ul · mock-fb · mock-schedule · mock-slow (400 ms) · mock-timeout (never answers before the timeout)
  *   mock-invalid-json · mock-truncated · mock-quota · mock-500 · mock-hostile (an answer the validator must refuse whole)
+ *   Adjustments (task ADJUSTMENTS): mock-ok picks the first offered alternative that fits the catalog-level constraints (same pattern, equipment),
+ *   mock-last the last offered one, mock-none answers NO_ELIGIBLE_ALTERNATIVE, mock-hostile an alias that was not offered.
  */
+import type { AdjustContext } from "../adjust-context";
+import type { ModelAdjustment } from "../adjust";
 import type { TrainingPlanningContext } from "../context-types";
 import type { PlannerResponse } from "../blueprint";
 import { estimateTokens } from "../quota";
@@ -17,6 +21,8 @@ import type { CallSettings, ListModelsResult, PlannerProvider, ProviderErrorCode
 
 export const MOCK_MODELS = [
   "mock-ok", "mock-ul", "mock-fb", "mock-schedule", "mock-slow", "mock-timeout", "mock-invalid-json", "mock-truncated", "mock-quota", "mock-500", "mock-hostile",
+  // assisted adjustments only: the last offered alternative, and "no alternative fits"
+  "mock-last", "mock-none",
 ] as const;
 
 type Phase = TrainingPlanningContext["periodization"]["phases"][number];
@@ -117,6 +123,37 @@ function hostilePlan(context: TrainingPlanningContext): PlannerResponse {
   return plan;
 }
 
+/** The deterministic mock answer to an adjustment request: it chooses among the alternatives the context offers, never beyond them. */
+export function mockAdjustment(context: AdjustContext, model: string): ModelAdjustment {
+  const { request } = context;
+  const target = context.phases.flatMap((p) => p.workouts).flatMap((w) => w.items).find((i) => i.alias === request.target.item);
+  const offered = target?.alternatives ?? [];
+  const row = (alias: string) => context.library.find((l) => l.alias === alias);
+  const from = row(request.target.item);
+  const equipment = request.constraints.find((c) => c.kind === "EQUIPMENT_CLASS");
+  const samePattern = request.constraints.some((c) => c.kind === "SAME_PATTERN");
+  const fits = (alias: string) => {
+    const r = row(alias);
+    if (!r) return false;
+    if (equipment && equipment.kind === "EQUIPMENT_CLASS" && !r.equipment.includes(equipment.equipment)) return false;
+    return !samePattern || !from || r.patterns.some((p) => from.patterns.includes(p));
+  };
+  const echo = request.constraints.map((c) => c.kind);
+  const base = { schemaVersion: 1 as const, constraintsEcho: echo };
+  const pick = model === "mock-hostile" ? "X999" : model === "mock-last" ? offered[offered.length - 1] : offered.find(fits);
+  if (model === "mock-none" || !pick) return { ...base, operations: [], reasonCodes: [], clarification: "NO_ELIGIBLE_ALTERNATIVE" };
+  const reasons: ModelAdjustment["reasonCodes"] = [];
+  if (equipment) reasons.push("EQUIPMENT_MATCH");
+  if (samePattern || (from && row(pick)?.patterns.some((p) => from.patterns.includes(p)))) reasons.push("SAME_PATTERN");
+  if (request.constraints.some((c) => c.kind === "NO_WEEKLY_SETS_INCREASE")) reasons.push("VOLUME_KEPT");
+  return {
+    ...base,
+    operations: [{ target: request.target, scope: request.scope, week: request.week, slot: request.slot, replacement: pick }],
+    reasonCodes: reasons.slice(0, 3),
+    clarification: null,
+  };
+}
+
 const estimateUsage = (req: SafeProviderRequest, outputChars: number): Usage => ({
   inputTokens: estimateTokens(req.system.length + req.user.length),
   outputTokens: estimateTokens(outputChars),
@@ -146,6 +183,10 @@ export const mockProvider: PlannerProvider = {
     let context: TrainingPlanningContext | null = null;
     try {
       const parsed = JSON.parse(req.user) as { context?: TrainingPlanningContext; task?: string };
+      if (parsed.task === "ADJUSTMENTS" && parsed.context) {
+        const answer = mockAdjustment(parsed.context as unknown as AdjustContext, model);
+        return { ok: true, json: answer, usage: estimateUsage(req, JSON.stringify(answer).length), latencyMs: model === "mock-slow" ? 400 : 1, providerRequestId: null, finish: "STOP" };
+      }
       // "Testar modelo" of the gestor panel: a constant, student-free message asking for {"ok":true}
       if (parsed.task === "CONNECTIVITY_CHECK") return { ok: true, json: { ok: true }, usage: estimateUsage(req, 11), latencyMs: 1, providerRequestId: null, finish: "STOP" };
       context = parsed.context ?? null;

@@ -138,8 +138,8 @@ describe("erasure follows the data-subject request", () => {
     if (second.status !== "opened") throw new Error("open");
     expect(await dataRequestsFor(t.db, t.org("tech-a2")).answer(second.id, { outcome: "FULFILLED" }, NOW)).toEqual({ status: "not_found" });
     expect(await dataRequestsFor(t.db, t.org("tech-b", "org-b")).answer(second.id, { outcome: "FULFILLED" }, NOW)).toEqual({ status: "not_found" });
-    expect(await aiPlanningFor(t.db, t.org("tech-a2")).eraseStudentAi("st-1")).toEqual({ cache: 0, payloads: 0 });
-    expect(await aiPlanningFor(t.db, t.org("tech-b", "org-b")).eraseStudentAi("st-1")).toEqual({ cache: 0, payloads: 0 });
+    expect(await aiPlanningFor(t.db, t.org("tech-a2")).eraseStudentAi("st-1")).toEqual({ cache: 0, payloads: 0, adjustments: 0 });
+    expect(await aiPlanningFor(t.db, t.org("tech-b", "org-b")).eraseStudentAi("st-1")).toEqual({ cache: 0, payloads: 0, adjustments: 0 });
     expect([await cacheOf("st-1"), await payloadsOf("st-1")]).toEqual(before.st1);
     // 4. the deletion fulfilled by the professional who attends the student
     expect(await pro.answer(second.id, { outcome: "FULFILLED" }, NOW)).toEqual({ status: "answered" });
