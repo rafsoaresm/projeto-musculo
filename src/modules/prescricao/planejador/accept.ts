@@ -31,13 +31,13 @@ import type { RuleSetRef, StructureFacts } from "@/modules/prescricao/motor/type
 import { cmp } from "@/modules/prescricao/motor/vocabulary";
 import { type BlueprintAcceptance, type StoredStrategy, type TrainingBlueprint } from "./blueprint";
 import { compileAcceptance, convertBlueprintToGenerationAnswers, type CompileOutcome } from "./compile";
-import { deltaSize, expandFocus, focusDeltaSchema, normalizeDeltaOf, type ExpandedFocus } from "./focus";
+import { deltaSize, expandFocus, focusDeltaSchema, normalizeDeltaOf, type ExpandedFocus, type FocusDelta } from "./focus";
 import { acceptanceHash, blueprintHash, structureFingerprint } from "./hashes";
 import { readBlueprint } from "./orchestration";
-import { ROLE_FOCUS_INTERIM_TABLE, type RoleFocusTable } from "./role-focus";
-import { roleFocusFromRuleSet } from "./rules-mode/ruleset-templates";
+import { roleTableOf } from "./role-table";
+import { type RoleFocusTable } from "./role-focus";
 import { toStrategyListView, type StrategyListView } from "./strategy-view";
-import { FOCUS_DELTA_MAX_ITEMS, PLANNER_MAX_CANDIDATES_PER_WORKOUT, PLANNER_MAX_PHASES, PLANNER_MAX_WORKOUTS_PER_PHASE, ROLE_FOCUS_INTERIM } from "./versions";
+import { FOCUS_DELTA_MAX_ITEMS, PLANNER_MAX_CANDIDATES_PER_WORKOUT, PLANNER_MAX_PHASES, PLANNER_MAX_WORKOUTS_PER_PHASE } from "./versions";
 import { DOSE_PROFILE_CODES, EXERCISE_CLASSES, PROGRESSION_INTENTS, WORKOUT_ROLES, SPLIT_DISPLAY_NAME, type FocusSource, type SplitFamily } from "./vocab";
 
 // ---------- payloads ----------
@@ -111,7 +111,7 @@ export interface AcceptanceView {
   baseContentVersion: number;
   acceptedAt: string;
   /** The final focus per workout (what will be compiled), with who decided it. */
-  workouts: Array<{ phaseIndex: number; label: string; role: string; source: FocusSource }>;
+  workouts: Array<{ phaseIndex: number; label: string; role: string; source: FocusSource; focusDelta: FocusDelta | null }>;
   edits: BlueprintAcceptance["edits"];
   dosing: BlueprintAcceptance["dosing"];
 }
@@ -168,17 +168,12 @@ export function acceptanceView(a: BlueprintAcceptance): AcceptanceView {
   return {
     acceptanceId: a.id, runId: a.runId, strategyId: a.strategyId, splitFamily: a.splitFamily, familyLabel: SPLIT_DISPLAY_NAME[a.splitFamily] ?? a.splitFamily,
     baseContentVersion: a.baseContentVersion, acceptedAt: a.acceptedAt,
-    workouts: a.phases.flatMap((p) => p.workouts.map((w) => ({ phaseIndex: p.phaseIndex, label: w.label, role: w.role, source: w.source }))),
+    workouts: a.phases.flatMap((p) => p.workouts.map((w) => ({ phaseIndex: p.phaseIndex, label: w.label, role: w.role, source: w.source, focusDelta: w.focusDelta }))),
     edits: a.edits, dosing: a.dosing,
   };
 }
 
-/** The role table a stored blueprint's deltas are relative to. */
-export function roleTableOf(ref: string): RoleFocusTable | null {
-  if (ref === ROLE_FOCUS_INTERIM) return ROLE_FOCUS_INTERIM_TABLE;
-  const at = ref.indexOf("@");
-  return at > 0 ? roleFocusFromRuleSet({ id: ref.slice(0, at), version: ref.slice(at + 1) }) : null;
-}
+export { roleTableOf };
 
 const sameList = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x, n) => x === b[n]);
 const FIELDS: Array<[Exclude<keyof ExpandedFocus, never>, BlueprintAcceptance["edits"][number]["field"]]> = [

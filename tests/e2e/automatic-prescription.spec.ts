@@ -50,26 +50,26 @@ test("automatic prescription from the periodization to the student's log", async
   const revisionURL = page.url();
 
   // 1. The way in, on the draft after the structure is saved.
-  // The professional path below is the desktop composition (GEN-01..03, RX-01..03); the phone composition (GEN-04..08, RX-04..11) has other labels and
-  // its own screens. The phone run walks this path at a desktop width; the phone screens are checked by capture and the approval path by delivery.spec.
+  // The professional path below is the desktop composition (GEN-01..04, RX-01..03); the phone composition has other labels and
+  // its own screens. The phone run walks this path at a desktop width; the phone screens are checked by capture (zz specs) and the approval path by delivery.spec.
   const phoneSize = page.viewportSize();
   const onPhone = Boolean(phoneSize && phoneSize.width < 861);
   if (onPhone) await page.setViewportSize({ width: 1440, height: 900 });
   await page.getByRole("link", { name: "Gerar prescrição automática" }).click();
-  // Figma GEN-01..08: one header, the compact base, the three steps and the persistent footer.
-  await expect(page.getByRole("heading", { name: /^Gerar prescrição/, level: 1 })).toBeVisible();
+  // Figma GEN-01 (V4): "Montar prescrição", the compact base, the four context cards, the mode and the persistent footer.
+  await expect(page.getByRole("heading", { name: "Montar prescrição", level: 1 })).toBeVisible();
   const autoURL = page.url();
   await expect(page.getByRole("region", { name: "Base utilizada" })).toContainText("3 fases · 12 semanas");
-  await expect(page.getByRole("heading", { name: "Dados do aluno" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Dados que vão orientar a prescrição" })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Periodização existente" })).toContainText("12 semanas · 3 fases de 4 semanas");
+  // Exactly three pills, the first is the current step.
+  const stepper = page.getByRole("list", { name: "Etapas da montagem" });
+  await expect(stepper.getByRole("listitem")).toHaveCount(3);
+  await expect(stepper.locator('[aria-current="step"]')).toContainText("Contexto");
   // Nothing pre-selected: the footer says exactly what is missing and the way on waits for it.
-  const next = page.getByRole("button", { name: "Continuar para doses" });
+  const next = page.getByRole("button", { name: "Continuar para estratégia" });
   await expect(next).toBeDisabled();
   await expect(page.getByText("4 respostas faltam: 3 estímulos e equipamentos")).toBeVisible();
-  // The exact list of pending answers is on the third step, each one a link to its field (which keeps what was chosen).
-  await page.getByRole("button", { name: /Progressão/ }).first().click();
-  await expect(page.locator(".fig-gen-pill", { hasText: "4 RESPOSTAS PENDENTES" })).toBeVisible();
-  await page.getByRole("button", { name: "Estímulo da fase 02" }).click();
-  await expect(page.getByLabel("Estímulo principal da fase 2")).toBeFocused();
   await page.getByLabel("Estímulo principal da fase 1").selectOption("HYPERTROPHY");
   await page.getByLabel("Estímulo principal da fase 2").selectOption("STRENGTH");
   await expect(next).toBeDisabled();
@@ -83,8 +83,16 @@ test("automatic prescription from the periodization to the student's log", async
   await equipment.getByRole("button", { name: "Ver lista completa de equipamentos" }).click();
   await equipment.getByRole("button", { name: "Marcar todos" }).click();
   await expect(next).toBeEnabled();
-  // Second step: the catalogue of the engine's policies, one line each. Nothing has to be edited; editing is by the side panel and is checked.
+  // Step 2 (rules mode): "Sem divisão (geração atual)" keeps this whole path exactly as before the strategies (the strategies have their own spec).
   await next.click();
+  await expect(page.getByRole("heading", { name: "Escolher estratégia de treino", level: 1 })).toBeVisible();
+  await page.getByRole("radio", { name: /Sem divisão \(geração atual\)/ }).check();
+  await page.getByRole("button", { name: "Gerar sem divisão" }).click();
+  await expect(page.getByRole("heading", { name: "Revisar e gerar", level: 1 })).toBeVisible();
+  await expect(stepper.locator('[aria-current="step"]')).toContainText("Revisar e gerar");
+  // The dose policy and the weekly progression are optional and one click away, in "Políticas e progressão (opcional)".
+  await page.locator("summary").filter({ hasText: "Políticas e progressão (opcional)" }).click();
+  // The catalogue of the engine's policies, one line each. Nothing has to be edited; editing is by the side panel and is checked.
   await expect(page.getByRole("heading", { name: "Política de doses" })).toBeVisible();
   await expect(page.getByText("3 × 8–12 • RIR 1–3 • 90 s")).toBeVisible();
   await page.getByRole("tab", { name: "Cardiorrespiratório" }).click();
@@ -103,9 +111,8 @@ test("automatic prescription from the periodization to the student's log", async
   await expect(page.getByText("4 × 8–12 • RIR 1–3 • 90 s")).toBeVisible();
   await editor.getByRole("button", { name: "Restaurar padrão" }).click();
   await expect(page.getByText("3 × 8–12 • RIR 1–3 • 90 s")).toBeVisible();
-  await page.getByRole("button", { name: "Continuar para progressão" }).click();
-  // Third step: the progression of each phase, with the optional adjustments closed.
-  const generate = page.getByRole("button", { name: "Gerar prescrição", exact: true });
+  // The progression of each phase, with the optional adjustments closed.
+  const generate = page.getByRole("button", { name: "Gerar proposta", exact: true });
   await expect(generate).toBeEnabled();
   const progression = page.getByRole("group", { name: /Progressão da Fase 01/ });
   await progression.getByLabel("Modelo").selectOption("LINEAR");

@@ -3,6 +3,9 @@
  * except the run id, no provider, model, key or cost. A professional sees only `producer: "AI" | "RULES"`. Pure.
  */
 import type { StoredWorkout, TrainingBlueprint } from "./blueprint";
+import { expandFocus, type ExpandedFocus } from "./focus";
+import type { RoleFocusTable } from "./role-focus";
+import { roleTableOf } from "./role-table";
 
 export interface StrategyWorkoutView {
   label: string;
@@ -10,6 +13,8 @@ export interface StrategyWorkoutView {
   source: StoredWorkout["source"];
   focusDelta: StoredWorkout["focusDelta"];
   candidateExerciseIds: string[];
+  /** Role defaults with the delta applied (the muscles and patterns the engine will aim at); null when the role table is unknown. */
+  focus: ExpandedFocus | null;
 }
 export interface StrategyView {
   strategyId: "S1" | "S2" | "S3";
@@ -38,17 +43,21 @@ export interface StrategyListView {
   /** The revision content version the suggestion was made for; a different current version means the prescription changed since. */
   baseContentVersion: number;
   global: TrainingBlueprint["global"];
+  /** What each workout role means in muscles and patterns (a public heuristic of the rules, editable by the professional); null when unknown. */
+  roleFocus: RoleFocusTable | null;
   recommendedStrategyId: "S1" | "S2" | "S3";
   strategies: StrategyView[];
 }
 
 export function toStrategyListView(blueprint: TrainingBlueprint, runId: string, baseContentVersion: number): StrategyListView {
+  const table = roleTableOf(blueprint.roleFocusRef);
   return {
     runId,
     producer: blueprint.producer.kind,
     label: blueprint.label,
     baseContentVersion,
     global: blueprint.global,
+    roleFocus: table,
     recommendedStrategyId: blueprint.recommendedStrategyId,
     strategies: blueprint.strategies.map((s) => ({
       strategyId: s.strategyId,
@@ -66,7 +75,7 @@ export function toStrategyListView(blueprint: TrainingBlueprint, runId: string, 
       phases: s.phases.map((p) => ({
         phaseIndex: p.phaseIndex,
         splitType: p.splitType,
-        workouts: p.workouts.map((w) => ({ label: w.label, role: w.role, source: w.source, focusDelta: w.focusDelta, candidateExerciseIds: w.candidateExerciseIds })),
+        workouts: p.workouts.map((w) => ({ label: w.label, role: w.role, source: w.source, focusDelta: w.focusDelta, candidateExerciseIds: w.candidateExerciseIds, focus: table ? expandFocus(w.role, w.focusDelta, table) : null })),
       })),
       dosingIntent: s.dosingIntent,
       progressionIntent: s.progressionIntent,

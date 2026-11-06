@@ -135,7 +135,7 @@ export function Diretrizes({ screen, form, setForm, questions, phone, expanded, 
               })}
             </div>
             <div className="fig-gen-orient fig-gen-d">
-              <p className="fig-gen-orient-title">O que esta etapa realmente exige?</p>
+              <p className="fig-gen-orient-title">O que é obrigatório aqui?</p>
               <p>
                 Escolha {asked.length > 1 ? `os ${numberWord(asked.length)} estímulos` : "o estímulo"} e informe os equipamentos disponíveis. Objetivo, nível, tempo de sessão e demais campos ausentes continuam
                 visíveis como dados não informados — sem pressupor respostas.
@@ -143,7 +143,7 @@ export function Diretrizes({ screen, form, setForm, questions, phone, expanded, 
             </div>
             <div className="fig-gen-early fig-gen-d">
               <p className="fig-gen-early-title">Políticas de dose e progressão</p>
-              <p className="fig-gen-muted">Há valores padrão editáveis na próxima etapa. Não é necessário ajustar todas as modalidades para gerar.</p>
+              <p className="fig-gen-muted">Ficam na etapa Revisar e gerar, em “Políticas e progressão (opcional)”. Não é necessário ajustar todas as modalidades para gerar.</p>
               <button type="button" className="fig-gen-btn small" onClick={onSeePolicies}>
                 Ver configurações
               </button>

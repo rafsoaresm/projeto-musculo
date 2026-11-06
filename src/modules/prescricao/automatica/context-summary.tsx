@@ -2,7 +2,7 @@
 import { useId, useState } from "react";
 import { Pill } from "@/components/ui";
 import type { Assumption } from "@/modules/prescricao/motor/types";
-import { baseCells, studentCard } from "./generation-view";
+import { baseCells } from "./generation-view";
 import type { ConsideredFact, GenerationSummary } from "./service";
 import { BASIS_LABELS, BASIS_TONES } from "./view";
 
@@ -27,41 +27,22 @@ export function BaseStrip({ summary }: { summary: GenerationSummary }) {
 }
 
 /**
- * "Dados do aluno" (Figma GEN-01, 75:974): a compact card with what the records say and what they do not, and "Ver dados de origem"
- * to open the full list: every fact with where it comes from, the free text of the records shown as it is (never interpreted) and
- * the assumptions the tool will make. Reads nothing itself.
+ * "Ver dados de origem" (the disclosure of the old "Dados do aluno" card, kept under the four context cards of GEN-01): every fact with where
+ * it comes from, the free text of the records shown as it is (never interpreted) and the assumptions the tool will make. Reads nothing itself.
  */
-export function StudentCard({
-  summary,
+export function StudentOrigin({
   considered,
   freeText,
   assumptions,
 }: {
-  summary: GenerationSummary;
   considered: ConsideredFact[];
   freeText: Array<{ label: string; text: string }>;
   assumptions: Assumption[];
 }) {
   const [open, setOpen] = useState(false);
   const id = useId();
-  const card = studentCard(summary);
   return (
-    <section className="fig-gen-card fig-gen-student" aria-labelledby={`${id}-title`}>
-      <div className="fig-gen-student-head">
-        <h2 id={`${id}-title`}>Dados do aluno</h2>
-        <span className={`fig-gen-pill${card.status === "COMPLETO" ? " ok" : ""}`}>{card.status}</span>
-      </div>
-      <p className="fig-gen-muted">
-        {card.facts.map((fact, index) => (
-          <span key={fact.label}>
-            {index > 0 && " · "}
-            {fact.value === null ? `${fact.label.toLowerCase()} não informado` : `${fact.label}: ${fact.value}`}
-          </span>
-        ))}
-      </p>
-      <p className={card.parq.warning ? "fig-gen-strong warn" : "fig-gen-strong"}>{card.parq.text}</p>
-      <hr className="fig-gen-rule" />
-      <p className="fig-gen-note">{card.findings}</p>
+    <div className="fig-gen-student">
       <button type="button" className="fig-gen-btn small" aria-expanded={open} aria-controls={`${id}-origin`} onClick={() => setOpen((v) => !v)}>
         {open ? "Ocultar dados de origem" : "Ver dados de origem"}
       </button>
@@ -104,6 +85,6 @@ export function StudentCard({
           </details>
         </div>
       )}
-    </section>
+    </div>
   );
 }

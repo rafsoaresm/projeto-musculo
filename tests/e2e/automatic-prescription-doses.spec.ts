@@ -29,13 +29,17 @@ test("dose profiles by opt-in: varied doses in the proposal and the dose 'Por qu
   const size = page.viewportSize();
   if (size && size.width < 861) await page.setViewportSize({ width: 1440, height: 900 });
   await page.getByRole("link", { name: "Gerar prescrição automática" }).click();
-  await expect(page.getByRole("heading", { name: /^Gerar prescrição/, level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Montar prescrição", level: 1 })).toBeVisible();
   for (const n of [1, 2, 3]) await page.getByLabel(`Estímulo principal da fase ${n}`).selectOption("HYPERTROPHY");
   const equipment = page.getByRole("group", { name: "Equipamentos disponíveis" });
   await equipment.getByRole("button", { name: "Ver lista completa de equipamentos" }).click();
   await equipment.getByRole("button", { name: "Marcar todos" }).click();
-  await page.getByRole("button", { name: "Continuar para doses" }).click();
-  await page.getByRole("button", { name: "Continuar para progressão" }).click();
+  // The strategies have their own spec: here the generation is the plain one ("Sem divisão"), with the policies one click away.
+  await page.getByRole("button", { name: "Continuar para estratégia" }).click();
+  await page.getByRole("radio", { name: /Sem divisão \(geração atual\)/ }).check();
+  await page.getByRole("button", { name: "Gerar sem divisão" }).click();
+  await expect(page.getByRole("heading", { name: "Revisar e gerar", level: 1 })).toBeVisible();
+  await page.locator("summary").filter({ hasText: "Políticas e progressão (opcional)" }).click();
 
   // The opt-in lives in the closed "Ajustes opcionais": unchecked by default.
   await page.locator("summary").filter({ hasText: "Ajustes opcionais (avançado)" }).click();
@@ -44,7 +48,7 @@ test("dose profiles by opt-in: varied doses in the proposal and the dose 'Por qu
   await expect(page.getByText("ainda a validar pelo Técnico", { exact: false })).toBeVisible();
   await optIn.check();
   await noHorizontalOverflow(page);
-  await page.getByRole("button", { name: "Gerar prescrição", exact: true }).click();
+  await page.getByRole("button", { name: "Gerar proposta", exact: true }).click();
   await expect(page.getByRole("region", { name: "Resumo da proposta" })).toBeVisible({ timeout: 90_000 });
   await expect(page.getByText(/Motor 2\.4\.0 · regras gymgital-base 2026\.11\.6/).first()).toBeVisible();
 

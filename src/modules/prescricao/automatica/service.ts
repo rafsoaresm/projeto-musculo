@@ -340,7 +340,9 @@ export interface GenerationScreen {
     name: string | null;
     weeks: number;
     sessionsPerWeek: number;
-    workouts: Array<{ label: string; name: string | null; target: number | null }>;
+    /** The sessions of the phase's first week with sessions, in order: the workout label and the weekday (0 = Sunday) when the structure has dates. */
+    weekSlots: Array<{ label: string; weekday: number | null }>;
+    workouts: Array<{ label: string; name: string | null; target: number | null; /** The saved periodization already holds this workout's focus (muscles or patterns): it wins and is not edited in the flow. */ focusSaved: boolean }>;
   }>;
   /** What the records do not say, with the current (empty) answers: required ones block "Gerar". */
   questions: GenerationQuestion[];
@@ -405,6 +407,16 @@ const PROFILE_TEXT: Array<[keyof NonNullable<GenerationContext["profile"]>, stri
 
 const PARQ_TEXT = { CLEAR: "Sem \"Sim\" no PAR-Q", POSITIVE: "PAR-Q com \"Sim\"", NOT_DONE: "Não feita" } as const;
 
+/** The first week with sessions of a phase, as label + weekday (0 = Sunday, null without a planned date). */
+function weekSlotsOf(occurrences: ReadonlyArray<{ week: number; slot: number; label: string; plannedDate: string | null }>): GenerationScreen["structure"][number]["weekSlots"] {
+  if (!occurrences.length) return [];
+  const first = Math.min(...occurrences.map((o) => o.week));
+  return occurrences
+    .filter((o) => o.week === first)
+    .sort((a, b) => a.slot - b.slot)
+    .map((o) => ({ label: o.label, weekday: o.plannedDate && /^\d{4}-\d{2}-\d{2}/.test(o.plannedDate) ? new Date(`${o.plannedDate.slice(0, 10)}T12:00:00Z`).getUTCDay() : null }));
+}
+
 function screenOf(ctx: GenerationContext, built: Built | Extract<ReturnType<typeof buildEngineInput>, { ok: true }>): Omit<GenerationScreen, "lastAnswers"> {
   const rules = getRuleSet(DEFAULT_RULESET)!;
   const student = studentFacts(ctx.profile, ctx.assessment);
@@ -439,7 +451,8 @@ function screenOf(ctx: GenerationContext, built: Built | Extract<ReturnType<type
     name: ph.name,
     weeks: ph.weeks,
     sessionsPerWeek: ph.sessionsPerWeek,
-    workouts: ph.workouts.map((wk) => ({ label: wk.label, name: wk.name, target: wk.exerciseTarget })),
+    weekSlots: weekSlotsOf(ph.occurrences),
+    workouts: ph.workouts.map((wk) => ({ label: wk.label, name: wk.name, target: wk.exerciseTarget, focusSaved: Boolean(wk.focus.muscles?.length || wk.focus.patterns?.length) })),
   }));
   const summary: GenerationSummary = {
     phases: ctx.revision.schedule.phases.length,

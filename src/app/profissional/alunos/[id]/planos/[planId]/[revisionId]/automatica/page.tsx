@@ -11,7 +11,9 @@ import { recordStudentRead } from "@/db/student-reads";
 import { PageHeading, Pill, formatDateTime } from "@/components/ui";
 import { stateLabel } from "@/modules/planos/labels";
 import { proposalService } from "@/modules/prescricao/automatica/service";
-import { GenerationForm } from "@/modules/prescricao/automatica/generation-form";
+import { GenerationFlow } from "@/modules/prescricao/automatica/generation-flow";
+import { getPlanningAvailability } from "@/modules/prescricao/planejador/actions";
+import { getStrategyAcceptance } from "@/modules/prescricao/planejador/blueprint-actions";
 import { ProposalView, type ProposalHeaderView } from "@/modules/prescricao/automatica/proposal-view";
 import { canAcceptSuggestions, pageAudit, phasesWithoutTargets, pickPhase, pickWeek } from "@/modules/prescricao/automatica/view";
 import { pickTab } from "@/modules/prescricao/automatica/workbench";
@@ -117,13 +119,23 @@ export default async function AutomaticPrescription({
     const loaded = await service.screen(planId, revisionId);
     if (loaded.status !== "ok") notFound();
     const { screen } = loaded;
-    // Figma GEN-01..08: the generation draws its own header (breadcrumb, title, "Voltar ao plano") and its compact summaries.
+    // Figma GEN-01..04 and M-01: the flow draws its own header (breadcrumb, title, "Voltar ao plano") and its compact summaries. What the AI gate
+    // says and the strategies already suggested (and accepted) for this revision come from the server; nothing external is called to read them.
+    const [availability, current] = await Promise.all([getPlanningAvailability(planId, revisionId), getStrategyAcceptance(planId, revisionId)]);
     return (
-      <GenerationForm
+      <GenerationFlow
         planId={planId}
         revisionId={revisionId}
         screen={screen}
-        header={{ studentName: student.displayName, planTitle: detail.plan.title, revisionNumber: revision.revisionNumber, backHref: revisionHref }}
+        availability={availability}
+        initial={current}
+        header={{
+          studentName: student.displayName,
+          planTitle: detail.plan.title,
+          revisionNumber: revision.revisionNumber,
+          backHref: revisionHref,
+          periodizationHref: `/profissional/alunos/${student.id}?aba=periodizacao`,
+        }}
       />
     );
   }
