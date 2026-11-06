@@ -32,6 +32,7 @@ import { canonicalInput, canonicalJson, canonicalRequest, sha256Hex } from "@/mo
 import { alternativesFor, rebase, regenerate, substitute } from "@/modules/prescricao/motor/regenerate";
 import { DEFAULT_RULESET, getRuleSet } from "@/modules/prescricao/motor/rules";
 import { cmp, STIMULUS_LABELS } from "@/modules/prescricao/motor/vocabulary";
+import { structureFingerprint } from "@/modules/prescricao/planejador/hashes";
 import { proposalBlueprintView, type ProposalBlueprintView } from "./blueprint-view";
 import { ruleLogFor, uniqueIssues } from "@/modules/prescricao/motor/trace";
 import { auditPlan, boundAudit } from "@/modules/prescricao/motor/audit";
@@ -565,6 +566,7 @@ function parseAnswers(raw: unknown): GenerationAnswers | null {
 
 type Built = Extract<ReturnType<typeof buildEngineInput>, { ok: true }>;
 
+const BLUEPRINT_STALE = "A periodização salva mudou depois que a estratégia foi aceita. Aceite a estratégia de novo antes de gerar.";
 const RULES_GONE = "As regras com que esta proposta foi gerada não estão mais disponíveis. Descarte e gere de novo.";
 
 /** The rule set a proposal was born with: every later change of it runs with the same one (docs/MOTOR-PRESCRICAO.md). */
@@ -598,6 +600,9 @@ async function prepare(
     return { ok: false, ctx: loaded.context, outcome: fail("invalid", { message: "Uma resposta marcada como sugestão aceita não corresponde a uma sugestão da regra. Escolha de novo." }) };
   }
   if (!built.ready) return { ok: false, outcome: fail("questions", { questions: built.questions }) };
+  // The compiled strategy was planned for one saved periodization: if it moved since the acceptance, the block is stale (never applied silently).
+  if (answers.blueprint && answers.blueprint.structureFingerprint !== (await structureFingerprint(built.input.structure)))
+    return { ok: false, ctx: loaded.context, outcome: fail("blueprint_invalid", { message: BLUEPRINT_STALE }) };
   return { ok: true, ctx: loaded.context, built };
 }
 

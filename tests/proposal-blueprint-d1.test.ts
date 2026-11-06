@@ -13,6 +13,9 @@ import type { BlueprintAnswers, GenerationAnswersInput } from "@/modules/prescri
 import { blueprintOf, itemProvenance, proposalBlueprintView } from "@/modules/prescricao/automatica/blueprint-view";
 import { mergeBlueprint, proposalService, type ProposalOutcome } from "@/modules/prescricao/automatica/service";
 import { canonicalJson, sha256Hex } from "@/modules/prescricao/motor";
+import { loadScheduleForPlan } from "@/modules/prescricao/automatica/context";
+import { structureFacts } from "@/modules/prescricao/automatica/facts";
+import { structureFingerprint } from "@/modules/prescricao/planejador/hashes";
 import { ALL_MIGRATIONS, migrate } from "./helpers/migrate";
 
 let mf: Miniflare;
@@ -57,10 +60,13 @@ async function newDraft(student = "st-1", orgUser = "tech-a"): Promise<Draft> {
 const contentVersion = (d: Draft) => count("SELECT content_version AS n FROM plan_revisions WHERE id = ?1", d.revisionId);
 
 const hex = (c: string) => c.repeat(64);
-interface Seeded { acceptanceId: string; runId: string; blueprintHash: string; responseHash: string | null; acceptanceHash: string }
+interface Seeded { fingerprint: string; acceptanceId: string; runId: string; blueprintHash: string; responseHash: string | null; acceptanceHash: string }
 /** The rows the acceptance flow (2.3) writes: the planner run and the professional's acceptance, on this revision. */
 async function seedAcceptance(d: Draft, over: { mode?: "AI" | "RULES"; student?: string; orgId?: string } = {}): Promise<Seeded> {
   const mode = over.mode ?? "RULES";
+  const loaded = await loadScheduleForPlan(db, { userId: "tech-a", organizationId: "org-a" } as never, d.planId, d.revisionId);
+  if (loaded.status !== "ok") throw new Error("schedule");
+  const fingerprint = await structureFingerprint(structureFacts(loaded.schedule));
   const n = ++seq;
   const runId = `run-${n}`;
   const acceptanceId = `acc-${n}`;
@@ -69,14 +75,14 @@ async function seedAcceptance(d: Draft, over: { mode?: "AI" | "RULES"; student?:
   await run(
     `INSERT INTO planning_runs(id,organization_id,plan_id,revision_id,idempotency_key,request_hash,mode,status,base_content_version,structure_fingerprint,context_hash,response_hash,blueprint_hash,requested_by_user_id,started_at,templates_version)
      VALUES (?1,?2,?3,?4,?5,?6,?7,'SUCCEEDED',1,?8,?9,?10,?11,'tech-a','x','gymgital-base@2026.11.5')`,
-    runId, over.orgId ?? "org-a", d.planId, d.revisionId, `runkey-${String(n).padStart(12, "0")}`, hex("a"), mode, "f".repeat(32), hex("c"), responseHash, blueprintHash,
+    runId, over.orgId ?? "org-a", d.planId, d.revisionId, `runkey-${String(n).padStart(12, "0")}`, hex("a"), mode, fingerprint, hex("c"), responseHash, blueprintHash,
   );
   await run(
     `INSERT INTO blueprint_acceptances(id,organization_id,plan_id,revision_id,run_id,idempotency_key,request_hash,strategy_id,split_family,final_json,acceptance_hash,structure_fingerprint,base_content_version,accepted_by_user_id,accepted_at)
      VALUES (?1,?2,?3,?4,?5,?6,?7,'S1','UPPER_LOWER','{}',?8,?9,1,'tech-a','x')`,
-    acceptanceId, over.orgId ?? "org-a", d.planId, d.revisionId, runId, `acckey-${String(n).padStart(12, "0")}`, hex("a"), hex("d"), "f".repeat(32),
+    acceptanceId, over.orgId ?? "org-a", d.planId, d.revisionId, runId, `acckey-${String(n).padStart(12, "0")}`, hex("a"), hex("d"), fingerprint,
   );
-  return { acceptanceId, runId, blueprintHash, responseHash, acceptanceHash: hex("d") };
+  return { fingerprint, acceptanceId, runId, blueprintHash, responseHash, acceptanceHash: hex("d") };
 }
 
 /** A (phase 1) superior, B inferior; the other phases' "Full" are full body. */
@@ -86,7 +92,7 @@ function block(s: Seeded, source: "AI_SUGGESTED" | "RULES_HEURISTIC" = "RULES_HE
   });
   return {
     version: 1,
-    structureFingerprint: "f".repeat(32),
+    structureFingerprint: s.fingerprint,
     acceptances: [{ acceptanceId: s.acceptanceId, runId: s.runId, blueprintHash: s.blueprintHash, acceptanceHash: s.acceptanceHash, strategyId: "S1", splitFamily: "UPPER_LOWER", source }],
     workouts: [w(1, "A", "UPPER"), w(1, "B", "LOWER"), w(2, "Full", "FULL_BODY"), w(3, "Full", "FULL_BODY")],
   };
@@ -245,6 +251,18 @@ describe("atomicidade, aceite de outra revisão e isolamento", () => {
     ok(await generatedWith(d, block(s)));
   });
 
+  it("um bloco cuja periodização não é mais a salva é recusado (o aceite ficou velho), sem gravar nada", async () => {
+    const d = await newDraft();
+    const s = await seedAcceptance(d);
+    const stale = block(s);
+    stale.structureFingerprint = "e".repeat(32);
+    const before = await count("SELECT COUNT(*) AS n FROM prescription_proposals WHERE revision_id = ?1", d.revisionId);
+    const out = await generatedWith(d, stale);
+    expect(failure(out)).toBe("blueprint_invalid");
+    expect(out.ok ? "" : out.message).toMatch(/periodização salva mudou/);
+    expect(await count("SELECT COUNT(*) AS n FROM prescription_proposals WHERE revision_id = ?1", d.revisionId)).toBe(before);
+  });
+
   it("os vínculos são imutáveis (sem UPDATE nem DELETE) e só ligam gerações da própria proposta", async () => {
     const d = await newDraft();
     const s = await seedAcceptance(d);
@@ -306,8 +324,8 @@ describe("atomicidade, aceite de outra revisão e isolamento", () => {
 });
 
 describe("patchAnswers: a estratégia de uma replanejada parcial não reescreve as outras fases", () => {
-  const s1: Seeded = { acceptanceId: "acc-1", runId: "run-1", blueprintHash: hex("1"), responseHash: null, acceptanceHash: hex("2") };
-  const s2: Seeded = { acceptanceId: "acc-2", runId: "run-2", blueprintHash: hex("3"), responseHash: null, acceptanceHash: hex("4") };
+  const s1: Seeded = { fingerprint: "f".repeat(32), acceptanceId: "acc-1", runId: "run-1", blueprintHash: hex("1"), responseHash: null, acceptanceHash: hex("2") };
+  const s2: Seeded = { fingerprint: "f".repeat(32), acceptanceId: "acc-2", runId: "run-2", blueprintHash: hex("3"), responseHash: null, acceptanceHash: hex("4") };
   const first = block(s1);
   const secondPhases = (): BlueprintAnswers => ({
     ...block(s2), workouts: block(s2).workouts.filter((w) => w.phaseIndex >= 2).map((w) => ({ ...w, role: "UPPER" as const })),
