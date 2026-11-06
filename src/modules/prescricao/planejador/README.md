@@ -1,4 +1,6 @@
-# Planejador híbrido V4 (PR 1 a 4, versão 0.100.0, não publicada)
+# Planejador híbrido V4 (PR 1 a 5, versão 0.101.0, não publicada)
+
+**PR 5:** `src/db/ai-reports.ts` e `src/modules/gestor/ai-report-view.ts` (relatórios de uso, 5.1) e a matriz de regressão fora deste diretório (`tests/helpers/benchmark-matrix.ts`, `scripts/benchmark-motor-v4.mjs`, 5.2); nenhum arquivo daqui mudou na 5.2.
 
 **PR 4:** acrescentou `adjust.ts`, `adjust-context.ts`, `adjust-diff.ts`, `adjust-service.ts` e `adjust-actions.ts` (ajustes assistidos de um ponto: a IA só escolhe entre alternativas que o motor ofereceu; o motor valida e recalcula; aplicar é decisão do profissional; migration 0049) e a resposta `ADJUSTMENTS` do provedor simulado. As telas ficam em `../automatica/` (fluxo, revisão e `adjust-panel.tsx`).
 

@@ -2035,3 +2035,115 @@ Três revisões finais (aceite, regressão, qualidade) foram conferidas contra o
 **Testes novos:** `tests/ai-usage-reports.test.ts` (10: percentis, taxas, alertas, relatório em D1 com latência, erros por causa e por modelo, isolamento por mês e organização, só gestor ativo, colunas do livro sem prompt nem dado de aluno, profissional sem nenhum campo de custo e sem ver outra organização), ampliações em `ai-panel-view`, `ai-retention` (aceite a partir de execução apagada é recusado e nada é gravado) e `ai-adjust-d1` (retenção das decididas) e o cenário de navegador `aiUsageReportScenario` no `gestor.spec.ts`.
 **Rodou:** `npm run check` (eslint 0 erros e 1 aviso antigo, `tsc` limpo, 189 arquivos passaram e 1 ignorado; 3544 testes passaram e 1 ignorado), `npm run build:cloud` ok, e2e completo na raiz (rótulo v51: 188 passaram, 39 ignorados, 0 falhas) e em `/treinador` (v51b: 188 passaram, 39 ignorados, 0 falhas). Capturas da aba em 1440, 1280, 1024, 768 e 390 em `scratchpad/motor4/shots/uso-*.png` (geradas com `AI_SHOTS_DIR`); vistas a 1280 e 390: sem rolagem horizontal da página; as tabelas rolam dentro do próprio quadro no computador, como as demais do painel.
 **NÃO verificado:** chamada real a provedor (a latência vista é a do provedor simulado, 1 ms); desempenho dos relatórios com meses de volume real e em D1 remoto (sem tabela de resumo; `0050` só se pesar); alerta por e-mail ou notificação (não existe); prazo de retenção das respostas do planejador (decisão do Responsável, PENDENCIAS); retenção do lado do provedor; leitor de tela. **Falta (5.2):** matriz de regressão e benchmarks, versão 0.101.0, documentação final.
+
+
+## Motor V4, PR 5, sub-etapa 5.2: matriz de regressão, desempenho local e documentação final (06/11/2026, branch `feat/motor-v4-pr5-observabilidade-20261105`; sem migration; versão 0.101.0)
+
+**Feito:** `tests/helpers/benchmark-matrix.ts` (cadeia pura e completa por caso: contexto → estratégia por regras → aceite → compilador → adaptador → motor → auditoria, duas vezes para provar estabilidade; métricas por caso; medição do caso grande com e sem o caminho do blueprint), `tests/benchmark-matrix.test.ts` (afirmações duras e registro dos números) e `scripts/benchmark-motor-v4.mjs` (roda o teste com `--expose-gc`, N execuções do caso grande e imprime a tabela abaixo; `node scripts/benchmark-motor-v4.mjs --runs 3 --out arquivo.md`). Nenhum código de produção mudou.
+
+**A amostra (60 casos, semente fixa 20261106, cobertura conferida por teste):** caso Xintus (4 × 60 min, hipertrofia, intermediário, ABAB, 3 fases, academia completa) mais um caso por frequência (2 a 6 dias) × rotação (ABAB, ABC, ABCD, PPL, corpo inteiro, personalizada com divisão diferente na 2ª fase, irregular ABA/AAB) e sorteios para o resto. Dimensões: estímulo (hipertrofia, força, condicionamento, misto força + cardio + mobilidade), nível (iniciante, intermediário, avançado), equipamento (completo, só halteres e banco, só peso do corpo), calendário (regular, irregular: dias desiguais e início numa quinta), triagem (sem "Sim", em aberto, com "Sim" e decisão do profissional), histórico (ausente, contraditório: dor depois de carga alta, dor que "some", carga que cai, esforço 9 a 10 para iniciante). É uma **amostra**, não o produto cartesiano (5 × 4 × 3 × 7 × 3 × 2 × 3 × 2 = 15.120 combinações).
+
+**Afirmações duras (o teste falha se algo quebrar):** nenhuma exceção; elegibilidade 100% (biblioteca, arquivado, equipamento); duas cadeias completas dão os mesmos bytes; nenhum treino com foco abaixo de 70% de aderência quando o motor não declarou oferta curta; nenhum erro do motor além de `CATALOG_INSUFFICIENT`; academia completa sem erro nenhum; o Xintus com aderência ≥ 70% e custo simulado calculável. **Só registradas, sem teto:** tempo estimado × disponível, correções, custo, CPU, heap.
+
+**Métricas por caso:** aderência ao foco (média e mínima por treino, da auditoria `1.1.0`); oferta curta declarada (`BLUEPRINT_FOCUS_SUPPLY_LOW`); equilíbrio de volume (achados abertos `AUDIT_PATTERN_IMBALANCE`); elegibilidade; tempo (sessões acima do tempo disponível e pior razão estimado/disponível); estabilidade; correções (erros + avisos do motor + avisos da auditoria, o que o profissional ainda teria de olhar); custo por proposta (uma chamada do provedor **simulado**: tokens estimados × **preços de teste inventados** US$ 3 e US$ 15 por milhão; não são os de nenhum provedor; o modo por regras não gasta token).
+
+### Resultado (Node 22.22.0 local, 4 núcleos, 06/11/2026)
+
+| caso | dias | estímulo | nível | rotação | equip. | calend. | triagem | histórico | itens | elegib. | aderência (média/mín.) | oferta curta | desequil. abertos | tempo (acima/medidas, pior) | estável | correções (E/A/auditoria) | custo simulado |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| xintus | 4 | HYPERTROPHY | Intermediário | ABAB | FULL | REGULAR | CLEAR | ABSENT | 288 | 100% | 100%/100% | 0 | 0 | 0/48, 0.77x | sim | 0 (0/0/0) | US$ 0.0177 |
+| m01 | 2 | HYPERTROPHY | Avançado | ABAB | BODYWEIGHT | REGULAR | POSITIVE_DECIDED | ABSENT | 40 | 100% | 70%/60% | 2 | 2 | 0/8, 0.63x | sim | 4 (2/0/2) | US$ 0.0112 |
+| m02 | 2 | STRENGTH | Iniciante | ABC | DUMBBELLS_BENCH | REGULAR | CLEAR | CONTRADICTORY | 48 | 100% | 100%/100% | 0 | 0 | 8/8, 1.25x | sim | 8 (0/8/0) | US$ 0.0115 |
+| m03 | 2 | GENERAL_FITNESS | Iniciante | ABCD | BODYWEIGHT | IRREGULAR | OPEN | ABSENT | 40 | 100% | 40%/0% | 4 | 0 | 0/8, 0.47x | sim | 8 (4/0/4) | US$ 0.0130 |
+| m04 | 2 | GENERAL_FITNESS | Intermediário | PPL | FULL | REGULAR | OPEN | ABSENT | 48 | 100% | 94%/83% | 1 | 0 | 0/8, 0.53x | sim | 2 (0/0/2) | US$ 0.0140 |
+| m05 | 2 | HYPERTROPHY | Iniciante | FULL_BODY | DUMBBELLS_BENCH | IRREGULAR | OPEN | ABSENT | 48 | 100% | 100%/100% | 0 | 1 | 0/8, 0.77x | sim | 0 (0/0/0) | US$ 0.0115 |
+| m06 | 2 | HYPERTROPHY | Intermediário | CUSTOM | DUMBBELLS_BENCH | IRREGULAR | POSITIVE_DECIDED | ABSENT | 96 | 100% | 81%/17% | 2 | 3 | 0/16, 0.77x | sim | 3 (0/0/3) | US$ 0.0124 |
+| m07 | 2 | HYPERTROPHY | Intermediário | IRREGULAR | BODYWEIGHT | REGULAR | OPEN | CONTRADICTORY | 40 | 100% | 70%/60% | 2 | 2 | 0/8, 0.63x | sim | 4 (2/0/2) | US$ 0.0112 |
+| m08 | 3 | STRENGTH | Avançado | ABAB | FULL | IRREGULAR | OPEN | CONTRADICTORY | 72 | 100% | 100%/100% | 0 | 0 | 12/12, 1.25x | sim | 12 (0/12/0) | US$ 0.0155 |
+| m09 | 3 | GENERAL_FITNESS | Avançado | ABC | BODYWEIGHT | IRREGULAR | OPEN | CONTRADICTORY | 60 | 100% | 80%/60% | 2 | 0 | 0/12, 0.47x | sim | 5 (3/0/2) | US$ 0.0097 |
+| m10 | 3 | GENERAL_FITNESS | Intermediário | ABCD | BODYWEIGHT | REGULAR | OPEN | CONTRADICTORY | 60 | 100% | 40%/0% | 4 | 0 | 0/12, 0.47x | sim | 8 (4/0/4) | US$ 0.0130 |
+| m11 | 3 | GENERAL_FITNESS | Intermediário | PPL | BODYWEIGHT | IRREGULAR | CLEAR | CONTRADICTORY | 60 | 100% | 47%/0% | 3 | 0 | 0/12, 0.47x | sim | 6 (3/0/3) | US$ 0.0097 |
+| m12 | 3 | GENERAL_FITNESS | Avançado | FULL_BODY | FULL | IRREGULAR | CLEAR | CONTRADICTORY | 72 | 100% | 100%/100% | 0 | 0 | 0/12, 0.53x | sim | 0 (0/0/0) | US$ 0.0140 |
+| m13 | 3 | STRENGTH | Intermediário | CUSTOM | FULL | IRREGULAR | CLEAR | CONTRADICTORY | 144 | 100% | 97%/83% | 1 | 0 | 24/24, 1.28x | sim | 24 (0/24/0) | US$ 0.0149 |
+| m14 | 3 | GENERAL_FITNESS | Avançado | IRREGULAR | FULL | REGULAR | POSITIVE_DECIDED | ABSENT | 72 | 100% | 100%/100% | 0 | 0 | 0/12, 0.53x | sim | 0 (0/0/0) | US$ 0.0155 |
+| m15 | 4 | STRENGTH | Intermediário | ABAB | DUMBBELLS_BENCH | REGULAR | CLEAR | CONTRADICTORY | 96 | 100% | 100%/100% | 0 | 0 | 16/16, 1.25x | sim | 16 (0/16/0) | US$ 0.0129 |
+| m16 | 4 | GENERAL_FITNESS | Iniciante | ABC | BODYWEIGHT | REGULAR | POSITIVE_DECIDED | ABSENT | 80 | 100% | 80%/60% | 2 | 0 | 0/16, 0.47x | sim | 5 (3/0/2) | US$ 0.0097 |
+| m17 | 4 | STRENGTH | Iniciante | ABCD | FULL | IRREGULAR | OPEN | ABSENT | 96 | 100% | 96%/83% | 1 | 0 | 16/16, 1.25x | sim | 16 (0/16/0) | US$ 0.0174 |
+| m18 | 4 | HYPERTROPHY | Iniciante | PPL | BODYWEIGHT | REGULAR | OPEN | ABSENT | 80 | 100% | 47%/0% | 3 | 2 | 0/16, 0.63x | sim | 6 (3/0/3) | US$ 0.0097 |
+| m19 | 4 | STRENGTH | Intermediário | FULL_BODY | FULL | REGULAR | OPEN | ABSENT | 96 | 100% | 100%/100% | 0 | 0 | 16/16, 1.25x | sim | 16 (0/16/0) | US$ 0.0140 |
+| m20 | 4 | STRENGTH | Avançado | CUSTOM | DUMBBELLS_BENCH | REGULAR | POSITIVE_DECIDED | CONTRADICTORY | 192 | 100% | 81%/17% | 2 | 0 | 32/32, 1.25x | sim | 34 (0/32/2) | US$ 0.0124 |
+| m21 | 4 | HYPERTROPHY | Iniciante | IRREGULAR | FULL | REGULAR | POSITIVE_DECIDED | ABSENT | 96 | 100% | 100%/100% | 0 | 0 | 0/16, 0.73x | sim | 0 (0/0/0) | US$ 0.0155 |
+| m22 | 5 | STRENGTH | Avançado | ABAB | DUMBBELLS_BENCH | IRREGULAR | POSITIVE_DECIDED | ABSENT | 120 | 100% | 100%/100% | 0 | 0 | 20/20, 1.25x | sim | 20 (0/20/0) | US$ 0.0129 |
+| m23 | 5 | MIXED | Iniciante | ABC | BODYWEIGHT | REGULAR | CLEAR | CONTRADICTORY | 76 | 100% | 80%/60% | 2 | 0 | 0/20, 0.97x | sim | 9 (3/4/2) | US$ 0.0115 |
+| m24 | 5 | STRENGTH | Intermediário | ABCD | DUMBBELLS_BENCH | IRREGULAR | POSITIVE_DECIDED | ABSENT | 120 | 100% | 67%/17% | 3 | 0 | 20/20, 1.28x | sim | 22 (0/20/2) | US$ 0.0148 |
+| m25 | 5 | STRENGTH | Intermediário | PPL | DUMBBELLS_BENCH | REGULAR | OPEN | ABSENT | 120 | 100% | 72%/17% | 1 | 0 | 20/20, 1.25x | sim | 21 (0/20/1) | US$ 0.0115 |
+| m26 | 5 | MIXED | Avançado | FULL_BODY | FULL | IRREGULAR | POSITIVE_DECIDED | CONTRADICTORY | 88 | 100% | 100%/100% | 0 | 0 | 12/20, 1.25x | sim | 16 (0/16/0) | US$ 0.0159 |
+| m27 | 5 | STRENGTH | Intermediário | CUSTOM | BODYWEIGHT | IRREGULAR | OPEN | ABSENT | 200 | 100% | 50%/0% | 6 | 0 | 0/40, 0.97x | sim | 12 (6/0/6) | US$ 0.0106 |
+| m28 | 5 | GENERAL_FITNESS | Intermediário | IRREGULAR | BODYWEIGHT | IRREGULAR | CLEAR | CONTRADICTORY | 100 | 100% | 70%/60% | 2 | 0 | 0/20, 0.47x | sim | 4 (2/0/2) | US$ 0.0113 |
+| m29 | 6 | HYPERTROPHY | Iniciante | ABAB | DUMBBELLS_BENCH | IRREGULAR | POSITIVE_DECIDED | CONTRADICTORY | 144 | 100% | 100%/100% | 0 | 2 | 0/24, 0.75x | sim | 0 (0/0/0) | US$ 0.0129 |
+| m30 | 6 | MIXED | Avançado | ABC | BODYWEIGHT | IRREGULAR | OPEN | CONTRADICTORY | 93 | 100% | 80%/60% | 2 | 0 | 0/24, 0.97x | sim | 9 (3/4/2) | US$ 0.0116 |
+| m31 | 6 | MIXED | Intermediário | ABCD | DUMBBELLS_BENCH | REGULAR | CLEAR | ABSENT | 112 | 100% | 67%/17% | 3 | 0 | 16/24, 1.25x | sim | 22 (0/20/2) | US$ 0.0173 |
+| m32 | 6 | GENERAL_FITNESS | Avançado | PPL | BODYWEIGHT | REGULAR | OPEN | CONTRADICTORY | 120 | 100% | 47%/0% | 3 | 0 | 0/24, 0.47x | sim | 6 (3/0/3) | US$ 0.0097 |
+| m33 | 6 | MIXED | Intermediário | FULL_BODY | BODYWEIGHT | IRREGULAR | OPEN | ABSENT | 93 | 100% | 100%/100% | 0 | 0 | 0/24, 0.97x | sim | 7 (3/4/0) | US$ 0.0116 |
+| m34 | 6 | MIXED | Iniciante | CUSTOM | FULL | IRREGULAR | OPEN | CONTRADICTORY | 216 | 100% | 97%/83% | 1 | 0 | 30/48, 1.28x | sim | 37 (0/36/1) | US$ 0.0171 |
+| m35 | 6 | MIXED | Iniciante | IRREGULAR | DUMBBELLS_BENCH | REGULAR | CLEAR | CONTRADICTORY | 144 | 100% | 100%/100% | 0 | 0 | 24/24, 1.25x | sim | 24 (0/24/0) | US$ 0.0154 |
+| m36 | 5 | MIXED | Intermediário | IRREGULAR | FULL | IRREGULAR | OPEN | CONTRADICTORY | 360 | 100% | 100%/100% | 0 | 0 | 60/60, 1.28x | sim | 60 (0/60/0) | US$ 0.0209 |
+| m37 | 2 | STRENGTH | Intermediário | FULL_BODY | FULL | IRREGULAR | OPEN | CONTRADICTORY | 96 | 100% | 100%/100% | 0 | 0 | 16/16, 1.25x | sim | 18 (0/18/0) | US$ 0.0149 |
+| m38 | 3 | GENERAL_FITNESS | Iniciante | ABAB | DUMBBELLS_BENCH | IRREGULAR | OPEN | CONTRADICTORY | 144 | 100% | 100%/100% | 0 | 0 | 0/24, 0.55x | sim | 0 (0/0/0) | US$ 0.0140 |
+| m39 | 2 | GENERAL_FITNESS | Intermediário | CUSTOM | FULL | REGULAR | OPEN | CONTRADICTORY | 96 | 100% | 97%/83% | 1 | 0 | 0/16, 0.53x | sim | 3 (0/0/3) | US$ 0.0149 |
+| m40 | 3 | STRENGTH | Avançado | PPL | DUMBBELLS_BENCH | REGULAR | POSITIVE_DECIDED | ABSENT | 72 | 100% | 72%/17% | 1 | 0 | 12/12, 1.25x | sim | 13 (0/12/1) | US$ 0.0115 |
+| m41 | 5 | HYPERTROPHY | Avançado | PPL | FULL | REGULAR | CLEAR | CONTRADICTORY | 360 | 100% | 94%/83% | 3 | 0 | 0/60, 0.77x | sim | 1 (0/1/0) | US$ 0.0159 |
+| m42 | 6 | MIXED | Intermediário | IRREGULAR | DUMBBELLS_BENCH | REGULAR | CLEAR | CONTRADICTORY | 288 | 100% | 100%/100% | 0 | 0 | 48/48, 1.25x | sim | 48 (0/48/0) | US$ 0.0169 |
+| m43 | 5 | STRENGTH | Intermediário | ABC | FULL | IRREGULAR | CLEAR | ABSENT | 120 | 100% | 100%/100% | 0 | 0 | 20/20, 1.25x | sim | 20 (0/20/0) | US$ 0.0140 |
+| m44 | 5 | GENERAL_FITNESS | Avançado | ABAB | FULL | IRREGULAR | POSITIVE_DECIDED | CONTRADICTORY | 240 | 100% | 100%/100% | 0 | 0 | 0/40, 0.53x | sim | 0 (0/0/0) | US$ 0.0166 |
+| m45 | 5 | STRENGTH | Intermediário | FULL_BODY | DUMBBELLS_BENCH | REGULAR | OPEN | ABSENT | 240 | 100% | 100%/100% | 0 | 0 | 40/40, 1.28x | sim | 40 (0/40/0) | US$ 0.0124 |
+| m46 | 4 | MIXED | Avançado | ABAB | BODYWEIGHT | REGULAR | OPEN | CONTRADICTORY | 168 | 100% | 70%/60% | 6 | 0 | 0/48, 0.97x | sim | 24 (6/12/6) | US$ 0.0166 |
+| m47 | 6 | GENERAL_FITNESS | Avançado | FULL_BODY | BODYWEIGHT | REGULAR | POSITIVE_DECIDED | CONTRADICTORY | 120 | 100% | 100%/100% | 0 | 0 | 0/24, 0.47x | sim | 3 (3/0/0) | US$ 0.0097 |
+| m48 | 5 | STRENGTH | Intermediário | CUSTOM | FULL | IRREGULAR | OPEN | CONTRADICTORY | 240 | 100% | 97%/83% | 1 | 0 | 40/40, 1.28x | sim | 40 (0/40/0) | US$ 0.0149 |
+| m49 | 4 | MIXED | Iniciante | CUSTOM | DUMBBELLS_BENCH | IRREGULAR | POSITIVE_DECIDED | CONTRADICTORY | 128 | 100% | 79%/17% | 1 | 0 | 16/32, 1.28x | sim | 25 (0/24/1) | US$ 0.0168 |
+| m50 | 5 | GENERAL_FITNESS | Avançado | FULL_BODY | FULL | IRREGULAR | OPEN | ABSENT | 360 | 100% | 100%/100% | 0 | 0 | 0/60, 0.53x | sim | 1 (0/1/0) | US$ 0.0159 |
+| m51 | 4 | GENERAL_FITNESS | Avançado | PPL | FULL | REGULAR | POSITIVE_DECIDED | CONTRADICTORY | 288 | 100% | 94%/83% | 3 | 0 | 0/48, 0.53x | sim | 0 (0/0/0) | US$ 0.0159 |
+| m52 | 4 | MIXED | Iniciante | ABC | DUMBBELLS_BENCH | IRREGULAR | CLEAR | CONTRADICTORY | 128 | 100% | 100%/100% | 0 | 0 | 16/32, 1.25x | sim | 24 (0/24/0) | US$ 0.0168 |
+| m53 | 3 | HYPERTROPHY | Avançado | ABC | FULL | IRREGULAR | CLEAR | CONTRADICTORY | 216 | 100% | 100%/100% | 0 | 0 | 0/36, 0.77x | sim | 1 (0/1/0) | US$ 0.0158 |
+| m54 | 6 | HYPERTROPHY | Iniciante | CUSTOM | BODYWEIGHT | IRREGULAR | OPEN | CONTRADICTORY | 240 | 100% | 50%/0% | 6 | 4 | 0/48, 0.63x | sim | 12 (6/0/6) | US$ 0.0106 |
+| m55 | 6 | HYPERTROPHY | Intermediário | IRREGULAR | FULL | IRREGULAR | POSITIVE_DECIDED | CONTRADICTORY | 288 | 100% | 100%/100% | 0 | 0 | 0/48, 0.77x | sim | 0 (0/0/0) | US$ 0.0166 |
+| m56 | 6 | MIXED | Intermediário | PPL | FULL | IRREGULAR | POSITIVE_DECIDED | ABSENT | 108 | 100% | 94%/83% | 1 | 0 | 15/24, 1.25x | sim | 19 (0/19/0) | US$ 0.0159 |
+| m57 | 4 | MIXED | Intermediário | IRREGULAR | DUMBBELLS_BENCH | REGULAR | CLEAR | CONTRADICTORY | 192 | 100% | 100%/100% | 0 | 0 | 32/32, 1.25x | sim | 32 (0/32/0) | US$ 0.0168 |
+| m58 | 5 | STRENGTH | Intermediário | ABAB | DUMBBELLS_BENCH | REGULAR | POSITIVE_DECIDED | CONTRADICTORY | 360 | 100% | 100%/100% | 0 | 0 | 60/60, 1.25x | sim | 60 (0/60/0) | US$ 0.0151 |
+| m59 | 3 | HYPERTROPHY | Iniciante | CUSTOM | BODYWEIGHT | REGULAR | CLEAR | CONTRADICTORY | 120 | 100% | 50%/0% | 6 | 4 | 0/24, 0.63x | sim | 12 (6/0/6) | US$ 0.0106 |
+
+Resumo: 60/60 casos concluídos; elegibilidade 100% no pior caso; 60/60 estáveis; aderência média 86%; 0 treino(s) abaixo de 70% sem oferta curta; 81 treino(s) com oferta curta declarada; 0 erro(s) do motor além de biblioteca insuficiente; 0 item(ns) com dor no histórico escolhidos nos casos de histórico contraditório (a dor pesa na escolha, não elimina o exercício); correções por caso (média) 14.0; custo simulado por proposta, só com preços de teste inventados: US$ 0.0097 a US$ 0.0209.
+
+Caso grande (12 fases x 4 semanas x 7 sessões, 7 treinos x 8 itens, 200 exercícios; mediana de 3 execução(ões); Node v22.22.0; gc exposto; NÃO é Workers):
+
+| variante | parede (ms) | CPU do processo (ms) | heap Δ (MB) | RSS (MB) | sessões | resultado completo (KB) | sem as sessões (KB) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| sem blueprint | 1650 | 2378 | 69.3 | 225 | 336 | 8141 | 275 |
+| com blueprint (regras) | 1782 | 2607 | 73.6 | 288 | 336 | 8554 | 401 |
+- etapas, sem blueprint (ms): adaptador 0.5; motor 1407.2
+- etapas, com blueprint (ms): contexto de planejamento 48.2; estratégia por regras 0.3; aceite (hashes) 1.8; compilador 4.3; adaptador 2; motor 1496.1
+
+**Leitura honesta dos números:**
+- **Elegibilidade, estabilidade e exceções:** 100%, 60/60 e 0. É o que a amostra garante; não prova nada para outras combinações.
+- **Aderência baixa só onde a oferta é curta e o motor avisou:** os 81 treinos com oferta curta estão em casos de peso do corpo (16 dos 32 casos com aviso), em academia completa com a biblioteca de teste (≈ 30 exercícios; 9 casos) e em halteres e banco (7). Os mínimos de 0% a 17% são treinos de pernas ou de ombros e braços sem exercício que sirva. **A biblioteca de teste é pequena de propósito**; com a biblioteca real de uma organização a oferta curta tende a diminuir, mas isso **não foi medido**.
+- **Tempo:** em 26 dos 60 casos (todos de força ou misto) a estimativa passa do tempo disponível de 60 min, até 1,28 vez: descansos longos de força com 6 exercícios. O motor avisa (é o `WARNING` contado em correções), não corta exercício. Se esses descansos são adequados ou se o tempo deve cortar itens é decisão do Técnico (PENDENCIAS).
+- **Histórico contraditório:** nenhum exercício com dor no histórico foi escolhido nos 37 casos com histórico contraditório. O histórico do teste marca dor em 2 exercícios (supino e agachamento); a dor pesa na escolha, não elimina o exercício (por desenho), então com mais alternativas ruins o resultado poderia ser outro.
+- **Triagem em aberto ou com "Sim" e decisão:** todos os casos geraram. Cada valor aparece em vários casos misturados com as outras dimensões, o que **não isola** o efeito da triagem sobre a seleção (a matriz é uma amostra de regressão, não um experimento controlado). Por desenho o motor não bloqueia por triagem: a decisão é do profissional.
+- **Custo simulado:** US$ 0,0097 a US$ 0,0209 por proposta com os preços de teste; os tokens são **estimados** pelo provedor simulado (`ESTIMATE`), não medidos num provedor real. Não use como previsão de custo.
+
+### Caso grande, com e sem o caminho do blueprint (local, NÃO é Workers)
+
+12 fases × 4 semanas × 7 sessões, 7 treinos × 8 itens, 200 exercícios (336 sessões), regras `2026.11.5`, mediana de 3 execuções, `gc()` antes de cada uma. "Sem blueprint" = adaptador + motor com a cobertura por fase (o caminho anterior); "com blueprint" = contexto de planejamento + estratégia por regras + aceite + compilador + adaptador + motor.
+
+| | parede | CPU do processo | heap Δ | RSS | resultado inteiro | sem as sessões (o que vai para `summary_json`) |
+|---|---|---|---|---|---|---|
+| sem blueprint | 1.650 ms | 2.378 ms | 69 MB | 225 MB | 8.141 KB | 275 KB |
+| com blueprint | 1.782 ms | 2.607 ms | 74 MB | 288 MB | 8.554 KB | 401 KB |
+
+O blueprint acrescenta ≈ 130 ms de parede (≈ 8%): 48 ms do contexto de planejamento, 4 ms de compilador, o resto na seleção guiada por foco no motor (1.407 → 1.496 ms). O resumo gravado com o blueprint chega a 401 KB, **80% do teto de 500.000 caracteres do `summary_json`**: um plano maior que esse caso grande precisa de nova medição. A CPU do processo passa da parede porque o coletor de lixo usa outros núcleos. **Esses números são de Node no meu ambiente de desenvolvimento**: o limite de CPU por pedido do Webflow Cloud (Workers), a memória do isolado, a partida a frio e a latência do D1 remoto **não foram medidos**. A medição dentro do workerd local (S6/S7) continua só para o motor e as gravações em `tests/motor-measure.test.ts` (`MOTOR_MEASURE=1`) e **não foi repetida** com o blueprint.
+
+### Rodou
+`npx tsc --noEmit` limpo; eslint dos arquivos novos limpo; `tests/benchmark-matrix.test.ts` 5 testes passaram; `node scripts/benchmark-motor-v4.mjs --runs 3` passou (tabela acima). `npm run check` (eslint 0 erros e o aviso antigo, `tsc` limpo, **190 arquivos passaram e 1 ignorado; 3550 testes passaram e 1 ignorado**, 478 s) e `npm run build:cloud` passaram na versão 0.101.0. **e2e não foi repetido nesta sub-etapa**: ela só acrescenta testes, um script e documentação, sem tocar em tela, leitor nem caminho de servidor; o último e2e completo é o da 5.1 (raiz e `/treinador`, 188 passaram, 0 falhas), de antes da correção da revisão 5.1 (commit 2e7f635, que só mexeu em dados e textos da aba Uso e também não foi repetido no navegador).
+
+### NÃO verificado (5.2)
+Workers (CPU, memória, partida a frio), D1 remoto, provedor real (nenhum caso da matriz chama IA: o caminho de qualidade é o de regras; o custo é de uma chamada simulada), biblioteca real de uma organização, alunos reais, aprovação do Técnico para qualquer número (descansos, tempos, papéis, perfis de dose), comparação de aceitação humana contra a base determinística (F6), e2e (esta sub-etapa não mexe em tela, leitor nem caminho de servidor).

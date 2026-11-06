@@ -200,13 +200,13 @@ Legenda: FEITO = código, testes locais e documentação; PARCIAL = existe mas f
 
 | Fatia | Estado | O que existe | O que falta |
 |---|---|---|---|
-| F0 Benchmark | NÃO FEITO | — | PR 5 |
+| F0 Benchmark | FEITO LOCAL (PR 5.2) | matriz de 60 casos fictícios com as métricas pedidas (a "aprovação do técnico" não é medível por código), caso grande com e sem blueprint em Node | Workers/D1 remoto, biblioteca e alunos reais, Técnico |
 | F1 Contexto e contratos | FEITO nos contratos | `TrainingPlanningContext` v1 anonimizado, `TrainingBlueprint` v1 (zod estrito), validador vinculante, hashes, vista segura | o conversor para a geração existente é a PR 2 |
 | F2 IA planejadora real | PARCIAL | porta + `mock` e 3 adaptadores (só com `fetch` simulado), prompt versionado, saída estruturada, portões, cota por plano, reserva e livro, cache, idempotência, voo único, disjuntor, falhas com "continuar por regras", painel do gestor | primeira chamada real a cada provedor (pendência do Responsável); tela do profissional (PR 4); relatórios (PR 5) |
 | F3 Compilador do blueprint | NÃO FEITO | o modo por regras já produz o blueprint | aceite, compilação, regras `2026.11.5` (PR 2) |
 | F4 Doses adaptativas | NÃO FEITO | `doseIntent` existe só no contrato | PR 3 |
 | F5 UX e orquestração | NÃO FEITO nesta data (feito na PR 4, ver abaixo) | ações de servidor `getPlanningAvailability`, `planStrategies`, `getPlanningState`, `getLatestStrategies` (sem botão) | telas GEN/RX/M e ajustes por linguagem natural (PR 4) |
-| F6 Observabilidade | NÃO FEITO | uso por organização e mês no painel | PR 5 |
+| F6 Observabilidade | PARCIAL (PR 5.1) | uso por organização, mês e tarefa, latência p50/p95, cache, erros por causa, custo só com preço digitado, alertas de franquia 80%/100% na tela, retenção das sugestões decididas | alerta por e-mail/notificação, flags de rollout por organização além do painel, taxa de aceitação × base determinística (precisa de uso real), Workers/D1 remoto |
 
 **Critérios de aceite (seção 8) após a PR 1:**
 1. Xintus com A e B diferentes: PARCIAL. O blueprint (IA simulada e por regras) já dá papéis diferentes para A e B em todas as fases e o teste confirma; a seleção de exercícios ainda não usa o blueprint (PR 2).
@@ -242,3 +242,24 @@ Legenda: FEITO = código, testes locais e documentação; PARCIAL = existe mas f
 - **Não feito:** texto livre nos ajustes (bloqueado por decisão da ferramenta, a confirmar); nomes de exercício ao provedor; doses por provedor; atomicidade aplicar+decisão; retenção de `adjustment_payloads`, relatórios, benchmark e matriz de regressão (PR 5); primeira chamada real a qualquer provedor e autorização do Responsável/Usuário; validação do Técnico (papéis, perfis de dose, limiares, textos dos ajustes).
 - **Não verificado:** Workers (CPU, memória), D1 remoto, provedor real, leitor de tela, Figma pixel a pixel.
 
+### Fechamento da PR 5 (06/11/2026, versão 0.101.0, branch `feat/motor-v4-pr5-observabilidade-20261105`, empilhada sobre a PR 4, não publicada)
+
+- **Feito:** 5.1 relatórios de uso, custo e latência na aba Uso, alertas de franquia, retenção das sugestões decididas; 5.2 matriz de regressão (60 casos), medição local do caso grande com e sem blueprint, documentação final. Nenhuma migration na PR 5.
+- **Estado por critério de aceite (seção 8) no fim da PR 5.** "Atendido" quer dizer: código e testes locais passam, com provedor **simulado**, Node/Miniflare e navegador de teste. Nada abaixo foi visto num provedor real, no Webflow Cloud ou no D1 remoto.
+
+| # | Critério | Estado | Evidência | O que NÃO foi validado |
+|---|---|---|---|---|
+| 1 | Xintus: A e B diferentes; corpo inteiro explícito continua válido | ATENDIDO nos testes locais | `blueprint-service`, `blueprint-generality`, caso `xintus` da matriz (aderência 100%) | uso por profissional real; qualidade de prescrição pelo Técnico |
+| 2 | Fases com divisões distintas; ABCD sobre ABAB só informa | ATENDIDO nos testes locais | `blueprint-generality` (3 fases com divisões diferentes), `requiresScheduleChange`, casos CUSTOM da matriz | calendário real de alunos |
+| 3 | Nada inelegível, nenhuma carga inventada, achado isolado não elimina, nada do profissional sobrescrito | ATENDIDO nos testes locais | elegibilidade 100% nos 60 casos da matriz; testes de travados/preservados/trocados | biblioteca real de uma organização |
+| 4 | Doses variam por política justificada, editáveis | ATENDIDO **só com adesão à `2026.11.6`**; o padrão continua `2026.11.5` | `motor-dose-profile`, `motor-dose-edits` | os números das doses não foram validados pelo Técnico (PENDENCIAS); por isso não é o padrão |
+| 5 | Determinismo após blueprint aceito; resposta da IA e hash gravados | ATENDIDO nos testes locais | 60/60 casos estáveis (duas cadeias completas), `proposal-blueprint-d1` | repetibilidade de um modelo real sem cache (não se alega) |
+| 6 | Auditoria recalculada; sem aprovação automática; revisão entregue imutável | ATENDIDO nos testes locais | testes estáticos e D1 das PR 1 a 4 | — |
+| 7 | IA desligada: modo por regras integral e foco manual claro | ATENDIDO nos testes locais e no navegador de teste | matriz inteira roda por regras; e2e da PR 4 | validação UX com profissionais |
+| 8 | Falha da API não perde dado nem avança aprovação; fallback e reexecução idempotente | ATENDIDO com provedor simulado e `fetch` simulado | `planner-service`, `ai-providers`, `ai-adjust-d1` | falhas reais de provedor (limites, recusas, corpo truncado real) |
+| 9 | Idempotência, corrida, isolamento, cotas, retenção/exclusão, payload, taxa de erro, orçamento | ATENDIDO nos testes locais (Miniflare) | `ai-*` D1, `ai-usage-reports`, `ai-retention` | corrida real no D1 remoto; taxa de erro real; relatórios com volume real |
+| 10 | lint/TS/vitest, build cloud, e2e raiz e `/treinador`, benchmark de CPU/memória | ATENDIDO para lint, TS, vitest, `build:cloud` e e2e (ver `VALIDACAO.md`); benchmark **local** feito | matriz e caso grande (5.2) | CPU/memória em Workers, D1 remoto, partida a frio |
+| 11 | Interface a 390 e 1440 px, cards, loading/erro/sem provedor, CTA fixo | ATENDIDO no navegador de teste com diferenças conscientes | e2e das PR 4 e 5.1, capturas | celular real, leitor de tela, Figma pixel a pixel |
+| 12 | Nada apresentado como homologado sem o Técnico | ATENDIDO | rótulo "Heurística operacional (editável)"; itens do Técnico abertos em `PENDENCIAS.md` | a validação em si (aberta) |
+
+- **Épico NÃO completo.** Dependem de pessoas ou infraestrutura: primeira chamada real a OpenAI, Anthropic e Google e a autorização do Responsável (base legal, transferência, retenção do provedor, aviso ao aluno); validação do Técnico; medição em Workers e D1 remoto; biblioteca e alunos reais; decisão de retenção das execuções; canal de aviso dos alertas de franquia; texto livre nos ajustes (bloqueado por decisão da ferramenta). Tudo listado com dono em `PENDENCIAS.md`.

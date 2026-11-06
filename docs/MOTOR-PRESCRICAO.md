@@ -52,7 +52,7 @@ Fluxo, em uma linha: na revisão em rascunho, depois de salvar a periodização,
 | Contratos da revisão por IA (desligada, V3; o planejador V4 é outro caminho) | prompt `2026.11.1` (`AI_PROMPT_VERSION`) | `automatica/ai/contracts.ts` | nada gravado |
 | Vocabulário (códigos e rótulos) | `2026.11.1` (`VOCABULARY_VERSION`) | `motor/vocabulary.ts` | `prescription_generations` |
 | Inferência de metadados da biblioteca | `gymgital-library-inference@2026.11.2` | `src/modules/biblioteca/metadata/inference-rules.json` | cada valor inferido (`exercise_attributes`) e o evento dele |
-| Aplicação | `0.100.0` (Motor V4, PR 4; não publicada; empilhada sobre a PR 3, `feat/motor-v4-pr3-doses-progressao-20261105`) | `package.json` | — |
+| Aplicação | `0.101.0` (Motor V4, PR 5; não publicada; empilhada sobre a PR 4, `feat/motor-v4-pr4-telas-ajustes-20261105`) | `package.json` | — |
 | Contexto de planejamento (V4) | `1` (`PLANNING_CONTEXT_VERSION`) | `planejador/versions.ts` | `planning_runs` (hash do contexto) |
 | Blueprint (V4) | `1` (`BLUEPRINT_VERSION`); `COMPILE_VERSION` `1` (compilador do aceite, PR 2) | `planejador/versions.ts` | `planning_run_payloads` (resposta validada) |
 | Prompts do planejador (V4) | `planner-2026.11.1` (`PLANNER_PROMPT_VERSION`); `adjust-2026.11.1` (`ADJUST_PROMPT_VERSION`, ajustes assistidos, PR 4.3) | `planejador/versions.ts` | execução e chave de cache (diferente de `AI_PROMPT_VERSION`, da revisão desligada) |
@@ -658,7 +658,7 @@ Telas RX-01 e M-02 sobre a proposta que nasceu de uma estratégia aceita (`hasSt
 
 **Sem IA.** O mesmo painel: o botão "Sugerir alternativa com IA" fica **desabilitado** com o motivo ("Sugestão por IA exige a IA habilitada (…). Use as alternativas do motor.") e "Ver alternativas do motor" traz a lista com as restrições já avaliadas em cada alternativa.
 
-**Não é feito aqui:** texto livre (bloqueio, PENDENCIAS); nomes de exercício para o provedor; doses por provedor; ajustes em várias fases de uma vez; observabilidade de uso por tarefa e relatórios (PR 5).
+**Não é feito aqui:** texto livre (bloqueio, PENDENCIAS); nomes de exercício para o provedor; doses por provedor; ajustes em várias fases de uma vez; observabilidade de uso por tarefa e relatórios (feitos na PR 5.1).
 
 ## Observabilidade de uso, retenção e exclusão (PR 5.1)
 
@@ -667,3 +667,11 @@ Telas RX-01 e M-02 sobre a proposta que nasceu de uma estratégia aceita (`hasSt
 **O profissional** vê somente "Uso de IA neste mês: X de Y tokens" (`usageForProfessional`): sem custo, preço, moeda, provedor, modelo ou latência; uma organização nunca lê os números de outra.
 
 **Retenção e exclusão (o que existe).** Cache de respostas: validade `AI_CACHE_TTL_DAYS` (padrão 14, máximo 60), apagado oportunisticamente na próxima chamada da organização. Sugestões de ajuste já decididas: apagadas junto da próxima sugestão da organização depois do mesmo prazo; as não decididas não saem por idade. Pedido de exclusão do aluno cumprido pelo profissional: apaga cache, respostas do planejador (`planning_run_payloads`) e sugestões de ajuste do aluno, e as execuções apagadas não podem mais ser aceitas nem usadas para gerar, enquanto a proposta e a prescrição continuam legíveis. Ficam, por serem só contagens e hashes: execuções, aceites, decisões e o livro de uso. **Não há prazo por idade** para as respostas do planejador (PENDENCIAS, Responsável). A retenção do lado do provedor depende do contrato com ele e não foi verificada.
+
+## Matriz de regressão e medição local (PR 5.2)
+
+**O que é.** Uma amostra de 60 casos fictícios (semente fixa) que percorre a cadeia do servidor sem banco e sem IA real: contexto → estratégia por regras → aceite → compilador → adaptador → motor → auditoria (`tests/helpers/benchmark-matrix.ts`, `tests/benchmark-matrix.test.ts`). Dimensões: 2 a 6 dias por semana; hipertrofia, força, condicionamento e misto (força + cardio + mobilidade); iniciante, intermediário e avançado; ABAB, ABC, ABCD, PPL, corpo inteiro, personalizada (divisão diferente por fase) e irregular; equipamento completo, só halteres e banco e só peso do corpo; calendário regular e irregular; triagem sem "Sim", em aberto e com "Sim" decidido; histórico ausente e contraditório. O caso Xintus é sempre o primeiro. `node scripts/benchmark-motor-v4.mjs --runs 3` imprime a tabela que está em `VALIDACAO.md`.
+
+**O que o teste garante** (falha se quebrar): nenhuma exceção; elegibilidade 100%; duas cadeias completas, byte a byte iguais; aderência ao foco de pelo menos 70% em todo treino em que o motor não declarou oferta curta; nenhum erro além de `CATALOG_INSUFFICIENT`; academia completa sem erro. **O que só se registra**: tempo estimado × disponível, correções, custo, CPU e memória.
+
+**O que NÃO prova.** Não é prova de qualidade de prescrição (nada aqui foi visto pelo Técnico), não usa biblioteca nem aluno reais (a biblioteca de teste tem ≈ 30 exercícios, o que explica boa parte das ofertas curtas), não chama IA (o custo é de uma chamada do provedor simulado com **preços de teste inventados**, tokens estimados), não isola o efeito de uma dimensão (é uma amostra, não um experimento), e a medição de CPU e memória do caso grande (12 fases × 4 semanas × 7 sessões, 200 exercícios, com e sem o caminho do blueprint) é de **Node local, não de Workers**. Resultados e leitura honesta: `VALIDACAO.md`, sub-etapa 5.2.
