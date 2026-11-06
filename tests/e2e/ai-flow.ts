@@ -11,6 +11,7 @@ export async function aiFlowScenario(pro: Page, studentName: string) {
   await pro.setViewportSize({ width: 1440, height: 900 });
   await pro.goto("./profissional/alunos");
   await pro.getByRole("link", { name: studentName }).first().click();
+  await pro.waitForURL(/\/profissional\/alunos\/(?!novo)[^/?]+$/);
   await expect(pro.getByRole("heading", { name: studentName })).toBeVisible();
   const studentURL = pro.url();
   await pro.getByRole("link", { name: "Preencher a ficha", exact: true }).click();
@@ -26,8 +27,8 @@ export async function aiFlowScenario(pro: Page, studentName: string) {
   const modes = pro.getByRole("radiogroup", { name: "Modo de montagem" });
   await expect(modes.getByRole("radio", { name: /Assistida por IA/ })).toBeEnabled();
   await expect(modes.getByRole("radio", { name: /Assistida por IA/ })).toBeChecked();
-  await expect(modes.getByText(/^Uso de IA neste mês: [\d.]+ de 100\.000 tokens$/)).toBeVisible();
-  await expect(modes.getByText(/resumo codificado e anonimizado/)).toBeVisible();
+  await expect(pro.getByText(/^Uso de IA neste mês: [\d.]+ de 100\.000 tokens$/)).toBeVisible();
+  await expect(pro.getByText(/resumo codificado e anonimizado/)).toBeVisible();
   await expect(pro.getByText(/R\$|US\$|custo/i)).toHaveCount(0);
   await answerRequired(pro);
   await pro.getByRole("button", { name: "Continuar para estratégia" }).click();
