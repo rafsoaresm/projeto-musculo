@@ -205,12 +205,13 @@ const EXPLAINED_PARAMS: readonly string[] = ["sets", "repsMin", "repsMax", "rirM
  */
 function explainDoseParams(draft: DoseDraft): void {
   for (const [key, t] of draft.trace) {
-    if (!EXPLAINED_PARAMS.includes(key) || (t.changeIf !== undefined && t.origin !== undefined)) continue;
+    if (!EXPLAINED_PARAMS.includes(key) || (t.changeIf !== undefined && t.origin !== undefined && t.reasons?.length)) continue;
     const professional = t.basis === "PROFESSIONAL";
     const generic = t.ruleId === "DOSE_DEFAULTS";
     draft.trace.set(key, {
       ...t, changeIf: t.changeIf ?? (professional ? PROFESSIONAL_CHANGE_IF : generic ? GENERIC_CHANGE_IF : PROGRESSION_CHANGE_IF),
       origin: t.origin ?? (professional ? "PROFESSIONAL" : "RULES_HEURISTIC"),
+      reasons: t.reasons?.length ? t.reasons : [professional ? "PROFESSIONAL_CHOICE" : generic ? "GENERIC_DEFAULT" : "PHASE_PROGRESSION"],
     });
   }
 }

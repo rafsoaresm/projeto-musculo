@@ -169,6 +169,8 @@ export const blueprintAnswersSchema = z
     /** PR 3: only what the professional confirmed (dose profiles by exercise class, progression intent by phase). */
     dosing: z
       .strictObject({
+        /** Origin of the acceptance these choices came from (the block may mix acceptances; the choices come from one). */
+        source: blueprintSource.optional(),
         byClass: z.array(z.strictObject({ exerciseClass: z.enum(EXERCISE_CLASSES), profileCode: z.enum(DOSE_PROFILE_CODES) })).max(EXERCISE_CLASSES.length),
         progression: z.array(z.strictObject({ phaseIndex, intent: z.enum(PROGRESSION_INTENTS) })).max(PLANNER_MAX_PHASES),
       })

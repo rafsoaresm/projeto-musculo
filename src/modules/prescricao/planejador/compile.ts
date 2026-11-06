@@ -163,6 +163,7 @@ export async function compileAcceptance(i: CompileInput): Promise<CompileOutcome
 
   const dosing = acceptance.dosing.byClass.length || acceptance.dosing.progression.length
     ? {
+        source: provenance,
         byClass: [...acceptance.dosing.byClass].sort((a, b) => cmp(a.exerciseClass, b.exerciseClass)),
         progression: [...acceptance.dosing.progression].sort((a, b) => a.phaseIndex - b.phaseIndex),
       }

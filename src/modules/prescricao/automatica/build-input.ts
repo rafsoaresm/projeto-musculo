@@ -184,8 +184,10 @@ export interface DoseIntents {
 export function doseIntentsOf(answers: GenerationAnswers, ruleSet: NonNullable<ReturnType<typeof getRuleSet>>, structure: StructureFacts): DoseIntents {
   const out: DoseIntents = { doseIntentByClass: [], progressionIntentByPhase: [], issues: [] };
   const dosing = answers.blueprint?.dosing;
-  if (!dosing) return out;
-  const origin = answers.blueprint!.acceptances.some((a) => a.source === "AI_SUGGESTED") ? "AI_SUGGESTED" : "RULES_HEURISTIC";
+  // Rules without the dose policy (before 2026.11.6) know nothing of these intents: no parameter and no notice, as before.
+  if (!dosing || !ruleSet.rules.DOSE_PROFILES) return out;
+  // The choices come from one acceptance, whose origin the compiler recorded; a block without it (older) falls back to "any AI".
+  const origin = dosing.source ?? (answers.blueprint!.acceptances.some((a) => a.source === "AI_SUGGESTED") ? "AI_SUGGESTED" : "RULES_HEURISTIC");
   const note = (code: string, path: string, message: string, phaseIndex?: number) =>
     out.issues.push({ severity: "INFO", code, stage: "INPUT", path, message, ...(phaseIndex !== undefined ? { phaseIndex } : {}) });
 
@@ -304,7 +306,7 @@ export function buildEngineInput(ctx: GenerationContext, answers: GenerationAnsw
   answers.exerciseCountByWorkout.forEach((c) => checkWorkout(c.phaseIndex, c.label));
   answers.coverageByWorkout.forEach((c) => checkWorkout(c.phaseIndex, c.label));
   answers.blueprint?.workouts.forEach((w) => checkWorkout(w.phaseIndex, w.label));
-  answers.blueprint?.dosing?.progression.forEach((p) => checkPhase(p.phaseIndex));
+  if (ruleSet.rules.DOSE_PROFILES) answers.blueprint?.dosing?.progression.forEach((p) => checkPhase(p.phaseIndex));
   answers.policyOverrides.forEach((o) => {
     if (o.phaseIndex !== undefined && o.label !== undefined) checkWorkout(o.phaseIndex, o.label);
     else if (o.phaseIndex !== undefined) checkPhase(o.phaseIndex);

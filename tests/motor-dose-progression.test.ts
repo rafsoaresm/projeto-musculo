@@ -284,12 +284,41 @@ describe("adaptador: só o que o profissional marcou e a política admite chega 
     expect(doseIntentsOf(answers(one, {}, "RULES_HEURISTIC"), rules6, structureWith()).doseIntentByClass[0].origin).toBe("RULES_HEURISTIC");
   });
 
-  it("regras sem a política (2026.11.5) recusam o pedido de perfil e tratam a progressão como informativa, sem erro", () => {
-    const out = doseIntentsOf(answers(dosing), rules5, structureWith());
-    expect(out.doseIntentByClass).toEqual([]);
-    expect(out.progressionIntentByPhase).toEqual([]);
-    expect(out.issues.filter((i) => i.code === "DOSE_INTENT_REJECTED")).toHaveLength(2);
-    expect(out.issues.filter((i) => i.code === "PROGRESSION_INTENT_NOT_APPLIED")).toHaveLength(3);
+  it("regras sem a política (2026.11.5) não recebem nada e não emitem aviso: o resultado é o de antes", () => {
+    expect(doseIntentsOf(answers(dosing), rules5, structureWith())).toEqual({ doseIntentByClass: [], progressionIntentByPhase: [], issues: [] });
+  });
+
+  it("a origem vem do aceite que originou a escolha (dosing.source), mesmo num bloco com aceites mistos", () => {
+    const one = { source: "RULES_HEURISTIC" as const, byClass: [{ exerciseClass: "ISOLATION_UPPER", profileCode: "ISOLATION_HIGH_REP" }], progression: [] };
+    // o bloco tem um aceite da IA, mas a escolha de dose veio do aceite por regras
+    expect(doseIntentsOf(answers(one, {}, "AI_SUGGESTED"), rules6, structureWith()).doseIntentByClass[0].origin).toBe("RULES_HEURISTIC");
+  });
+});
+
+describe("o traço de séries, repetições, RIR e descanso sempre traz o motivo", () => {
+  const PARAMS = ["sets", "repsMin", "repsMax", "rirMin", "rirMax", "restSeconds"];
+  const explained = (r: ReturnType<typeof dose>) => r.params.filter((p) => PARAMS.includes(p.param));
+
+  it("padrão genérico (exercício sem metadado, estímulo de força): regra, origem, motivo e o que mudaria", () => {
+    const r = dose(unknownCompound, {}, { stimulus: "STRENGTH" });
+    const ps = explained(r);
+    expect(ps.length).toBeGreaterThan(0);
+    for (const p of ps) expect(p, p.param).toMatchObject({ ruleId: "DOSE_DEFAULTS", origin: "RULES_HEURISTIC", reasons: ["GENERIC_DEFAULT"] });
+    for (const p of ps) expect(p.changeIf?.length).toBeGreaterThan(10);
+  });
+
+  it("ajuste do profissional: motivo PROFESSIONAL_CHOICE", () => {
+    const r = dose(calf, { doseOverrides: [{ patch: { values: { sets: 5 } } }] } as unknown as Partial<EngineInput["parameters"]>);
+    expect(r.params.find((p) => p.param === "sets")).toMatchObject({ basis: "PROFESSIONAL", origin: "PROFESSIONAL", reasons: ["PROFESSIONAL_CHOICE"] });
+  });
+
+  it("progressão do profissional ou da periodização: motivo PHASE_PROGRESSION; o perfil mantém os seus", () => {
+    const progression = { basis: "PROFESSIONAL", value: { model: "LINEAR", ramps: [{ param: "sets", from: 3, to: 5 }] } } as unknown as NonNullable<NonNullable<Parameters<typeof dose>[2]>["progression"]>;
+    const r = dose(unknownCompound, {}, { stimulus: "STRENGTH", progression, week: 4 });
+    expect(r.params.find((p) => p.param === "sets")?.reasons?.length).toBeGreaterThan(0);
+    for (const p of explained(r)) expect(p.reasons?.length, p.param).toBeGreaterThan(0);
+    const withProfile = dose(calf);
+    for (const p of explained(withProfile)) expect(p.reasons?.length, p.param).toBeGreaterThan(0);
   });
 });
 
