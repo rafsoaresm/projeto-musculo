@@ -1897,3 +1897,10 @@ Três revisões finais (aceite, regressão, qualidade) foram conferidas contra o
 - CPU e memória em Workers do aceite e da geração; D1 remoto; concorrência real de dois Workers (as corridas foram testadas com `Promise.all` no D1 local).
 - Sem consulta de "aceites da revisão" além do mais novo; sem desfazer um aceite (um novo substitui).
 - A validação do Técnico das heurísticas segue pendente (PENDENCIAS).
+
+### 2.3 Correções da revisão (06/11/2026)
+
+- **"Voltar à estratégia" para a proposta inteira em proposta gerada pela metade:** corrigido. `FULL` vale para as fases que existem (`regenerateStep` com `generatedOnly`); antes, as fases ainda não geradas faziam o pedido voltar `incomplete`. Teste novo em `tests/blueprint-service.test.ts` (orçamento mínimo, 1 de 3 fases; falhava antes da correção). `FROM_PHASE` explícito continua exigindo as fases seguintes geradas, como no `regenerate`.
+- **Aceite mais novo:** a regra é conferida de novo logo antes de entregar ao serviço de propostas (em `generate` e `replan`), o que estreita a janela mas não a elimina: o vínculo só exige que o aceite pertença à revisão. Não há trava no banco para "só o mais novo"; um aceite concorrente no meio ainda pode passar. Sem dano: a proposta continua aberta e sem aprovação.
+- **Repetição da geração com a mesma chave:** `generate` devolve a proposta já criada (replay) quando a chave já gerou uma proposta ligada ao mesmo aceite, antes de recompilar. A comparação não inclui as respostas da repetição (o replay vale pela chave e pelo aceite); chave com outro aceite segue o caminho normal. Teste novo.
+- Verificação: `tsc`, `npm run check` (178 arquivos, 3263 testes, 1 pulado), `npm run build:cloud`. Sem e2e: nenhuma tela mudou.

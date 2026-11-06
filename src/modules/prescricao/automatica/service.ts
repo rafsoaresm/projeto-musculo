@@ -818,17 +818,25 @@ export function proposalService(
   }
 
   /** The engine step of a regeneration of `typed` (shared by `regenerate` and `replan`): the touched phases must exist, be generated and fit one request. */
-  function regenerateStep(typed: RegenerationScope) {
+  function regenerateStep(typed: RegenerationScope, opts: { generatedOnly?: boolean } = {}) {
     return ({ header, previous, built }: { header: ProposalHeader; previous: EngineResult; built: Built }) => {
       const order = built.input.structure.phases.map((ph) => ph.index);
       const touched = typed.kind === "FROM_PHASE" ? order.slice(Math.max(0, order.indexOf(typed.phaseIndex))) : [typed.phaseIndex];
       if (!order.includes(typed.phaseIndex)) return { ok: false as const, outcome: fail("invalid_target") };
-      if (touched.some((i) => !header.phasesGenerated.includes(i)))
+      // "The whole proposal" (replan FULL) means the phases that exist: a proposal cut short by the work budget keeps its ungenerated ones.
+      const scoped = opts.generatedOnly ? touched.filter((i) => header.phasesGenerated.includes(i)) : touched;
+      if (opts.generatedOnly && !scoped.length) return { ok: false as const, outcome: fail("incomplete") };
+      if (scoped.some((i) => !header.phasesGenerated.includes(i)))
         return { ok: false as const, outcome: typed.kind === "FROM_PHASE" ? fail("incomplete") : fail("invalid_target", { message: "Esta fase ainda não foi gerada: continue a geração primeiro." }) };
-      if ((typed.kind === "PHASE" || typed.kind === "FROM_PHASE") && workUnits({ ...built.input, scope: { kind: "PHASES", phaseIndexes: touched } }) > budget && touched.length > 1)
+      if ((typed.kind === "PHASE" || typed.kind === "FROM_PHASE") && workUnits({ ...built.input, scope: { kind: "PHASES", phaseIndexes: scoped } }) > budget && scoped.length > 1)
         return { ok: false as const, outcome: fail("too_large") };
-      const out = engineOk(regenerate(built.input, previous, typed));
+      let out = engineOk(regenerate(built.input, previous, opts.generatedOnly && scoped.length < touched.length ? { kind: "PHASE", phaseIndex: scoped[0] } : typed));
       if (!out.ok) return out;
+      if (opts.generatedOnly && scoped.length < touched.length)
+        for (const index of scoped.slice(1)) {
+          out = engineOk(regenerate(built.input, out.result, { kind: "PHASE", phaseIndex: index }));
+          if (!out.ok) return out;
+        }
       return { ok: true as const, scope: typed.kind as GenerationScopeKind, scopeJson: typed as unknown, input: built.input, result: out.result, target: typed as unknown };
     };
   }
@@ -919,7 +927,7 @@ export function proposalService(
           const order = args.built.input.structure.phases.map((ph) => ph.index);
           const first = order.find((i) => args.header.phasesGenerated.includes(i));
           const typed: RegenerationScope = scope.kind === "FULL" ? { kind: "FROM_PHASE", phaseIndex: first ?? order[0] } : scope;
-          return regenerateStep(typed)(args);
+          return regenerateStep(typed, { generatedOnly: scope.kind === "FULL" })(args);
         },
         { answersPatch: { blueprint: internal.blueprint }, replaceBlueprint: scope.kind === "FULL" },
       );

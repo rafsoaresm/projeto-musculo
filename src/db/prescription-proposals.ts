@@ -1542,6 +1542,17 @@ export function proposalsFor(db: D1Database, context: AuthenticatedContext | nul
     /** Replay check before running the engine: the generation already recorded under this key, if any. */
     replayOf,
 
+    /**
+     * The proposal a generation key already created, whatever its request hash (a retry of a strategy-based generation must not
+     * recompile against data that moved after the first success). Null when the key was never used in this revision.
+     */
+    async proposalOfKey(planId: string, revisionId: string, key: string): Promise<{ proposalId: string; version: number; complete: boolean } | null> {
+      const found = await byKey(planId, revisionId, key);
+      if (!found) return null;
+      const now = await header(planId, revisionId, found.proposalId, "ANY");
+      return now ? { proposalId: now.id, version: now.version, complete: now.complete } : null;
+    },
+
     /** Replay check for a keyed mutation (continue, regenerate, substitute, rebase) on a given proposal, before running the engine. */
     async mutationReplay(
       planId: string,

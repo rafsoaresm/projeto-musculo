@@ -454,6 +454,37 @@ describe("depois da geração pela estratégia: trocar, travar, regenerar, volta
     await untouched(d);
   });
 
+  it("FULL e FROM_PHASE em proposta gerada pela metade: valem para as fases que existem, sem exigir as que faltam", async () => {
+    await t.configure({ provider: "mock", model: "mock-ul", orgs: ["org-a"] });
+    const d = await t.newDraft("st-1", "tech-a", "org-a", XINTUS);
+    const plan = await planOk(d, "AI");
+    const acc = await acceptOk(d, plan.runId);
+    const small = blueprintService(t.db, t.org("tech-a", "org-a"), { now: () => NOW, workUnitsPerRequest: 1 });
+    const out = proposalOk(await small.generate(d.planId, d.revisionId, await genBody(d, acc.acceptance.acceptanceId)));
+    expect(out.complete).toBe(false);
+    expect((await snapshot(d, out.proposalId)).header.phasesGenerated).toEqual([1]);
+    const full = proposalOk(await blueprints().replan(d.planId, d.revisionId, { proposalId: out.proposalId, writeId: t.id("write"), idempotencyKey: t.id("rep"), expectedVersion: out.version, acceptanceId: acc.acceptance.acceptanceId, scope: { kind: "FULL" } }));
+    const after = await snapshot(d, out.proposalId);
+    expect(after.header.phasesGenerated).toEqual([1]);
+    expect(full.complete).toBe(false);
+    expect((await blueprints().replanPreview(d.planId, d.revisionId, out.proposalId, { kind: "FULL" }))?.phases).toEqual([1]);
+    await untouched(d);
+  });
+
+  it("repetir a geração pela estratégia com a mesma chave devolve a proposta já criada, mesmo se a periodização mudou depois", async () => {
+    const d = await t.newDraft("st-1", "tech-a", "org-a", XINTUS);
+    const plan = await planOk(d, "RULES");
+    const acc = await acceptOk(d, plan.runId);
+    const body = await genBody(d, acc.acceptance.acceptanceId);
+    const first = proposalOk(await blueprints().generate(d.planId, d.revisionId, body));
+    const renamed = { ...XINTUS, phases: XINTUS.phases.map((p, i) => (i === 0 ? { ...p, name: "Outro nome" } : p)) };
+    expect(await plansFor(t.db, t.org("tech-a")).saveDraft(d.planId, d.revisionId, renamed, NOW)).toBe(true);
+    const again = proposalOk(await blueprints().generate(d.planId, d.revisionId, body));
+    expect(again).toMatchObject({ proposalId: first.proposalId, replayed: true });
+    // another acceptance for the same key is not a replay
+    expect(await t.n("SELECT COUNT(*) AS n FROM prescription_proposals WHERE revision_id = ?1", d.revisionId)).toBe(1);
+  });
+
   it("determinismo: o mesmo aceite em duas revisões iguais dá resultados canonicamente iguais; regenerar sem mudar devolve o mesmo plano", async () => {
     await t.configure({ provider: "mock", model: "mock-ul", orgs: ["org-a"] });
     const run = async () => {

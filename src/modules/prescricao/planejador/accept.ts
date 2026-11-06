@@ -395,6 +395,12 @@ export function blueprintService(db: D1Database, context: AuthenticatedContext, 
         if (error instanceof ZodError) return proposalFail("invalid", { message: "Confira as respostas: algum valor não é aceito (código, número ou lista)." });
         throw error;
       }
+      // A retry of a generation that already succeeded replays it, before anything is recompiled against data that may have moved since.
+      const earlier = await proposalsFor(db, context).proposalOfKey(planId, revisionId, parsed.data.idempotencyKey);
+      if (earlier) {
+        const links = await proposalsFor(db, context).blueprintLinks(planId, revisionId, earlier.proposalId);
+        if (links.some((l) => l.acceptanceId === parsed.data.acceptanceId)) return { ok: true, proposalId: earlier.proposalId, version: earlier.version, complete: earlier.complete, replayed: true };
+      }
       const found = await currentAcceptance(planId, revisionId, parsed.data.acceptanceId);
       if (!found.ok) return proposalFail("blueprint_invalid", found.message ? { message: found.message } : {});
       const loaded = await loadGenerationContext(db, context, planId, revisionId, { now: clock() });
@@ -405,6 +411,9 @@ export function blueprintService(db: D1Database, context: AuthenticatedContext, 
       const compiled = await compileFor(planId, revisionId, found.acceptance, answers, structureFacts(gen.revision.schedule), new Set(gen.catalog.map((e) => e.id)));
       if (!compiled.ok) return proposalFail(compiled.failure === "structure_changed" ? "structure_changed" : "blueprint_invalid", { message: compiled.message ?? ACCEPT_MESSAGE[compiled.failure] });
       const merged = convertBlueprintToGenerationAnswers(answers, compiled.compiled);
+      // The newest-acceptance rule is checked again right before the hand-off, after the slow compile (a second accept in between supersedes this one).
+      const stillCurrent = await currentAcceptance(planId, revisionId, parsed.data.acceptanceId);
+      if (!stillCurrent.ok) return proposalFail("blueprint_invalid", stillCurrent.message ? { message: stillCurrent.message } : {});
       // A strategy whose every workout keeps a focus saved by the professional compiles to no block: the generation then runs as the plain one.
       return proposals().generate(
         planId,
@@ -439,6 +448,8 @@ export function blueprintService(db: D1Database, context: AuthenticatedContext, 
       const inScope = (phaseIndex: number) => (p.scope.kind === "FULL" ? true : p.scope.kind === "PHASE" ? phaseIndex === p.scope.phaseIndex : phaseIndex >= p.scope.phaseIndex);
       const block: BlueprintAnswers = { ...compiled.compiled.blueprint, workouts: compiled.compiled.blueprint.workouts.filter((w) => inScope(w.phaseIndex)) };
       if (!block.workouts.length) return proposalFail("invalid", { message: "A estratégia aceita não define o foco dos treinos das fases escolhidas." });
+      const stillCurrent = await currentAcceptance(planId, revisionId, p.acceptanceId);
+      if (!stillCurrent.ok) return proposalFail("blueprint_invalid", stillCurrent.message ? { message: stillCurrent.message } : {});
       const payloadOut: ReplanPayload = { proposalId: p.proposalId, idempotencyKey: p.idempotencyKey, writeId: p.writeId, expectedVersion: p.expectedVersion, scope: p.scope };
       return proposals().replan(planId, revisionId, payloadOut, { blueprint: block });
     },
