@@ -68,6 +68,10 @@ test("dose profiles by opt-in: varied doses in the proposal and the dose 'Por qu
   await expect(doseWhy.locator('[data-dose-why="rest"]')).toContainText("Motivos:");
   await expect(doseWhy.locator('[data-dose-why="rest"]')).toContainText("Muda se:");
   await expect(doseWhy.locator('[data-dose-why="sets"]')).toContainText("séries");
+  // The generic sets text is a sentence of its own, never "Muda se: Padrão…".
+  await expect(doseWhy.locator('[data-dose-why="sets"]')).not.toContainText("Muda se: Padrão");
+  // The e2e library has inferred metadata: the profile dose says so (a note beside the four questions, not a fifth question).
+  await expect(doseWhy.locator('[data-dose-note="metadata"]')).toContainText("ainda não foram revisados");
   await noHorizontalOverflow(page);
 
   // Another exercise of the same session shows its own profile (the dose differs where the kind of exercise differs).

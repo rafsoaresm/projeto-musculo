@@ -157,6 +157,35 @@ describe("Xintus com a IA (mock) pelo servidor: superior/inferior, corpo inteiro
     await untouched(d);
   });
 
+  it("aceite + regras 2026.11.6 (adesão): A e B diferem nos exercícios E nas doses; sem a adesão fica a 2026.11.5; versão fora da lista é recusada", async () => {
+    const d = await t.newDraft("st-1", "tech-a", "org-a", XINTUS);
+    const plan = await planOk(d, "AI");
+    const acc = await acceptOk(d, plan.runId);
+    const id = acc.acceptance.acceptanceId;
+    // a version that is neither the default nor a published opt-in is refused before anything is compiled
+    expect(reasonOf(await blueprints().generate(d.planId, d.revisionId, { ...(await genBody(d, id)), rulesVersion: "2026.11.4" }))).toBe("invalid");
+    expect(reasonOf(await blueprints().generate(d.planId, d.revisionId, { ...(await genBody(d, id)), rulesVersion: "9.9.9" }))).toBe("invalid");
+    expect(await t.n("SELECT COUNT(*) AS n FROM prescription_proposals WHERE revision_id = ?1", d.revisionId)).toBe(0);
+    const out = proposalOk(await blueprints().generate(d.planId, d.revisionId, { ...(await genBody(d, id)), rulesVersion: "2026.11.6" }));
+    const snap = await snapshot(d, out.proposalId);
+    expect(snap.header.rulesVersion).toBe("2026.11.6");
+    const [link] = await store().blueprintLinks(d.planId, d.revisionId, out.proposalId);
+    expect(link).toMatchObject({ acceptanceId: id, rulesVersion: "2026.11.6" });
+    const A = itemsOf(snap.result, 1, "A");
+    const B = itemsOf(snap.result, 1, "B");
+    const ids = (items: typeof A) => new Set(items.map((i) => i.exerciseId));
+    expect([...ids(A)].filter((x) => ids(B).has(x))).toEqual([]);
+    // the doses are no longer one number for everybody, and the profile that set each is in the trace
+    const doseOf = (i: (typeof A)[number]) => {
+      const dose = i.dose as { sets?: number; reps?: { min: number; max: number }; restSeconds?: number | null } | null;
+      return `${dose?.sets}x${dose?.reps?.min}-${dose?.reps?.max}/${dose?.restSeconds}`;
+    };
+    const doses = new Set([...A, ...B].map(doseOf));
+    expect(doses.size).toBeGreaterThan(1);
+    expect([...A, ...B].some((i) => i.trace.params.some((p) => p.profileId))).toBe(true);
+    await untouched(d);
+  });
+
   it("corpo inteiro escolhido explicitamente é respeitado: válido, com agachar e empurrar em A e B, sem pena por 'fora do foco'", async () => {
     const d = await t.newDraft("st-1", "tech-a", "org-a", XINTUS);
     const plan = await planOk(d, "RULES");

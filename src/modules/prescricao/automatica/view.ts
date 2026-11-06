@@ -1168,7 +1168,8 @@ export const DOSE_REASON_LABELS: Record<string, string> = {
   HIGH_DIFFICULTY: "dificuldade alta",
   UNILATERAL: "exercício unilateral",
   ISOLATION: "exercício de isolamento",
-  SMALL_MUSCLE: "região pequena",
+  // The profile family only labels the match (the isolation profile also catches the trunk, calf and shoulder patterns); it is not an anatomical claim.
+  SMALL_MUSCLE: "isolador de região de menor porte (panturrilha, abdômen, ombro)",
   STRENGTH: "estímulo de força",
   ACCESSORY: "acessório de força",
   GENERAL_FITNESS: "condicionamento geral",
@@ -1225,6 +1226,17 @@ export interface ItemWhy {
   dose: DoseWhyLine[];
   /** Audit findings that name this item (rationale text, as the audit wrote it). */
   auditLines: string[];
+  /** Set when a dose profile was chosen from library metadata nobody reviewed yet (inferred or pending); null otherwise. */
+  metadataNote: string | null;
+}
+
+/**
+ * "Muda se: …" for the dose screen. A text that already opens with "Muda com/se" loses that prefix (the label says it); one that is a
+ * sentence of its own ("Padrão do estímulo…; muda com…", "Definido pelo profissional; muda se…") is shown as it is, never under "Muda se:".
+ */
+export function changeIfText(changeIf: string): string {
+  const m = /^Muda\s+(?:com|se)\s+(.*)$/is.exec(changeIf.trim());
+  return m ? `Muda se: ${m[1]}` : changeIf.trim();
 }
 
 type TraceOf = (param: string) => ParamTrace | undefined;
@@ -1242,7 +1254,7 @@ const doseRange = (min: unknown, max: unknown, unit: string): string | null => {
  * strategy and the audit findings that name this item.
  */
 export function itemWhy(
-  item: Pick<ItemOut, "origin" | "trace" | "exerciseId" | "slotKey">,
+  item: Pick<ItemOut, "origin" | "trace" | "exerciseId" | "slotKey"> & Partial<Pick<ItemOut, "metadata">>,
   workout: Pick<WorkoutSummary, "coverage"> | null,
   audit: Pick<AuditReport, "findings"> | null,
   options: { rulesUsed?: readonly RuleUse[]; phaseIndex?: number } = {},
@@ -1285,7 +1297,12 @@ export function itemWhy(
   const phaseIndex = options.phaseIndex ?? parseSlotKey(item.slotKey)?.phaseIndex ?? null;
   const ref = phaseIndex === null ? null : `item:${phaseIndex}:${item.slotKey}`;
   const auditLines = ref && audit ? audit.findings.filter((f) => f.sourceRefs.includes(ref)).map((f) => f.rationale) : [];
-  return { focusLine, selectionPills: pills, dose: lines, auditLines };
+  // The profile reads compound/laterality/difficulty from the library: when that metadata is not reviewed, the dose says so.
+  const unreviewed = item.metadata === "INCLUDES_INFERRED" || item.metadata === "PENDING";
+  const metadataNote = unreviewed && lines.some((l) => l.profile)
+    ? "O perfil de dose usou dados do exercício na biblioteca que ainda não foram revisados (composto ou isolado, lateralidade, dificuldade). Revise o exercício na biblioteca para confirmar esta dose."
+    : null;
+  return { focusLine, selectionPills: pills, dose: lines, auditLines, metadataNote };
 }
 
 // ---------- suggested targets (design V3 §4.6, §7.4) ----------

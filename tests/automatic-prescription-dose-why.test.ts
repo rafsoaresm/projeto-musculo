@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { generate, type EngineResult, type ItemOut } from "@/modules/prescricao/motor";
-import { DOSE_REASON_LABELS, PROVENANCE_LABELS, doseReasonText, itemWhy } from "@/modules/prescricao/automatica/view";
+import { DOSE_REASON_LABELS, PROVENANCE_LABELS, changeIfText, doseReasonText, itemWhy } from "@/modules/prescricao/automatica/view";
 import { parameters } from "./helpers/motor-fixtures";
 import { xintusInput } from "./helpers/xintus";
 
@@ -69,6 +69,27 @@ describe("itemWhy: dose com perfil (2026.11.6)", () => {
     const why = itemWhy(item, null, { findings: [finding] });
     expect(why.auditLines).toEqual(["Texto do achado."]);
     expect(itemWhy(other, null, { findings: [finding] }).auditLines).toEqual([]);
+  });
+});
+
+describe("texto 'Muda se' e aviso de metadado não revisado", () => {
+  it("só o texto que abre com 'Muda com/se' ganha o rótulo; frases próprias vão como estão", () => {
+    expect(changeIfText("Muda se o profissional editar a dose.")).toBe("Muda se: o profissional editar a dose.");
+    expect(changeIfText("Muda com a progressão da fase.")).toBe("Muda se: a progressão da fase.");
+    const generic = changeIfText("Padrão do estímulo para exercícios sem perfil; muda com um perfil de dose na biblioteca.");
+    expect(generic).toMatch(/^Padrão do estímulo/);
+    expect(generic).not.toMatch(/^Muda se:/);
+    expect(changeIfText("Definido pelo profissional; muda se ele editar.")).toBe("Definido pelo profissional; muda se ele editar.");
+  });
+
+  it("a dose por perfil avisa quando o metadado do exercício não foi revisado; revisado ou sem perfil, nada", () => {
+    const r = generate(xintusInput(V6));
+    const item = byProfile(r, "HYP_COMPOUND_HEAVY");
+    expect(itemWhy({ ...item, metadata: "INCLUDES_INFERRED" }, null, null).metadataNote).toMatch(/não foram revisados/);
+    expect(itemWhy({ ...item, metadata: "PENDING" }, null, null).metadataNote).not.toBeNull();
+    expect(itemWhy({ ...item, metadata: "REVIEWED" }, null, null).metadataNote).toBeNull();
+    const old = generate(xintusInput(V5));
+    expect(itemWhy({ ...first(old).items[0], metadata: "INCLUDES_INFERRED" }, null, null).metadataNote).toBeNull();
   });
 });
 

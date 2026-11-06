@@ -26,8 +26,8 @@ import { carriesBlueprint, CLIENT_BLUEPRINT_REFUSED, parseGenerationAnswers, typ
 import { structureFacts } from "@/modules/prescricao/automatica/facts";
 import { fail as proposalFail, proposalService, type ProposalOutcome, type ReplanPayload } from "@/modules/prescricao/automatica/service";
 import { canonicalJson, sha256Hex } from "@/modules/prescricao/motor/hash";
-import { DEFAULT_RULESET } from "@/modules/prescricao/motor/rules";
-import type { StructureFacts } from "@/modules/prescricao/motor/types";
+import { DEFAULT_RULESET, rulesetForNewGeneration } from "@/modules/prescricao/motor/rules";
+import type { RuleSetRef, StructureFacts } from "@/modules/prescricao/motor/types";
 import { cmp } from "@/modules/prescricao/motor/vocabulary";
 import { type BlueprintAcceptance, type StoredStrategy, type TrainingBlueprint } from "./blueprint";
 import { compileAcceptance, convertBlueprintToGenerationAnswers, type CompileOutcome } from "./compile";
@@ -68,7 +68,8 @@ const acceptSchema = z.strictObject({
 });
 export type AcceptPayload = z.input<typeof acceptSchema>;
 
-const generateSchema = z.strictObject({ idempotencyKey: intentId, baseContentVersion: z.number().int().min(0), acceptanceId: rowId, answers: z.unknown() });
+/** `rulesVersion`: adesão explícita a uma versão publicada que não é o padrão (as doses por perfil); ausente = o padrão. Validada pelo serviço de propostas. */
+const generateSchema = z.strictObject({ idempotencyKey: intentId, baseContentVersion: z.number().int().min(0), acceptanceId: rowId, answers: z.unknown(), rulesVersion: z.string().trim().min(1).max(40).optional() });
 export type BlueprintGeneratePayload = z.input<typeof generateSchema>;
 
 const replanSchema = z.strictObject({
@@ -227,10 +228,10 @@ export function blueprintService(db: D1Database, context: AuthenticatedContext, 
   }
 
   /** Compiles an acceptance against the real, current data. */
-  async function compileFor(planId: string, revisionId: string, acceptance: BlueprintAcceptance, answers: ReturnType<typeof parseGenerationAnswers>, structure: StructureFacts, catalogIds: ReadonlySet<string>) {
+  async function compileFor(planId: string, revisionId: string, acceptance: BlueprintAcceptance, answers: ReturnType<typeof parseGenerationAnswers>, structure: StructureFacts, catalogIds: ReadonlySet<string>, rules: RuleSetRef = DEFAULT_RULESET) {
     const run = await loadRun(planId, revisionId, acceptance.runId);
     if (!run.ok) return { ok: false as const, failure: run.failure, message: undefined as string | undefined };
-    const compiled = await compileAcceptance({ run: run.blueprint, acceptance, structure, coverageByWorkout: answers.coverageByWorkout, catalogIds, rules: DEFAULT_RULESET });
+    const compiled = await compileAcceptance({ run: run.blueprint, acceptance, structure, coverageByWorkout: answers.coverageByWorkout, catalogIds, rules });
     if (!compiled.ok) return { ok: false as const, failure: COMPILE_TO_FAILURE[compiled.code], message: compiled.message };
     return { ok: true as const, compiled };
   }
@@ -408,7 +409,10 @@ export function blueprintService(db: D1Database, context: AuthenticatedContext, 
       if (loaded.status === "not_open") return proposalFail("not_open");
       const gen = loaded.context;
       if (gen.revision.contentVersion !== parsed.data.baseContentVersion) return proposalFail("revision_changed", { contentVersion: gen.revision.contentVersion });
-      const compiled = await compileFor(planId, revisionId, found.acceptance, answers, structureFacts(gen.revision.schedule), new Set(gen.catalog.map((e) => e.id)));
+      // A version outside the default and the published opt-ins is refused here too, before anything is compiled.
+      const rules = rulesetForNewGeneration(parsed.data.rulesVersion);
+      if (!rules) return proposalFail("invalid", { message: "Versão de regras não disponível para novas gerações." });
+      const compiled = await compileFor(planId, revisionId, found.acceptance, answers, structureFacts(gen.revision.schedule), new Set(gen.catalog.map((e) => e.id)), rules);
       if (!compiled.ok) return proposalFail(compiled.failure === "structure_changed" ? "structure_changed" : "blueprint_invalid", { message: compiled.message ?? ACCEPT_MESSAGE[compiled.failure] });
       const merged = convertBlueprintToGenerationAnswers(answers, compiled.compiled);
       // The newest-acceptance rule is checked again right before the hand-off, after the slow compile (a second accept in between supersedes this one).
@@ -418,7 +422,7 @@ export function blueprintService(db: D1Database, context: AuthenticatedContext, 
       return proposals().generate(
         planId,
         revisionId,
-        { idempotencyKey: parsed.data.idempotencyKey, baseContentVersion: parsed.data.baseContentVersion, answers: parsed.data.answers },
+        { idempotencyKey: parsed.data.idempotencyKey, baseContentVersion: parsed.data.baseContentVersion, answers: parsed.data.answers, ...(parsed.data.rulesVersion ? { rulesVersion: parsed.data.rulesVersion } : {}) },
         merged.blueprint ? { blueprint: merged.blueprint } : undefined,
       );
     },

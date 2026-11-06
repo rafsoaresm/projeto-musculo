@@ -8,6 +8,7 @@ import {
   BASIS_TONES,
   METADATA_LABELS,
   PROPOSAL_ORIGIN_LABELS,
+  changeIfText,
   contributionView,
   historySuggestionText,
   itemBasisGroups,
@@ -203,10 +204,15 @@ export function ExercisePanel({
                     {line.profile ? ` · perfil ${line.profile}` : ""}.
                   </span>
                   {line.reasons.length > 0 && <span> Motivos: {line.reasons.join(", ")}.</span>}
-                  {line.changeIf && <span className="muted"> Muda se: {line.changeIf.replace(/^Muda\s+(com|se)\s+/i, "")}</span>}
+                  {line.changeIf && <span className="muted"> {changeIfText(line.changeIf)}</span>}
                 </li>
               ))}
             </ul>
+            {doseWhy.metadataNote && (
+              <p className="small muted" data-dose-note="metadata">
+                {doseWhy.metadataNote}
+              </p>
+            )}
           </div>
         )}
         {item.trace.params.length > 0 && (
