@@ -334,9 +334,11 @@ function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, cr
             <span className="rx-desktop">Proposta • para revisão</span>
             <span className="rx-mobile">Para revisão</span>
           </span>
-          <span className={stage.tone === "brand" ? "rx-chip rx-chip-line rx-chip-upper" : "rx-chip rx-chip-warning rx-chip-upper"} data-stage={stage.id} title={stage.note ?? undefined}>
-            {stage.label}
-          </span>
+          {withStrategy && (
+            <span className={stage.tone === "brand" ? "rx-chip rx-chip-line rx-chip-upper" : "rx-chip rx-chip-warning rx-chip-upper"} data-stage={stage.id} title={stage.note ?? undefined}>
+              {stage.label}
+            </span>
+          )}
           <ul className="rx-metrics">
             <li className="rx-desktop">
               <strong>

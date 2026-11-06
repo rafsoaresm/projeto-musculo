@@ -232,7 +232,9 @@ export function GenerationFlow({
   function go(next: FlowStep) {
     setSub(null);
     setEditing(null);
-    window.history.pushState(null, "", `?etapa=${next}`);
+    // In "rever" mode the address keeps saying so: without it a reload (or the refresh after a redo error) would show the proposal instead of the flow.
+    const rever = replan ? new URLSearchParams(window.location.search).get("rever") : null;
+    window.history.pushState(null, "", rever ? `?rever=${encodeURIComponent(rever)}&etapa=${next}` : `?etapa=${next}`);
   }
   // After a change of step or screen the page starts at its top; on the phone the focus goes to the screen's title.
   useEffect(() => {
@@ -536,8 +538,7 @@ export function GenerationFlow({
           if (result.data?.reason === "blueprint_invalid" || result.data?.reason === "structure_changed") setBanner({ tone: "error", text: result.error, detail: null, actions: ["replan"], role: "alert" });
           return;
         }
-        // The audit is computed with the generation, in the same request: the states below show what the server has just done.
-        setStage("AUDIT");
+        // The audit is computed with the generation, in the same request: there is no separate moment to show, so only the final state is set.
         setProgress("Auditoria concluída. Abrindo a proposta…");
         setStage("READY");
         // The proposal page is the same address without the step.
@@ -589,7 +590,6 @@ export function GenerationFlow({
           if (result.data?.reason === "blueprint_invalid" || result.data?.reason === "structure_changed") setBanner({ tone: "error", text: result.error, detail: null, actions: ["replan"], role: "alert" });
           return;
         }
-        setStage("AUDIT");
         setProgress("Auditoria concluída. Voltando à proposta…");
         setStage("READY");
         router.replace(replan.backHref);

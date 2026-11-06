@@ -218,6 +218,8 @@ test("strategies, focus per phase and preview: the accepted upper/lower split sh
   await page.getByRole("button", { name: phone ? "Conferir divisão por fase" : "Usar superior / inferior" }).click();
   await page.getByRole("button", { name: "Conferir blueprint" }).click();
   await expect(page.getByRole("heading", { name: "Revisar e gerar", level: 1 }).first()).toBeVisible();
+  // Moving between steps keeps the "rever" address: a reload or a refresh must not turn the flow into the proposal page.
+  await expect(page).toHaveURL(/rever=FULL.*etapa=previa/);
   await expect(page.locator("summary", { hasText: "Políticas e progressão (opcional)" })).toHaveCount(0);
   await noHorizontalOverflow(page);
   await page.getByRole("button", { name: "Refazer com a estratégia" }).click();
