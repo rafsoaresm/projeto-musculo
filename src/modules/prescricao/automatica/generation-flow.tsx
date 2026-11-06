@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Notice } from "@/components/ui";
 import type { AcceptanceView } from "@/modules/prescricao/planejador/accept";
-import { acceptStrategy, generateFromStrategy } from "@/modules/prescricao/planejador/blueprint-actions";
+import { acceptStrategy, generateFromStrategy, replanFromStrategy } from "@/modules/prescricao/planejador/blueprint-actions";
 import type { PlanningAvailability } from "@/modules/prescricao/planejador/actions";
 import { getPlanningState, planStrategies } from "@/modules/prescricao/planejador/actions";
 import type { StrategyListView } from "@/modules/prescricao/planejador/strategy-view";
@@ -71,6 +71,7 @@ import {
 } from "./flow-view";
 import { ModePicker } from "./mode-picker";
 import { PhaseFocus } from "./phase-focus";
+import { generationStages, replanScopeLabel, type ReplanScope, type StageId } from "./review-view";
 import type { GenerationScreen } from "./service";
 import { StrategyList } from "./strategy-list";
 import { NETWORK_ERROR, useIntent } from "./use-intent";
@@ -107,8 +108,17 @@ export interface FlowInitial {
   acceptance: AcceptanceView | null;
 }
 
+/** "Rever estratégia": the flow over an OPEN proposal. The last step redoes the scope with the accepted strategy instead of generating a new proposal. */
+export interface ReplanMode {
+  proposalId: string;
+  version: number;
+  scope: ReplanScope;
+  /** The proposal page (without the `rever` address): where the professional goes back to and lands after redoing. */
+  backHref: string;
+}
+
 export function GenerationFlow({
-  planId, revisionId, screen, header, availability, initial,
+  planId, revisionId, screen, header, availability, initial, replan,
 }: {
   planId: string;
   revisionId: string;
@@ -116,6 +126,7 @@ export function GenerationFlow({
   header: GenerationHeader;
   availability: PlanningAvailability | null;
   initial: FlowInitial | null;
+  replan?: ReplanMode;
 }) {
   const router = useRouter();
   const search = useSearchParams();
@@ -155,6 +166,8 @@ export function GenerationFlow({
   const [phase, setPhase] = useState<number>(screen.structure[0]?.index ?? 1);
   const [editing, setEditing] = useState<string | null>(null);
   const [banner, setBanner] = useState<Banner | null>(null);
+  // The four states of a generation (Gerando estratégia → Montando prescrição → Auditoria → Pronta para revisão), shown while one runs.
+  const [stage, setStage] = useState<StageId | null>(null);
 
   // A refresh or a full reload keeps the answers typed so far (a per-tab convenience: nothing else depends on it, and it may be unavailable).
   const storeKey = `fig-gen-form:${planId}:${revisionId}:${screen.contentVersion}`;
@@ -334,11 +347,13 @@ export function GenerationFlow({
     setBanner(null);
     setMode(planMode);
     setPlanning({ state: "RUNNING", mode: planMode });
+    setStage("STRATEGY");
     startTransition(async () => {
       try {
         const mine = intent.take(`plan:${planMode}:${screen.contentVersion}:${JSON.stringify(built.answers)}`);
         const outcome = await planStrategies(planId, revisionId, { idempotencyKey: mine.key, baseContentVersion: screen.contentVersion, mode: planMode, answers: built.answers });
         intent.done();
+        setStage(null);
         if (outcome.ok) {
           setPlannedFor(JSON.stringify(built.answers));
           showList(outcome.blueprint);
@@ -349,6 +364,7 @@ export function GenerationFlow({
         setBanner(planningBanner(outcome, planMode));
         setPollGaveUp(false);
       } catch {
+        setStage(null);
         setPlanning({ state: "IDLE" });
         setErrors([NETWORK_ERROR]);
       }
@@ -391,6 +407,10 @@ export function GenerationFlow({
   function continueFromStrategy() {
     if (!list) return;
     if (choice === "NONE") {
+      if (replan) {
+        setErrors(["Sem divisão não há estratégia para refazer. Escolha uma estratégia ou volte à proposta."]);
+        return;
+      }
       setDraft(null);
       setAccepted(null);
       go("previa");
@@ -469,6 +489,7 @@ export function GenerationFlow({
     }
     setErrors([]);
     setBanner(null);
+    setStage("BUILDING");
     startTransition(async () => {
       setProgress(`Montando prescrição (${total} ${total === 1 ? "fase" : "fases"})…`);
       try {
@@ -510,17 +531,72 @@ export function GenerationFlow({
         if (result.error) {
           setErrors([result.error]);
           setProgress("");
+          setStage(null);
           if (result.data?.reason === "open_exists" || result.data?.reason === "revision_changed") router.refresh();
           if (result.data?.reason === "blueprint_invalid" || result.data?.reason === "structure_changed") setBanner({ tone: "error", text: result.error, detail: null, actions: ["replan"], role: "alert" });
           return;
         }
+        // The audit is computed with the generation, in the same request: the states below show what the server has just done.
+        setStage("AUDIT");
         setProgress("Auditoria concluída. Abrindo a proposta…");
+        setStage("READY");
         // The proposal page is the same address without the step.
         window.history.replaceState(null, "", "?");
         router.refresh();
       } catch {
         setErrors([NETWORK_ERROR]);
         setProgress("");
+        setStage(null);
+      }
+    });
+  }
+
+  // ----- step 3, "Rever estratégia": redo the scope of the open proposal with the accepted strategy (locked, replaced and draft rows stay) -----
+  function redo() {
+    if (!replan || step !== "previa" || sub) return;
+    if (choice === "NONE" || !accepted) {
+      setErrors(["Os focos mudaram desde o último aceite. Volte a Conferir blueprint para aceitar de novo."]);
+      return;
+    }
+    setErrors([]);
+    setBanner(null);
+    setStage("BUILDING");
+    startTransition(async () => {
+      setProgress("Montando prescrição…");
+      try {
+        let acceptanceId = accepted.id;
+        if (accepted.dosing !== JSON.stringify(dosing)) {
+          const again = await accept(draft, dosing);
+          if (!again.ok) {
+            setProgress("");
+            setStage(null);
+            return;
+          }
+          acceptanceId = again.id;
+          setAccepted({ id: again.id, dosing: JSON.stringify(dosing) });
+        }
+        const ids = intent.take(`replan:${replan.proposalId}:${replan.version}:${acceptanceId}:${JSON.stringify(replan.scope)}`);
+        const outcome = await replanFromStrategy(planId, revisionId, {
+          proposalId: replan.proposalId, idempotencyKey: ids.key, writeId: ids.write, expectedVersion: replan.version, acceptanceId, scope: replan.scope,
+        });
+        intent.done();
+        const result = proposalResultOf(outcome);
+        if (result.error) {
+          setErrors([result.error]);
+          setProgress("");
+          setStage(null);
+          if (result.data?.reason === "conflict" || result.data?.reason === "closed" || result.data?.reason === "revision_changed") router.refresh();
+          if (result.data?.reason === "blueprint_invalid" || result.data?.reason === "structure_changed") setBanner({ tone: "error", text: result.error, detail: null, actions: ["replan"], role: "alert" });
+          return;
+        }
+        setStage("AUDIT");
+        setProgress("Auditoria concluída. Voltando à proposta…");
+        setStage("READY");
+        router.replace(replan.backHref);
+      } catch {
+        setErrors([NETWORK_ERROR]);
+        setProgress("");
+        setStage(null);
       }
     });
   }
@@ -535,7 +611,8 @@ export function GenerationFlow({
   const problems = draft ? draftProblems(draft).length : 0;
   const footerBase = footerFor({
     step, openAnswers: open.length, running: running || (pending && step === "contexto"), mode: modeNow, choice, choiceName: chosen?.displayName ?? null,
-    choiceAcceptable: choiceCard ? !choiceCard.disabled : false, problems, generating: pending && step === "previa", phone,
+    choiceAcceptable: choiceCard ? !choiceCard.disabled && !(replan && choice === "NONE") : false, problems, generating: pending && step === "previa", phone,
+    ...(replan ? { replan: { scopeText: replanScopeLabel(replan.scope), noDivision: choice === "NONE" } } : {}),
   });
   // On the first step the footer says exactly what is missing ("4 respostas faltam: 3 estímulos e equipamentos"), each also a link on step 3.
   const footer = step === "contexto" && open.length > 0 && !phone ? { ...footerBase, reason: pendingSummary(pendingItems(open)) } : footerBase;
@@ -557,6 +634,7 @@ export function GenerationFlow({
     else if (step === "contexto") continueFromContext();
     else if (step === "estrategia") continueFromStrategy();
     else if (step === "focos") continueFromFocus();
+    else if (replan) redo();
     else generate();
   }
   const submitStep = step === "previa" && !sub;
@@ -592,8 +670,8 @@ export function GenerationFlow({
           <h1 id="fig-gen-title">{heading.title}</h1>
           <p className="fig-gen-sub">{heading.sub}</p>
         </div>
-        <Link href={header.backHref} className="fig-gen-btn">
-          Voltar ao plano
+        <Link href={replan?.backHref ?? header.backHref} className="fig-gen-btn">
+          {replan ? "Voltar à proposta" : "Voltar ao plano"}
         </Link>
       </header>
       <header className="fig-gen-mhead fig-gen-m">
@@ -602,8 +680,8 @@ export function GenerationFlow({
             {phoneBack}
           </button>
         ) : (
-          <Link href={header.backHref} className="fig-gen-backlink">
-            ‹ Voltar ao plano
+          <Link href={replan?.backHref ?? header.backHref} className="fig-gen-backlink">
+            {replan ? "‹ Voltar à proposta" : "‹ Voltar ao plano"}
           </Link>
         )}
         <h1 ref={phoneHead} tabIndex={-1}>
@@ -611,6 +689,15 @@ export function GenerationFlow({
         </h1>
         <p className="fig-gen-sub">{phoneSub}</p>
       </header>
+
+      {replan && (
+        <div className="fig-gen-notice warning" role="status" data-replan-notice>
+          <p>
+            <strong>Rever estratégia.</strong> Você está refazendo {replanScopeLabel(replan.scope)} da proposta aberta. Nada muda na proposta até confirmar em &ldquo;Refazer com a estratégia&rdquo;. Exercícios travados,
+            trocados por você e linhas que já estavam no rascunho são mantidos.
+          </p>
+        </div>
+      )}
 
       {screen.lastAnswers && step === "contexto" && (
         <Notice>
@@ -777,6 +864,7 @@ export function GenerationFlow({
             dosing={dosing}
             onDosing={setDosing}
             strategyLabel={choice === "NONE" ? "Nada será acrescentado ao gerador atual." : producerLabel}
+            hidePolicies={Boolean(replan)}
           >
             <div className="fig-gen-step">
               <Politicas
@@ -821,6 +909,18 @@ export function GenerationFlow({
             <p key={e}>{e}</p>
           ))}
         </div>
+      )}
+
+      {stage && (
+        <ol className="fig-gen-stages" aria-label="Estados da geração" role="status" aria-live="polite">
+          {generationStages(stage).map((st) => (
+            <li key={st.id} data-state={st.state} aria-current={st.state === "current" ? "step" : undefined}>
+              <span aria-hidden="true">{st.state === "done" ? "✓ " : st.state === "current" ? "● " : "○ "}</span>
+              {st.label}
+              {st.state === "done" ? <span className="fig-gen-sr"> (concluído)</span> : null}
+            </li>
+          ))}
+        </ol>
       )}
 
       <div className="fig-gen-bar fig-gen-d">

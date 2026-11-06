@@ -17,6 +17,7 @@ import { getStrategyAcceptance } from "@/modules/prescricao/planejador/blueprint
 import { ProposalView, type ProposalHeaderView } from "@/modules/prescricao/automatica/proposal-view";
 import { canAcceptSuggestions, pageAudit, phasesWithoutTargets, pickPhase, pickWeek } from "@/modules/prescricao/automatica/view";
 import { pickTab } from "@/modules/prescricao/automatica/workbench";
+import { hasStrategy, parseReplanScope } from "@/modules/prescricao/automatica/review-view";
 import { getRuleSet } from "@/modules/prescricao/motor/rules";
 
 export const dynamic = "force-dynamic";
@@ -115,7 +116,9 @@ export default async function AutomaticPrescription({
   }
 
   const open = await repo.open(planId, revisionId);
-  if (!open) {
+  // "Rever estratégia" (RX-01): the strategy step again, over the OPEN proposal; the address says the scope. Only an open proposal can be redone.
+  const rever = open ? parseReplanScope(one("rever")) : null;
+  if (!open || rever) {
     const loaded = await service.screen(planId, revisionId);
     if (loaded.status !== "ok") notFound();
     const { screen } = loaded;
@@ -129,6 +132,7 @@ export default async function AutomaticPrescription({
         screen={screen}
         availability={availability}
         initial={current}
+        replan={open && rever ? { proposalId: open.id, version: open.version, scope: rever, backHref: selfHref } : undefined}
         header={{
           studentName: student.displayName,
           planTitle: detail.plan.title,
@@ -178,6 +182,20 @@ export default async function AutomaticPrescription({
     updatedAt: page.header.updatedAt,
   };
   const tab = pickTab(one("aba"));
+  // A proposal made from an accepted strategy: its name, the audit rule's minimum adherence and the movement patterns of the listed exercises.
+  let strategy: { name: string | null; adherenceMin: number | null; patterns: Record<string, string[]> } | null = null;
+  if (hasStrategy(page.summary.workouts)) {
+    const [blueprint, patterns] = await Promise.all([
+      service.blueprint(planId, revisionId, open.id),
+      service.patternsOf(planId, revisionId, [...new Set(page.occurrences.flatMap((o) => o.items.map((i) => i.exerciseId).filter((x): x is string => x !== null)))]),
+    ]);
+    const families = blueprint.status === "ok" && blueprint.blueprint ? [...new Set(blueprint.blueprint.strategies.map((x) => x.familyLabel))] : [];
+    strategy = {
+      name: families.length ? families.join(" + ") : null,
+      adherenceMin: getRuleSet({ id: page.header.rulesId, version: page.header.rulesVersion })?.rules.AUDIT_STRATEGY?.value.adherenceMin ?? null,
+      patterns: patterns.status === "ok" ? patterns.byId : {},
+    };
+  }
   return (
     <ProposalView
       planId={planId}
@@ -196,6 +214,7 @@ export default async function AutomaticPrescription({
       audit={audit}
       acceptSuggestions={acceptSuggestions}
       targetSuggestions={suggested?.status === "ok" ? suggested.suggestions : []}
+      strategy={strategy}
       apply={
         preview
           ? {

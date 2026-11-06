@@ -600,8 +600,19 @@ export interface FooterState {
   generating: boolean;
   /** The phone's wording (M-01): "Nenhuma divisão será aplicada sem aceite." and "Conferir divisão por fase". */
   phone?: boolean;
+  /** "Rever estratégia": the flow runs over an open proposal. `scopeText` is "a fase 2", "a partir da fase 2" or "todas as fases geradas". */
+  replan?: { scopeText: string; noDivision: boolean };
 }
 export function footerFor(s: FooterState): FooterView {
+  if (s.replan && s.step === "estrategia" && s.choice === "NONE")
+    return { guide: "Sem divisão não há estratégia para refazer. Escolha uma estratégia.", primary: "Escolha uma estratégia", disabled: true, reason: "Sem divisão não refaz a proposta" };
+  if (s.replan && s.step === "previa")
+    return {
+      guide: `Refazer ${s.replan.scopeText} com a estratégia aceita. Travados, trocados por você e linhas do rascunho são mantidos.`,
+      primary: s.generating ? "Refazendo…" : "Refazer com a estratégia",
+      disabled: s.generating || s.replan.noDivision,
+      reason: s.replan.noDivision ? "Sem divisão não refaz a proposta" : null,
+    };
   if (s.step === "contexto")
     return {
       guide: "Próximo: escolher estratégia. Nada será aplicado ou entregue sem revisão.",

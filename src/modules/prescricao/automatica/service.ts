@@ -1071,6 +1071,19 @@ export function proposalService(
     },
 
     /**
+     * Movement patterns of the given exercises, from the library as this organization sees it (gated like the audit's library read): the
+     * review lists each row under its pattern ("Empurrar horizontal • Supino"). Only the asked ids come back; an id outside the library is absent.
+     */
+    async patternsOf(planId: string, revisionId: string, exerciseIds: readonly string[]): Promise<{ status: "ok"; byId: Record<string, string[]> } | { status: "not_found" }> {
+      const loaded = await loadCatalogForPlan(db, context, planId, revisionId);
+      if (loaded.status !== "ok") return { status: "not_found" };
+      const wanted = new Set(exerciseIds.slice(0, 500));
+      const byId: Record<string, string[]> = {};
+      for (const e of loaded.catalog) if (wanted.has(e.id) && e.patterns.length) byId[e.id] = [...e.patterns];
+      return { status: "ok", byId };
+    },
+
+    /**
      * The plan audit of an open proposal (design V3 §3.9). A proposal generated with the audit rules carries it in its summary
      * (the page reads it from there, with no call here). One generated before has none: it is computed now from the whole stored
      * proposal (one gated read) and the library (gated `loadCatalogForPlan`), labelled with the rules used, and never written back.

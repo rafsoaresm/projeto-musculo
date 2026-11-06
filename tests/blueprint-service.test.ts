@@ -440,7 +440,14 @@ describe("depois da geração pela estratégia: trocar, travar, regenerar, volta
     });
     const preview = await blueprints().replanPreview(d.planId, d.revisionId, out.proposalId, { kind: "FROM_PHASE", phaseIndex: 2 });
     const scopeItems = snap.result.occurrences.filter((o) => o.phaseIndex >= 2).flatMap((o) => o.items);
-    expect(preview).toEqual({ kept: scopeItems.filter((i) => i.origin !== "ENGINE").length, replaced: scopeItems.filter((i) => i.origin === "ENGINE").length, phases: [2, 3] });
+    expect(preview).toEqual({
+      kept: scopeItems.filter((i) => i.origin !== "ENGINE").length,
+      replaced: scopeItems.filter((i) => i.origin === "ENGINE").length,
+      locked: scopeItems.filter((i) => i.origin === "LOCKED").length,
+      substituted: scopeItems.filter((i) => i.origin === "SUBSTITUTED").length,
+      preserved: scopeItems.filter((i) => i.origin === "PRESERVED").length,
+      phases: [2, 3],
+    });
     expect(preview!.kept).toBeGreaterThan(0);
     const replan = proposalOk(await blueprints().replan(d.planId, d.revisionId, { proposalId: out.proposalId, idempotencyKey: t.id("rep"), writeId: t.id("write"), expectedVersion: v, acceptanceId: second.acceptance.acceptanceId, scope: { kind: "FROM_PHASE", phaseIndex: 2 } }));
     v = replan.version;

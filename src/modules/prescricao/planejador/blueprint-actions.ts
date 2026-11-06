@@ -2,7 +2,7 @@
 import { requireWorkspace } from "@/modules/auth/server";
 import type { ProposalOutcome } from "@/modules/prescricao/automatica/service";
 import {
-  ACCEPT_MESSAGE, blueprintService, type AcceptanceView, type AcceptOutcome, type AcceptPayload, type BlueprintGeneratePayload, type BlueprintReplanPayload,
+  ACCEPT_MESSAGE, blueprintService, type ReplanPreview, type AcceptanceView, type AcceptOutcome, type AcceptPayload, type BlueprintGeneratePayload, type BlueprintReplanPayload,
 } from "./accept";
 import type { StrategyListView } from "./strategy-view";
 
@@ -41,7 +41,7 @@ export async function replanFromStrategy(planId: string, revisionId: string, pay
 }
 
 /** What a replan would keep (the professional's decisions) and replace (the engine's picks). */
-export async function previewReplan(planId: string, revisionId: string, proposalId: string, scope: BlueprintReplanPayload["scope"]): Promise<{ kept: number; replaced: number; phases: number[] } | null> {
+export async function previewReplan(planId: string, revisionId: string, proposalId: string, scope: BlueprintReplanPayload["scope"]): Promise<ReplanPreview | null> {
   if (!ID.test(String(planId)) || !ID.test(String(revisionId)) || !ID.test(String(proposalId))) return null;
   return (await service()).replanPreview(planId, revisionId, proposalId, scope);
 }

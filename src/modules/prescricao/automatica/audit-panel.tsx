@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Kpi, Notice, Pill } from "@/components/ui";
 import type { TargetSuggestion } from "@/modules/prescricao/motor/targets";
+import { StrategyAudit } from "./strategy-audit";
+import { strategyAuditView } from "./review-view";
 import { TargetSuggestionCard } from "./target-suggestions";
 import {
   BASIS_LABELS,
@@ -35,6 +37,7 @@ export function AuditPanel({
   phaseIndex,
   href,
   targets,
+  adherenceMin = null,
 }: {
   audit: AuditSource;
   engineVersion: string;
@@ -44,8 +47,11 @@ export function AuditPanel({
   href: (phaseIndex: number, week?: number) => string;
   /** The suggested-targets cards; absent = descriptions only. */
   targets?: AuditTargets;
+  /** The rule's minimum adherence to the focus (null = none known: only a session with nothing off focus counts as respected). */
+  adherenceMin?: number | null;
 }) {
   const view = auditView(audit, { engineVersion, acceptSuggestions });
+  const strategy = strategyAuditView(audit.report, phaseIndex, adherenceMin);
   const rows = auditPhaseRows(audit.report, phaseIndex);
   const descriptive = view.descriptive.reduce((a, g) => a + g.findings.length, 0);
   return (
@@ -60,6 +66,7 @@ export function AuditPanel({
           <p>{view.viewNotice}</p>
         </Notice>
       )}
+      {strategy && <StrategyAudit view={strategy} phaseIndex={phaseIndex} />}
       <div className="kpi-grid compact">
         <Kpi label="Sessões por semana (reais)" value={view.kpis.sessionsPerWeek} />
         <Kpi label="Pontos de atenção" value={String(view.kpis.attention)} />

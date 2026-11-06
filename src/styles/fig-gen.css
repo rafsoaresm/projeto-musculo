@@ -1625,3 +1625,25 @@
     min-height: 44px;
   }
 }
+
+/* Estados da geração (Gerando estratégia → Montando prescrição → Auditoria → Pronta para revisão) */
+.fig-gen-stages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 0;
+  padding: 10px 14px;
+  list-style: none;
+  font-size: 12px;
+  color: var(--color-muted);
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-strong);
+  border-radius: 12px;
+}
+.fig-gen-stages li[data-state="current"] {
+  font-weight: 700;
+  color: var(--color-primary-strong);
+}
+.fig-gen-stages li[data-state="done"] {
+  color: var(--color-text);
+}

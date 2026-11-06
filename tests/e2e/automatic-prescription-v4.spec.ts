@@ -139,4 +139,100 @@ test("strategies, focus per phase and preview: the accepted upper/lower split sh
   expect(a.length).toBeGreaterThanOrEqual(3);
   expect(b.length).toBeGreaterThanOrEqual(3);
   expect(a.filter((n) => b.includes(n)), `A ${a.join(" | ")} / B ${b.join(" | ")}`).toEqual([]);
+
+  // ---- 4.2: RX-01 / M-02, the review by focus and dose ----
+  await expect(page.getByRole("heading", { name: phone ? "Revisar estratégia e treino" : "Revisar prescrição e justificativas", level: 1 })).toBeVisible();
+  await expect(page.locator("[data-stage]")).toHaveText("Pronta para revisão");
+  await page.getByRole("navigation", { name: "Sessões da semana 1" }).getByRole("button").nth(0).click();
+  const sessionA = page.getByRole("region", { name: /^Semana 1, sessão 1, treino A$/ });
+  await expect(sessionA).toContainText("Treino A · Superior");
+  await expect(sessionA.locator("[data-focus-chip]")).toBeVisible();
+  await expect(sessionA.locator(".rx-pattern").first()).toBeVisible(); // "Empurrar horizontal •" before the exercise name
+  if (phone) {
+    await expect(sessionA.locator('[data-phone-card="focus"]')).toBeVisible();
+    await expect(sessionA.locator('[data-phone-card="doses"]')).toContainText("Doses a revisar");
+  }
+  await noHorizontalOverflow(page);
+  await sessionA.getByRole("button", { name: /^Por quê\? 1\. / }).click();
+  const panel = page.getByRole("complementary", { name: /^Exercício selecionado:/ });
+  await expect(panel.getByRole("heading", { name: "Por que foi selecionado?" })).toBeVisible();
+  for (const [id, title] of [["focus", "Foco dominante"], ["dose", "Parâmetros da dose"], ["audit", "Auditoria semanal"]] as const)
+    await expect(panel.locator(`[data-why="${id}"]`)).toContainText(title);
+  await expect(panel.locator('[data-why="focus"]')).toContainText("Treino A: superior");
+  await expect(panel.locator('[data-why="audit"]')).toContainText("Calendário: o treino A acontece");
+  await expect(panel.locator('[data-why="audit"]')).toContainText("Volume da semana 1");
+  await expect(panel.locator("[data-provenance]").first()).toContainText("Padrão por regras (editável)");
+  expect(await panel.locator("[data-provenance]").count()).toBeGreaterThanOrEqual(2);
+  // The professional keeps the first exercise: the replan below must not take it away.
+  const keep = panel.getByRole("button", { name: /^Manter / });
+  const keptName = (await panel.getByRole("heading", { level: 3 }).innerText()).trim();
+  await keep.click();
+  await expect(panel.getByRole("button", { name: `Destravar ${keptName}` })).toBeVisible({ timeout: 30_000 });
+
+  // The audit tab opens with the "Estratégia" section (on the phone the exercise is a screen of its own: back to the sessions first).
+  if (phone) await panel.getByRole("button", { name: "Sessões" }).click();
+  await page.getByRole("tab", { name: /Auditoria/ }).click();
+  await expect(page.getByRole("heading", { name: "Estratégia · Fase 1" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Aderência do treino A ao foco, rolável para o lado" })).toBeVisible();
+  await expect(page.getByText("Diagnóstico, não objetivo")).toBeVisible();
+  await noHorizontalOverflow(page);
+  await page.getByRole("button", { name: "Voltar às sessões" }).click(); // the audit tab's footer takes back to the sessions (tab bar hidden on the phone)
+
+  // The fixed footer: its guide and ONE primary; it never covers the end of the page.
+  const bar = page.locator(".rx-bar");
+  await expect(bar.getByText(phone ? "Não aplica, não aprova e não entrega sozinho." : "Proposta editável; não aprova nem altera treinos entregues.")).toBeVisible();
+  await expect(bar.getByRole("button", { name: /^Aplicar \d+ sessões? ao rascunho$/ })).toBeVisible();
+  await expect(bar.locator(".rx-btn-primary")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: /Salvar revisão/ })).toHaveCount(0);
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  const barBox = await bar.boundingBox();
+  const content = await page.locator(".rx-tabpanel:not([hidden])").boundingBox();
+  expect(barBox).not.toBeNull();
+  expect(content!.y + content!.height).toBeLessThanOrEqual(barBox!.y + 1);
+  if (phone) for (const b of await bar.getByRole("button").all()) expect((await b.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+
+  // ---- "Rever estratégia": the confirmation lists what is kept and what is replaced, Cancel changes nothing ----
+  const openReview = async () => {
+    if (phone) {
+      await page.getByRole("button", { name: "Mais ações" }).click();
+      await page.getByRole("button", { name: /Rever estratégia/ }).click();
+    } else await bar.getByRole("button", { name: "Rever estratégia" }).click();
+  };
+  await openReview();
+  const dialog = page.getByRole("dialog", { name: "Rever a estratégia" });
+  await expect(dialog.locator("[data-replan-confirm]")).toContainText("Refazer a fase 1 substitui", { timeout: 30_000 });
+  await expect(dialog.locator("[data-replan-confirm]")).toContainText(/Serão mantidos: [1-9]\d* travad(o|os), 0 trocados por você, 0 que já estavam no rascunho\./); // locking counts every session of the phase
+  await dialog.getByRole("radio", { name: "Todas as fases geradas" }).check();
+  await expect(dialog.locator("[data-replan-confirm]")).toContainText("Refazer todas as fases geradas substitui");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await openReview();
+  await dialog.getByRole("radio", { name: "Todas as fases geradas" }).check();
+  await expect(dialog.locator("[data-replan-confirm]")).toContainText(/Serão mantidos: [1-9]\d* travad/);
+  await dialog.getByRole("button", { name: "Refazer" }).click();
+
+  // The strategy step over the open proposal; nothing changes until the last button.
+  await expect(page).toHaveURL(/rever=FULL/);
+  await expect(page.getByRole("heading", { name: phone ? "Escolher estratégia" : "Escolher estratégia de treino", level: 1 }).first()).toBeVisible();
+  await expect(page.locator("[data-replan-notice]")).toContainText("Nada muda na proposta até confirmar");
+  await page.getByRole("button", { name: phone ? "Conferir divisão por fase" : "Usar superior / inferior" }).click();
+  await page.getByRole("button", { name: "Conferir blueprint" }).click();
+  await expect(page.getByRole("heading", { name: "Revisar e gerar", level: 1 }).first()).toBeVisible();
+  await expect(page.locator("summary", { hasText: "Políticas e progressão (opcional)" })).toHaveCount(0);
+  await noHorizontalOverflow(page);
+  await page.getByRole("button", { name: "Refazer com a estratégia" }).click();
+
+  // Back on the proposal: the locked exercise is still there, locked, and A and B still differ.
+  await expect(page.getByRole("region", { name: "Resumo da proposta" })).toBeVisible({ timeout: 90_000 });
+  await expect(page).not.toHaveURL(/rever=/);
+  await page.getByRole("navigation", { name: "Sessões da semana 1" }).getByRole("button").nth(0).click();
+  const after = page.getByRole("region", { name: /^Semana 1, sessão 1, treino A$/ });
+  await expect(after.locator("tbody tr .rx-name").filter({ hasText: keptName }).first()).toBeVisible();
+  await after.getByRole("button", { name: new RegExp(`^Por quê\\? \\d+\\. .*${keptName}$`) }).first().click();
+  const panelAfter = page.getByRole("complementary", { name: /^Exercício selecionado:/ });
+  await expect(panelAfter.getByRole("button", { name: `Destravar ${keptName}` })).toBeVisible();
+  if (phone) await panelAfter.getByRole("button", { name: "Sessões" }).click();
+  const a2 = await exercises(/^Semana 1, sessão 1, treino A$/, 1);
+  const b2 = await exercises(/^Semana 1, sessão 2, treino B$/, 2);
+  expect(a2.filter((n) => b2.includes(n)), `A ${a2.join(" | ")} / B ${b2.join(" | ")}`).toEqual([]);
 });

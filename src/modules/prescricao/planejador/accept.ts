@@ -82,6 +82,16 @@ const replanSchema = z.strictObject({
 });
 export type BlueprintReplanPayload = z.input<typeof replanSchema>;
 
+/** What a "voltar à estratégia" keeps (locked, replaced by the professional, already in the draft) and replaces (the engine's own picks), per occurrence of the scope. */
+export interface ReplanPreview {
+  kept: number;
+  replaced: number;
+  locked: number;
+  substituted: number;
+  preserved: number;
+  phases: number[];
+}
+
 // ---------- outcomes ----------
 
 export type AcceptFailure =
@@ -457,21 +467,25 @@ export function blueprintService(db: D1Database, context: AuthenticatedContext, 
      * What a "voltar à estratégia" would keep and what it would replace, per the stored proposal (read only): items the professional decided
      * (locked, preserved, substituted) stay; the engine's own picks in the scope are re-chosen.
      */
-    async replanPreview(planId: string, revisionId: string, proposalId: string, scope: BlueprintReplanPayload["scope"]): Promise<{ kept: number; replaced: number; phases: number[] } | null> {
+    async replanPreview(planId: string, revisionId: string, proposalId: string, scope: BlueprintReplanPayload["scope"]): Promise<ReplanPreview | null> {
       const snap = await proposalsFor(db, context).asEngineResult(planId, revisionId, proposalId);
       if (!snap || snap.header.state !== "OPEN") return null;
       const generated = snap.header.phasesGenerated;
       const phases = generated.filter((i) => (scope.kind === "FULL" ? true : scope.kind === "PHASE" ? i === scope.phaseIndex : i >= scope.phaseIndex)).sort((a, b) => a - b);
-      let kept = 0;
       let replaced = 0;
+      let locked = 0;
+      let substituted = 0;
+      let preserved = 0;
       for (const o of snap.result.occurrences) {
         if (!phases.includes(o.phaseIndex)) continue;
         for (const item of o.items) {
           if (item.origin === "ENGINE") replaced += 1;
-          else kept += 1;
+          else if (item.origin === "LOCKED") locked += 1;
+          else if (item.origin === "SUBSTITUTED") substituted += 1;
+          else preserved += 1;
         }
       }
-      return { kept, replaced, phases };
+      return { kept: locked + substituted + preserved, replaced, locked, substituted, preserved, phases };
     },
   };
 }

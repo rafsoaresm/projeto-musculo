@@ -10,7 +10,7 @@ import type { DosingChoice, InfoCard, WeekTypeCard } from "./flow-view";
  * acceptance) and, as children, the existing dose policy and weekly progression sections. Nothing here changes the saved plan.
  */
 export function BlueprintPreview({
-  title, subtitle, phases, phase, onPhase, cards, before, suggestions, dosing, onDosing, children, strategyLabel, open, onOpen,
+  title, subtitle, phases, phase, onPhase, cards, before, suggestions, dosing, onDosing, children, strategyLabel, open, onOpen, hidePolicies = false,
 }: {
   title: string;
   subtitle: string;
@@ -26,6 +26,8 @@ export function BlueprintPreview({
   strategyLabel: string;
   open: boolean;
   onOpen: (open: boolean) => void;
+  /** "Rever estratégia": the proposal keeps its own policies, so the optional section is not offered. */
+  hidePolicies?: boolean;
 }) {
   const id = useId();
   const hasSuggestions = suggestions.byClass.length > 0 || suggestions.progression.length > 0;
@@ -72,6 +74,7 @@ export function BlueprintPreview({
           ))}
         </aside>
       </div>
+      {!hidePolicies && (
       <details className="fig-gen-card fig-gen-adv-card" open={open} onToggle={(e) => onOpen(e.currentTarget.open)}>
         <summary>Políticas e progressão (opcional)</summary>
         {hasSuggestions && (
@@ -114,6 +117,7 @@ export function BlueprintPreview({
         )}
         {children}
       </details>
+      )}
     </div>
   );
 }

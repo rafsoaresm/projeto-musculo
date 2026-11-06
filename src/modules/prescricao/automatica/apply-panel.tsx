@@ -36,6 +36,8 @@ export function ApplyPanel({
   version,
   apply,
   back,
+  strategy = false,
+  onReviewStrategy,
 }: {
   planId: string;
   revisionId: string;
@@ -43,6 +45,9 @@ export function ApplyPanel({
   version: number;
   apply: ApplyView | null;
   back?: { title: string; text: string; label: string; onBack: () => void };
+  /** The proposal was made from an accepted strategy: the bar then says "Proposta editável; …" and offers "Rever estratégia". */
+  strategy?: boolean;
+  onReviewStrategy?: () => void;
 }) {
   const router = useRouter();
   const intent = useIntent();
@@ -82,14 +87,19 @@ export function ApplyPanel({
   return (
     <section className="rx-card rx-bar" aria-label="Aplicar ao rascunho">
       <p className="rx-bar-text">
-        <strong className="rx-desktop">Rascunho ainda não alterado</strong>
+        <strong className="rx-desktop">{strategy ? "Proposta editável; não aprova nem altera treinos entregues." : "Rascunho ainda não alterado"}</strong>
         <span className="rx-sub">
-          <span className="rx-desktop">Aplicar grava sessões; não aprova e não entrega ao aluno.</span>
-          <span className="rx-mobile">{hold ? "Há pendências antes de aplicar." : "Nenhuma alteração aplicada ao aluno"}</span>
+          <span className="rx-desktop">Rascunho ainda não alterado. Aplicar grava sessões; não aprova e não entrega ao aluno.</span>
+          <span className="rx-mobile">{hold ? "Há pendências antes de aplicar." : strategy ? "Não aplica, não aprova e não entrega sozinho." : "Nenhuma alteração aplicada ao aluno"}</span>
           {hold && <span className="rx-desktop"> Há pendências antes de aplicar.</span>}
         </span>
       </p>
       <div className="rx-bar-actions">
+        {strategy && onReviewStrategy && (
+          <button type="button" className="rx-btn rx-btn-line rx-desktop" onClick={onReviewStrategy}>
+            Rever estratégia
+          </button>
+        )}
         <button type="button" className="rx-btn rx-btn-line rx-desktop" onClick={() => setDialog(true)}>
           Prévia da aplicação
         </button>
