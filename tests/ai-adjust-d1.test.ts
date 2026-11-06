@@ -500,5 +500,7 @@ describe("retention of decided suggestions (PR 5.1)", () => {
     expect([await payloads(decided.adjustmentId), await payloads(undecided.adjustmentId)]).toEqual([0, 1]);
     expect(await t.n("SELECT COUNT(*) AS n FROM adjustment_requests WHERE id = ?1", decided.adjustmentId)).toBe(1);
     expect(await t.n("SELECT COUNT(*) AS n FROM adjustment_decisions WHERE request_id = ?1", decided.adjustmentId)).toBe(1);
+    // the same "discard" sent again after the purge is still answered from the decision, not from the (gone) payload
+    expect(await svc().reject(f1.planId, f1.revisionId, { adjustmentId: decided.adjustmentId })).toEqual({ ok: true });
   });
 });

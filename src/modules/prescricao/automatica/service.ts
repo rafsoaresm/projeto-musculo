@@ -269,7 +269,7 @@ const MESSAGES: Record<ProposalFailure, string> = {
   structure_changed: "A periodização mudou depois da geração: descarte esta proposta e gere de novo.",
   blueprint_invalid: "O aceite da estratégia não pertence a esta revisão ou não existe mais. Aceite a estratégia de novo antes de gerar.",
   too_large:
-    "A operação passa do limite técnico de um pedido. Regenere uma fase por vez, ou reduza a quantidade de sessões ou de exercícios.",
+    "A operação passa do limite técnico de um pedido. Regenere uma fase por vez; se for a geração completa, reduza a quantidade de sessões ou de exercícios ou desmarque os perfis de dose.",
   adjustment_blocked: "O ajuste não pode ser aplicado como foi simulado. Peça de novo para ver o efeito atual.",
 };
 

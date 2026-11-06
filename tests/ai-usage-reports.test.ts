@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { aiReportsFor, LATENCY_SAMPLE_LIMIT } from "@/db/ai-reports";
+import { aiReportsFor, LATENCY_SAMPLE_LIMIT, LATENCY_TOTAL_LIMIT } from "@/db/ai-reports";
 import { aiPlanningFor } from "@/db/ai-planning";
 import { cacheHitRate, errorRate, formatLatency, formatPercent, percentile, quotaAlerts, summarizeLatency } from "@/modules/gestor/ai-report-view";
 import type { OrganizationAiRow, PlanRow } from "@/db/ai-platform";
@@ -160,6 +160,7 @@ describe("operational report over the ledger (D1)", () => {
 
   it("the latency sample is bounded and says so", () => {
     expect(LATENCY_SAMPLE_LIMIT).toBeGreaterThan(1000);
+    expect(LATENCY_TOTAL_LIMIT).toBeGreaterThanOrEqual(LATENCY_SAMPLE_LIMIT);
   });
 });
 
