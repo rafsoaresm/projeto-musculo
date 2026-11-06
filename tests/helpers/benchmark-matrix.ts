@@ -14,7 +14,7 @@ import { buildEngineInput } from "@/modules/prescricao/automatica/build-input";
 import { parseGenerationAnswers, type GenerationAnswersInput } from "@/modules/prescricao/automatica/contracts";
 import { structureFacts, type GenerationContext } from "@/modules/prescricao/automatica/facts";
 import { canonicalJson, generate, type CatalogExercise, type EngineResult, type ExposureLog } from "@/modules/prescricao/motor";
-import { DEFAULT_RULESET } from "@/modules/prescricao/motor/rules";
+import { DEFAULT_RULESET, OPT_IN_RULESETS } from "@/modules/prescricao/motor/rules";
 import { plannerResponseSchema, type BlueprintAcceptance, type TrainingBlueprint } from "@/modules/prescricao/planejador/blueprint";
 import { compileAcceptance, convertBlueprintToGenerationAnswers } from "@/modules/prescricao/planejador/compile";
 import { acceptanceHash, blueprintHash } from "@/modules/prescricao/planejador/hashes";
@@ -231,7 +231,11 @@ export interface Chain {
 }
 
 /** Context -> rules strategy -> accepted blueprint -> compiler -> adapter -> engine. `withBlueprint:false` skips the planner/compiler (phase-wide coverage). */
-export async function runChain(ctx: GenerationContext, answers: GenerationAnswersInput, accept: ((run: TrainingBlueprint) => Promise<BlueprintAcceptance>) | null): Promise<Chain> {
+export type RulesRef = typeof DEFAULT_RULESET;
+/** The opt-in ruleset with the dose profiles (2026.11.6): the matrix runs it too, because the default one (2026.11.5) never touches them. */
+export const DOSE_PROFILES_RULESET: RulesRef = OPT_IN_RULESETS.find((r) => r.version === "2026.11.6")!;
+
+export async function runChain(ctx: GenerationContext, answers: GenerationAnswersInput, accept: ((run: TrainingBlueprint) => Promise<BlueprintAcceptance>) | null, rules: RulesRef = DEFAULT_RULESET): Promise<Chain> {
   const stages: Record<string, number> = {};
   const time = async <T,>(name: string, fn: () => T | Promise<T>): Promise<T> => {
     const t = performance.now();
@@ -248,12 +252,12 @@ export async function runChain(ctx: GenerationContext, answers: GenerationAnswer
     candidates = planned.strategies.length;
     const acceptance = await time("aceite (hashes)", () => accept(planned));
     const compiled = await time("compilador", () =>
-      compileAcceptance({ run: planned, acceptance, structure: structureFacts(ctx.revision.schedule), coverageByWorkout: merged.coverageByWorkout, catalogIds: new Set(ctx.catalog.map((e) => e.id)), rules: DEFAULT_RULESET }));
+      compileAcceptance({ run: planned, acceptance, structure: structureFacts(ctx.revision.schedule), coverageByWorkout: merged.coverageByWorkout, catalogIds: new Set(ctx.catalog.map((e) => e.id)), rules }));
     if (!compiled.ok) throw new Error(`${compiled.code}: ${compiled.message}`);
     merged = convertBlueprintToGenerationAnswers(merged, compiled);
     compiledWorkouts = merged.blueprint?.workouts.length ?? 0;
   }
-  const built = await time("adaptador", () => buildEngineInput(ctx, merged));
+  const built = await time("adaptador", () => buildEngineInput(ctx, merged, { rules }));
   if (!built.ok) throw new Error(built.code);
   const result = await time("motor", () => generate(built.input));
   return {
@@ -297,6 +301,8 @@ export interface CaseMetrics {
   /** errors + warnings + audit warnings: what the professional would still have to look at. */
   corrections: number;
   painExercisesPicked: number;
+  /** Picks of the same exercises when the pain flags are removed from the history (null: the case has no pain in its history). */
+  painControlPicks: number | null;
   /** One mock planning call: estimated tokens (the rules path costs none) and its cost with the fictitious prices. */
   mockInputTokens: number | null;
   mockOutputTokens: number | null;
@@ -354,13 +360,13 @@ function metricsOf(c: BenchCase, a: Chain, b: Chain, wallMs: number, cost: Await
     timedSessions: timed.length, overBudgetSessions: over.length,
     worstTimeRatio: timed.length ? round(Math.max(...timed.map((o) => o.estimatedMinutes! / o.budgetMinutes!))) : null,
     stable: a.json === b.json, errors, otherErrors, warnings, auditWarnings, corrections: errors + warnings + auditWarnings,
-    painExercisesPicked: picked.filter((i) => painIds.has(i.exerciseId!)).length,
+    painExercisesPicked: picked.filter((i) => painIds.has(i.exerciseId!)).length, painControlPicks: null,
     mockInputTokens: cost?.input ?? null, mockOutputTokens: cost?.output ?? null, mockCostMicros: cost?.micros ?? null, wallMs: Math.round(wallMs),
   };
 }
 
 /** Runs one case twice end to end (two complete chains, to prove stability) and measures it. Never throws: a failure is a result. */
-export async function runCase(c: BenchCase): Promise<CaseMetrics> {
+export async function runCase(c: BenchCase, rules: RulesRef = DEFAULT_RULESET): Promise<CaseMetrics> {
   const t0 = performance.now();
   try {
     const ctx = contextOf(c);
@@ -368,15 +374,28 @@ export async function runCase(c: BenchCase): Promise<CaseMetrics> {
     const answers = answersOf(c);
     const labelsByPhase = Array.from({ length: c.phases }, () => lanes);
     const accept = async (run: TrainingBlueprint) => acceptanceFor(run, phasesOf(labelsByPhase, (p, l) => roleIn(c, p, l)));
-    const first = await runChain(ctx, answers, accept);
-    const second = await runChain(contextOf(c), answers, accept);
+    const first = await runChain(ctx, answers, accept, rules);
+    const second = await runChain(contextOf(c), answers, accept, rules);
     const cost = await mockPlanningCost(ctx, answers);
-    return metricsOf(c, first, second, performance.now() - t0, cost);
+    const metrics = metricsOf(c, first, second, performance.now() - t0, cost);
+    if (rules === DEFAULT_RULESET) {
+      // control for the pain check: the same case with the pain flags removed from the history. Without it the count of picks cannot tell
+      // "the weight kept them out" from "they were never going to be picked".
+      const painIds = new Set(ctx.history.summary.logs.filter((l) => l.pain).map((l) => l.exerciseId));
+      if (painIds.size) {
+        const clean = contextOf(c);
+        clean.history = { ...clean.history, summary: { ...clean.history.summary, logs: clean.history.summary.logs.map((l) => ({ ...l, pain: false })) } };
+        const control = await runChain(clean, answers, accept, rules);
+        const picks = (ch: Chain) => ch.result.occurrences.flatMap((o) => o.items).filter((i) => i.exerciseId && painIds.has(i.exerciseId)).length;
+        metrics.painControlPicks = picks(control);
+      }
+    }
+    return metrics;
   } catch (error) {
     return {
       id: c.id, spec: c, ok: false, error: error instanceof Error ? error.message : String(error), items: 0, eligibility: 0, adherenceMean: null, adherenceMin: null, supplyShort: 0, adherenceBreaches: 0,
       patternImbalanceOpen: 0, patternImbalanceTotal: 0, timedSessions: 0, overBudgetSessions: 0, worstTimeRatio: null, stable: false, errors: 0, otherErrors: 0, warnings: 0, auditWarnings: 0, corrections: 0,
-      painExercisesPicked: 0, mockInputTokens: null, mockOutputTokens: null, mockCostMicros: null, wallMs: Math.round(performance.now() - t0),
+      painExercisesPicked: 0, painControlPicks: null, mockInputTokens: null, mockOutputTokens: null, mockCostMicros: null, wallMs: Math.round(performance.now() - t0),
     };
   }
 }
@@ -385,6 +404,7 @@ export async function runCase(c: BenchCase): Promise<CaseMetrics> {
 
 export interface BigMeasure {
   variant: "SEM_BLUEPRINT" | "COM_BLUEPRINT";
+  rulesVersion: string;
   wallMs: number;
   cpuMs: number;
   heapDeltaMb: number;
@@ -423,14 +443,15 @@ export async function measureBigCase(runs = 1): Promise<BigReport> {
   const accept = async (run: TrainingBlueprint) => acceptanceFor(run, phasesOf(Array.from({ length: 12 }, () => lanes), (_p, l) => l.role));
   const median = (xs: number[]) => [...xs].sort((x, y) => x - y)[Math.floor(xs.length / 2)];
   const measures: BigMeasure[] = [];
-  for (const variant of ["SEM_BLUEPRINT", "COM_BLUEPRINT"] as const) {
+  const combos = ([DEFAULT_RULESET, DOSE_PROFILES_RULESET] as const).flatMap((rules) => (["SEM_BLUEPRINT", "COM_BLUEPRINT"] as const).map((variant) => ({ rules, variant })));
+  for (const { rules, variant } of combos) {
     const samples: Array<{ wall: number; cpu: number; heap: number; rss: number; chain: Chain }> = [];
     for (let i = 0; i < runs; i += 1) {
       gc?.();
       const heap0 = process.memoryUsage().heapUsed;
       const cpu0 = process.cpuUsage();
       const t0 = performance.now();
-      const chain = await runChain(ctx, answers, variant === "COM_BLUEPRINT" ? accept : null);
+      const chain = await runChain(ctx, answers, variant === "COM_BLUEPRINT" ? accept : null, rules);
       const wall = performance.now() - t0;
       const cpu = process.cpuUsage(cpu0);
       const mem = process.memoryUsage();
@@ -438,7 +459,7 @@ export async function measureBigCase(runs = 1): Promise<BigReport> {
     }
     const last = samples[samples.length - 1].chain;
     measures.push({
-      variant, wallMs: Math.round(median(samples.map((s) => s.wall))), cpuMs: Math.round(median(samples.map((s) => s.cpu))),
+      variant, rulesVersion: rules.version, wallMs: Math.round(median(samples.map((s) => s.wall))), cpuMs: Math.round(median(samples.map((s) => s.cpu))),
       heapDeltaMb: Math.round(median(samples.map((s) => s.heap)) * 10) / 10, rssMb: Math.round(median(samples.map((s) => s.rss))),
       occurrences: last.result.occurrences.length, stages: last.stages, resultKb: Math.round(last.json.length / 1024),
       summaryKb: Math.round(canonicalJson({ ...last.result, occurrences: [] }).length / 1024),
@@ -452,7 +473,7 @@ export async function measureBigCase(runs = 1): Promise<BigReport> {
 const pct = (n: number | null) => (n === null ? "—" : `${Math.round(n * 100)}%`);
 const money = (micros: number | null) => (micros === null ? "—" : `US$ ${(micros / 1_000_000).toFixed(4)}`);
 
-export function renderMatrix(results: CaseMetrics[], big: BigReport | null): string {
+export function renderMatrix(results: CaseMetrics[], big: BigReport | null, doseProfiles: CaseMetrics[] | null = null): string {
   const lines: string[] = [];
   lines.push("| caso | dias | estímulo | nível | rotação | equip. | calend. | triagem | histórico | itens | elegib. | aderência (média/mín.) | oferta curta | desequil. abertos | tempo (acima/medidas, pior) | estável | correções (E/A/auditoria) | custo simulado |");
   lines.push("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
@@ -474,16 +495,25 @@ export function renderMatrix(results: CaseMetrics[], big: BigReport | null): str
   lines.push(
     `Resumo: ${ok.length}/${results.length} casos concluídos; elegibilidade ${pct(Math.min(...ok.map((m) => m.eligibility)))} no pior caso; ${ok.filter((m) => m.stable).length}/${ok.length} estáveis; ` +
       `aderência média ${pct(mean(adherence))}; ${ok.reduce((n, m) => n + m.adherenceBreaches, 0)} treino(s) abaixo de 70% sem oferta curta; ${ok.reduce((n, m) => n + m.supplyShort, 0)} treino(s) com oferta curta declarada; ` +
-      `${ok.reduce((n, m) => n + m.otherErrors, 0)} erro(s) do motor além de biblioteca insuficiente; ${ok.reduce((n, m) => n + m.painExercisesPicked, 0)} item(ns) com dor no histórico escolhidos nos casos de histórico contraditório (a dor pesa na escolha, não elimina o exercício); correções por caso (média) ${mean(ok.map((m) => m.corrections)).toFixed(1)}; custo simulado por proposta, só com preços de teste inventados: ${costs.length ? `${money(Math.min(...costs))} a ${money(Math.max(...costs))}` : "—"}.`,
+      `${ok.reduce((n, m) => n + m.otherErrors, 0)} erro(s) do motor além de biblioteca insuficiente; ${ok.reduce((n, m) => n + m.painExercisesPicked, 0)} escolha(s) de exercício com dor no histórico nos ${ok.filter((m) => m.painControlPicks !== null).length} casos com dor registrada, contra ${ok.reduce((n, m) => n + (m.painControlPicks ?? 0), 0)} no controle (mesmos casos com a dor removida do histórico); correções por caso (média) ${mean(ok.map((m) => m.corrections)).toFixed(1)}; custo simulado por proposta, só com preços de teste inventados: ${costs.length ? `${money(Math.min(...costs))} a ${money(Math.max(...costs))}` : "—"}.`,
   );
+  if (doseProfiles) {
+    const dp = doseProfiles.filter((m) => m.ok);
+    lines.push("");
+    lines.push(
+      `Mesma amostra com a política de doses opt-in (regras 2026.11.6): ${dp.length}/${doseProfiles.length} casos concluídos; elegibilidade ${pct(Math.min(...dp.map((m) => m.eligibility)))} no pior caso; ${dp.filter((m) => m.stable).length}/${dp.length} estáveis; ` +
+        `aderência média ${pct(mean(dp.map((m) => m.adherenceMean).filter((x): x is number => x !== null)))}; ${dp.reduce((n, m) => n + m.adherenceBreaches, 0)} treino(s) abaixo de 70% sem oferta curta; ${dp.reduce((n, m) => n + m.supplyShort, 0)} com oferta curta; ` +
+        `${dp.reduce((n, m) => n + m.otherErrors, 0)} erro(s) além de biblioteca insuficiente; ${dp.reduce((n, m) => n + m.overBudgetSessions, 0)} sessão(ões) acima do tempo (contra ${ok.reduce((n, m) => n + m.overBudgetSessions, 0)} nas 2026.11.5).`,
+    );
+  }
   if (big) {
     lines.push("");
     lines.push(`Caso grande (${big.shape}; mediana de ${big.runs} execução(ões); Node ${big.node}; gc ${big.gcExposed ? "exposto" : "não exposto"}; NÃO é Workers):`);
     lines.push("");
-    lines.push("| variante | parede (ms) | CPU do processo (ms) | heap Δ (MB) | RSS (MB) | sessões | resultado completo (KB) | sem as sessões (KB) |");
-    lines.push("| --- | --- | --- | --- | --- | --- | --- | --- |");
-    for (const m of big.measures) lines.push(`| ${m.variant === "COM_BLUEPRINT" ? "com blueprint (regras)" : "sem blueprint"} | ${m.wallMs} | ${m.cpuMs} | ${m.heapDeltaMb} | ${m.rssMb} | ${m.occurrences} | ${m.resultKb} | ${m.summaryKb} |`);
-    for (const m of big.measures) lines.push(`- etapas, ${m.variant === "COM_BLUEPRINT" ? "com blueprint" : "sem blueprint"} (ms): ${Object.entries(m.stages).map(([k, v]) => `${k} ${v}`).join("; ")}`);
+    lines.push("| regras | variante | parede (ms) | CPU do processo (ms) | heap Δ (MB) | RSS (MB) | sessões | resultado completo (KB) | sem as sessões (KB) |");
+    lines.push("| --- | --- | --- | --- | --- | --- | --- | --- | --- |");
+    for (const m of big.measures) lines.push(`| ${m.rulesVersion} | ${m.variant === "COM_BLUEPRINT" ? "com blueprint (regras)" : "sem blueprint"} | ${m.wallMs} | ${m.cpuMs} | ${m.heapDeltaMb} | ${m.rssMb} | ${m.occurrences} | ${m.resultKb} | ${m.summaryKb} |`);
+    for (const m of big.measures) lines.push(`- etapas, ${m.rulesVersion} ${m.variant === "COM_BLUEPRINT" ? "com blueprint" : "sem blueprint"} (ms): ${Object.entries(m.stages).map(([k, v]) => `${k} ${v}`).join("; ")}`);
   }
   return lines.join("\n");
 }

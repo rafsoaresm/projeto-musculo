@@ -2,7 +2,7 @@ import { writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   CALENDARS, EQUIPMENT, HISTORIES, LEVELS, ROTATIONS, SCREENINGS, SESSIONS, STIMULI, TEST_PRICES,
-  buildCases, measureBigCase, renderMatrix, runCase, type BenchCase, type CaseMetrics,
+  DOSE_PROFILES_RULESET, buildCases, measureBigCase, renderMatrix, runCase, type BenchCase, type CaseMetrics,
 } from "./helpers/benchmark-matrix";
 
 /**
@@ -15,6 +15,7 @@ const RUNS = Number(process.env.MOTOR_BENCH_RUNS ?? 1);
 describe("matriz de regressão do motor V4", { timeout: 600_000 }, () => {
   const cases = buildCases();
   let results: CaseMetrics[] = [];
+  let doseResults: CaseMetrics[] = [];
 
   it("a amostra é determinística e cobre cada valor de cada dimensão pelo menos duas vezes", () => {
     expect(buildCases().map((c) => c.id)).toEqual(cases.map((c) => c.id));
@@ -45,6 +46,27 @@ describe("matriz de regressão do motor V4", { timeout: 600_000 }, () => {
     }
   });
 
+  it("o controle da dor: sem a dor no histórico os mesmos exercícios seriam escolhidos, então o zero com a dor não é acaso", () => {
+    const withPain = results.filter((m) => m.painControlPicks !== null);
+    expect(withPain.length).toBeGreaterThan(0);
+    expect(withPain.reduce((n, m) => n + (m.painControlPicks ?? 0), 0)).toBeGreaterThan(0);
+    // with pain in the history, an exercise with a reported pain is not picked while the weight (-40) and the supply allow it
+    expect(withPain.reduce((n, m) => n + m.painExercisesPicked, 0)).toBeLessThan(withPain.reduce((n, m) => n + (m.painControlPicks ?? 0), 0));
+  });
+
+  it("a mesma amostra com a política de doses opt-in (2026.11.6) também roda sem exceção, elegível, estável e aderente", async () => {
+    doseResults = [];
+    for (const c of cases) doseResults.push(await runCase(c, DOSE_PROFILES_RULESET));
+    for (const m of doseResults) {
+      expect(m.error, `${m.id} (2026.11.6)`).toBeNull();
+      expect(m.eligibility, `${m.id}: elegibilidade`).toBe(1);
+      expect(m.stable, `${m.id}: estável`).toBe(true);
+      expect(m.adherenceBreaches, `${m.id}: aderência`).toBe(0);
+      expect(m.otherErrors, `${m.id}: erros além de biblioteca insuficiente`).toBe(0);
+      if (m.spec.equipment === "FULL") expect(m.errors, `${m.id}: academia completa`).toBe(0);
+    }
+  });
+
   it("o Xintus (4 x 60 min, ABAB, 3 fases) mantém a divisão: A e B aderentes, nenhum erro", () => {
     const x = results.find((m) => m.id === "xintus")!;
     expect(x.ok).toBe(true);
@@ -64,14 +86,16 @@ describe("matriz de regressão do motor V4", { timeout: 600_000 }, () => {
 
   it("caso grande com e sem blueprint: mede e registra (sem teto de CPU), as duas variantes geram todas as sessões", async () => {
     const big = await measureBigCase(RUNS);
-    expect(big.measures.map((m) => m.variant)).toEqual(["SEM_BLUEPRINT", "COM_BLUEPRINT"]);
+    expect(big.measures.map((m) => `${m.rulesVersion} ${m.variant}`)).toEqual(["2026.11.5 SEM_BLUEPRINT", "2026.11.5 COM_BLUEPRINT", "2026.11.6 SEM_BLUEPRINT", "2026.11.6 COM_BLUEPRINT"]);
     for (const m of big.measures) {
       expect(m.occurrences, m.variant).toBe(12 * 4 * 7);
+      // the stored summary has a ceiling (summary_json, 500 000 characters): the biggest variant must still be under it
+      expect(m.summaryKb, `${m.rulesVersion} ${m.variant}`).toBeLessThan(488);
       expect(m.wallMs).toBeGreaterThan(0);
     }
     // ordem de grandeza contra regressão (não é orçamento de CPU: no CI os arquivos rodam em paralelo)
     for (const m of big.measures) expect(m.wallMs, m.variant).toBeLessThan(60_000);
-    const text = renderMatrix(results, big);
+    const text = renderMatrix(results, big, doseResults);
     console.log(`[benchmark-matrix]\n${text}`);
     if (process.env.MOTOR_BENCH_OUT) writeFileSync(process.env.MOTOR_BENCH_OUT, `${text}\n`);
     expect(text).toContain("Caso grande");
