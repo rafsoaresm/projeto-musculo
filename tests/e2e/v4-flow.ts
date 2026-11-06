@@ -10,6 +10,12 @@ const yesterday = () => new Date(Date.now() - 86_400_000).toISOString().slice(0,
 export async function xintusPlan(page: Page, studio: string, studentName: string): Promise<{ studentURL: string; revisionURL: string }> {
   await createProfessional(page, studio);
   const studentURL = await addStudent(page, studentName);
+  await fillXintusPlan(page, studentURL);
+  return { studentURL, revisionURL: page.url() };
+}
+
+/** The Xintus-like plan for an existing student, saved: the page ends on the plan's revision. */
+export async function fillXintusPlan(page: Page, studentURL: string) {
   await page.goto(studentURL);
   await showStudentTab(page, "Periodização");
   await page.getByRole("link", { name: "Novo plano" }).click();
@@ -24,13 +30,19 @@ export async function xintusPlan(page: Page, studio: string, studentName: string
   }
   await page.getByRole("button", { name: "Salvar e prescrever exercícios" }).click();
   await expect(page.getByRole("heading", { name: "Plano Xintus" })).toBeVisible();
-  return { studentURL, revisionURL: page.url() };
 }
 
 /** The required answers of GEN-01: a stimulus per phase and the whole equipment list. */
 export async function answerRequired(page: Page) {
   for (const n of [1, 2, 3]) await page.getByLabel(`Estímulo principal da fase ${n}`).selectOption("HYPERTROPHY");
   const equipment = page.getByRole("group", { name: "Equipamentos disponíveis" });
+  if (isPhone(page)) {
+    // On the phone the equipment is its own screen, opened from the summary card and closed by the footer button.
+    await page.getByRole("button", { name: "Selecionar opções ›" }).click();
+    await equipment.getByRole("button", { name: "Marcar todos" }).click();
+    await page.getByRole("button", { name: "Salvar equipamentos" }).click();
+    return;
+  }
   await equipment.getByRole("button", { name: "Ver lista completa de equipamentos" }).click();
   await equipment.getByRole("button", { name: "Marcar todos" }).click();
 }

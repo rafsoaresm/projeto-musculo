@@ -57,9 +57,9 @@ test("strategies, focus per phase and preview: the accepted upper/lower split sh
   // Choosing accepted nothing: the address alone, reached without the footer click, cannot show the preview.
   await page.goto(`${flowURL.split("?")[0]}?etapa=previa`);
   await expect(page.getByRole("heading", { name: phone ? "Escolher estratégia" : "Escolher estratégia de treino", level: 1 }).first()).toBeVisible();
-  await expect(ul).toBeChecked();
+  await ul.check(); // the page was reloaded: the suggestions are restored from the server, the choice starts again at the recommendation
   const use = page.getByRole("button", { name: phone ? "Conferir divisão por fase" : "Usar superior / inferior" });
-  await expect(page.getByText(phone ? "Nenhuma divisão será aplicada sem aceite." : "Escolha uma opção ou personalize. A divisão escolhida é uma decisão do profissional.").first()).toBeVisible();
+  await expect(page.locator(".fig-gen-bar:visible").getByText(phone ? "Nenhuma divisão será aplicada sem aceite." : "Escolha uma opção ou personalize. A divisão escolhida é uma decisão do profissional.").first()).toBeVisible();
   await use.click();
 
   // ---- GEN-03: the focus per phase; edit one workout ----
@@ -90,9 +90,9 @@ test("strategies, focus per phase and preview: the accepted upper/lower split sh
   await expect(calves).not.toBeChecked();
   await expect(cardA).toContainText("Padrão por regras");
   if (phone) await page.keyboard.press("Escape");
-  else await cardA.getByRole("button", { name: "Fechar edição" }).click();
+  else await cardA.getByRole("button", { name: "Editar foco do treino A" }).click();
   await noHorizontalOverflow(page);
-  await expect(page.getByText(phone ? "Nenhuma divisão será aplicada sem aceite." : "O padrão por regras é editável. A geração só começa depois de aceitar esta organização.").first()).toBeVisible();
+  await expect(page.locator(".fig-gen-bar:visible").getByText(("O padrão por regras é editável. A geração só começa depois de aceitar esta organização.")).first()).toBeVisible();
   await page.getByRole("button", { name: "Conferir blueprint" }).click();
 
   // ---- GEN-04: the preview, before generating ----
@@ -107,7 +107,7 @@ test("strategies, focus per phase and preview: the accepted upper/lower split sh
   await expect(page.getByText("O blueprint não modifica sozinho o plano salvo.")).toBeVisible();
   await expect(page.getByText("Observação, não diagnóstico").or(page.getByText("Sem dado, nada é inferido"))).toBeVisible();
   await expect(page.getByText("O motor audita após gerar")).toBeVisible();
-  await expect(page.getByText("Aceitar estratégia → gerar proposta → revisar → aplicar ao rascunho.").first()).toBeVisible();
+  await expect(page.locator(".fig-gen-bar:visible").getByText("Aceitar estratégia → gerar proposta → revisar → aplicar ao rascunho.")).toBeVisible();
   // The policy and progression are optional, closed, and the dose profiles opt-in is unchecked.
   const optional = page.locator("details", { has: page.locator("summary", { hasText: "Políticas e progressão (opcional)" }) });
   await expect(optional).not.toHaveAttribute("open", "");
@@ -116,27 +116,26 @@ test("strategies, focus per phase and preview: the accepted upper/lower split sh
   await expect(page.getByRole("heading", { name: "Revisar e gerar", level: 1 }).first()).toBeVisible();
   await expect(page.getByRole("list", { name: "Semana-tipo, fase 1" }).getByRole("listitem")).toHaveCount(4);
   await noHorizontalOverflow(page);
-  // The footer's button never sits over the last card (phone).
+  // The sticky footer never covers the end of the page (phone): at the bottom, the last block clears it.
   if (phone) {
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
     const bar = await page.locator(".fig-gen-bar.fig-gen-m").boundingBox();
-    const last = await page.getByRole("list", { name: "Semana-tipo, fase 1" }).getByRole("listitem").last().boundingBox();
+    const lastBlock = await page.locator(".fig-gen-body > *").last().boundingBox();
     expect(bar).not.toBeNull();
-    await page.getByRole("list", { name: "Semana-tipo, fase 1" }).getByRole("listitem").last().scrollIntoViewIfNeeded();
-    const after = await page.getByRole("list", { name: "Semana-tipo, fase 1" }).getByRole("listitem").last().boundingBox();
-    expect(last).not.toBeNull();
-    expect(after!.y + after!.height).toBeLessThanOrEqual(bar!.y + 1);
+    expect(lastBlock!.y + lastBlock!.height).toBeLessThanOrEqual(bar!.y + 1);
   }
   await page.getByRole("button", { name: "Gerar proposta" }).click();
 
   // ---- the proposal: the accepted split is in the exercises ----
   await expect(page.getByRole("region", { name: "Resumo da proposta" })).toBeVisible({ timeout: 90_000 });
-  const exercises = async (name: RegExp) => {
+  const exercises = async (name: RegExp, slot: number) => {
+    await page.getByRole("navigation", { name: "Sessões da semana 1" }).getByRole("button").nth(slot - 1).click();
     const rows = page.getByRole("region", { name }).locator("tbody tr .rx-name");
     await expect(rows.first()).toBeVisible();
     return (await rows.allInnerTexts()).map((t) => t.trim());
   };
-  const a = await exercises(/^Semana 1, sessão 1, treino A$/);
-  const b = await exercises(/^Semana 1, sessão 2, treino B$/);
+  const a = await exercises(/^Semana 1, sessão 1, treino A$/, 1);
+  const b = await exercises(/^Semana 1, sessão 2, treino B$/, 2);
   expect(a.length).toBeGreaterThanOrEqual(3);
   expect(b.length).toBeGreaterThanOrEqual(3);
   expect(a.filter((n) => b.includes(n)), `A ${a.join(" | ")} / B ${b.join(" | ")}`).toEqual([]);

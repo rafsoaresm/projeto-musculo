@@ -153,6 +153,29 @@ export function GenerationFlow({
   const [editing, setEditing] = useState<string | null>(null);
   const [banner, setBanner] = useState<Banner | null>(null);
 
+  // A refresh or a full reload keeps the answers typed so far (a per-tab convenience: nothing else depends on it, and it may be unavailable).
+  const storeKey = `fig-gen-form:${planId}:${revisionId}:${screen.contentVersion}`;
+  const restored = useRef(false);
+  useEffect(() => {
+    try {
+      const saved = window.sessionStorage.getItem(storeKey);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- read after hydration on purpose: the server renders the empty form
+      if (saved) setForm({ ...EMPTY_FORM, ...(JSON.parse(saved) as Partial<FormState>) });
+    } catch {
+      /* storage unavailable or damaged: the form starts empty */
+    }
+    restored.current = true;
+  }, [storeKey]);
+  useEffect(() => {
+    // Never write the untouched initial form: a remount right after hydration would read it back and lose what was saved.
+    if (!restored.current || form === EMPTY_FORM) return;
+    try {
+      window.sessionStorage.setItem(storeKey, JSON.stringify(form));
+    } catch {
+      /* storage unavailable */
+    }
+  }, [form, storeKey]);
+
   const trigger = useRef<HTMLElement | null>(null);
   const phoneHead = useRef<HTMLHeadingElement>(null);
   const first = useRef(true);
@@ -664,7 +687,8 @@ export function GenerationFlow({
           onToggle={(e) => setRequiredOpen(e.currentTarget.open)}
         >
           <summary>
-            Respostas necessárias <span className={open.length ? "warn" : ""}>{open.length ? `(${open.length} pendentes)` : "(completas)"}</span>
+            Respostas necessárias{" "}
+            <span className={open.length ? "warn" : ""}>{open.length ? `(${open.length} pendentes)` : "(completas)"}</span>
           </summary>
           <Diretrizes
             screen={screen}

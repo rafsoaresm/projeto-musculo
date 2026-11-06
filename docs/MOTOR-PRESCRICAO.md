@@ -620,3 +620,7 @@ Referências:
 | CURRIER_2026 | Currier et al. (2026), posicionamento ACSM sobre treinamento resistido | NÃO VERIFICADA (não aparece para usuários) |
 | PELLAND_2026 | Pelland et al. (2026), volume direto e indireto | NÃO VERIFICADA (não aparece para usuários) |
 <!-- regras-11-6:fim -->
+
+## Motor V4, PR 4, sub-etapa 4.1: fluxo de geração (06/11/2026)
+
+Telas GEN-01..04 e M-01 sobre os serviços das PR 1 a 3: `planStrategies` (IA ou regras, uma chamada por ciclo), `acceptStrategy` (aceite só de acréscimo, em "Conferir blueprint"), `generateFromStrategy` (em "Gerar proposta"). A IA só sugere; o foco final é decisão do profissional, e a periodização salva nunca é editada pelo fluxo (estratégia que exige mudar rótulos, rotação ou frequência aparece desabilitada com o caminho para a periodização). "Sem divisão (geração atual)" não cria aceite e gera como antes. Ver `VALIDACAO.md`.

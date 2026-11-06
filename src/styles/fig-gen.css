@@ -1613,3 +1613,15 @@
 .fig-gen-adv-card > summary .warn {
   margin-left: 6px;
 }
+.fig-gen-editor-sheet .fig-gen-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  text-align: left;
+}
+@media (max-width: 860px) {
+  .fig-gen-editor-sheet .fig-gen-check {
+    min-height: 44px;
+  }
+}
