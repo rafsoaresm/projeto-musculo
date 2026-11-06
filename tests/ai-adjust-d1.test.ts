@@ -322,6 +322,14 @@ describe("AI path with the mock provider", () => {
     }
   });
 
+  it("an AI request for a dose operation is refused as invalid, not as a missing target, and calls nothing", async () => {
+    const f = await fixture();
+    const c0 = await counts();
+    const out = await svc().suggest(f.planId, f.revisionId, body(f, substitution(f, { op: "CHANGE_SETS", values: { sets: 4 }, useAi: true })));
+    expect(out).toMatchObject({ ok: false, reason: "invalid", canUseEngine: false });
+    expect((await counts()).ledger).toBe(c0.ledger);
+  });
+
   it("a hostile answer (alias that was not offered) is refused whole: tokens are settled, nothing is cached or applied", async () => {
     await mapAdjustments("mock-hostile");
     try {

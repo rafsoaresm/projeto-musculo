@@ -195,6 +195,8 @@ function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, cr
   const focusChip = withStrategy && session ? sessionFocusChip(audit?.report.strategy, phaseIndex, session.label, session.week, strategy.adherenceMin) : null;
   const auditWord = withStrategy ? "Auditoria" : "Alertas";
   const showAdjust = adjusting && tab === "sessoes" && adjust !== null;
+  // The AI is named only while the gate is open for this organization; otherwise the same panel works with the engine's own list.
+  const adjustLabel = adjust?.availability?.state === "READY" ? "Ajustar com IA" : "Ajustar proposta";
 
   // The address keeps the selection (tab, phase, week, session and item) without a request: only the query string changes.
   useEffect(() => {
@@ -324,7 +326,7 @@ function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, cr
           <div>
             <h1>
               <span className="rx-desktop">{showAdjust ? "Ajustar a proposta" : heading.title}</span>
-              <span className="rx-mobile">{showAdjust ? "Ajustar com IA" : heading.phoneTitle}</span>
+              <span className="rx-mobile">{showAdjust ? adjustLabel : heading.phoneTitle}</span>
             </h1>
             <p className="rx-sub rx-desktop">{showAdjust ? "Uma mudança por vez, com o efeito calculado antes; nunca aplica automaticamente." : heading.sub}</p>
             <p className="rx-sub rx-mobile">{showAdjust ? "Escolha uma mudança e compare o impacto antes de aceitar." : withStrategy ? heading.phoneSub : `${crumb.student} • ${crumb.plan} • ${totalWeeks(summary.phases)} semanas`}</p>
@@ -332,7 +334,7 @@ function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, cr
           <div className="rx-head-actions">
             {adjust && !showAdjust && header.complete && (
               <button type="button" className="rx-btn rx-btn-line rx-desktop" onClick={() => setAdjusting(true)} data-testid="adjust-open">
-                Ajustar com IA
+                {adjustLabel}
               </button>
             )}
             <Link href={revisionHref} className="rx-btn rx-btn-line rx-desktop">
@@ -567,7 +569,7 @@ function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, cr
 
         {adjust && !showAdjust && header.complete && (
           <button type="button" className="rx-card rx-adjust-entry rx-mobile" onClick={() => setAdjusting(true)} data-testid="adjust-open-mobile">
-            <strong>Ajustar com IA</strong>
+            <strong>{adjustLabel}</strong>
             <span className="rx-sub">Escolha uma mudança e compare o impacto antes de aceitar.</span>
             <span className="rx-sub rx-adjust-strong">Só sugere; o motor revalida</span>
           </button>

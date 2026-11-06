@@ -730,6 +730,7 @@ export function adjustService(db: D1Database, context: AuthenticatedContext, dep
       if (!found) return fail("invalid_target", { message: "O item escolhido não está mais nesta proposta, ou é um exercício fora da biblioteca." });
 
       if (intent.useAi) {
+        if (intent.op !== "SUBSTITUTE_EXERCISE") return fail("invalid", { message: "A IA só sugere alternativas de exercício. Para mudar séries, repetições ou descanso, digite os valores." });
         const env = await getEnv();
         return suggestWithAi(planId, revisionId, p, requestHash, intent, work, now, env);
       }
