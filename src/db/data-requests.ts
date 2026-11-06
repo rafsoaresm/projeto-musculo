@@ -7,6 +7,7 @@ import {
   type RequestKind,
   type RequestOutcome,
 } from "@/modules/pedidos/contracts";
+import { aiPlanningFor } from "./ai-planning";
 import { activeUser, assertContext, technicalAccessExists, type AuthenticatedContext } from "./students";
 
 /**
@@ -225,13 +226,19 @@ export function dataRequestsFor(db: D1Database, context: AuthenticatedContext | 
       const stamp = now.toISOString();
       const target = await db
         .prepare(
-          `SELECT r.kind FROM data_subject_requests r
+          `SELECT r.kind, r.student_id AS studentId FROM data_subject_requests r
            WHERE r.organization_id = ?1 AND r.id = ?3 AND ${reach("r")} AND ${noOutcome("r")}`,
         )
         .bind(organizationId, userId, requestId)
-        .first<{ kind: RequestKind }>();
+        .first<{ kind: RequestKind; studentId: string }>();
       if (!target) return { status: "not_found" };
       if (target.kind === "PHOTOS_DELETION" && input.outcome !== "DECLINED") return { status: "use_erasure" };
+      // What the AI planner keeps ABOUT the student (cached answers and stored suggestions) goes with the data when a deletion or a
+      // withdrawal is fulfilled, fully or in part. It is derived, regenerable data: no legal reason to keep it. Runs, the usage ledger and
+      // acceptances (hashes, counts, codes) stay. Done BEFORE the outcome is written: if it fails, the request stays open to be answered again.
+      if ((target.kind === "DATA_DELETION" || target.kind === "ACCEPTANCE_WITHDRAWAL") && (input.outcome === "FULFILLED" || input.outcome === "PARTIALLY_FULFILLED")) {
+        await aiPlanningFor(db, context).eraseStudentAi(target.studentId);
+      }
       const results = await db.batch([
         db.prepare(outcomeInsert(input.outcome, "?5")).bind(organizationId, userId, requestId, stamp, input.note),
         audit(REQUEST_ANSWERED, requestId, stamp),

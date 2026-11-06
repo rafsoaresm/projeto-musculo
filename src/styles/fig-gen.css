@@ -1318,3 +1318,332 @@
     gap: 10px 8px;
   }
 }
+
+/* ---------- Fluxo de geração V4 (GEN-01..04, M-01): cartões de opção, informação, avisos e prévia ---------- */
+/* Medidas dos frames: cartões de 85 a 90 px, raio 8 a 9, selecionado = fundo brand-subtle e borda de 1,5 px; a cor também tem texto (a pílula). */
+.fig-gen-opts,
+.fig-gen-week-list {
+  display: grid;
+  gap: 11px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.fig-gen-opt-wrap {
+  display: grid;
+  gap: 4px;
+}
+.fig-gen-opt {
+  position: relative;
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  min-height: 85px;
+  padding: 11px 14px;
+  border: 1px solid var(--color-line);
+  border-radius: 9px;
+  background: var(--color-surface);
+  cursor: pointer;
+}
+.fig-gen-opt:hover:not([data-disabled]) {
+  border-color: var(--color-primary);
+}
+.fig-gen-opt[data-selected="true"] {
+  border: 1.5px solid var(--color-primary);
+  background: var(--color-primary-soft);
+}
+.fig-gen-opt[data-selected="true"] .fig-gen-opt-title,
+.fig-gen-opt[data-selected="true"] .fig-gen-opt-meta {
+  color: var(--color-primary);
+}
+.fig-gen-opt[data-disabled="true"] {
+  cursor: not-allowed;
+  background: var(--color-bg-subtle);
+}
+.fig-gen-opt:has(input:focus-visible) {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.fig-gen-opt input[type="radio"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+}
+.fig-gen-opt-title {
+  color: var(--color-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+.fig-gen-opt-line {
+  color: var(--color-muted);
+  font-size: 12px;
+}
+.fig-gen-opt-meta {
+  color: var(--color-ink);
+  font-size: 11px;
+  font-weight: 500;
+}
+.fig-gen-opt-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.fig-gen-opt-reason {
+  padding-left: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.fig-gen-tag.brand {
+  background: var(--color-primary-soft);
+  color: var(--color-primary-strong);
+}
+.fig-gen-tag.neutral {
+  background: var(--color-bg-subtle);
+  color: var(--color-ink);
+}
+.fig-gen-tag.success {
+  background: var(--color-success-soft);
+  color: var(--color-success-text);
+}
+.fig-gen-tag.warning {
+  background: var(--color-warning-soft);
+  color: var(--color-warning-text);
+}
+.fig-gen-opt-pills .fig-gen-tag {
+  margin-left: 0;
+}
+.fig-gen-info {
+  display: grid;
+  gap: 2px;
+  padding: 11px 14px;
+  border: 1px solid var(--color-line);
+  border-radius: 9px;
+  background: var(--color-surface);
+}
+.fig-gen-info[data-highlight="true"] {
+  border: 1.5px solid var(--color-primary);
+  background: var(--color-primary-soft);
+}
+.fig-gen-info h3 {
+  font-size: 14px;
+  font-weight: 600;
+}
+.fig-gen-info[data-highlight="true"] h3,
+.fig-gen-info[data-highlight="true"] .fig-gen-info-meta {
+  color: var(--color-primary);
+}
+.fig-gen-info p {
+  color: var(--color-muted);
+  font-size: 12px;
+}
+.fig-gen-info .fig-gen-info-meta {
+  color: var(--color-ink);
+  font-size: 11px;
+  font-weight: 500;
+}
+.fig-gen-wcard .fig-gen-btn,
+.fig-gen-wcard .fig-gen-link {
+  justify-self: start;
+  margin-top: 4px;
+}
+.fig-gen-phase-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--color-line);
+  border-radius: 17px;
+  background: var(--color-surface);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.fig-gen-phase-chip[data-selected="true"] {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+.fig-gen-phase-chip:has(input:focus-visible) {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.fig-gen-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+}
+.fig-gen-pills-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.fig-gen-ctx,
+.fig-gen-preview {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.fig-gen-body {
+  display: grid;
+  gap: 12px;
+}
+.fig-gen-adv-card > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.fig-gen-adv-card[open] > summary {
+  margin-bottom: 10px;
+}
+.fig-gen-adv-card .fig-gen-step {
+  margin-top: 12px;
+}
+.fig-gen-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  font-size: 12px;
+  font-weight: 500;
+}
+.fig-gen-notice.warning {
+  border-color: var(--color-warning-text);
+  background: var(--color-warning-soft);
+  color: var(--color-warning-text);
+}
+.fig-gen-notice.error {
+  border-color: var(--color-error);
+}
+.fig-gen-notice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.fig-gen-editor-sheet {
+  display: grid;
+  gap: 12px;
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-line);
+}
+.fig-gen-editor-sheet .fig-gen-checks {
+  max-height: 180px;
+  overflow: auto;
+}
+.fig-gen-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fig-gen .spinner {
+    animation: none;
+  }
+}
+@media (max-width: 860px) {
+  .fig-gen-opt {
+    min-height: 85px;
+    padding: 10px;
+    border-radius: 8px;
+  }
+  .fig-gen-phase-chip {
+    min-height: 44px;
+  }
+  .fig-gen-adv-card > summary {
+    min-height: 44px;
+  }
+  /* A tela "Equipamentos" ou "Editar dose" do celular substitui o resto da página. */
+  .fig-gen[data-sub] .fig-gen-ctx,
+  .fig-gen[data-sub] .fig-gen-preview > .fig-gen-cols,
+  .fig-gen[data-sub] .fig-gen-preview > .fig-gen-adv-card > summary,
+  .fig-gen[data-sub] .fig-gen-preview > .fig-gen-adv-card > fieldset {
+    display: none;
+  }
+  .fig-gen[data-sub="policy"] .fig-gen-prog,
+  .fig-gen[data-sub="policy"] .fig-gen-ready,
+  .fig-gen[data-sub="policy"] .fig-gen-adv-card .fig-gen-step + .fig-gen-step {
+    display: none;
+  }
+  .fig-gen[data-sub="equipment"] .fig-gen-required > summary {
+    display: none;
+  }
+  .fig-gen-editor-sheet {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    align-content: start;
+    margin: 0;
+    padding: 12px 17px calc(112px + env(safe-area-inset-bottom));
+    overflow: auto;
+    border: 0;
+    background: var(--color-bg);
+  }
+  .fig-gen-editor-sheet .fig-gen-checks {
+    max-height: none;
+  }
+}
+@media (min-width: 861px) {
+  .fig-gen-editor-sheet .fig-gen-m {
+    display: none;
+  }
+}
+
+.fig-gen .fig-gen-opt {
+  display: grid;
+}
+.fig-gen .fig-gen-opt > span {
+  display: block;
+}
+.fig-gen .fig-gen-opt > .fig-gen-opt-pills {
+  display: flex;
+}
+.fig-gen-adv-card > summary .warn {
+  margin-left: 6px;
+}
+.fig-gen-editor-sheet .fig-gen-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  text-align: left;
+}
+@media (max-width: 860px) {
+  .fig-gen-editor-sheet .fig-gen-check {
+    min-height: 44px;
+  }
+}
+
+/* Estados da geração (Gerando estratégia → Montando prescrição → Auditoria → Pronta para revisão) */
+.fig-gen-stages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 0;
+  padding: 10px 14px;
+  list-style: none;
+  font-size: 12px;
+  color: var(--color-muted);
+  background: var(--color-surface);
+  border: 1px solid var(--color-line-strong);
+  border-radius: 12px;
+}
+.fig-gen-stages li[data-state="current"] {
+  font-weight: 700;
+  color: var(--color-primary-strong);
+}
+.fig-gen-stages li[data-state="done"] {
+  color: var(--color-text);
+}

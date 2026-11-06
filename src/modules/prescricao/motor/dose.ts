@@ -6,7 +6,8 @@
 import { codeOf, METRIC_LABELS, MODALITY_LABELS, STIMULUS_LABELS } from "./vocabulary";
 import type { RuleLog } from "./trace";
 import type { DoseDefault } from "./rules";
-import { applyWeeklyProgression } from "./progress-week";
+import { applyWeeklyProgression, PROGRESSION_CHANGE_IF, progressionReasons } from "./progress-week";
+import { applyProfile, classOf, profileFor, profileTrace, SETS_CHANGE_IF, type IntentOutcome, type ProfileChoice, type ProfileField, type ProfileRequest } from "./dose-profile";
 import type {
   Basis,
   CatalogExercise,
@@ -14,6 +15,7 @@ import type {
   Dose,
   DoseParam,
   DosePatch,
+  Experience,
   Fact,
   GenerationParameters,
   Intensity,
@@ -72,6 +74,10 @@ export interface DoseRequest {
   week: number;
   phaseWeeks: number;
   progression: Fact<WeeklyProgression> | null;
+  /** Experiência do aluno (ajuste de RIR dos perfis, 2026.11.6+). Ausente = desconhecida. */
+  experience?: Experience | null;
+  /** Minutos disponíveis do treino (ajuste de descanso dos perfis em sessão curta, 2026.11.6+). Ausente = sem tempo informado. */
+  budgetMinutes?: number | null;
 }
 
 export interface DoseResolution {
@@ -79,6 +85,8 @@ export interface DoseResolution {
   metric: Metric | null;
   params: ParamTrace[];
   issues: Array<Omit<Issue, "path" | "stage">>;
+  /** Só com a política de dose por perfil (2026.11.6+): ausente nas versões anteriores. */
+  profile?: { id: string | null; expected: boolean; uncertain: ProfileField[]; intent?: IntentOutcome };
 }
 
 export function metricFor(exercise: CatalogExercise, parameters: GenerationParameters): { metric: Metric | null; trace: ParamTrace | null } {
@@ -187,6 +195,27 @@ export function buildDose(metric: Metric, d: DoseDraft): { dose: Dose | null; mi
   }
 }
 
+const GENERIC_CHANGE_IF = "Padrão do estímulo para exercícios sem perfil; muda com um perfil de dose na biblioteca, com a progressão da fase ou se o profissional editar.";
+const PROFESSIONAL_CHANGE_IF = "Definido pelo profissional; muda se ele editar.";
+const EXPLAINED_PARAMS: readonly string[] = ["sets", "repsMin", "repsMax", "rirMin", "rirMax", "restSeconds"];
+
+/**
+ * Com a política de dose (2026.11.6+), cada valor responde "por quê" e "o que mudaria": séries, repetições, RIR e descanso que não
+ * vieram de perfil ganham a regra de origem e o que os mudaria (o perfil já escreve os dele). Só preenche o que falta.
+ */
+function explainDoseParams(draft: DoseDraft): void {
+  for (const [key, t] of draft.trace) {
+    if (!EXPLAINED_PARAMS.includes(key) || (t.changeIf !== undefined && t.origin !== undefined && t.reasons?.length)) continue;
+    const professional = t.basis === "PROFESSIONAL";
+    const generic = t.ruleId === "DOSE_DEFAULTS";
+    draft.trace.set(key, {
+      ...t, changeIf: t.changeIf ?? (professional ? PROFESSIONAL_CHANGE_IF : generic ? GENERIC_CHANGE_IF : PROGRESSION_CHANGE_IF),
+      origin: t.origin ?? (professional ? "PROFESSIONAL" : "RULES_HEURISTIC"),
+      reasons: t.reasons?.length ? t.reasons : [professional ? "PROFESSIONAL_CHOICE" : generic ? "GENERIC_DEFAULT" : "PHASE_PROGRESSION"],
+    });
+  }
+}
+
 /**
  * Dose de um exercício numa ocorrência. Camadas, em ordem: regra padrão (estímulo exato, depois
  * "*") → ajustes do profissional, do mais geral ao mais específico → progressão semanal.
@@ -211,6 +240,21 @@ export function resolveDose(log: RuleLog, parameters: GenerationParameters, req:
     if (rule.recoveryMode) draft.setExtra("recoveryMode", rule.recoveryMode, t);
     if (rule.loadBasis) draft.setExtra("loadBasis", rule.loadBasis, t);
     if (rule.loadInstruction) draft.setExtra("loadInstruction", rule.loadInstruction, t);
+  }
+  // Política por perfil (2026.11.6+): entre o padrão genérico e os ajustes do profissional. Sem a regra, nada daqui existe.
+  const profiles = log.optional("DOSE_PROFILES");
+  let choice: ProfileChoice | null = null;
+  if (profiles) {
+    // Pedido da estratégia aceita para a classe deste exercício (só o que o profissional confirmou): a política decide se serve.
+    const cls = classOf(req.exercise).cls;
+    const asked = parameters.doseIntentByClass?.find((x) => x.exerciseClass === cls);
+    const request: ProfileRequest | undefined = asked ? { ...asked, code: asked.profileCode, classMap: log.optional("DOSE_CLASS_MAP") } : undefined;
+    choice = profileFor(profiles, req.exercise, req.stimulus, modality, metric, request);
+    if (choice.profile) {
+      applyProfile(log, draft, choice.profile, { experience: req.experience ?? null, budgetMinutes: req.budgetMinutes ?? null }, choice.reasons, choice.via);
+      const sets = draft.trace.get("sets");
+      if (sets && sets.ruleId === "DOSE_DEFAULTS") draft.trace.set("sets", { ...sets, changeIf: SETS_CHANGE_IF });
+    }
   }
   const overrides = parameters.doseOverrides
     .map((o, i) => ({ o, i }))
@@ -238,17 +282,28 @@ export function resolveDose(log: RuleLog, parameters: GenerationParameters, req:
     if (draft.extras.loadInstruction === undefined)
       draft.setExtra("loadInstruction", log.get("LOAD_INSTRUCTION_DEFAULT"), { basis: log.basis("LOAD_INSTRUCTION_DEFAULT"), ruleId: "LOAD_INSTRUCTION_DEFAULT" });
   }
-  if (req.progression) issues.push(...applyWeeklyProgression(log, req.progression, req.week, req.phaseWeeks, metric, draft));
+  if (req.progression) {
+    issues.push(...applyWeeklyProgression(log, req.progression, req.week, req.phaseWeeks, metric, draft));
+    // Texto de carga da intenção de progressão (LOAD_FIRST, REPS_THEN_LOAD): só aparece onde nenhuma instrução do profissional existe.
+    const text = req.progression.loadInstruction;
+    if (text !== undefined && metric === "REPS" && draft.trace.get("loadInstruction")?.basis !== "PROFESSIONAL")
+      draft.setExtra("loadInstruction", text, {
+        basis: req.progression.basis, ruleId: "PROGRESSION_TEMPLATES", origin: req.progression.origin ?? "RULES_HEURISTIC", reasons: progressionReasons(req.progression),
+        changeIf: PROGRESSION_CHANGE_IF,
+      });
+  }
+  if (choice) explainDoseParams(draft);
   const built = buildDose(metric, draft);
-  const params = [...(metricTrace ? [metricTrace] : []), ...draft.trace.values()];
+  const params = [...(metricTrace ? [metricTrace] : []), ...(choice ? profileTrace(log, choice) : []), ...draft.trace.values()];
+  const profile = choice ? { id: choice.profile?.id ?? null, expected: choice.expected, uncertain: choice.uncertain, ...(choice.intent ? { intent: choice.intent } : {}) } : undefined;
   if (!built.dose) {
     issues.push({
       severity: "WARNING", code: "DOSE_POLICY_MISSING",
       message: `${req.exercise.name}: a regra não define ${built.missing.join(", ")} para ${metric}; a dose fica vazia para o profissional preencher.`,
     });
-    return { dose: null, metric, params, issues };
+    return { dose: null, metric, params, issues, ...(profile ? { profile } : {}) };
   }
-  return { dose: built.dose, metric, params, issues };
+  return { dose: built.dose, metric, params, issues, ...(profile ? { profile } : {}) };
 }
 
 // ---------- validação ----------

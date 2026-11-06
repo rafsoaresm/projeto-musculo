@@ -8,12 +8,13 @@ import { TECHNICAL_LIMITS } from "./bounds";
 import { metricFor } from "./dose";
 import { ineligibleReason, INELIGIBLE_TEXT } from "./eligibility";
 import {
-  finalize, generate, itemFor, phaseSummaries, planWorkout, prepare, prepareWorkout, unknownRules,
+  coverageFor, finalize, generate, itemFor, phaseSummaries, planWorkout, prepare, prepareWorkout, unknownRules,
   type EngineContext, type SlotPlan,
 } from "./generate";
-import { fixedWorkoutFrom, laneKey, type FixedWorkout, type GenerateOptions, type ReservedSubstitution } from "./microcycle";
+import { blueprintSupplyIssue, fixedWorkoutFrom, laneKey, type FixedWorkout, type GenerateOptions, type ReservedSubstitution } from "./microcycle";
 import { existingFor, metadataOf, nameKeyOf, parseSlotKey, rankAlternatives, selectExercises, slotKeyOf } from "./select";
-import { uniqueIssues } from "./trace";
+import { doseUncertaintyIssues } from "./dose-profile";
+import { DOSE_UNCERTAIN_CODE, uniqueIssues } from "./trace";
 import type {
   Alternative, AlternativeTarget, EngineInput, EngineOutcome, EngineResult, Issue, ItemOut, OccurrenceOut,
   RegenerationScope, StructureOccurrence, StructurePhase, StructureWorkout, SubstitutionTarget,
@@ -127,7 +128,25 @@ function substituteWith(
     const root = old.substitutesSlotKey ?? target.slotKey;
     return { ...o, items: o.items.map((i) => (i.slotKey === target.slotKey ? { ...item, origin: by === "PROFESSIONAL" ? ("SUBSTITUTED" as const) : ("ENGINE" as const), substitutesSlotKey: root } : i)) };
   });
-  return { ok: true, result: finalize(ctx, { ...previous, occurrences, issues: uniqueIssues([...previous.issues, ...issues]) }) };
+  // O aviso de oferta fora do foco descreve os itens do treino: depois da troca é refeito (o antigo sai) para não ficar velho.
+  const coverage = coverageFor(ctx, where.phase, where.workout);
+  const offCounts = occurrences.filter((o) => o.phaseIndex === target.phaseIndex && o.label === parsed.label).map((o) =>
+    blueprintSupplyIssue(coverage, target.phaseIndex, parsed.label, o.items.filter((i) => i.origin === "ENGINE" && i.exerciseId)
+      .map((i) => ctx.byId.get(i.exerciseId as string)).filter((e): e is NonNullable<typeof e> => Boolean(e))));
+  const supply = offCounts.reduce<Issue | null>((a, b) => ((b?.count ?? 0) > (a?.count ?? 0) ? b : a), null);
+  const kept = previous.issues.filter((i) => !(i.code === "BLUEPRINT_FOCUS_SUPPLY_LOW" && i.phaseIndex === target.phaseIndex && i.label === parsed.label));
+  return { ok: true, result: finalize(ctx, { ...previous, occurrences, issues: withDoseUncertainty([...kept, ...(supply ? [supply] : []), ...issues], occurrences) }) };
+}
+
+/**
+ * O aviso "perfil de dose sem metadado" descreve os itens do treino (contagem por treino): depois de trocar ou regenerar parte da
+ * proposta o gravado fica velho (contagem errada, ou um aviso agregado e outro novo no mesmo treino). Todos saem e são refeitos
+ * dos itens finais; sem perfil de dose nas regras da versão não há nada a refazer e a lista segue como está.
+ */
+function withDoseUncertainty(issues: Issue[], occurrences: readonly OccurrenceOut[]): Issue[] {
+  const fresh = doseUncertaintyIssues(occurrences);
+  if (!fresh.length && !issues.some((i) => i.code === DOSE_UNCERTAIN_CODE)) return uniqueIssues(issues);
+  return uniqueIssues([...issues.filter((i) => i.code !== DOSE_UNCERTAIN_CODE), ...fresh]);
 }
 
 /** Substitui o exercício de um item no escopo pedido; a dose é recalculada para o novo exercício. */
@@ -137,9 +156,51 @@ export function substitute(input: EngineInput, previous: EngineResult, target: S
   return substituteWith(ctx, previous, target, nextExerciseId, "PROFESSIONAL");
 }
 
+// ---------- ajuste de dose de um item ----------
+
+export interface DoseChangeTarget {
+  phaseIndex: number;
+  slotKey: string;
+}
+
+/**
+ * Refaz a dose dos itens indicados (todas as sessões da fase e do treino que têm a linha) com os ajustes de dose que a entrada
+ * já traz em `parameters.doseOverrides` (o chamador os acrescentou). O exercício, a posição, a origem e o traço da escolha ficam;
+ * só a dose e o traço dos parâmetros são recalculados, e tudo é revalidado no fim (duração, volume, auditoria). Linhas travadas e
+ * preservadas nunca mudam. Não regenera nada além dos itens pedidos.
+ */
+export function changeDoses(input: EngineInput, previous: EngineResult, targets: readonly DoseChangeTarget[]): EngineOutcome {
+  const ctx = prepare(input);
+  if (!ctx) return { ok: true, result: unknownRules(input) };
+  const issues: Issue[] = [];
+  let occurrences = previous.occurrences;
+  for (const target of targets) {
+    const parsed = parseSlotKey(target.slotKey);
+    if (!parsed || parsed.phaseIndex !== target.phaseIndex) return fail("TARGET_NOT_FOUND", "Item não encontrado na proposta.");
+    const where = locate(ctx, target.phaseIndex, parsed.label);
+    if (!where) return fail("TARGET_NOT_FOUND", "Treino não encontrado na estrutura.");
+    const hits = occurrences.filter((o) => o.phaseIndex === target.phaseIndex && o.label === parsed.label && o.items.some((i) => i.slotKey === target.slotKey));
+    if (!hits.length) return fail("TARGET_NOT_FOUND", "Nenhuma sessão da fase tem este item.");
+    if (isLocked(ctx, target.phaseIndex, target.slotKey) || hits.some((o) => o.items.some((i) => i.slotKey === target.slotKey && i.origin === "LOCKED")))
+      return fail("TARGET_LOCKED", "Este item está travado; destrave antes de mudar a dose.");
+    if (hits.some((o) => o.items.some((i) => i.slotKey === target.slotKey && i.origin === "PRESERVED")))
+      return fail("TARGET_PRESERVED", "Esta linha já estava na revisão e é mantida; edite-a na prescrição.");
+    occurrences = occurrences.map((o) => {
+      if (!hits.includes(o)) return o;
+      const old = o.items.find((i) => i.slotKey === target.slotKey) as ItemOut;
+      const exercise = old.exerciseId ? ctx.byId.get(old.exerciseId) : undefined;
+      if (!exercise) return o;
+      const slot: SlotPlan = { slotKey: old.slotKey, exercise, existing: null, origin: old.origin, selection: old.trace.selection, alternatives: old.alternatives };
+      const fresh = itemFor(ctx, where, slot, old.position, asStructureOcc(o), o.stimulus, issues);
+      return { ...o, items: o.items.map((i) => (i.slotKey === target.slotKey ? { ...old, dose: fresh.dose, display: fresh.display, trace: { selection: old.trace.selection, params: fresh.trace.params } } : i)) };
+    });
+  }
+  return { ok: true, result: finalize(ctx, { ...previous, occurrences, issues: withDoseUncertainty([...previous.issues, ...issues], occurrences) }) };
+}
+
 // ---------- alternativas ----------
 
-export function alternativesFor(input: EngineInput, previous: EngineResult, target: AlternativeTarget, limit: number): Alternative[] {
+export function alternativesFor(input: EngineInput, previous: EngineResult, target: AlternativeTarget, limit: number, cap: number = TECHNICAL_LIMITS.MAX_ALTERNATIVES): Alternative[] {
   const ctx = prepare(input);
   if (!ctx) return [];
   const parsed = parseSlotKey(target.slotKey);
@@ -152,7 +213,7 @@ export function alternativesFor(input: EngineInput, previous: EngineResult, targ
   const exercise = item?.exerciseId ? ctx.byId.get(item.exerciseId) ?? null : null;
   const exclude = new Set(occs.flatMap((o) => o.items.map((i) => i.exerciseId)).filter((id): id is string => Boolean(id)));
   const plan = poolOf(ctx, where.phase, where.workout);
-  return rankAlternatives(ctx.log, exercise, exercise ? metricFor(exercise, input.parameters).metric : null, plan.pool, exclude, Math.min(limit, TECHNICAL_LIMITS.MAX_ALTERNATIVES));
+  return rankAlternatives(ctx.log, exercise, exercise ? metricFor(exercise, input.parameters).metric : null, plan.pool, exclude, Math.min(limit, cap));
 }
 
 // ---------- regeneração ----------
@@ -285,7 +346,7 @@ export function regenerate(input: EngineInput, previous: EngineResult, scope: Re
     ...fresh.workouts.filter((w) => touchedSet.has(w.phaseIndex) && !isFixed(w)),
   ].sort((a, b) => input.structure.phases.findIndex((p) => p.index === a.phaseIndex) - input.structure.phases.findIndex((p) => p.index === b.phaseIndex));
   const merged: EngineResult = {
-    ...fresh, phases: phaseSummaries(input), workouts, occurrences, issues: uniqueIssues(issues),
+    ...fresh, phases: phaseSummaries(input), workouts, occurrences, issues: withDoseUncertainty(issues, occurrences),
     rulesUsed: [...previous.rulesUsed, ...fresh.rulesUsed.filter((r) => !previous.rulesUsed.some((p) => p.ruleId === r.ruleId))],
   };
   return { ok: true, result: finalize(ctx, merged) };

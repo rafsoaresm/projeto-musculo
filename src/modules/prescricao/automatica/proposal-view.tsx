@@ -23,8 +23,22 @@ import { AlertsTab } from "./alerts-tab";
 import { ApplyPanel, type ApplyView } from "./apply-panel";
 import { AuditPanel } from "./audit-panel";
 import { ExercisePanel } from "./exercise-panel";
+import { ReplanDialog } from "./replan-dialog";
+import {
+  phoneReviewCards,
+  reviewHeading,
+  reviewStage,
+  rowPatternLabel,
+  rowTitle,
+  sessionFocusChip,
+  sessionTitle,
+  whyCards,
+  workoutFocus,
+} from "./review-view";
 import { ReferenceTab } from "./reference-tab";
 import { SubstituteDialog, type LibraryEntry, type SubstituteTarget } from "./substitute-dialog";
+import { AdjustPanel } from "./adjust-panel";
+import type { AdjustAvailabilityView } from "@/modules/prescricao/planejador/adjust-actions";
 import { suggestionAnchor } from "./target-suggestions";
 import { NETWORK_ERROR, useIntent } from "./use-intent";
 import {
@@ -34,6 +48,7 @@ import {
   PROPOSAL_ORIGIN_LABELS,
   METADATA_LABELS,
   contributionView,
+  itemWhy,
   durationText,
   labelsOf,
   proposalProgression,
@@ -92,7 +107,7 @@ export interface ProposalViewProps {
   phaseIndex: number;
   week: number;
   /** From the address: the tab, the session (slot) and the item (slot key) to restore. */
-  initial: { tab: RxTab; slot?: string; item?: string };
+  initial: { tab: RxTab; slot?: string; item?: string; adjust?: boolean };
   library: LibraryEntry[];
   /** The plan audit: recorded with the proposal, or computed now for one generated before it; null when there is none. */
   audit: AuditSource | null;
@@ -102,6 +117,14 @@ export interface ProposalViewProps {
   targetSuggestions?: Array<{ phaseIndex: number; suggestion: TargetSuggestion | null; reason: string | null }>;
   /** What "Aplicar ao rascunho" would write (null when the server could not preview it). */
   apply: ApplyView | null;
+  /**
+   * Set when the proposal was generated from an accepted strategy: the review then shows each workout's focus, the "Por quê?" cards and
+   * "Rever estratégia". `name` is the strategy's display name (null when the proposal cites several); `adherenceMin` is the audit rule's
+   * minimum adherence; `patterns` maps an exercise to its movement patterns (from the library). Null for a proposal without a strategy.
+   */
+  strategy?: { name: string | null; adherenceMin: number | null; patterns: Record<string, string[]> } | null;
+  /** Assisted adjustments (RX-02 / M-02): whether the AI button can be offered and the primary muscles of the listed exercises (the constraint chips). */
+  adjust?: { availability: AdjustAvailabilityView | null; muscles: Record<string, string[]> } | null;
 }
 
 /** The workbench is rebuilt when the phase changes (its data comes from the server per phase); everything else is state. */
@@ -120,13 +143,15 @@ const WIDE_QUERY = "(min-width: 861px)";
  * proposal stays reachable: regenerate (session, week, workout, phase, from the phase on), the plan audit and its suggested
  * targets, the weekly volume and the progression, the alert decisions, rebase, discard and continue. No dose is edited here.
  */
-function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, crumb, header, summary, occurrences, phaseIndex, week: initialWeek, initial, library, audit, acceptSuggestions, targetSuggestions = [], apply }: ProposalViewProps) {
+function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, crumb, header, summary, occurrences, phaseIndex, week: initialWeek, initial, library, audit, acceptSuggestions, targetSuggestions = [], apply, strategy = null, adjust = null }: ProposalViewProps) {
   const router = useRouter();
   const intent = useIntent();
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<{ tone: "error" | "notice"; text: string } | null>(null);
   const [substituting, setSubstituting] = useState<SubstituteTarget | null>(null);
   const [menu, setMenu] = useState(false);
+  const [replanOpen, setReplanOpen] = useState(false);
+  const [adjusting, setAdjusting] = useState(Boolean(initial.adjust));
   const menuTitle = useId();
   const [tab, setTab] = useState<RxTab>(initial.tab);
   const [week, setWeek] = useState(initialWeek);
@@ -162,6 +187,16 @@ function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, cr
   const experienceUnknown = summary.assumptions.some((a) => a.code === "EXPERIENCE_UNKNOWN");
   const cardFor = new Set(acceptSuggestions && audit?.source === "STORED" ? targetSuggestions.map((t) => t.phaseIndex) : []);
   const perPhase = sessionsPerPhase(summary.phases);
+  const withStrategy = strategy !== null;
+  const heading = reviewHeading(withStrategy, { student: crumb.student, strategyName: strategy?.name ?? null, weeks: totalWeeks(summary.phases) });
+  const stage = reviewStage({ complete: header.complete, audited: audit !== null });
+  const workoutOf = (label: string) => summary.workouts.find((w) => w.phaseIndex === phaseIndex && w.label === label) ?? null;
+  const sessionWorkout = session ? workoutOf(session.label) : null;
+  const focusChip = withStrategy && session ? sessionFocusChip(audit?.report.strategy, phaseIndex, session.label, session.week, strategy.adherenceMin) : null;
+  const auditWord = withStrategy ? "Auditoria" : "Alertas";
+  const showAdjust = adjusting && tab === "sessoes" && adjust !== null;
+  // The AI is named only while the gate is open for this organization; otherwise the same panel works with the engine's own list.
+  const adjustLabel = adjust?.availability?.state === "READY" ? "Ajustar com IA" : "Ajustar proposta";
 
   // The address keeps the selection (tab, phase, week, session and item) without a request: only the query string changes.
   useEffect(() => {
@@ -171,8 +206,9 @@ function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, cr
     if (slot !== null) q.set("sessao", String(slot));
     if (itemKey) q.set("item", itemKey);
     if (tab !== "sessoes") q.set("aba", tab);
+    if (adjusting && tab === "sessoes") q.set("ajustar", "1");
     window.history.replaceState(null, "", `${window.location.pathname}?${q.toString()}${window.location.hash}`);
-  }, [phaseIndex, week, slot, itemKey, tab]);
+  }, [phaseIndex, week, slot, itemKey, tab, adjusting]);
 
   // A link to the suggested targets (`#alvos-sugeridos-fase-N`) lands on the audit, which lives in the alerts tab.
   useEffect(() => {
@@ -272,7 +308,7 @@ function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, cr
 
   const tabs: Array<{ t: RxTab; text: string; short: string }> = [
     { t: "sessoes", text: "Sessões", short: "Sessões" },
-    { t: "alertas", text: `Alertas (${reviewCount})`, short: `Alertas · ${reviewCount}` },
+    { t: "alertas", text: `${auditWord} (${reviewCount})`, short: `${auditWord} · ${reviewCount}` },
     { t: "premissas", text: `Premissas (${summary.assumptions.length})`, short: "Dados" },
     { t: "regras", text: `Regras (${summary.rulesUsed.length})`, short: "Dados" },
   ];
@@ -288,15 +324,23 @@ function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, cr
         </p>
         <div className="rx-heading-row">
           <div>
-            <h1>Prescrição automática</h1>
-            <p className="rx-sub rx-desktop">Proposta gerada para revisão profissional. Nenhuma alteração foi aplicada ao aluno.</p>
-            <p className="rx-sub rx-mobile">
-              {crumb.student} • {crumb.plan} • {totalWeeks(summary.phases)} semanas
-            </p>
+            <h1>
+              <span className="rx-desktop">{showAdjust ? "Ajustar a proposta" : heading.title}</span>
+              <span className="rx-mobile">{showAdjust ? adjustLabel : heading.phoneTitle}</span>
+            </h1>
+            <p className="rx-sub rx-desktop">{showAdjust ? "Uma mudança por vez, com o efeito calculado antes; nunca aplica automaticamente." : heading.sub}</p>
+            <p className="rx-sub rx-mobile">{showAdjust ? "Escolha uma mudança e compare o impacto antes de aceitar." : withStrategy ? heading.phoneSub : `${crumb.student} • ${crumb.plan} • ${totalWeeks(summary.phases)} semanas`}</p>
           </div>
-          <Link href={revisionHref} className="rx-btn rx-btn-line rx-desktop">
-            Voltar à revisão
-          </Link>
+          <div className="rx-head-actions">
+            {adjust && !showAdjust && header.complete && (
+              <button type="button" className="rx-btn rx-btn-line rx-desktop" onClick={() => setAdjusting(true)} data-testid="adjust-open">
+                {adjustLabel}
+              </button>
+            )}
+            <Link href={revisionHref} className="rx-btn rx-btn-line rx-desktop">
+              Voltar à revisão
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -306,6 +350,11 @@ function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, cr
             <span className="rx-desktop">Proposta • para revisão</span>
             <span className="rx-mobile">Para revisão</span>
           </span>
+          {withStrategy && (
+            <span className={stage.tone === "brand" ? "rx-chip rx-chip-line rx-chip-upper" : "rx-chip rx-chip-warning rx-chip-upper"} data-stage={stage.id} title={stage.note ?? undefined}>
+              {stage.label}
+            </span>
+          )}
           <ul className="rx-metrics">
             <li className="rx-desktop">
               <strong>
@@ -518,6 +567,28 @@ function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, cr
           </span>
         </div>
 
+        {adjust && !showAdjust && header.complete && (
+          <button type="button" className="rx-card rx-adjust-entry rx-mobile" onClick={() => setAdjusting(true)} data-testid="adjust-open-mobile">
+            <strong>{adjustLabel}</strong>
+            <span className="rx-sub">Escolha uma mudança e compare o impacto antes de aceitar.</span>
+            <span className="rx-sub rx-adjust-strong">Só sugere; o motor revalida</span>
+          </button>
+        )}
+        {showAdjust && adjust ? (
+          <AdjustPanel
+            planId={planId}
+            revisionId={revisionId}
+            proposalId={header.id}
+            version={header.version}
+            phaseIndex={phaseIndex}
+            week={week}
+            session={session}
+            initialItem={itemKey}
+            muscles={adjust.muscles}
+            availability={adjust.availability}
+            onClose={() => setAdjusting(false)}
+          />
+        ) : (
         <div className="rx-split" data-detail={detail.sessoes ? "open" : "closed"}>
           <section className="rx-card rx-list rx-sessions" aria-labelledby="rx-semana-titulo">
             <header className="rx-card-head rx-card-head-row">
@@ -570,18 +641,49 @@ function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, cr
                   <section id={`sessao-${session.week}-${session.slot}`} aria-label={`Semana ${session.week}, sessão ${session.slot}, treino ${session.label}`} className="rx-session">
                     <p className="rx-sessionmeta">
                       <span className="rx-label rx-mobile">
-                        {workoutTitle(session.label, summary.workouts.find((w) => w.phaseIndex === phaseIndex && w.label === session.label)?.name ?? null)}
+                        {withStrategy ? sessionTitle(session.label, sessionWorkout) : workoutTitle(session.label, sessionWorkout?.name ?? null)}
                       </span>
                       <span className="rx-label rx-mobile">
                         {session.items.length} {session.items.length === 1 ? "exercício" : "exercícios"}
                       </span>
                       <span className="rx-desktop rx-sub">
-                        {workoutTitle(session.label, summary.workouts.find((w) => w.phaseIndex === phaseIndex && w.label === session.label)?.name ?? null)}
+                        {withStrategy ? sessionTitle(session.label, sessionWorkout) : workoutTitle(session.label, sessionWorkout?.name ?? null)}
                         {session.plannedDate ? ` · ${formatCalendarDate(session.plannedDate)}` : ""}
                         {durationText(session) ? ` · ${durationText(session)}` : ""}
                         {session.stimulus ? ` · ${STIMULUS_LABELS[session.stimulus.value] ?? session.stimulus.value}` : ""}
                       </span>
                     </p>
+                    {withStrategy && (
+                      <ul className="rx-phonecards rx-mobile" aria-label="Resumo do treino">
+                        {phoneReviewCards({
+                          workout: sessionWorkout,
+                          chip: focusChip,
+                          sessionsInWeek: ofWeek.filter((o) => o.label === session.label).length,
+                          profileDoses: session.items.some((i) => i.trace.params.some((p) => p.profileId)),
+                          audited: audit !== null,
+                          durationText: durationText(session),
+                        }).map((c) => (
+                          <li key={c.id} className={c.highlighted ? "rx-why-card selected" : "rx-why-card"} data-phone-card={c.id}>
+                            <h5>{c.title}</h5>
+                            <p className="rx-why-lead">{c.line}</p>
+                            <p className="rx-why-meta">{c.meta}</p>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {focusChip && (
+                      <p className="rx-focusrow">
+                        <span className={focusChip.kind === "RESPECTED" ? "rx-chip rx-chip-brand" : "rx-chip rx-chip-warning"} data-focus-chip={focusChip.kind}>
+                          {focusChip.kind === "RESPECTED" ? "✓ " : "! "}
+                          {focusChip.text}
+                        </span>
+                        {focusChip.kind === "OFF_FOCUS" && (
+                          <button type="button" className="link-button" onClick={() => chooseTab("alertas")}>
+                            Ver na {auditWord.toLowerCase()}
+                          </button>
+                        )}
+                      </p>
+                    )}
                     {session.items.length === 0 ? (
                       <p className="rx-empty">Nenhum exercício nesta sessão.</p>
                     ) : (
@@ -598,6 +700,7 @@ function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, cr
                           {session.items.map((it, n) => {
                             const on = it.slotKey === itemKey;
                             const meta = METADATA_LABELS[it.metadata];
+                            const pattern = withStrategy ? rowPatternLabel(it.exerciseId ? strategy.patterns[it.exerciseId] : undefined, workoutFocus(sessionWorkout)?.patterns ?? []) : null;
                             return (
                               <tr key={it.slotKey} className={on ? "selected" : undefined} aria-current={on ? "true" : undefined}>
                                 <td className="rx-cell-main">
@@ -605,7 +708,10 @@ function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, cr
                                     <span className={on ? "rx-order on" : "rx-order"} aria-hidden="true">
                                       {n + 1}
                                     </span>
-                                    <span className="rx-name">{it.exerciseName}</span>
+                                    <span className="rx-nametext">
+                                      {pattern && <span className="rx-pattern">{pattern}</span>}
+                                      <span className="rx-name">{it.exerciseName}</span>
+                                    </span>
                                   </div>
                                 </td>
                                 <td className="rx-cell-dose">{it.display.doseText || "Dose em branco: você preenche depois de aplicar."}</td>
@@ -619,13 +725,13 @@ function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, cr
                                   <button
                                     type="button"
                                     className="rx-btn rx-btn-line rx-rowaction"
-                                    aria-label={`Revisar ${it.exerciseName}`}
+                                    aria-label={withStrategy ? `Por quê? ${rowTitle(n + 1, it.exerciseName, pattern)}` : `Revisar ${it.exerciseName}`}
                                     onClick={() => {
                                       setItemChoice(it.slotKey);
                                       openDetail("sessoes");
                                     }}
                                   >
-                                    <span className="rx-desktop">Revisar</span>
+                                    <span className="rx-desktop">{withStrategy ? "Por quê?" : "Revisar"}</span>
                                     <ChevronRight size={16} aria-hidden="true" className="rx-chevron" />
                                   </button>
                                 </td>
@@ -689,6 +795,21 @@ function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, cr
               phaseIndex={phaseIndex}
               experienceUnknown={experienceUnknown}
               contribution={contributionView(item, audit?.report ?? null, phaseIndex, session.week)}
+              doseWhy={itemWhy(item, sessionWorkout, audit?.report ?? null, { rulesUsed: summary.rulesUsed, phaseIndex })}
+              whyCards={
+                withStrategy
+                  ? whyCards({
+                      why: itemWhy(item, sessionWorkout, audit?.report ?? null, { rulesUsed: summary.rulesUsed, phaseIndex }),
+                      workout: sessionWorkout,
+                      session: { phaseIndex, week: session.week, slot: session.slot, label: session.label },
+                      weekSlots: ofWeek.filter((o) => o.label === session.label).map((o) => o.slot),
+                      sessionsPerWeek: phase.sessionsPerWeek,
+                      volume: summary.volume ?? [],
+                      strategy: audit?.report.strategy,
+                      adherenceMin: strategy.adherenceMin,
+                    })
+                  : undefined
+              }
               suggestions={summary.historySuggestions ?? []}
               rulesUsed={summary.rulesUsed}
               locked={lockedKeys.has(item.slotKey) || item.origin === "LOCKED"}
@@ -708,6 +829,7 @@ function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, cr
             </aside>
           )}
         </div>
+        )}
       </div>
 
       <div role="tabpanel" id={panelId("alertas")} aria-labelledby={tabId("alertas")} hidden={tab !== "alertas"} className="rx-tabpanel">
@@ -738,6 +860,7 @@ function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, cr
               engineVersion={header.engineVersion}
               acceptSuggestions={acceptSuggestions}
               phaseIndex={phaseIndex}
+              adherenceMin={strategy?.adherenceMin ?? null}
               href={href}
               targets={{
                 suggestions: targetSuggestions,
@@ -771,12 +894,15 @@ function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, cr
         </div>
       ))}
 
+      {!showAdjust && (
       <ApplyPanel
         planId={planId}
         revisionId={revisionId}
         proposalId={header.id}
         version={header.version}
         apply={apply ? { ...apply, stale } : null}
+        strategy={withStrategy}
+        onReviewStrategy={withStrategy ? () => setReplanOpen(true) : undefined}
         back={
           detail[tab]
             ? tab === "sessoes"
@@ -791,6 +917,7 @@ function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, cr
                 : undefined
         }
       />
+      )}
 
       <Sheet open={menu} onClose={() => setMenu(false)} titleId={menuTitle} variant="menu" busy={pending}>
         <h2 id={menuTitle} className="sheet-title">
@@ -832,6 +959,22 @@ function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, cr
               </button>
             </li>
           ))}
+          {withStrategy && (
+            <li>
+              <button
+                type="button"
+                className="sheet-action"
+                disabled={pending}
+                onClick={() => {
+                  setMenu(false);
+                  setReplanOpen(true);
+                }}
+              >
+                <strong>Rever estratégia</strong>
+                <span className="small muted">Volta à escolha da estratégia; mostra o que é mantido antes de refazer.</span>
+              </button>
+            </li>
+          )}
           <li>
             <button type="button" className="sheet-action" disabled={pending} onClick={() => regenerate({ kind: "PHASE", phaseIndex }, `phase:${phaseIndex}`)}>
               <strong>Regenerar a fase {phaseIndex}</strong>
@@ -851,6 +994,19 @@ function Workbench({ planId, revisionId, selfHref, revisionHref, studentHref, cr
           </button>
         </div>
       </Sheet>
+
+      {withStrategy && (
+        <ReplanDialog
+          open={replanOpen}
+          onClose={() => setReplanOpen(false)}
+          planId={planId}
+          revisionId={revisionId}
+          proposalId={header.id}
+          selfHref={selfHref}
+          phaseIndex={phaseIndex}
+          hasLaterPhase={summary.phases.some((p) => p.phaseIndex > phaseIndex)}
+        />
+      )}
 
       {substituting && (
         <SubstituteDialog

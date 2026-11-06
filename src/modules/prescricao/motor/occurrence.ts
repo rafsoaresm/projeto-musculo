@@ -4,12 +4,28 @@
  */
 import { stimulusFromProgression } from "./progress-week";
 import { codeOf } from "./vocabulary";
+import { getRuleSet } from "./rules";
 import type { EngineInput, Fact, StructureOccurrence, StructurePhase, StructureWorkout, WeeklyProgression } from "./types";
 
-export function progressionFor(input: Pick<EngineInput, "parameters">, phase: StructurePhase): Fact<WeeklyProgression> | null {
+/** O que a progressão da fase lê do input; `rules` é opcional porque as sugestões de alvo só precisam do estímulo (a intenção nunca o muda). */
+type EngineScope = Pick<EngineInput, "parameters"> & Partial<Pick<EngineInput, "rules">>;
+
+/**
+ * Progressão da fase. Precedência (vinculante): a do profissional nesta geração > a gravada na estrutura > a intenção da estratégia
+ * aceita (2026.11.6+) > nenhuma. A intenção nunca substitui as duas primeiras.
+ */
+export function progressionFor(input: EngineScope, phase: StructurePhase): Fact<WeeklyProgression> | null {
   const p = input.parameters.progressionByPhase.find((x) => x.phaseIndex === phase.index);
   if (p) return { value: p.progression, source: "PROFESSIONAL", basis: "PROFESSIONAL" };
-  return phase.progression ?? null;
+  if (phase.progression) return phase.progression;
+  // Por último, e só onde a fase não tem progressão do profissional nem gravada na estrutura: a intenção da estratégia aceita.
+  const intent = input.parameters.progressionIntentByPhase?.find((x) => x.phaseIndex === phase.index);
+  // Regras sem PROGRESSION_TEMPLATES nunca leem a intenção (o adaptador também só a emite com elas).
+  if (!intent || !input.rules || !getRuleSet(input.rules)?.rules.PROGRESSION_TEMPLATES) return null;
+  return {
+    value: intent.progression, source: "RULES", basis: "HEURISTIC_ACCEPTED", ruleId: "PROGRESSION_TEMPLATES", ref: intent.intent, origin: intent.origin,
+    ...(intent.loadInstruction !== undefined ? { loadInstruction: intent.loadInstruction } : {}),
+  };
 }
 
 function stimulusFact(value: string, from: Omit<Fact<string>, "value">): Fact<string> {
@@ -17,7 +33,7 @@ function stimulusFact(value: string, from: Omit<Fact<string>, "value">): Fact<st
 }
 
 /** Estímulo de uma ocorrência: treino → progressão (sequência/bloco) → fase → resposta da geração. */
-export function occurrenceStimulus(input: Pick<EngineInput, "parameters">, phase: StructurePhase, workout: StructureWorkout, week: number, indexInWeek: number): Fact<string> | null {
+export function occurrenceStimulus(input: EngineScope, phase: StructurePhase, workout: StructureWorkout, week: number, indexInWeek: number): Fact<string> | null {
   if (workout.focus.stimulus) return stimulusFact(workout.focus.stimulus.value, workout.focus.stimulus);
   const prog = progressionFor(input, phase);
   const fromProg = prog ? stimulusFromProgression(prog.value, week, indexInWeek) : null;

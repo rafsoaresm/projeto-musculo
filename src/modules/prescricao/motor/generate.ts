@@ -16,7 +16,8 @@ export { occurrenceStimulus, progressionFor } from "./occurrence";
 import { existingFor, metadataOf, nameKeyOf, parseSlotKey, rankAlternatives, selectExercises, slotKeyOf, type Coverage, type SelectionRequest } from "./select";
 import { targetSuggestion } from "./targets";
 import { planPhaseMicrocycle, type GenerateOptions, type ReservedSubstitution } from "./microcycle";
-import { ruleLogFor, RuleLog, uniqueIssues } from "./trace";
+import { ruleLogFor, RuleLog, uniqueIssues, DOSE_UNCERTAIN_CODE, DOSE_UNCERTAIN_SEGMENT } from "./trace";
+import { intentRejectedIssue, uncertaintyMessage } from "./dose-profile";
 import { validateInput } from "./validate";
 import { volumeFor } from "./volume";
 import { cmp, codeOf, labelsOf, MODALITY_LABELS, MUSCLE_LABELS, normalizeText, numberText, PATTERN_LABELS, STIMULUS_LABELS, VOCABULARY_VERSION } from "./vocabulary";
@@ -42,7 +43,7 @@ import type {
   WorkoutSummary,
 } from "./types";
 
-export const ENGINE_VERSION = "2.2.0";
+export const ENGINE_VERSION = "2.4.0";
 
 // ---------- contexto ----------
 
@@ -131,7 +132,7 @@ function countFor(input: EngineInput, phase: StructurePhase, workout: StructureW
  * Alvos de cobertura do treino: o foco do treino vence o alvo da fase. Com as regras da auditoria (2026.11.3+) o objeto também
  * grava de onde veio (`origin`) e os alvos semanais da fase (`weeklySets`, com a base da entrada); versões anteriores, como antes.
  */
-function coverageFor(ctx: EngineContext, phase: StructurePhase, workout: StructureWorkout): Coverage | null {
+export function coverageFor(ctx: EngineContext, phase: StructurePhase, workout: StructureWorkout): Coverage | null {
   const { input, log } = ctx;
   const audited = log.optional("AUDIT_THRESHOLDS") !== undefined;
   const c = input.parameters.phaseCoverage.find((x) => x.phaseIndex === phase.index);
@@ -140,6 +141,20 @@ function coverageFor(ctx: EngineContext, phase: StructurePhase, workout: Structu
     : {};
   if (workout.focus.muscles?.length || workout.focus.patterns?.length)
     return { muscles: workout.focus.muscles ?? [], patterns: workout.focus.patterns ?? [], basis: "PROFESSIONAL", ...(audited ? { origin: "WORKOUT_FOCUS" as const } : {}), ...weeklySets };
+  // Foco dominante da estratégia aceita (2026.11.5+): vale só neste treino; os alvos semanais da fase continuam globais.
+  // A regra só é lida (e só entra em `rulesUsed`) quando há foco para este treino: sem estratégia, o resultado é o da 2026.11.4.
+  const b = input.parameters.blueprintFocus?.find((x) => x.phaseIndex === phase.index && x.label === workout.label);
+  if (b && log.optional("MICROCYCLE_BLUEPRINT")) {
+    // Papéis sem volume (cardio, mobilidade, equilíbrio, habilidade) não geram cobertura: a seleção antiga cuida do treino.
+    // Papel personalizado vazio (sem músculo nem padrão): nada a puxar; vale a cobertura da fase, que o profissional já aceitou.
+    if (b.role !== "CARDIO" && b.role !== "MOBILITY" && b.role !== "BALANCE" && b.role !== "SKILL" && (b.dominantMuscles.length || b.targetPatterns.length))
+      return {
+        muscles: b.dominantMuscles, patterns: b.targetPatterns, basis: b.source === "PROFESSIONAL" ? "PROFESSIONAL" : "HEURISTIC_ACCEPTED", ruleId: "MICROCYCLE_BLUEPRINT",
+        origin: "BLUEPRINT_FOCUS",
+        blueprint: { role: b.role, source: b.source, strategyId: b.strategyId, supporting: b.supportingMuscles, spillover: b.spilloverPatterns, candidates: b.candidateExerciseIds },
+        ...weeklySets,
+      };
+  }
   if (c && (c.muscles?.length || c.patterns?.length || "weeklySets" in weeklySets))
     return { muscles: c.muscles ?? [], patterns: c.patterns ?? [], basis: c.basis, ...(c.ruleId ? { ruleId: c.ruleId } : {}), ...(audited ? { origin: "PHASE_COVERAGE" as const } : {}), ...weeklySets };
   return null;
@@ -216,7 +231,7 @@ export function dosePreview(ctx: EngineContext, plan: { phase: StructurePhase; w
     ...fixedExisting.map((x) => ({ dose: x.dose, exercise: x.exerciseId ? ctx.byId.get(x.exerciseId) ?? null : null })),
     ...exercises.filter((e) => !fixedIds.has(e.id)).map((e) => ({
       exercise: e,
-      dose: resolveDose(ctx.log, ctx.input.parameters, { exercise: e, stimulus: stim?.value ?? null, phaseIndex: plan.phase.index, label: plan.workout.label, week: occ.week, phaseWeeks: plan.phase.weeks, progression: prog }).dose,
+      dose: resolveDose(ctx.log, ctx.input.parameters, { exercise: e, stimulus: stim?.value ?? null, phaseIndex: plan.phase.index, label: plan.workout.label, week: occ.week, phaseWeeks: plan.phase.weeks, progression: prog, experience: ctx.experience, budgetMinutes: budgetFor(ctx.input, plan.workout)?.minutes ?? null }).dose,
     })),
   ];
   const r = occurrenceMinutes(ctx.log, items);
@@ -478,9 +493,20 @@ export function itemFor(ctx: EngineContext, plan: { phase: StructurePhase; worko
   const r = resolveDose(ctx.log, ctx.input.parameters, {
     exercise, stimulus: stimulus?.value ?? null, phaseIndex: plan.phase.index, label: plan.workout.label,
     week: occ.week, phaseWeeks: plan.phase.weeks, progression: progressionFor(ctx.input, plan.phase),
+    experience: ctx.experience, budgetMinutes: budgetFor(ctx.input, plan.workout)?.minutes ?? null,
   });
+  const workoutPath = `phases.${plan.phase.index}.workouts.${plan.workout.label}`;
   for (const i of r.issues)
-    issues.push({ ...i, path: `phases.${plan.phase.index}.workouts.${plan.workout.label}`, phaseIndex: plan.phase.index, label: plan.workout.label, stage: "SELECTION" });
+    issues.push({ ...i, path: workoutPath, phaseIndex: plan.phase.index, label: plan.workout.label, stage: "SELECTION" });
+  // Metadado que falta na biblioteca e que escolheria um perfil mais específico: um aviso por exercício, juntado por treino em `uniqueIssues`.
+  if (r.profile?.uncertain.length)
+    issues.push({
+      severity: "INFO", code: DOSE_UNCERTAIN_CODE, path: `${workoutPath}${DOSE_UNCERTAIN_SEGMENT}${exercise.id}`, phaseIndex: plan.phase.index, label: plan.workout.label, stage: "SELECTION",
+      message: uncertaintyMessage(exercise.name, r.profile.uncertain),
+    });
+  // Pedido de perfil da estratégia que a política não atendeu: aviso explicado, um por classe e código por fase (`uniqueIssues` junta pelo caminho).
+  if (r.profile?.intent?.outcome === "REJECTED")
+    issues.push({ ...intentRejectedIssue(r.profile.intent, plan.phase.index), label: plan.workout.label, stage: "SELECTION" });
   const stimTrace: ParamTrace[] = stimulus ? [{ param: "stimulus", value: stimulus.value, basis: stimulus.basis, ...(stimulus.ruleId ? { ruleId: stimulus.ruleId } : {}) }] : [];
   return { ...base, dose: r.dose, display: toDisplayFields(r.dose), trace: { selection: slot.selection, params: [...stimTrace, ...r.params] } };
 }
@@ -635,7 +661,7 @@ function historySuggestions(ctx: EngineContext, occurrences: OccurrenceOut[]): H
       if (!exercise) continue;
       out.push({
         phaseIndex: o.phaseIndex, slotKey: item.slotKey, exerciseId: item.exerciseId,
-        proposal: proposeProgression(ctx.input.history, exercise, item.dose, { consecutiveSuccesses: H.consecutiveSuccesses, maximumIncrementFraction: H.maximumIncrementFraction, incrementKg: null, windowDays: window }, ctx.input.asOf),
+        proposal: proposeProgression(ctx.input.history, exercise, item.dose, { consecutiveSuccesses: H.consecutiveSuccesses, maximumIncrementFraction: H.maximumIncrementFraction, incrementKg: null, windowDays: window, ...(ctx.log.optional("DOSE_PROFILES") ? { conditional: true } : {}) }, ctx.input.asOf),
       });
     }
   return out;
@@ -729,7 +755,7 @@ export function finalize(ctx: EngineContext, result: EngineResult): EngineResult
   const volume = volumeFor(log, occurrences, ctx.byId);
   // A auditoria (regras 2026.11.3+) é recalculada aqui em toda operação: nenhum achado antigo sobrevive.
   const audit = log.optional("AUDIT_THRESHOLDS")
-    ? boundAudit(log, auditPlan({ log, phases: result.phases, structure: input.structure.phases, workouts: result.workouts, occurrences, volume, byId: ctx.byId }))
+    ? boundAudit(log, auditPlan({ log, phases: result.phases, structure: input.structure.phases, workouts: result.workouts, occurrences, volume, byId: ctx.byId, phaseTargets: input.parameters.phaseCoverage.map((c) => ({ phaseIndex: c.phaseIndex, muscles: c.muscles ?? [], patterns: c.patterns ?? [] })) }))
     : undefined;
   const rest: EngineResult = { ...result };
   delete rest.audit;

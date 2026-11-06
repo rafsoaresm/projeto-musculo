@@ -23,15 +23,18 @@ import type {
   Issue,
   ItemOut,
   Metric,
+  ParamTrace,
   OccurrenceOut,
   PhaseSummary,
   ProgressionProposal,
   RuleSetRef,
   RuleUse,
   VolumeRow,
+  WorkoutSummary,
   WeeklyProgression,
   WeeklySetsTarget,
 } from "@/modules/prescricao/motor/types";
+import { parseSlotKey } from "@/modules/prescricao/motor/select";
 import type { TargetSuggestion, TargetSuggestionOutcome } from "@/modules/prescricao/motor/targets";
 import {
   AUDIT_LABELS,
@@ -42,6 +45,7 @@ import {
   STIMULUS_LABELS,
   numberText,
 } from "@/modules/prescricao/motor/vocabulary";
+import { ORIGIN_LABELS, ROLE_LABELS, itemProvenance, type OriginKind } from "./blueprint-view";
 import type { GenerationAnswersInput, GenerationQuestion } from "./contracts";
 
 // ---------- labels ----------
@@ -253,12 +257,20 @@ export interface GenerationForm {
   coverage: CoverageAnswer[];
   /** The professional's targets per workout (free splits). Optional. */
   coverageByWorkout: WorkoutCoverageAnswer[];
+  /**
+   * Opt-in to the dose profiles (rules 2026.11.6, heuristic to be validated by the Técnico). Unchecked: the generation keeps the
+   * default rules. It is not an answer of the request: it pins the rules version the generation is made with (`rulesVersion`).
+   */
+  doseProfiles: boolean;
 }
+
+/** The published rules version that carries the dose profiles; the server accepts no other opt-in (`OPT_IN_RULESETS`). */
+export const DOSE_PROFILES_RULES_VERSION = "2026.11.6";
 
 export const EMPTY_FORM: GenerationForm = {
   stimulus: [], equipment: [], availableMinutes: "", timeBudget: "", counts: [], modalities: [], doseMode: null, metadataTrust: null,
   policy: {}, progression: [], preferredExerciseIds: [], excludedExerciseIds: [], excludedPatterns: [], excludedCautionTags: [],
-  coverage: [], coverageByWorkout: [],
+  coverage: [], coverageByWorkout: [], doseProfiles: false,
 };
 
 /** Required questions the form has not answered yet (the "Gerar" button waits for none). */
@@ -1142,6 +1154,155 @@ export function whyView(
   });
   sections.push({ key: "change", title: "O que mudaria esta escolha", lines: changeConditions(item).map((text) => ({ text, basis: null, rule: null })) });
   return sections.filter((s) => s.lines.length > 0);
+}
+
+// ---------- dose "Por quê?" and origin of an item (V4, PR 3.3) ----------
+
+/** Who is behind each facet of an item: the professional, the rules' heuristics, the AI's suggestion or the student's data. */
+export const PROVENANCE_LABELS: Record<OriginKind, string> = ORIGIN_LABELS;
+
+/** The reason codes a dose value can carry (profile table, modifiers, generic row, progression), in plain pt-BR. Unknown codes are shown as they are. */
+export const DOSE_REASON_LABELS: Record<string, string> = {
+  COMPOUND: "exercício composto",
+  HEAVY_PATTERN: "padrão pesado (agachar ou dobradiça)",
+  HIGH_DIFFICULTY: "dificuldade alta",
+  UNILATERAL: "exercício unilateral",
+  ISOLATION: "exercício de isolamento",
+  // The profile family only labels the match (the isolation profile also catches the trunk, calf and shoulder patterns); it is not an anatomical claim.
+  SMALL_MUSCLE: "isolador de região de menor porte (panturrilha, abdômen, ombro)",
+  STRENGTH: "estímulo de força",
+  ACCESSORY: "acessório de força",
+  GENERAL_FITNESS: "condicionamento geral",
+  EXPERIENCE_BEGINNER: "aluno iniciante (RIR um ponto acima)",
+  TIME_BUDGET_SHORT: "sessão curta (descanso reduzido)",
+  BLUEPRINT_INTENT: "pedido da estratégia aceita",
+  GENERIC_DEFAULT: "padrão genérico do estímulo",
+  PROFESSIONAL_CHOICE: "ajuste do profissional",
+  PHASE_PROGRESSION: "progressão da fase",
+};
+const METADATA_MISSING_PREFIX = "METADATA_MISSING:";
+const PROGRESSION_INTENT_PREFIX = "PROGRESSION_INTENT:";
+export function doseReasonText(code: string): string {
+  if (code.startsWith(METADATA_MISSING_PREFIX)) {
+    const field = code.slice(METADATA_MISSING_PREFIX.length);
+    const names: Record<string, string> = { compound: "composto ou isolado", laterality: "lateralidade", difficulty: "dificuldade", patterns: "padrões de movimento", primaryMuscles: "músculos principais" };
+    return `falta ${names[field] ?? field} na biblioteca`;
+  }
+  if (code.startsWith(PROGRESSION_INTENT_PREFIX)) return `intenção de progressão da estratégia (${code.slice(PROGRESSION_INTENT_PREFIX.length)})`;
+  return DOSE_REASON_LABELS[code] ?? code;
+}
+
+const DOSE_RULE_LABELS: Record<string, string> = {
+  DOSE_DEFAULTS: "Política de doses",
+  DOSE_PROFILES: "Perfis de dose",
+  PROGRESSION_TEMPLATES: "Intenção de progressão",
+  DELOAD_ROUNDING: "Semana de descarga da progressão",
+};
+
+export interface DoseWhyLine {
+  param: "sets" | "reps" | "rir" | "rest";
+  /** The question the line answers: "Por que 3 séries?". */
+  question: string;
+  /** The value as the screen writes it ("6–10 repetições"). */
+  text: string;
+  /** The rule behind it, in short words (the dose rules have fixed names; others use the proposal's label). */
+  rule: string;
+  /** The dose profile that set it (2026.11.6+), or null. */
+  profile: string | null;
+  basis: Basis;
+  reasons: string[];
+  changeIf: string | null;
+}
+export interface ProvenancePill {
+  facet: "decidedBy" | "focus" | "selection" | "dose" | "studentData";
+  kind: OriginKind;
+  label: string;
+}
+export interface ItemWhy {
+  /** The workout's role in the accepted strategy, or null when the proposal has none for this workout. */
+  focusLine: string | null;
+  selectionPills: ProvenancePill[];
+  /** Sets, repetitions, RIR and rest, each with its rule, profile, reasons and what would change it. Empty on proposals without the dose policy. */
+  dose: DoseWhyLine[];
+  /** Audit findings that name this item (rationale text, as the audit wrote it). */
+  auditLines: string[];
+  /** Set when a dose profile was chosen from library metadata nobody reviewed yet (inferred or pending); null otherwise. */
+  metadataNote: string | null;
+}
+
+/**
+ * "Muda se: …" for the dose screen. A text that already opens with "Muda com/se" loses that prefix (the label says it); one that is a
+ * sentence of its own ("Padrão do estímulo…; muda com…", "Definido pelo profissional; muda se…") is shown as it is, never under "Muda se:".
+ */
+export function changeIfText(changeIf: string): string {
+  const m = /^Muda\s+(?:com|se)\s+(.*)$/is.exec(changeIf.trim());
+  return m ? `Muda se: ${m[1]}` : changeIf.trim();
+}
+
+type TraceOf = (param: string) => ParamTrace | undefined;
+const doseRange = (min: unknown, max: unknown, unit: string): string | null => {
+  if (typeof min !== "number" && typeof max !== "number") return null;
+  const lo = typeof min === "number" ? min : (max as number);
+  const hi = typeof max === "number" ? max : lo;
+  return `${lo === hi ? numberText(lo) : `${numberText(lo)}–${numberText(hi)}`}${unit}`;
+};
+
+/**
+ * "Por quê?" of the dose of one item, built only from its trace: the four questions (séries, repetições, RIR, pausa) with the rule,
+ * the profile, the reasons and what would change each. A proposal made before the dose policy (no reasons in the trace) has an empty
+ * `dose`: nothing is invented for it. Also the origin pills (professional / rules / AI / student data), the workout's role in the
+ * strategy and the audit findings that name this item.
+ */
+export function itemWhy(
+  item: Pick<ItemOut, "origin" | "trace" | "exerciseId" | "slotKey"> & Partial<Pick<ItemOut, "metadata">>,
+  workout: Pick<WorkoutSummary, "coverage"> | null,
+  audit: Pick<AuditReport, "findings"> | null,
+  options: { rulesUsed?: readonly RuleUse[]; phaseIndex?: number } = {},
+): ItemWhy {
+  const provenance = itemProvenance(item, workout);
+  const pills: ProvenancePill[] = [
+    { facet: "decidedBy", kind: provenance.decidedBy, label: provenance.labels.decidedBy },
+    ...(provenance.focus && provenance.labels.focus ? [{ facet: "focus" as const, kind: provenance.focus, label: provenance.labels.focus }] : []),
+    { facet: "selection", kind: provenance.selection, label: provenance.labels.selection },
+    { facet: "dose", kind: provenance.dose, label: provenance.labels.dose },
+    ...(provenance.studentData ? [{ facet: "studentData" as const, kind: "STUDENT_DATA" as const, label: ORIGIN_LABELS.STUDENT_DATA }] : []),
+  ];
+  const bp = workout?.coverage?.origin === "BLUEPRINT_FOCUS" ? workout.coverage.blueprint : undefined;
+  const focusLine = bp ? `Foco do treino: ${ROLE_LABELS[bp.role] ?? bp.role} (${ORIGIN_LABELS[bp.source]}).` : null;
+
+  const find: TraceOf = (param) => item.trace.params.find((p) => p.param === param);
+  const explained = item.trace.params.some((p) => p.reasons?.length || p.profileId);
+  const lines: DoseWhyLine[] = [];
+  if (explained) {
+    const ruleName = (t: ParamTrace) => (t.basis === "PROFESSIONAL" ? "Decisão do profissional" : t.ruleId ? (DOSE_RULE_LABELS[t.ruleId] ?? (options.rulesUsed ? ruleLabel(options.rulesUsed, t.ruleId) : t.ruleId)) : "Regra da ferramenta");
+    const push = (param: DoseWhyLine["param"], question: string, text: string | null, traces: Array<ParamTrace | undefined>) => {
+      const present = traces.filter((t): t is ParamTrace => t !== undefined);
+      // The trace that explains the value: the one a profile wrote, else the first with reasons, else the first.
+      const t = present.find((x) => x.profileId) ?? present.find((x) => x.reasons?.length) ?? present[0];
+      if (!t || text === null) return;
+      lines.push({ param, question, text, rule: ruleName(t), profile: t.profileId ?? null, basis: t.basis, reasons: (t.reasons ?? []).map(doseReasonText), changeIf: t.changeIf ?? null });
+    };
+    const sets = find("sets");
+    const setsText = sets && typeof sets.value === "number" ? `${numberText(sets.value)} ${sets.value === 1 ? "série" : "séries"}` : null;
+    push("sets", setsText ? `Por que ${setsText}?` : "Por que estas séries?", setsText, [sets]);
+    const reps = doseRange(find("repsMin")?.value, find("repsMax")?.value, " repetições");
+    push("reps", reps ? `Por que ${reps}?` : "Por que estas repetições?", reps, [find("repsMin"), find("repsMax")]);
+    const rir = doseRange(find("rirMin")?.value, find("rirMax")?.value, "");
+    push("rir", rir ? `Por que RIR ${rir}?` : "Por que este RIR?", rir ? `RIR ${rir}` : null, [find("rirMin"), find("rirMax")]);
+    const restValue = find("restSeconds")?.value;
+    const rest = typeof restValue === "number" ? `${numberText(restValue)} s de pausa` : null;
+    push("rest", rest ? `Por que ${rest.replace(" de pausa", "")} de pausa?` : "Por que esta pausa?", rest, [find("restSeconds")]);
+  }
+
+  const phaseIndex = options.phaseIndex ?? parseSlotKey(item.slotKey)?.phaseIndex ?? null;
+  const ref = phaseIndex === null ? null : `item:${phaseIndex}:${item.slotKey}`;
+  const auditLines = ref && audit ? audit.findings.filter((f) => f.sourceRefs.includes(ref)).map((f) => f.rationale) : [];
+  // The profile reads compound/laterality/difficulty from the library: when that metadata is not reviewed, the dose says so.
+  const unreviewed = item.metadata === "INCLUDES_INFERRED" || item.metadata === "PENDING";
+  const metadataNote = unreviewed && lines.some((l) => l.profile)
+    ? "O perfil de dose usou dados do exercício na biblioteca que ainda não foram revisados (composto ou isolado, lateralidade, dificuldade). Revise o exercício na biblioteca para confirmar esta dose."
+    : null;
+  return { focusLine, selectionPills: pills, dose: lines, auditLines, metadataNote };
 }
 
 // ---------- suggested targets (design V3 §4.6, §7.4) ----------

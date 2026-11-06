@@ -16,6 +16,13 @@ const PARAMS: ReadonlySet<string> = new Set<DoseParam>([
   "recoveryMin", "recoveryMax", "restBetweenBlocks",
 ]);
 
+export const PROGRESSION_CHANGE_IF = "Muda se o profissional definir a progressão da fase ou desmarcar a intenção da estratégia.";
+
+/** Motivo de uma progressão que veio de intenção da estratégia (a intenção fica em `ref`); vazio para as demais. */
+export function progressionReasons(p: Fact<WeeklyProgression>): string[] {
+  return p.ruleId === "PROGRESSION_TEMPLATES" && p.ref ? [`PROGRESSION_INTENT:${p.ref}`] : [];
+}
+
 const finite = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);
 
 /** Problemas de uma progressão para uma fase de `weeks` semanas; [] = válida. */
@@ -96,7 +103,11 @@ export function applyWeeklyProgression(
 ): Array<Omit<Issue, "path" | "stage">> {
   const p = progression.value;
   const issues: Array<Omit<Issue, "path" | "stage">> = [];
-  const t: { basis: Basis; ruleId?: string } = { basis: progression.basis, ...(progression.ruleId ? { ruleId: progression.ruleId } : {}) };
+  // Progressão vinda de intenção da estratégia (2026.11.6+) diz de onde veio e o que a mudaria; as demais ficam como sempre.
+  const t: { basis: Basis; ruleId?: string; origin?: "RULES_HEURISTIC" | "AI_SUGGESTED"; reasons?: string[]; changeIf?: string } = {
+    basis: progression.basis, ...(progression.ruleId ? { ruleId: progression.ruleId } : {}),
+    ...(progression.origin ? { origin: progression.origin, reasons: progressionReasons(progression), changeIf: PROGRESSION_CHANGE_IF } : {}),
+  };
   const applies = (m?: Metric) => m === undefined || m === metric;
   if (validateProgression(p, phaseWeeks).length) return issues; // erros já registrados uma vez por fase
   for (const r of p.ramps ?? []) {

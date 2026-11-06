@@ -49,6 +49,25 @@ declare global {
     EMAIL_FROM?: string;
     /** "capture" keeps the text of the message in the database; honoured only on localhost, for the browser tests. */
     EMAIL_TRANSPORT?: string;
+    /**
+     * AI planner (motor V4). None of these is NEXT_PUBLIC_*; the two secrets are secret variables. Nothing here turns AI ON: the gates are in the
+     * database (gestor panel). See docs/WEBFLOW-CLOUD.md, section "IA do planejador".
+     */
+    /** Exactly "true" stops EVERY provider call (planning, adjustments and the panel's own tests). Wins over everything. */
+    AI_PLANNER_DISABLED?: string;
+    /** SECRET. base64url of 32 random bytes (AES-256-GCM master key for provider keys at rest). Absent: the panel cannot save keys. */
+    AI_SECRETS_KEY?: string;
+    /** Label stored with each ciphertext (default "k1"). */
+    AI_SECRETS_KEY_ID?: string;
+    /** SECRET. Previous master key, decrypt-only, during a rotation. */
+    AI_SECRETS_KEY_PREVIOUS?: string;
+    AI_SECRETS_KEY_PREVIOUS_ID?: string;
+    /** "true" allows the deterministic `mock` provider (tests, e2e, dev). Never in production. */
+    AI_MOCK_ENABLED?: string;
+    /** Ceilings over what the panel may set: timeout in ms (default 25000), output tokens (default 8192), cache TTL in days (default 14, max 60). */
+    AI_HARD_TIMEOUT_MS?: string;
+    AI_HARD_MAX_OUTPUT_TOKENS?: string;
+    AI_CACHE_TTL_DAYS?: string;
   }
 }
 

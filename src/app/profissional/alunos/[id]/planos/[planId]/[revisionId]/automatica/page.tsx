@@ -11,10 +11,14 @@ import { recordStudentRead } from "@/db/student-reads";
 import { PageHeading, Pill, formatDateTime } from "@/components/ui";
 import { stateLabel } from "@/modules/planos/labels";
 import { proposalService } from "@/modules/prescricao/automatica/service";
-import { GenerationForm } from "@/modules/prescricao/automatica/generation-form";
+import { GenerationFlow } from "@/modules/prescricao/automatica/generation-flow";
+import { getPlanningAvailability } from "@/modules/prescricao/planejador/actions";
+import { getAdjustAvailability } from "@/modules/prescricao/planejador/adjust-actions";
+import { getStrategyAcceptance } from "@/modules/prescricao/planejador/blueprint-actions";
 import { ProposalView, type ProposalHeaderView } from "@/modules/prescricao/automatica/proposal-view";
 import { canAcceptSuggestions, pageAudit, phasesWithoutTargets, pickPhase, pickWeek } from "@/modules/prescricao/automatica/view";
 import { pickTab } from "@/modules/prescricao/automatica/workbench";
+import { hasStrategy, parseReplanScope } from "@/modules/prescricao/automatica/review-view";
 import { getRuleSet } from "@/modules/prescricao/motor/rules";
 
 export const dynamic = "force-dynamic";
@@ -113,17 +117,30 @@ export default async function AutomaticPrescription({
   }
 
   const open = await repo.open(planId, revisionId);
-  if (!open) {
+  // "Rever estratégia" (RX-01): the strategy step again, over the OPEN proposal; the address says the scope. Only an open proposal can be redone.
+  const rever = open ? parseReplanScope(one("rever")) : null;
+  if (!open || rever) {
     const loaded = await service.screen(planId, revisionId);
     if (loaded.status !== "ok") notFound();
     const { screen } = loaded;
-    // Figma GEN-01..08: the generation draws its own header (breadcrumb, title, "Voltar ao plano") and its compact summaries.
+    // Figma GEN-01..04 and M-01: the flow draws its own header (breadcrumb, title, "Voltar ao plano") and its compact summaries. What the AI gate
+    // says and the strategies already suggested (and accepted) for this revision come from the server; nothing external is called to read them.
+    const [availability, current] = await Promise.all([getPlanningAvailability(planId, revisionId), getStrategyAcceptance(planId, revisionId)]);
     return (
-      <GenerationForm
+      <GenerationFlow
         planId={planId}
         revisionId={revisionId}
         screen={screen}
-        header={{ studentName: student.displayName, planTitle: detail.plan.title, revisionNumber: revision.revisionNumber, backHref: revisionHref }}
+        availability={availability}
+        initial={current}
+        replan={open && rever ? { proposalId: open.id, version: open.version, scope: rever, backHref: selfHref } : undefined}
+        header={{
+          studentName: student.displayName,
+          planTitle: detail.plan.title,
+          revisionNumber: revision.revisionNumber,
+          backHref: revisionHref,
+          periodizationHref: `/profissional/alunos/${student.id}?aba=periodizacao`,
+        }}
       />
     );
   }
@@ -166,6 +183,25 @@ export default async function AutomaticPrescription({
     updatedAt: page.header.updatedAt,
   };
   const tab = pickTab(one("aba"));
+  // A proposal made from an accepted strategy: its name, the audit rule's minimum adherence and the movement patterns of the listed exercises.
+  let strategy: { name: string | null; adherenceMin: number | null; patterns: Record<string, string[]> } | null = null;
+  if (hasStrategy(page.summary.workouts)) {
+    const [blueprint, patterns] = await Promise.all([
+      service.blueprint(planId, revisionId, open.id),
+      service.patternsOf(planId, revisionId, [...new Set(page.occurrences.flatMap((o) => o.items.map((i) => i.exerciseId).filter((x): x is string => x !== null)))]),
+    ]);
+    const families = blueprint.status === "ok" && blueprint.blueprint ? [...new Set(blueprint.blueprint.strategies.map((x) => x.familyLabel))] : [];
+    strategy = {
+      name: families.length ? families.join(" + ") : null,
+      adherenceMin: getRuleSet({ id: page.header.rulesId, version: page.header.rulesVersion })?.rules.AUDIT_STRATEGY?.value.adherenceMin ?? null,
+      patterns: patterns.status === "ok" ? patterns.byId : {},
+    };
+  }
+  // Assisted adjustments (RX-02): whether the AI button can be offered, and the primary muscles of the listed exercises for the constraint chips.
+  const [adjustAvailability, adjustMuscles] = await Promise.all([
+    getAdjustAvailability(planId, revisionId),
+    service.musclesOf(planId, revisionId, [...new Set(page.occurrences.flatMap((o) => o.items.map((i) => i.exerciseId).filter((x): x is string => x !== null)))]),
+  ]);
   return (
     <ProposalView
       planId={planId}
@@ -179,11 +215,13 @@ export default async function AutomaticPrescription({
       occurrences={page.occurrences}
       phaseIndex={phaseIndex}
       week={week}
-      initial={{ tab, slot: one("sessao"), item: one("item") }}
+      initial={{ tab, slot: one("sessao"), item: one("item"), adjust: one("ajustar") === "1" }}
+      adjust={{ availability: adjustAvailability, muscles: adjustMuscles.status === "ok" ? adjustMuscles.byId : {} }}
       library={library.map((exercise) => ({ id: exercise.id, name: exercise.name, category: exercise.category }))}
       audit={audit}
       acceptSuggestions={acceptSuggestions}
       targetSuggestions={suggested?.status === "ok" ? suggested.suggestions : []}
+      strategy={strategy}
       apply={
         preview
           ? {

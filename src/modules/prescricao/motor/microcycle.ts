@@ -16,7 +16,7 @@ import {
 import { checkWeeksOf, exposuresOf, occurrenceStimulus, indexInWeek, progressionFor, roundExposure, weeklyExposureOf } from "./occurrence";
 import { staticTerms, type StaticRequest } from "./select";
 import { cmp, codeOf, MUSCLE_LABELS, numberText, PATTERN_LABELS } from "./vocabulary";
-import type { CatalogExercise, Dose, Issue, OccurrenceOut, StructurePhase, TraceEntry } from "./types";
+import type { BlueprintRole, BlueprintSource, CatalogExercise, Dose, Issue, OccurrenceOut, StructurePhase, TraceEntry } from "./types";
 import type { MicrocycleSelection } from "./rules";
 
 // ---------- opções (internas: não fazem parte de EngineInput, não mudam o hash da entrada) ----------
@@ -226,6 +226,59 @@ interface Lane {
   staticMemo: Map<string, { score: number; trace: TraceEntry[] }>;
   setsMemo: Map<string, number | null>;
   refOcc: { week: number; stimulus: string | null } | null;
+  /** Foco da estratégia aceita neste treino (2026.11.5+, cobertura BLUEPRINT_FOCUS); null nos demais. */
+  bp: BlueprintLane | null;
+}
+
+/** O foco dominante de um treino como conjuntos, calculado uma vez por fase. */
+interface BlueprintLane {
+  role: BlueprintRole;
+  source: BlueprintSource;
+  dominant: ReadonlySet<string>;
+  supporting: ReadonlySet<string>;
+  targetPatterns: ReadonlySet<string>;
+  spillover: ReadonlySet<string>;
+  candidates: ReadonlySet<string>;
+  /** Corpo inteiro: todos os treinos pedem os mesmos padrões; nenhum desconto de foco. */
+  fullBody: boolean;
+  /** Sem nenhum músculo ou padrão (papel personalizado vazio): nada a comparar, nenhum desconto. */
+  empty: boolean;
+}
+
+function blueprintLaneOf(coverage: WorkoutDraft["coverage"]): BlueprintLane | null {
+  const b = coverage?.origin === "BLUEPRINT_FOCUS" ? coverage.blueprint : undefined;
+  if (!coverage || !b) return null;
+  const dominant = new Set(coverage.muscles.map(codeOf));
+  const supporting = new Set(b.supporting.map(codeOf));
+  const targetPatterns = new Set(coverage.patterns.map(codeOf));
+  const spillover = new Set(b.spillover.map(codeOf));
+  return {
+    role: b.role, source: b.source, dominant, supporting, targetPatterns, spillover, candidates: new Set(b.candidates),
+    fullBody: b.role === "FULL_BODY", empty: !dominant.size && !supporting.size && !targetPatterns.size && !spillover.size,
+  };
+}
+
+/** Fora do foco: nenhum músculo principal no dominante/apoio e nenhum padrão nos alvos/transbordo. */
+function offFocus(bp: BlueprintLane, e: CatalogExercise): boolean {
+  if (bp.fullBody || bp.empty) return false;
+  return !primaryOf(e).some((m) => bp.dominant.has(m) || bp.supporting.has(m)) && !patternsOf(e).some((p) => bp.targetPatterns.has(p) || bp.spillover.has(p));
+}
+
+/** Aviso informativo quando o motor escolheu itens fora do foco da estratégia; null se todos estão no foco. */
+function blueprintSupplyIssueOf(bp: BlueprintLane, phaseIndex: number, label: string, picked: readonly CatalogExercise[]): Issue | null {
+  const off = picked.filter((e) => offFocus(bp, e)).length;
+  if (off === 0) return null;
+  return {
+    severity: "INFO", code: "BLUEPRINT_FOCUS_SUPPLY_LOW", path: `phases.${phaseIndex}.workouts.${label}.blueprint`, stage: "SELECTION", phaseIndex,
+    label, count: off,
+    message: `Treino ${label}: ${off} ${off === 1 ? "exercício ficou" : "exercícios ficaram"} fora do foco da estratégia (${roleText(bp.role)}) por falta de oferta elegível no foco; a biblioteca, o equipamento ou as exclusões limitam a escolha.`,
+  };
+}
+
+/** Mesmo aviso a partir da cobertura do treino, para quem refaz itens depois da seleção (troca do profissional). */
+export function blueprintSupplyIssue(coverage: WorkoutDraft["coverage"], phaseIndex: number, label: string, picked: readonly CatalogExercise[]): Issue | null {
+  const bp = blueprintLaneOf(coverage);
+  return bp ? blueprintSupplyIssueOf(bp, phaseIndex, label, picked) : null;
 }
 
 class WeekState {
@@ -276,6 +329,12 @@ const patternText = (p: string) => PATTERN_LABELS[p] ?? p;
 const avg = (n: number) => (Number.isInteger(n) ? "" : " em média");
 const sessions = (n: number) => `${numberText(n)} ${n === 1 ? "sessão" : "sessões"}${avg(n)}`;
 const weeklySessions = (n: number) => `${numberText(n)} ${n === 1 ? "sessão semanal" : "sessões semanais"}${avg(n)}`;
+
+const ROLE_TEXT: Record<string, string> = {
+  FULL_BODY: "corpo inteiro", UPPER: "superior", LOWER: "inferior", PUSH: "empurrar", PULL: "puxar", LEGS: "pernas",
+  CHEST_TRICEPS: "peito e tríceps", BACK_BICEPS: "costas e bíceps", SHOULDERS_ARMS: "ombros e braços", CORE: "core", CUSTOM: "personalizado",
+};
+const roleText = (role: string) => ROLE_TEXT[role] ?? role.toLowerCase();
 
 interface Scored {
   score: number;
@@ -368,6 +427,25 @@ function dynamicTerms(
   }
   const others = state.otherHolders(e.id, lane.i);
   if (others > 0) add(M.sameExerciseWeekly * others, "MICRO_SAME_EXERCISE", () => `Já está em outro treino da fase (${sessions(others)} por semana); repetir é permitido`);
+  const bp = lane.bp;
+  const rule = bp ? ctx.log.optional("MICROCYCLE_BLUEPRINT") : undefined;
+  if (bp && rule) {
+    const bpBasis = ctx.log.basis("MICROCYCLE_BLUEPRINT");
+    const from = (value: number, code: string, detail: () => string) => {
+      if (!value) return;
+      total += value;
+      if (withTrace) trace.push({ code, basis: bpBasis, ruleId: "MICROCYCLE_BLUEPRINT", origin: bp.source, detail: `${detail()} (${value > 0 ? "+" : ""}${numberText(value)})` });
+    };
+    if (offFocus(bp, e))
+      from(rule.offFocus, "MICRO_OFF_FOCUS", () => `Fora do foco do treino ${label} (${roleText(bp.role)}): nenhum músculo principal nem padrão do foco, de apoio ou de transbordo`);
+    else if (!bp.fullBody && !primary.some((m) => bp.dominant.has(m)) && primary.some((m) => bp.supporting.has(m)))
+      from(rule.supportingBonus, "MICRO_SUPPORTING", () => `Trabalho de apoio do treino ${label} (${roleText(bp.role)}): ${primary.filter((m) => bp.supporting.has(m)).map(muscleText).join(", ")}`);
+    if (bp.fullBody) {
+      const again = patternsOf(e).filter((p) => bp.targetPatterns.has(p) && here.has(p));
+      if (again.length) from(rule.fullBodyPatternRepeat * again.length, "MICRO_FULL_BODY_PATTERN_REPEAT", () => `Corpo inteiro: ${again.map(patternText).join(", ")} já presente no treino ${label}; cada treino cobre os padrões-base antes de repetir um`);
+    }
+    if (bp.candidates.has(e.id)) from(rule.candidateBonus, "MICRO_CANDIDATE", () => `Exercício nomeado pela estratégia para o treino ${label}`);
+  }
   return { score: total, trace };
 }
 
@@ -430,6 +508,7 @@ export function planPhaseMicrocycle(ctx: EngineContext, phase: StructurePhase, u
       candidates,
       primaryHere: new Set(), patternsHere: new Set(draft.slots.flatMap((sl) => (sl.exercise ? patternsOf(sl.exercise) : []))), noTargets: false, staticMemo: new Map(), setsMemo: new Map(),
       refOcc: occ0 ? { week: occ0.week, stimulus: stim0?.value ?? null } : null,
+      bp: volLane ? blueprintLaneOf(draft.coverage) : null,
     };
   });
   const refSets = (lane: Lane, e: CatalogExercise): number | null => {
@@ -582,6 +661,13 @@ export function planPhaseMicrocycle(ctx: EngineContext, phase: StructurePhase, u
     lane.remaining--;
     put(lane, e, refSets(lane, e));
   }
+  // Estratégia: cada exercício escolhido pelo motor fora do foco do treino é dito (oferta elegível insuficiente), nunca em silêncio.
+  const issues: Issue[] = [];
+  for (const lane of lanes) {
+    if (!lane.bp || lane.fixed && !lane.replay) continue;
+    const found = blueprintSupplyIssueOf(lane.bp, phase.index, lane.draft.workout.label, lane.picks.map((pk) => pk.exercise));
+    if (found) issues.push(found);
+  }
   const stepLimited = new Set(volumeLanes.filter((l) => !l.fixed && l.remaining > 0 && l.candidates.some((e) => !l.ids.has(e.id))).map((l) => l.i));
 
   // ---- treinos que não são de volume: seleção antiga, na ordem da estrutura ----
@@ -598,7 +684,6 @@ export function planPhaseMicrocycle(ctx: EngineContext, phase: StructurePhase, u
     completeWorkout(ctx, lane.draft, lane.picks, { phaseTargets: "SKIP", stepLimited: stepLimited.has(lane.i), fixed: lane.fixed !== null }));
 
   // ---- alvos da fase: conferidos uma vez na fase (em algum treino) ----
-  const issues: Issue[] = [];
   const inPhase: CatalogExercise[] = [];
   for (const [n, lane] of lanes.entries()) {
     if (lane.fixed) for (const id of Object.keys(lane.fixed.exercises).sort(cmp)) {
@@ -617,6 +702,27 @@ export function planPhaseMicrocycle(ctx: EngineContext, phase: StructurePhase, u
   }
   const path = `phases.${phase.index}.coverage`;
   const at = { phaseIndex: phase.index, stage: "SELECTION" as const };
+  // Com a estratégia, os alvos semanais aceitos da fase continuam globais; um músculo com alvo que nenhum treino lista no foco
+  // (dominante, apoio, padrões) entra em todos os treinos de volume (escopo global) e não pode sumir em silêncio: um aviso só.
+  const blueprintLanes = lanes.filter((l) => l.bp);
+  if (blueprintLanes.length) {
+    const listedMuscles = new Set<string>();
+    const listedPatterns = new Set<string>();
+    for (const l of blueprintLanes) {
+      for (const m of [...l.bp!.dominant, ...l.bp!.supporting]) listedMuscles.add(m);
+      for (const pt of [...l.bp!.targetPatterns, ...l.bp!.spillover]) listedPatterns.add(pt);
+    }
+    const accepted = input.parameters.phaseCoverage.find((c) => c.phaseIndex === phase.index);
+    const wantedMuscles = new Set([...(accepted?.muscles ?? []), ...(accepted?.weeklySets ?? []).map((w) => w.muscle)].map(codeOf));
+    const wantedPatterns = new Set((accepted?.patterns ?? []).map(codeOf));
+    const outsideMuscles = [...wantedMuscles].filter((m) => !listedMuscles.has(m)).sort(cmp);
+    const outsidePatterns = [...wantedPatterns].filter((pt) => !listedPatterns.has(pt)).sort(cmp);
+    if (outsideMuscles.length || outsidePatterns.length)
+      issues.push({
+        severity: "INFO", code: "BLUEPRINT_PHASE_TARGET_OUTSIDE_LANES", path, ...at, count: outsideMuscles.length + outsidePatterns.length,
+        message: `Fase ${phase.index}: ${[...outsideMuscles.map(muscleText), ...outsidePatterns.map(patternText)].join(", ")} ${outsideMuscles.length + outsidePatterns.length === 1 ? "é alvo aceito" : "são alvos aceitos"} da fase, mas nenhum treino o lista no foco da estratégia; o alvo semanal vale em todos os treinos de volume e o que é só de cobertura da fase não puxa nenhum treino.`,
+      });
+  }
   for (const m of [...phaseMuscles].sort(cmp))
     if (!inPhase.some((e) => primaryOf(e).includes(m)))
       issues.push({ severity: "WARNING", code: "MUSCLE_NOT_COVERED", path, ...at, message: `Fase ${phase.index}: ${muscleText(m)} sem exercício como músculo principal em nenhum treino.` });

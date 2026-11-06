@@ -1,5 +1,8 @@
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import { aiAdjustScenario } from "./adjust-flow";
+import { aiFlowScenario } from "./ai-flow";
+import { aiPanelScenario, aiUsageReportScenario } from "./ai-gestor";
 import {
   addStudent,
   createProfessional,
@@ -26,6 +29,7 @@ test("the platform manager is activated once and manages organizations without s
   browser,
   baseURL,
 }) => {
+  test.setTimeout(240_000); // a whole-product flow: the manager, the invitations, the recovery, the AI panel and the terms
   // A professional with an organization and a student that must stay private.
   // Unique names: the local database keeps organizations from earlier runs.
   const studio = `Estúdio do gestor ${crypto.randomUUID().slice(0, 8)}`;
@@ -241,6 +245,15 @@ test("the platform manager is activated once and manages organizations without s
   await expect(manager.page.getByRole("heading", { name: "Quem contratou a ferramenta." })).toBeVisible();
   await manager.page.goto("./gestor/auditoria");
   await expect(manager.page.getByText("Verificação em duas etapas redefinida com o código de ativação").first()).toBeVisible();
+
+  // Sub-stage 1.4: the AI panel (keys, models, plans, organizations, usage). It turns the second step on for this manager.
+  await aiPanelScenario(manager.page, pro.page, studio);
+  // Motor V4, PR 4.1: with the organization enabled, the generation flow offers the AI (simulated provider) and walks it to a proposal.
+  await aiFlowScenario(pro.page, "Aluno confidencial gestor");
+  // Motor V4, PR 4.3: assisted adjustments on that proposal, through the simulated provider (the adjustments task is mapped in the panel scenario).
+  await aiAdjustScenario(pro.page);
+  // Motor V4, PR 5.1: the manager's usage reports show that traffic (latency, cache, errors, alerts) without any student data.
+  await aiUsageReportScenario(manager.page, studio, "Aluno confidencial gestor");
 
   // The terms: the text in force is the approved one, and the manager can change it on a page of its own.
   // This is the last thing the scenario does: publishing a text asks everyone to accept again.

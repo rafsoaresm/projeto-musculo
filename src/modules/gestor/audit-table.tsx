@@ -15,6 +15,19 @@ const actionLabel: Record<string, string> = {
   PLATFORM_ADMIN_INVITE_REVOKED: "Convite de gestor cancelado",
   PLATFORM_ADMIN_GRANTED: "Gestor acrescentado",
   PLATFORM_ADMIN_REVOKED: "Acesso de gestor encerrado",
+  AI_PROVIDER_CONNECTED: "Provedor de IA conectado",
+  AI_PROVIDER_ROTATED: "Chave de provedor de IA trocada",
+  AI_PROVIDER_REMOVED: "Provedor de IA removido",
+  AI_PROVIDER_TESTED: "Conexão com provedor de IA testada",
+  AI_MODEL_TESTED: "Modelo de IA testado",
+  AI_TASK_CONFIGURED: "Tarefa de IA configurada",
+  AI_KILL_SWITCH_ON: "IA interrompida em toda a plataforma",
+  AI_KILL_SWITCH_OFF: "IA liberada em toda a plataforma",
+  AI_PLAN_SAVED: "Plano de IA salvo",
+  AI_PLAN_ARCHIVED: "Plano de IA arquivado",
+  AI_ORG_ENABLED: "IA habilitada para uma organização",
+  AI_ORG_DISABLED: "IA desligada para uma organização",
+  AI_ORG_PLAN_ASSIGNED: "Plano de IA atribuído a uma organização",
 };
 
 /** Shared by the real manager area and the demonstration. */

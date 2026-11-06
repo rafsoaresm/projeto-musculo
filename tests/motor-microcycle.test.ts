@@ -59,9 +59,9 @@ function distribution(r: EngineResult) {
 }
 
 describe("microciclo: gate pela regra e reprodução das versões anteriores", () => {
-  it("2026.11.4 é o padrão, traz as regras novas e o motor 2.2.0; 2026.11.3 continua com a seleção por treino", () => {
-    expect(DEFAULT_RULESET).toEqual({ id: "gymgital-base", version: "2026.11.4" });
-    expect(ENGINE_VERSION).toBe("2.2.0");
+  it("2026.11.5 é o padrão (traz as regras da 2026.11.4) e o motor 2.4.0; 2026.11.3 continua com a seleção por treino", () => {
+    expect(DEFAULT_RULESET).toEqual({ id: "gymgital-base", version: "2026.11.5" });
+    expect(ENGINE_VERSION).toBe("2.4.0");
     const rules = getRuleSet(MICRO)!.rules;
     expect(rules.MICROCYCLE_SELECTION?.basis).toBe("HEURISTIC");
     expect(rules.MICROCYCLE_TARGET_SUGGESTIONS?.basis).toBe("HEURISTIC");

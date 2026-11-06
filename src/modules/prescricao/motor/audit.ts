@@ -1,15 +1,17 @@
 /**
  * Auditoria técnica do plano inteiro (fatia B do handoff V3). Pura e determinística: lê só o conteúdo da proposta (sessões reais
  * de cada semana, itens e doses), os alvos persistidos nos treinos e as regras do conjunto. Nunca muda a proposta, nunca bloqueia,
- * nunca lê texto livre nem a origem dos itens (travar ou destravar não deixa a auditoria velha).
+ * nunca lê texto livre. A origem dos itens só entra no bloco de aderência à estratégia, e de um jeito que travar ou destravar não
+ * muda (travar não recalcula a auditoria gravada; ver audit-strategy.ts).
  *
  * Distinções (handoff V3, B): (a) músculo só com estímulo indireto; (b) alvo explícito não atingido; (c) músculo fora dos alvos
  * omitido por escolha do profissional. Faixas só vêm de alvos do profissional, de heurística aceita ou da disponibilidade
  * informada; os limiares do conjunto de regras são heurística operacional (editável) e geram observações, nunca bloqueios.
  * Vazio nunca vira 0: séries não definidas e itens que não puderam ser contados desligam as checagens por séries.
  */
+import { focusOfWorkout, strategyAudit } from "./audit-strategy";
 import { intensityText } from "./dose";
-import type { AuditThresholds } from "./rules";
+import type { AuditDose, AuditThresholds } from "./rules";
 import type { RuleLog } from "./trace";
 import { cmp, codeOf, labelsOf, MUSCLE_LABELS, numberText, PATTERN_LABELS, STIMULUS_LABELS } from "./vocabulary";
 import type {
@@ -19,6 +21,10 @@ import type {
 } from "./types";
 
 export const AUDIT_VERSION = "1.0.0";
+/** Só quando o bloco de aderência à estratégia é calculado (treinos de estratégia aceita, regras com AUDIT_STRATEGY). */
+export const AUDIT_VERSION_STRATEGY = "1.1.0";
+/** Regras com AUDIT_DOSE (2026.11.6+): a auditoria também calcula saltos de dose por exercício e doses sem perfil. */
+export const AUDIT_VERSION_DOSE = "1.2.0";
 
 export interface AuditInput {
   /** As regras da proposta (ou, para propostas antigas sem auditoria gravada, as regras de auditoria atuais). */
@@ -37,6 +43,8 @@ export interface AuditInput {
    * sugestão, e a ação não pode apontar para um aceite que o servidor recusaria. Omitido = lido de `log`.
    */
   suggestionsAccepted?: boolean;
+  /** Alvos aceitos de cada fase (a entrada da geração): a auditoria da estratégia avisa de um alvo que nenhum treino lista. */
+  phaseTargets?: Array<{ phaseIndex: number; muscles: string[]; patterns: string[] }>;
 }
 
 const MAX_RATIONALE = 300;
@@ -182,9 +190,13 @@ function targetsOf(workouts: WorkoutSummary[], structure: StructurePhase | null)
     const fromStructure = focused(w.label);
     const origin = c.origin ?? (fromStructure === null ? inferred : fromStructure ? "WORKOUT_FOCUS" : "PHASE_COVERAGE");
     const label = origin === "PHASE_COVERAGE" ? null : w.label;
-    const base = { basis: c.basis, ...(c.ruleId ? { ruleId: c.ruleId } : {}), origin, label };
-    for (const m of c.muscles) add({ kind: "MUSCLE", code: codeOf(m), minSessions: 1, ...base });
-    for (const p of c.patterns) add({ kind: "PATTERN", code: codeOf(p), minSessions: 1, ...base });
+    // O foco dominante da estratégia (2026.11.5) orienta a seleção, não é meta: não vira "alvo não atendido" (a aderência à
+    // estratégia é medida à parte). Os alvos semanais da fase, abaixo, continuam valendo.
+    if (origin !== "BLUEPRINT_FOCUS") {
+      const base = { basis: c.basis, ...(c.ruleId ? { ruleId: c.ruleId } : {}), origin, label };
+      for (const m of c.muscles) add({ kind: "MUSCLE", code: codeOf(m), minSessions: 1, ...base });
+      for (const p of c.patterns) add({ kind: "PATTERN", code: codeOf(p), minSessions: 1, ...base });
+    }
     for (const ws of c.weeklySets ?? [])
       add({
         kind: "MUSCLE", code: codeOf(ws.muscle), label: null, origin: "PHASE_COVERAGE", basis: ws.basis, ...(ws.ruleId ? { ruleId: ws.ruleId } : {}),
@@ -666,6 +678,11 @@ function auditPhase(pc: PhaseContext): AuditPhase {
   // doses uniformes em exercícios diferentes
   doseUniform(pc, p, checkWeeks[0]);
   doseStimulus(pc, p);
+  const doseRule = a.log.optional("AUDIT_DOSE");
+  if (doseRule) {
+    doseExerciseJumps(pc, p, doseRule);
+    doseProfileFallback(pc, p);
+  }
   intensityMissing(pc, p);
 
   // tempo disponível subutilizado
@@ -790,14 +807,91 @@ function doseUniform(pc: PhaseContext, p: number, week: number | undefined): voi
   const profiles = new Set(group.map(profile)).size;
   if (profiles < 2) return;
   const fromPolicy = group.filter((f) => f.item.trace.params.some((x) => x.param === "repsMin" && x.ruleId === "DOSE_DEFAULTS")).length > group.length / 2;
+  const fromProfile = group.filter((f) => f.item.trace.params.some((x) => x.param === "repsMin" && x.ruleId === "DOSE_PROFILES")).length > group.length / 2;
   const d = group[0].item.dose as Extract<Dose, { metric: "REPS" }>;
   const text = [`${d.reps.min === d.reps.max ? d.reps.min : `${d.reps.min}–${d.reps.max}`} repetições`, intensityText(d.intensity), d.restSeconds !== null ? `descanso ${d.restSeconds} s` : null].filter(Boolean).join(", ");
   pc.findings.push(finding({
     code: "AUDIT_DOSE_UNIFORM", severity: "INFO", status: "OPEN", phaseIndex: p, week,
     measured: { unit: "SHARE", value: r2(share), detail: { items: group.length, total: items.length, profiles } },
-    sourceRefs: [rule("AUDIT_THRESHOLDS"), ...(fromPolicy ? [rule("DOSE_DEFAULTS")] : []), ...group.slice(0, 6).map((f) => `item:${p}:${f.item.slotKey}`)],
-    rationale: `Fase ${p}: ${group.length} de ${items.length} exercícios com a mesma dose (${text}) em perfis diferentes (multiarticular, isolado, unilateral…).${fromPolicy ? " Os valores vêm da política padrão de doses (heurística operacional), não de uma escolha por exercício." : ""} As doses não foram alteradas.`,
+    sourceRefs: [rule("AUDIT_THRESHOLDS"), ...(fromPolicy ? [rule("DOSE_DEFAULTS")] : []), ...(fromProfile ? [rule("DOSE_PROFILES")] : []), ...group.slice(0, 6).map((f) => `item:${p}:${f.item.slotKey}`)],
+    rationale: `Fase ${p}: ${group.length} de ${items.length} exercícios com a mesma dose (${text}) em perfis diferentes (multiarticular, isolado, unilateral…).${fromPolicy ? " Os valores vêm da política padrão de doses (heurística operacional), não de uma escolha por exercício." : fromProfile ? " Os valores vêm dos perfis de dose (heurística operacional): exercícios de mesmo perfil recebem a mesma dose." : ""} As doses não foram alteradas.`,
     suggestedAction: "Revise se a mesma dose serve a exercícios tão diferentes.",
+  }));
+}
+
+/**
+ * Salto de dose de UM exercício entre semanas consecutivas da mesma fase (séries acima de `exerciseJumpSets`, ou descanso acima
+ * de `restJumpFraction` do menor valor). Compara o mesmo exercício no mesmo treino (primeira sessão de cada semana). BY_DESIGN quando
+ * o valor da semana seguinte vem do profissional (progressão ou ajuste de dose dele). Só descreve; nunca altera a dose.
+ */
+function doseExerciseJumps(pc: PhaseContext, p: number, limits: AuditDose): void {
+  const groups = new Map<"OPEN" | "BY_DESIGN", { keys: Set<string>; example: string; setsItems: number; restItems: number }>();
+  for (let week = 1; week < pc.summary.weeks; week++) {
+    const before = firstItemsOf(pc.facts, p, week);
+    const after = firstItemsOf(pc.facts, p, week + 1);
+    for (const [key, f] of after) {
+      const b = before.get(key);
+      if (!b || !f.item.dose || !b.item.dose) continue;
+      const setsJump = b.sets !== null && f.sets !== null && Math.abs(f.sets - b.sets) > limits.exerciseJumpSets;
+      const x = restOf(b.item.dose);
+      const y = restOf(f.item.dose);
+      const restJump = x !== null && y !== null && (Math.min(x, y) === 0 ? x !== y : Math.abs(x - y) / Math.min(x, y) > limits.restJumpFraction);
+      if (!setsJump && !restJump) continue;
+      // BY_DESIGN quando o profissional definiu um dos dois lados (a volta ao valor anterior depois de uma semana dele também é dele).
+      const params = [...(setsJump ? ["sets"] : []), ...(restJump ? ["restSeconds"] : [])];
+      const status = professionalDose(f.item, params) || professionalDose(b.item, params) ? "BY_DESIGN" : "OPEN";
+      const g = groups.get(status) ?? { keys: new Set<string>(), example: "", setsItems: 0, restItems: 0 };
+      const id = `${key}|${setsJump ? "S" : ""}${restJump ? "R" : ""}`;
+      if (!g.keys.has(id)) {
+        g.keys.add(id);
+        if (setsJump) g.setsItems++;
+        if (restJump) g.restItems++;
+        if (!g.example)
+          g.example = `${f.item.exerciseName} (treino ${f.occ.label}): ${setsJump ? `${b.sets} → ${f.sets} séries` : `${x} → ${y} s de descanso`} da semana ${week} para a ${week + 1}`;
+      }
+      groups.set(status, g);
+    }
+  }
+  for (const status of ["OPEN", "BY_DESIGN"] as const) {
+    const g = groups.get(status);
+    if (!g) continue;
+    pc.findings.push(finding({
+      code: "AUDIT_DOSE_EXERCISE_JUMP", severity: "WARNING", status, phaseIndex: p,
+      measured: { unit: "ITEMS", value: g.keys.size, detail: { sets: g.setsItems, rest: g.restItems, limitSets: limits.exerciseJumpSets, limitRest: limits.restJumpFraction } },
+      sourceRefs: [rule("AUDIT_DOSE")],
+      rationale: `Fase ${p}: ${g.keys.size} salto(s) de dose de um exercício entre semanas seguidas, acima do limiar (mais de ${limits.exerciseJumpSets} séries ou ${pct(limits.restJumpFraction)} de mudança no descanso; heurística operacional). Ex.: ${g.example}.${status === "BY_DESIGN" ? " Valor definido pelo profissional." : ""} As doses não foram alteradas.`,
+      suggestedAction: status === "BY_DESIGN" ? null : "Confirme se o salto é intencional ou espalhe a mudança em mais semanas.",
+    }));
+  }
+}
+
+const restOf = (d: Dose): number | null => ("restSeconds" in d && typeof d.restSeconds === "number" ? d.restSeconds : null);
+
+/**
+ * Exercícios que ficaram com a dose genérica do estímulo embora a política tenha perfis para ele (metadado ausente na biblioteca ou
+ * nenhum perfil serve). Descritivo: o número mostra quanto da dose ainda não tem um "por quê" por exercício.
+ */
+function doseProfileFallback(pc: PhaseContext, p: number): void {
+  const profiles = pc.a.log.optional("DOSE_PROFILES");
+  if (!profiles?.length) return;
+  const keys = new Set<string>();
+  for (const f of pc.facts) {
+    const dose = f.item.dose;
+    const stim = f.occ.stimulus?.value;
+    if (!dose || !stim || !f.exercise?.modality || !f.item.trace.params.length) continue;
+    const modality = codeOf(f.exercise.modality);
+    if (!profiles.some((x) => x.match.stimulus.includes(stim) && x.match.modality === modality && x.match.metric === dose.metric)) continue;
+    if (f.item.trace.params.some((x) => x.param === "profile" && x.profileId)) continue;
+    if (professionalDose(f.item, ["repsMin", "repsMax", "rirMin", "rirMax", "restSeconds"])) continue;
+    keys.add(f.item.slotKey);
+  }
+  if (!keys.size) return;
+  pc.findings.push(finding({
+    code: "AUDIT_DOSE_PROFILE_FALLBACK", severity: "INFO", status: "DESCRIPTIVE", phaseIndex: p,
+    measured: { unit: "ITEMS", value: keys.size },
+    sourceRefs: [rule("DOSE_PROFILES"), rule("AUDIT_DOSE"), ...[...keys].sort(cmp).slice(0, 6).map((k) => `item:${p}:${k}`)],
+    rationale: `Fase ${p}: ${keys.size} exercício(s) ficaram com a dose padrão do estímulo, embora existam perfis de dose para ele (falta metadado na biblioteca ou nenhum perfil serve ao exercício). As doses não foram alteradas.`,
+    suggestedAction: null,
   }));
 }
 
@@ -813,9 +907,11 @@ function doseStimulus(pc: PhaseContext, p: number): void {
     const bandMax = row?.values.repsMax;
     if (!row || bandMin === undefined || bandMax === undefined) continue;
     const bandRest = row.values.restSeconds;
-    const repsOff = dose.reps.max < bandMin || dose.reps.min > bandMax;
+    // Valor que o perfil de dose (2026.11.6+) escreveu é a própria regra, não um desvio dela: não se compara à faixa genérica.
+    const fromProfile = (param: string) => f.item.trace.params.some((x) => x.param === param && x.ruleId === "DOSE_PROFILES" && x.basis !== "PROFESSIONAL");
+    const repsOff = !(fromProfile("repsMin") && fromProfile("repsMax")) && (dose.reps.max < bandMin || dose.reps.min > bandMax);
     const rest = dose.restSeconds;
-    const restOff = rest !== null && bandRest !== undefined && (Math.min(rest, bandRest) === 0 ? rest !== bandRest : Math.max(rest, bandRest) / Math.min(rest, bandRest) > pc.t.doseRestFactorMax);
+    const restOff = !fromProfile("restSeconds") && rest !== null && bandRest !== undefined && (Math.min(rest, bandRest) === 0 ? rest !== bandRest : Math.max(rest, bandRest) / Math.min(rest, bandRest) > pc.t.doseRestFactorMax);
     if (!repsOff && !restOff) continue;
     const status = professionalDose(f.item, ["repsMin", "repsMax", "restSeconds"]) ? "BY_DESIGN" : "OPEN";
     const key = `${stim}|${status}`;
@@ -914,11 +1010,23 @@ export function auditPlan(a: AuditInput): AuditReport {
       rationale: `Fases ainda sem sessões geradas: ${phasesMissing.join(", ")}. A auditoria cobre só as fases geradas.`,
       suggestedAction: "Continue a geração para auditar o plano inteiro.",
     }));
+  // Aderência à estratégia aceita: recalculada a cada auditoria, a partir das sessões reais. Sem a regra AUDIT_STRATEGY (< 2026.11.5)
+  // ou sem treinos de estratégia, o relatório é o de sempre (versão 1.0.0, sem a chave `strategy`).
+  // (A regra só é lida, e registrada como usada, quando há treinos de estratégia: sem eles o resultado é o das regras anteriores.)
+  const strategyRule = a.workouts.some((w) => focusOfWorkout(w) !== null) ? log.optional("AUDIT_STRATEGY") : undefined;
+  const strategy = strategyRule
+    ? strategyAudit({
+        rule: strategyRule, regions, volumeModalities, phases: a.phases, workouts: a.workouts, occurrences: a.occurrences, byId: a.byId, auditedPhases: phases,
+        ...(a.phaseTargets ? { phaseTargets: a.phaseTargets } : {}), mk: finding,
+      })
+    : null;
+  if (strategy) findings.push(...strategy.findings);
   return {
-    auditVersion: AUDIT_VERSION, rules: { id: log.rules.id, version: log.rules.version },
+    auditVersion: log.optional("AUDIT_DOSE") ? AUDIT_VERSION_DOSE : strategy ? AUDIT_VERSION_STRATEGY : AUDIT_VERSION, rules: { id: log.rules.id, version: log.rules.version },
     phasesAudited: phases.map((x) => x.phaseIndex), phasesMissing,
     occurrences: a.occurrences.length, datesMissing: a.occurrences.filter((o) => o.plannedDate === null).length,
     phases, findings: sortFindings(findings),
+    ...(strategy ? { strategy: strategy.strategy } : {}),
   };
 }
 

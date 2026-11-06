@@ -214,6 +214,31 @@ describe("generating a proposal (ledger, rows, replay)", () => {
     expect(await count("SELECT COUNT(*) AS n FROM proposal_decisions WHERE proposal_id = ?1 AND action = 'CONTINUED'", out.proposalId)).toBe(1);
   });
 
+  it("rulesVersion opts a new generation into the dose profiles (2026.11.6): kept by the proposal and by every later operation; other versions are refused", async () => {
+    const d = await newDraft();
+    const base = await contentVersion(d);
+    for (const bad of ["2026.11.4", "2026.11.7", "latest"])
+      expect(failure(await service().generate(d.planId, d.revisionId, { idempotencyKey: id("gen"), baseContentVersion: base, answers: ANSWERS, rulesVersion: bad }))).toBe("invalid");
+    expect(await count("SELECT COUNT(*) AS n FROM prescription_proposals WHERE revision_id = ?1", d.revisionId)).toBe(0);
+    // Without the choice the proposal is born with the default rules and no profile reaches any item.
+    const dPlain = await newDraft();
+    const plainSnap = await snapshot(dPlain, (await generated(dPlain)).proposalId);
+    expect(plainSnap.header.rulesVersion).toBe("2026.11.5");
+    expect(plainSnap.result.occurrences.flatMap((o) => o.items).some((i) => i.trace.params.some((p) => p.profileId || p.param === "profile"))).toBe(false);
+    const small = service("tech-a", "org-a", 6 * 64);
+    const out = ok(await small.generate(d.planId, d.revisionId, { idempotencyKey: id("gen"), baseContentVersion: base, answers: ANSWERS, rulesVersion: "2026.11.6" }));
+    expect(out.complete).toBe(false);
+    expect((await snapshot(d, out.proposalId)).header).toMatchObject({ rulesId: "gymgital-base", rulesVersion: "2026.11.6" });
+    ok(await small.continue(d.planId, d.revisionId, { proposalId: out.proposalId, idempotencyKey: id("key"), ...cas(1) }));
+    const snap = await snapshot(d, out.proposalId);
+    expect(snap.header.rulesVersion).toBe("2026.11.6");
+    expect(snap.result.rules).toEqual({ id: "gymgital-base", version: "2026.11.6" });
+    const items = snap.result.occurrences.flatMap((o) => o.items).filter((i) => i.dose?.metric === "REPS");
+    expect(items.length).toBeGreaterThan(0);
+    expect(items.every((i) => i.trace.params.some((p) => p.param === "profile" || p.ruleId === "DOSE_DEFAULTS"))).toBe(true);
+    expect(items.some((i) => i.trace.params.some((p) => p.profileId))).toBe(true);
+  });
+
   it("chunks rows by bytes, never splitting a row", () => {
     const rows = Array.from({ length: 10 }, (_, n) => ({ n, text: "x".repeat(100) }));
     const chunks = jsonChunks(rows, 300);
@@ -267,6 +292,22 @@ describe("topic 12: concurrency and idempotency", () => {
     };
     expect(await repo().recordGeneration(d.planId, d.revisionId, rec, result, NOW)).toEqual({ status: "revision_changed", contentVersion: base + 1 });
     expect(await count("SELECT COUNT(*) AS n FROM prescription_proposals WHERE revision_id = ?1", d.revisionId)).toBe(0);
+  });
+
+  it("a estratégia compilada nunca vem do navegador: generate e regenerate recusam `blueprint` nas respostas (V4)", async () => {
+    const d = await newDraft();
+    const fake = { version: 1, structureFingerprint: "f".repeat(32), acceptances: [{ acceptanceId: "a1", runId: "r1", blueprintHash: "a".repeat(64), acceptanceHash: "b".repeat(64), strategyId: "S1", splitFamily: "UPPER_LOWER", source: "RULES_HEURISTIC" }],
+      workouts: [{ phaseIndex: 1, label: "A", acceptanceId: "a1", role: "LOWER", source: "RULES_HEURISTIC", focusDelta: null, candidateExerciseIds: [] }] };
+    const refused = await service().generate(d.planId, d.revisionId, { idempotencyKey: id("gen"), baseContentVersion: await contentVersion(d), answers: { ...ANSWERS, blueprint: fake } });
+    expect(failure(refused)).toBe("invalid");
+    expect(refused.ok ? "" : refused.message).toContain("não é enviada pelo navegador");
+    expect(await count("SELECT COUNT(*) AS n FROM prescription_proposals WHERE plan_id = ?1", d.planId)).toBe(0);
+    const out = await generated(d);
+    const regen = await service().regenerate(d.planId, d.revisionId, { proposalId: out.proposalId, idempotencyKey: id("key"), ...cas(1), scope: { kind: "PHASE", phaseIndex: 1 }, answers: { blueprint: fake } });
+    expect(failure(regen)).toBe("invalid");
+    const snap = await snapshot(d, out.proposalId);
+    expect(snap.header.version).toBe(1);
+    expect(JSON.stringify(snap.header.parameters)).not.toContain("blueprint");
   });
 
   it("compare-and-set on the version; a retried write id is saved once; a manual edit forces a rebase", async () => {
@@ -717,8 +758,8 @@ describe("Motor V3 S2: the plan audit with the proposal", () => {
     const snap = await fresh(d, out.proposalId);
     const audit = snap.result.audit!;
     expect(audit.rules).toEqual(DEFAULT_RULESET);
-    expect(audit.rules.version).toBe("2026.11.4");
-    expect(snap.header.rulesVersion).toBe("2026.11.4");
+    expect(audit.rules.version).toBe("2026.11.5");
+    expect(snap.header.rulesVersion).toBe("2026.11.5");
     expect(audit.phasesAudited).toEqual([1, 2, 3]);
     // Phase 1 is hypertrophy with no structured targets: the absence is described, never filled in.
     expect(codesOf(snap, 1)).toContain("AUDIT_NO_TARGETS");
@@ -819,7 +860,7 @@ describe("Motor V3 S2: the plan audit with the proposal", () => {
     const legacyRules = getRuleSet(LEGACY_RULES);
     expect(canAcceptSuggestions(legacyRules)).toBe(false);
     const view = auditView({ report: out.audit, source: out.source, rules: out.rules }, { engineVersion: snap.header.engineVersion, acceptSuggestions: canAcceptSuggestions(legacyRules) });
-    expect(view.viewNotice).toContain("Auditoria calculada agora com as regras gymgital-base 2026.11.4");
+    expect(view.viewNotice).toContain("Auditoria calculada agora com as regras gymgital-base 2026.11.5");
     expect(view.viewNotice).toContain("Não foi gravada na proposta.");
     const all = [...view.attention, ...view.observations, ...view.descriptive].flatMap((g) => g.findings);
     expect(all.some((f) => f.code === "AUDIT_NO_TARGETS")).toBe(true);
@@ -973,5 +1014,82 @@ describe("Motor V3 S2: the plan audit with the proposal", () => {
     const out = await service().viewAudit(d.planId, d.revisionId, proposalId);
     if (out.status !== "ok") throw new Error(out.status);
     expect(phasesWithoutTargets({ report: out.audit, source: out.source, rules: out.rules }, true)).toEqual([]);
+  });
+});
+
+describe("Motor V4 PR 3.3: the professional's dose decisions on a 2026.11.6 proposal", () => {
+  const OVERRIDE = { stimulus: "HYPERTROPHY", patch: { values: { restSeconds: 100 } } };
+  const restOf = (i: { dose: unknown }) => ((i.dose as { restSeconds?: number } | null)?.restSeconds ?? null);
+  const repsDose = (i: { dose: unknown }) => (i.dose as { metric?: string } | null)?.metric === "REPS";
+  const trace = (i: { trace: { params: Array<{ param: string; basis: string; profileId?: string; reasons?: string[] }> } }, param: string) => i.trace.params.find((p) => p.param === param);
+
+  it("an override, a substitution, a lock and a regeneration of the phase keep what the professional decided; the other phases never move", async () => {
+    const d = await newDraft();
+    const answers: GenerationAnswersInput = { ...ANSWERS, policyOverrides: [OVERRIDE] };
+    const out = ok(await service().generate(d.planId, d.revisionId, { idempotencyKey: id("gen"), baseContentVersion: await contentVersion(d), answers, rulesVersion: "2026.11.6" }));
+    const s0 = await snapshot(d, out.proposalId);
+    expect(s0.header.rulesVersion).toBe("2026.11.6");
+    const phase1 = (snap: typeof s0) => snap.result.occurrences.filter((o) => o.phaseIndex === 1).flatMap((o) => o.items).filter(repsDose);
+    // The override is the professional's, on the rest only; the profile still sets reps and RIR where one matches.
+    expect(phase1(s0).length).toBeGreaterThan(0);
+    expect(phase1(s0).every((i) => restOf(i) === 100 && trace(i, "restSeconds")?.basis === "PROFESSIONAL")).toBe(true);
+    expect(phase1(s0).some((i) => i.trace.params.some((p) => p.profileId))).toBe(true);
+    // Strength phases (another stimulus) are not touched by the hypertrophy override: their rest comes from rules.
+    const phase2 = s0.result.occurrences.filter((o) => o.phaseIndex === 2).flatMap((o) => o.items).filter(repsDose);
+    expect(phase2.every((i) => trace(i, "restSeconds")?.basis !== "PROFESSIONAL")).toBe(true);
+
+    // Substitute one exercise of workout A in the whole phase: the new row has ITS dose, with the override re-applied.
+    const a = s0.result.occurrences.filter((o) => o.phaseIndex === 1 && o.label === "A");
+    const item = a[0].items[0];
+    const used = new Set(a.flatMap((o) => o.items.map((i) => i.exerciseId)));
+    const chosen = item.alternatives.find((x) => !used.has(x))!;
+    expect(chosen).toBeTruthy();
+    ok(await service().substitute(d.planId, d.revisionId, { proposalId: out.proposalId, idempotencyKey: id("key"), ...cas(1), newExerciseId: chosen, target: { phaseIndex: 1, slotKey: item.slotKey, applies: { kind: "PHASE" } } }));
+    const s1 = await snapshot(d, out.proposalId);
+    const swapped = s1.result.occurrences.filter((o) => o.phaseIndex === 1 && o.label === "A").map((o) => o.items.find((i) => i.exerciseId === chosen)!);
+    expect(swapped.every((i) => i && i.origin === "SUBSTITUTED" && restOf(i) === 100 && trace(i, "restSeconds")?.basis === "PROFESSIONAL")).toBe(true);
+    expect(swapped.every((i) => !repsDose(i) || (trace(i, "profile") !== undefined) || i.trace.params.some((p) => p.reasons?.length))).toBe(true);
+
+    // Lock an item of workout B and regenerate the phase with a NEW override value: the locked row keeps its stored dose, the rest follows.
+    const b = s1.result.occurrences.filter((o) => o.phaseIndex === 1 && o.label === "B");
+    const locked = b[0].items.find(repsDose)!;
+    ok(await service().lock(d.planId, d.revisionId, { proposalId: out.proposalId, ...cas(2), targets: [{ phaseIndex: 1, slotKey: locked.slotKey }], locked: true }));
+    ok(await service().regenerate(d.planId, d.revisionId, {
+      proposalId: out.proposalId, idempotencyKey: id("key"), ...cas(3), scope: { kind: "PHASE", phaseIndex: 1 },
+      answers: { policyOverrides: [{ ...OVERRIDE, patch: { values: { restSeconds: 110 } } }] } as GenerationAnswersInput,
+    }));
+    const s2 = await snapshot(d, out.proposalId);
+    const lockedAfter = s2.result.occurrences.filter((o) => o.phaseIndex === 1 && o.label === "B").map((o) => o.items.find((i) => i.slotKey === locked.slotKey)!);
+    expect(lockedAfter.every((i) => i && i.origin === "LOCKED" && restOf(i) === restOf(locked))).toBe(true);
+    const others = s2.result.occurrences.filter((o) => o.phaseIndex === 1).flatMap((o) => o.items).filter((i) => repsDose(i) && i.slotKey !== locked.slotKey);
+    expect(others.every((i) => restOf(i) === 110)).toBe(true);
+    // The professional's substitution survived the regeneration with the new override.
+    const swapped2 = s2.result.occurrences.filter((o) => o.phaseIndex === 1 && o.label === "A").map((o) => o.items.find((i) => i.exerciseId === chosen)!);
+    expect(swapped2.every((i) => i && i.origin === "SUBSTITUTED" && restOf(i) === 110)).toBe(true);
+    // Phases 2 and 3: identical to the first generation (same rows, same doses).
+    for (const o of s2.result.occurrences.filter((x) => x.phaseIndex > 1))
+      expect(o.items.map((i) => [i.exerciseId, i.dose])).toEqual(s0.result.occurrences.find((x) => x.phaseIndex === o.phaseIndex && x.week === o.week && x.slot === o.slot)!.items.map((i) => [i.exerciseId, i.dose]));
+    // The override lives in the stored answers: it is the one later operations read.
+    expect((await repo().asEngineResult(d.planId, d.revisionId, out.proposalId))!.header.rulesVersion).toBe("2026.11.6");
+    // No load is ever invented by a profile or an override.
+    expect(s2.result.occurrences.flatMap((o) => o.items).every((i) => (i.dose as { loadKg?: number | null } | null)?.loadKg == null)).toBe(true);
+  });
+
+  it("a rebase after a manual edit of the draft keeps every dose and override of the proposal; the new row is preserved with its own dose", async () => {
+    const d = await newDraft();
+    const out = ok(await service().generate(d.planId, d.revisionId, { idempotencyKey: id("gen"), baseContentVersion: await contentVersion(d), answers: { ...ANSWERS, policyOverrides: [OVERRIDE] }, rulesVersion: "2026.11.6" }));
+    const before = await snapshot(d, out.proposalId);
+    await prescriptionFor(db, scope("tech-a")).add(d.planId, d.revisionId, { phaseIndex: 1, workoutLabel: "A" }, { customName: "Alongamento do professor" });
+    ok(await service().rebase(d.planId, d.revisionId, { proposalId: out.proposalId, idempotencyKey: id("key"), ...cas(1) }));
+    const after = await snapshot(d, out.proposalId);
+    const strip = (o: (typeof before.result.occurrences)[number]) => o.items.filter((i) => i.origin !== "PRESERVED").map((i) => [i.slotKey, i.dose]);
+    for (const o of after.result.occurrences) expect(strip(o)).toEqual(strip(before.result.occurrences.find((x) => x.phaseIndex === o.phaseIndex && x.week === o.week && x.slot === o.slot)!));
+    expect(after.result.occurrences.filter((o) => o.phaseIndex === 1 && o.label === "A").every((o) => o.items.some((i) => i.origin === "PRESERVED" && i.exerciseName === "Alongamento do professor"))).toBe(true);
+    // Later regeneration still applies the override (kept in the proposal's answers).
+    ok(await service().regenerate(d.planId, d.revisionId, { proposalId: out.proposalId, idempotencyKey: id("key"), ...cas(2), scope: { kind: "WEEK", phaseIndex: 1, week: 2 } }));
+    const last = await snapshot(d, out.proposalId);
+    const week2 = last.result.occurrences.filter((o) => o.phaseIndex === 1 && o.week === 2).flatMap((o) => o.items).filter((i) => i.origin === "ENGINE" && repsDose(i));
+    expect(week2.length).toBeGreaterThan(0);
+    expect(week2.every((i) => restOf(i) === 100)).toBe(true);
   });
 });

@@ -13,6 +13,9 @@
 import { z } from "zod";
 import { CAUTION_TAGS, EQUIPMENT, MODALITIES, PATTERNS, MUSCLES } from "@/modules/biblioteca/metadata/vocabulary";
 import type { Assumption, EngineInput, Issue, Suggestion } from "@/modules/prescricao/motor/types";
+import { deltaSize, focusDeltaSchema } from "@/modules/prescricao/planejador/focus";
+import { COMPILE_VERSION, FOCUS_DELTA_MAX_ITEMS, PLANNER_MAX_CANDIDATES_PER_WORKOUT, PLANNER_MAX_PHASES, PLANNER_MAX_WORKOUTS_PER_PHASE } from "@/modules/prescricao/planejador/versions";
+import { DOSE_PROFILE_CODES, EXERCISE_CLASSES, PROGRESSION_INTENTS, SPLIT_FAMILIES, WORKOUT_ROLES } from "@/modules/prescricao/planejador/vocab";
 
 /**
  * Technical cap on each list in the answers: it bounds the body of one server action. A real list (exercises preferred or
@@ -125,6 +128,58 @@ export const flagDecisionSchema = z.discriminatedUnion("kind", [
  */
 export const flagCodeSchema = z.string().trim().min(1).max(200).regex(/^[A-Za-z0-9_.:-]+$/, "Código de alerta inválido.");
 
+/**
+ * Technical bound of the compiled block: `prescription_proposals.parameters_json` is limited to 100 000 characters by the database
+ * (migration 0042), so what the block takes is bounded here, by construction, and the other answers keep the rest.
+ */
+export const BLUEPRINT_MAX_CHARS = 60_000;
+const sha64 = z.string().regex(/^[0-9a-f]{64}$/);
+const blueprintId = z.string().trim().min(1).max(80);
+const blueprintSource = z.enum(["AI_SUGGESTED", "RULES_HEURISTIC"]);
+
+/**
+ * The accepted strategy, compiled (design V4 §2.7). Never typed by the client: the server compiles it from a stored acceptance
+ * (`planejador/compile.ts`) and injects it; a client payload carrying it is refused by the service. Each workout carries its
+ * role plus the professional's/AI's difference from the ruleset's role table (expanded by the adapter with the PINNED ruleset).
+ */
+export const blueprintAnswersSchema = z
+  .strictObject({
+    version: z.literal(COMPILE_VERSION),
+    structureFingerprint: z.string().min(16).max(64),
+    acceptances: z
+      .array(
+        z.strictObject({
+          acceptanceId: blueprintId, runId: blueprintId, blueprintHash: sha64, acceptanceHash: sha64,
+          strategyId: z.enum(["S1", "S2", "S3", "CUSTOM"]), splitFamily: z.enum(SPLIT_FAMILIES), source: blueprintSource,
+        }),
+      )
+      .min(1)
+      .max(PLANNER_MAX_PHASES),
+    workouts: z
+      .array(
+        z.strictObject({
+          phaseIndex, label, acceptanceId: blueprintId, role: z.enum(WORKOUT_ROLES), source: z.enum(["AI_SUGGESTED", "RULES_HEURISTIC", "PROFESSIONAL"]),
+          focusDelta: focusDeltaSchema.nullable().refine((d) => deltaSize(d) <= FOCUS_DELTA_MAX_ITEMS, { message: "Ajuste de foco grande demais." }),
+          /** Library ids are UUIDs (36 characters): the bound keeps the block, and so `parameters_json`, inside its database limit. */
+          candidateExerciseIds: z.array(z.string().trim().min(1).max(40)).max(PLANNER_MAX_CANDIDATES_PER_WORKOUT),
+        }),
+      )
+      .max(PLANNER_MAX_PHASES * PLANNER_MAX_WORKOUTS_PER_PHASE)
+      .refine((items) => unique(items.map((w) => [w.phaseIndex, w.label])), { message: "Um foco por treino." }),
+    /** PR 3: only what the professional confirmed (dose profiles by exercise class, progression intent by phase). */
+    dosing: z
+      .strictObject({
+        /** Origin of the acceptance these choices came from (the block may mix acceptances; the choices come from one). */
+        source: blueprintSource.optional(),
+        byClass: z.array(z.strictObject({ exerciseClass: z.enum(EXERCISE_CLASSES), profileCode: z.enum(DOSE_PROFILE_CODES) })).max(EXERCISE_CLASSES.length),
+        progression: z.array(z.strictObject({ phaseIndex, intent: z.enum(PROGRESSION_INTENTS) })).max(PLANNER_MAX_PHASES),
+      })
+      .optional(),
+  })
+  .refine((b) => b.workouts.every((w) => b.acceptances.some((a) => a.acceptanceId === w.acceptanceId)), { message: "Todo foco cita um aceite do bloco." })
+  .refine((b) => JSON.stringify(b).length <= BLUEPRINT_MAX_CHARS, { message: "Estratégia grande demais para ser gravada com a proposta." });
+export type BlueprintAnswers = z.output<typeof blueprintAnswersSchema>;
+
 export const generationAnswersSchema = z
   .object({
     /** The stimulus of each phase: typed or chosen by the professional, or a suggestion chip they clicked (HEURISTIC_ACCEPTED, with its rule). */
@@ -217,11 +272,20 @@ export const generationAnswersSchema = z
     acceptedFlagDecisions: list(z.object({ flagCode: flagCodeSchema, decision: flagDecisionSchema }).strict())
       .refine((items) => unique(items.map((d) => d.flagCode)), { message: "Uma decisão por alerta." })
       .default([]),
+    /** The accepted strategy (V4), compiled by the server; absent = every earlier path unchanged, byte for byte. */
+    blueprint: blueprintAnswersSchema.optional(),
   })
   .strict();
 
 export type GenerationAnswers = z.output<typeof generationAnswersSchema>;
 export type GenerationAnswersInput = z.input<typeof generationAnswersSchema>;
+
+/**
+ * The compiled strategy (`answers.blueprint`) is built by the server from a stored acceptance and injected by an internal path
+ * (PR 2.3); a client never sends it. A payload that carries the key, in any shape, is refused: authenticity of the focus.
+ */
+export const carriesBlueprint = (raw: unknown): boolean => Boolean(raw) && typeof raw === "object" && !Array.isArray(raw) && "blueprint" in (raw as object);
+export const CLIENT_BLUEPRINT_REFUSED = "A estratégia aceita não é enviada pelo navegador: o servidor a monta a partir do aceite gravado.";
 
 /** Strict parse: throws `ZodError` on anything the schema does not take (unknown field, unknown code, number out of range). */
 export function parseGenerationAnswers(raw: unknown): GenerationAnswers {
@@ -293,4 +357,6 @@ export type BuildOutcome =
    * An answer marked HEURISTIC_ACCEPTED that no rule of this rule set suggested: a value the professional chose is PROFESSIONAL,
    * and the justification must never pass it off as an accepted heuristic.
    */
-  | { ok: false; code: "UNSUPPORTED_SUGGESTION"; targets: Array<{ field: "stimulusByPhase" | "phaseCoverage"; phaseIndex: number }> };
+  | { ok: false; code: "UNSUPPORTED_SUGGESTION"; targets: Array<{ field: "stimulusByPhase" | "phaseCoverage"; phaseIndex: number }> }
+  /** The answers carry an accepted strategy but the pinned rules (2026.11.4 and earlier) have no strategy-guided selection: refused, never degraded. */
+  | { ok: false; code: "UNSUPPORTED_RULESET"; message: string };

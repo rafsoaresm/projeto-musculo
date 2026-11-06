@@ -103,10 +103,9 @@ afterAll(async () => {
 describe("migration files", () => {
   const text = (file: string) => readFileSync(new URL(`../migrations/${file}`, import.meta.url), "utf8");
 
-  it("0044 and 0045 follow 0043 in ALL_MIGRATIONS and the health route names 0045", () => {
+  it("0044 and 0045 follow 0043 in ALL_MIGRATIONS (later migrations are checked by their own tests)", () => {
     const at = ALL_MIGRATIONS.indexOf("0043_execution_occurrences.sql");
-    expect(ALL_MIGRATIONS.slice(at + 1)).toEqual(["0044_exercise_metadata.sql", "0045_exercise_metadata_inferred_seed.sql"]);
-    expect(text("../src/app/api/health/route.ts")).toContain('.bind("0045_exercise_metadata_inferred_seed")');
+    expect(ALL_MIGRATIONS.slice(at + 1, at + 3)).toEqual(["0044_exercise_metadata.sql", "0045_exercise_metadata_inferred_seed.sql"]);
   });
 
   it("0044 splits into exactly its statements", () => {

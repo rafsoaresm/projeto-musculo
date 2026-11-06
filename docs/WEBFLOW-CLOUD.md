@@ -76,6 +76,27 @@ A recuperação de senha por e-mail (0.26) só existe quando as cinco variáveis
 
 `EMAIL_TRANSPORT=capture` existe só para os testes de navegador (guarda o texto do e-mail no banco local) e só é aceito quando `AUTH_ORIGIN` é `localhost` ou `127.0.0.1`: numa variável de produção ele não liga nada. **Atenção a um texto aprovado:** o termo do profissional diz "Ainda não existe recuperação de senha por e-mail". Ao ligar o e-mail essa frase passa a ser falsa; troque-a em `/gestor/termos` (isso gera uma nova versão e todos aceitam de novo).
 
+## IA do planejador (motor V4, PR 1.2): variáveis, segredos e o que continua desligado
+
+**Nada liga a IA por variável.** As comportas são do banco, no painel do gestor (sub-etapa 1.4): chave do provedor conectada, tarefa mapeada para provedor e modelo, organização habilitada pelo gestor (padrão desligada) com franquia de tokens maior que zero no plano de IA. Só duas variáveis decidem alguma coisa: `AI_PLANNER_DISABLED` (desliga tudo) e `AI_SECRETS_KEY` (sem ela nenhuma chave é guardada nem lida). Não existe `AI_PLANNER_ENABLED`.
+
+| Variável | Segredo? | Padrão | O que faz |
+|---|---|---|---|
+| `AI_PLANNER_DISABLED` | não | ausente | qualquer valor não vazio, exceto `false`, `0`, `no` e `off`, desliga (falha fechado) **toda** chamada a provedor, inclusive "Testar conexão", "Listar modelos" e "Testar modelo" do painel; vence qualquer outra comporta |
+| `AI_SECRETS_KEY` | **sim** | ausente | base64url de 32 bytes aleatórios (chave AES-256-GCM que cifra as chaves dos provedores no D1). Ausente ou inválida: o painel diz que não dá para salvar chaves e **nada é guardado**; chaves já guardadas não são lidas |
+| `AI_SECRETS_KEY_ID` | não | `k1` | rótulo guardado com cada cifra (para a troca de chave) |
+| `AI_SECRETS_KEY_PREVIOUS` + `AI_SECRETS_KEY_PREVIOUS_ID` | **sim** (a chave) | ausentes | chave antiga, só para decifrar durante uma troca; salvar de novo recifra com a atual |
+| `AI_MOCK_ENABLED` | não | ausente | `"true"` permite o provedor simulado (testes, e2e, desenvolvimento). **Nunca em produção** |
+| `AI_HARD_TIMEOUT_MS` | não | `25000` | teto sobre o tempo limite que o painel define (2000 a 120000) |
+| `AI_HARD_MAX_OUTPUT_TOKENS` | não | `8192` | teto sobre os tokens de saída (100 a 32000); uma estrutura cujo pior caso passa do teto não vai à IA (só por regras) |
+| `AI_CACHE_TTL_DAYS` | não | `14` | validade do cache da resposta validada (1 a 60) |
+
+- Gerar a chave mestra: `node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"`; colocar `AI_SECRETS_KEY` como **variável secreta** do ambiente no painel do Webflow Cloud. Nunca em `wrangler.json`, `.env*` do repositório, `NEXT_PUBLIC_*`, log, `/api/health` nem HTML.
+- As chaves dos provedores (OpenAI, Anthropic, Google) **não são variáveis de ambiente**: o gestor as cola no painel, ficam cifradas na tabela `ai_provider_connections` e voltam ao navegador só como "••••" + 4 últimos caracteres. A chave de um provedor sempre vai no cabeçalho da chamada (nunca na URL).
+- Cada provedor tem endereço constante no código (`api.openai.com`, `api.anthropic.com`, `generativelanguage.googleapis.com`): não há variável para trocar o host.
+- **Como o planejador usa essas variáveis (sub-etapa 1.3):** `AI_PLANNER_DISABLED` e `AI_MOCK_ENABLED` são lidas a cada pedido (Worker env, depois `process.env`) e decidem o portão; `AI_SECRETS_KEY*` só serve para decifrar a chave do provedor no momento da chamada; `AI_HARD_TIMEOUT_MS` corta o tempo limite da tarefa e a janela da execução inteira (`(retentativas + 1) × tempo limite + pausa + 1 s`); `AI_HARD_MAX_OUTPUT_TOKENS` decide se a estrutura cabe na IA (senão só por regras); `AI_CACHE_TTL_DAYS` é a validade do cache e a limpeza das entradas vencidas é feita pela própria escrita (não há processo em segundo plano nem tarefa agendada). O **modo por regras não depende de nenhuma variável** e funciona com a IA desligada. Nenhuma variável nova foi criada nesta sub-etapa.
+- **Não verificado:** nenhuma chamada real a provedor foi feita (os adaptadores foram testados só com `fetch` simulado); o comportamento do `changes()` e da concorrência no D1 remoto não foi medido (só no Miniflare); quanto custam as chamadas depende do preço digitado pelo gestor, nunca de um valor da ferramenta.
+
 ## Desenvolvimento
 
 ```sh

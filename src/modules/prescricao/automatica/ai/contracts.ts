@@ -8,6 +8,7 @@
 import { z } from "zod";
 import { MUSCLES, PATTERNS } from "@/modules/biblioteca/metadata/vocabulary";
 import { canonicalJson, sha256Hex } from "@/modules/prescricao/motor/hash";
+import { DOSE_TEXT, REFERENCE_TEXT } from "@/modules/prescricao/planejador/text-guards";
 import type { AuditRange, AuditStatus, AuditUnit, Basis, Severity } from "@/modules/prescricao/motor/types";
 
 /** Versão do texto de instrução (prompt) que acompanharia o resumo. Entra na chave de cache. */
@@ -191,28 +192,6 @@ export const aiReviewResponseSchema = z.strictObject({
 });
 
 export type AiReviewResponse = z.infer<typeof aiReviewResponseSchema>;
-
-/** Referência bibliográfica escrita pelo modelo (endereço, DOI, PMID, "et al.", "(2019)"): não verificável, recusada. */
-const REFERENCE_TEXT = /https?:\/\/|www\.|\bdoi\b|\b10\.\d{4,9}\/|\bpmid\b|pubmed|\bet\s+al\b|\(\s*(?:19|20)\d{2}\s*\)/i;
-/**
- * Número de dose no texto: a IA não prescreve dose. Cobre séries × repetições, carga, %, RIR/RPE (antes ou depois do número),
- * séries/repetições/sets no singular e no plural, por extenso (dois a vinte; "uma série" fica de fora por ser expressão comum)
- * e descanso em segundos. O número não pode vir colado a uma letra: `T1 X3` e `X1 X2` são os apelidos do próprio resumo.
- */
-const DOSE_UNIT = String.raw`(?:s[ée]ries?|sets?|repeti[çc](?:[ãa]o|[õo]es)|reps?|rir|rpe)`;
-const DOSE_WORD = String.raw`(?:dois|duas|tr[êe]s|quatro|cinco|seis|sete|oito|nove|dez|onze|doze|quinze|vinte)`;
-const DOSE_TEXT = new RegExp(
-  [
-    String.raw`(?<![\p{L}\d])\d+\s*[x×]\s*\d+`,
-    String.raw`(?<![\p{L}\d])\d+(?:[.,]\d+)?\s*(?:kg|quilos?)(?![\p{L}])`,
-    String.raw`(?<![\p{L}\d])\d+(?:[.,]\d+)?\s*%`,
-    String.raw`(?<![\p{L}])(?:rir|rpe)\s*[:=]?\s*\d`,
-    String.raw`(?<![\p{L}\d])\d+(?:[.,]\d+)?\s*(?:(?:a|-|–|até)\s*\d+\s*)?${DOSE_UNIT}(?![\p{L}])`,
-    String.raw`(?<![\p{L}])${DOSE_WORD}\s+${DOSE_UNIT}(?![\p{L}])`,
-    String.raw`(?<![\p{L}\d])\d+\s*(?:s|seg|segundos?)(?![\p{L}])`,
-  ].join("|"),
-  "iu",
-);
 
 export type AiValidation = { ok: true; response: AiReviewResponse } | { ok: false; problems: string[] };
 

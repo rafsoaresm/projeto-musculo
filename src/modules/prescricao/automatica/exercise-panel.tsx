@@ -3,14 +3,18 @@ import { ChevronLeft } from "lucide-react";
 import { Pill } from "@/components/ui";
 import { STIMULUS_LABELS } from "@/modules/prescricao/motor/vocabulary";
 import type { HistorySuggestion, ItemOut, OccurrenceOut, RuleUse } from "@/modules/prescricao/motor/types";
+import { WhyPanel } from "./why-panel";
+import type { WhyCard } from "./review-view";
 import {
   BASIS_LABELS,
   BASIS_TONES,
   METADATA_LABELS,
   PROPOSAL_ORIGIN_LABELS,
+  changeIfText,
   contributionView,
   historySuggestionText,
   itemBasisGroups,
+  type ItemWhy,
   ruleLabel,
   traceParamLabel,
   traceValue,
@@ -34,6 +38,8 @@ export function ExercisePanel({
   week,
   experienceUnknown,
   contribution,
+  doseWhy,
+  whyCards,
   suggestions,
   rulesUsed,
   locked,
@@ -51,6 +57,10 @@ export function ExercisePanel({
   week: number;
   experienceUnknown: boolean;
   contribution: ReturnType<typeof contributionView>;
+  /** Dose "Por quê?" and origin pills (empty dose lines on proposals made before the dose policy). */
+  doseWhy: ItemWhy;
+  /** The three "Por que foi selecionado?" cards (proposals made from an accepted strategy); when present they carry the dose "Por quê?" too. */
+  whyCards?: readonly WhyCard[];
   suggestions: readonly HistorySuggestion[];
   rulesUsed: readonly RuleUse[];
   locked: boolean;
@@ -158,6 +168,7 @@ export function ExercisePanel({
           <Pill tone={history.tone}>{history.title}</Pill> {history.detail} <span className="muted">Não muda a dose: a decisão é sua.</span>
         </p>
       )}
+      {whyCards && <WhyPanel cards={whyCards} itemName={item.exerciseName} />}
       <details className="rx-why why-details">
         <summary>
           <span className="rx-why-title">Por que este exercício?</span>
@@ -187,6 +198,29 @@ export function ExercisePanel({
             </ul>
           </div>
         ))}
+        {!whyCards && doseWhy.dose.length > 0 && (
+          <div className="why-block why-section" role="group" aria-label="Por que esta dose">
+            <h4 className="small-heading">Por que esta dose</h4>
+            <ul className="auto-list">
+              {doseWhy.dose.map((line) => (
+                <li key={line.param} className="small" data-dose-why={line.param}>
+                  <strong>{line.question}</strong> <Pill tone={BASIS_TONES[line.basis]}>{BASIS_LABELS[line.basis]}</Pill>{" "}
+                  <span>
+                    Regra: {line.rule}
+                    {line.profile ? ` · perfil ${line.profile}` : ""}.
+                  </span>
+                  {line.reasons.length > 0 && <span> Motivos: {line.reasons.join(", ")}.</span>}
+                  {line.changeIf && <span className="muted"> {changeIfText(line.changeIf)}</span>}
+                </li>
+              ))}
+            </ul>
+            {doseWhy.metadataNote && (
+              <p className="small muted" data-dose-note="metadata">
+                {doseWhy.metadataNote}
+              </p>
+            )}
+          </div>
+        )}
         {item.trace.params.length > 0 && (
           <details className="auto-details">
             <summary>Todos os valores propostos e suas bases</summary>

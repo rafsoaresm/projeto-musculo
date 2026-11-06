@@ -100,6 +100,10 @@
   background: var(--color-bg-subtle);
   color: var(--color-text);
 }
+.rx-chip-success {
+  background: var(--color-success-soft);
+  color: var(--color-success-text);
+}
 .rx-chip-line {
   background: var(--color-surface);
   border: 1px solid var(--color-line-strong);
@@ -1411,4 +1415,416 @@
   .rx-exercise-table .rx-cell-action .rx-rowaction {
     max-width: 88px;
   }
+}
+
+/* ---------- Revisão por foco e doses (V4, RX-01 / M-02) ---------- */
+.rx-nametext {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.rx-pattern {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--color-primary-strong);
+  overflow-wrap: anywhere;
+}
+.rx-focusrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin: 0;
+}
+.rx-whypanel {
+  display: grid;
+  gap: 8px;
+}
+.rx-whypanel-title {
+  margin: 0;
+  font-size: var(--font-size-base);
+  color: var(--color-ink);
+}
+.rx-why-card {
+  display: grid;
+  gap: 4px;
+  padding: 12px 13px;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-line-strong);
+  border-radius: 9px;
+}
+.rx-why-card.selected {
+  background: var(--color-primary-soft);
+  border: 1.5px solid var(--color-primary);
+}
+.rx-why-card h5 {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  color: var(--color-ink);
+}
+.rx-why-card.selected h5,
+.rx-why-card.selected .rx-why-meta {
+  color: var(--color-primary-strong);
+}
+.rx-why-lead,
+.rx-why-meta {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
+}
+.rx-why-lead {
+  color: var(--color-text);
+}
+.rx-why-meta {
+  font-weight: 600;
+  color: var(--color-muted);
+}
+.rx-why-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 2px 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--font-size-xs);
+}
+.rx-why-lines {
+  display: grid;
+  gap: 4px;
+  margin: 2px 0 0;
+  padding-left: 16px;
+  overflow-wrap: anywhere;
+}
+.rx-phonecards {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.rx-replan {
+  display: grid;
+  gap: 12px;
+}
+.rx-replan-scope {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.rx-replan {
+  text-align: left;
+}
+.rx-replan-option {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  min-height: 44px;
+  text-align: left;
+}
+.rx-replan-option input {
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+}
+.rx-replan-option span {
+  flex: 1 1 auto;
+}
+.rx-replan-body p {
+  margin: 0;
+}
+.audit-strategy {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.audit-strategy h3 {
+  margin: 0;
+}
+@media (max-width: 860px) {
+  /* A rolagem do painel por exercício não prende os cartões: a página inteira rola e o rodapé deixa a última linha livre. */
+  .rx-exercise {
+    padding-bottom: 12px;
+  }
+}
+
+/* ---------- Ajustes assistidos (RX-02 desktop, M-02 celular) ----------
+ * Duas colunas como o RX-02: "Comparar antes e depois" (flexível) e "Assistente de ajustes" (365px, a mesma largura do painel do RX-01),
+ * a barra persistente no rodapé. No celular as colunas viram uma pilha, com o assistente (o pedido) primeiro. Os cartões da conversa
+ * ("Profissional", "IA · Sugestão", "Confirmar mudança") têm raio 9px; o selecionado usa o fundo suave da marca e a borda de 1,5px.
+ */
+.rx-adjust {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 365px;
+  gap: var(--rx-gap);
+  align-items: start;
+}
+.rx-adjust-bar {
+  grid-column: 1 / -1;
+}
+.rx-adjust-compare,
+.rx-adjust-assist {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  padding: 16px;
+}
+.rx-adjust-card {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+  padding: 12px 14px;
+  list-style: none;
+  border: 1px solid var(--color-line-strong);
+  border-radius: 9px;
+  background: var(--color-surface);
+}
+.rx-adjust-card h3 {
+  margin: 0;
+  font-size: var(--font-size-base);
+  line-height: 1.3;
+  color: var(--color-ink);
+}
+.rx-adjust-card p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.rx-adjust-card-hl {
+  border: 1.5px solid var(--color-primary);
+  background: var(--color-primary-soft);
+}
+.rx-adjust-card-hl h3,
+.rx-adjust-card-hl .rx-adjust-strong {
+  color: var(--color-primary-strong);
+}
+.rx-adjust-strong {
+  font-weight: 600;
+  color: var(--color-ink);
+}
+.rx-adjust-thread {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+}
+.rx-adjust-pills,
+.rx-adjust-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.rx-adjust-alts {
+  display: grid;
+  gap: 8px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.rx-adjust-alt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-line-strong);
+  border-radius: 9px;
+  background: var(--color-surface);
+}
+.rx-adjust-alt > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 200px;
+}
+.rx-adjust-alt[data-verdict="VIOLATED"] {
+  border-color: var(--color-error);
+}
+.rx-adjust-form {
+  display: grid;
+  gap: 12px;
+}
+.rx-adjust-field {
+  display: grid;
+  gap: 4px;
+}
+.rx-adjust-field label,
+.rx-adjust-checks-box legend {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-ink);
+}
+.rx-adjust-field select,
+.rx-adjust-field input {
+  min-height: 44px;
+  width: 100%;
+}
+.rx-adjust-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.rx-adjust-checks-box {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--color-line-strong);
+  border-radius: 9px;
+}
+.rx-adjust-check label,
+.rx-adjust-ack {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  font-size: var(--font-size-sm);
+}
+.rx-adjust-check input[type="checkbox"],
+.rx-adjust-ack input[type="checkbox"] {
+  flex: none;
+  width: 20px;
+  min-height: 20px;
+  height: 20px;
+}
+.rx-adjust-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 28px;
+}
+.rx-adjust-inline input {
+  width: 88px;
+  min-height: 44px;
+}
+.rx-adjust-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.rx-adjust-diff {
+  display: grid;
+  gap: 8px;
+}
+.rx-adjust-diff p,
+.rx-adjust-diff ul {
+  margin: 0;
+}
+.rx-adjust-diff-items,
+.rx-adjust-minutes,
+.rx-adjust-constraints,
+.rx-adjust-audit ul {
+  display: grid;
+  gap: 6px;
+  padding: 0;
+  list-style: none;
+}
+.rx-adjust-diff-items li {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--color-bg);
+}
+.rx-adjust-before {
+  font-size: var(--font-size-sm);
+  color: var(--color-muted);
+  text-decoration: line-through;
+  overflow-wrap: anywhere;
+}
+.rx-adjust-after {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-ink);
+  overflow-wrap: anywhere;
+}
+.rx-adjust-constraints li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: var(--font-size-sm);
+}
+.rx-adjust-table-wrap {
+  overflow-x: auto;
+}
+.rx-adjust-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-size-sm);
+}
+.rx-adjust-table caption {
+  text-align: left;
+  padding-bottom: 4px;
+}
+.rx-adjust-table th,
+.rx-adjust-table td {
+  padding: 4px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--color-line);
+}
+.rx-adjust-up {
+  color: var(--color-error);
+  font-weight: 700;
+}
+.rx-adjust-down {
+  color: var(--color-primary-strong);
+  font-weight: 700;
+}
+.rx-adjust-entry {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  min-height: 44px;
+  padding: 14px 16px;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.rx-adjust-entry strong {
+  font-size: var(--font-size-base);
+  color: var(--color-ink);
+}
+.rx-adjust-bar .rx-bar-text {
+  flex-basis: 320px;
+}
+@media (max-width: 860px) {
+  .rx-adjust {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .rx-adjust-assist {
+    order: -1;
+  }
+  .rx-adjust-bar {
+    order: 3;
+  }
+  .rx-adjust-pair {
+    grid-template-columns: 1fr;
+  }
+}
+/* rótulos de caixa de seleção do painel de ajustes: caixa à esquerda, texto alinhado à esquerda (o rótulo global é uma coluna centrada) */
+.rx-adjust-check label,
+.rx-adjust-ack {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  text-align: left;
+  font-weight: 400;
+}
+.rx-adjust-check label span,
+.rx-adjust-ack span {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
 }

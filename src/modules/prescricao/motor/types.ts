@@ -13,6 +13,10 @@ export interface Fact<T> {
   ref?: string;
   basis: Basis;
   ruleId?: string;
+  /** Quem sugeriu o fato, quando veio de uma intenção da estratégia aceita (2026.11.6+; ausente nas versões anteriores). */
+  origin?: "RULES_HEURISTIC" | "AI_SUGGESTED";
+  /** Instrução de carga que acompanha o fato (só texto; o motor nunca propõe quilos). Intenções de progressão LOAD_FIRST e REPS_THEN_LOAD. */
+  loadInstruction?: string;
 }
 
 export interface Range {
@@ -140,6 +144,18 @@ export interface WeeklyProgression {
   /** Descarga: séries × multiplicador (arredondado, mínimo 0) e ajustes opcionais. */
   deload?: { weeks: number[]; setsMultiplier: number; patch?: DosePatch };
 }
+
+/** Classes de exercício para a política de dose (o vocabulário fechado das estratégias; um teste mantém as duas listas iguais). */
+export const EXERCISE_CLASSES = [
+  "COMPOUND_UPPER_PUSH", "COMPOUND_UPPER_PULL", "COMPOUND_LOWER", "ISOLATION_UPPER", "ISOLATION_LOWER", "CORE", "CONDITIONING", "MOBILITY", "OTHER",
+] as const;
+export type ExerciseClass = (typeof EXERCISE_CLASSES)[number];
+/** Códigos de perfil de dose que uma estratégia pode pedir (o mesmo vocabulário fechado das estratégias). */
+export const DOSE_PROFILE_CODES = [
+  "COMPOUND_HEAVY", "COMPOUND_MODERATE", "ISOLATION_STANDARD", "ISOLATION_HIGH_REP", "UNILATERAL_STANDARD", "CORE_STABILITY",
+  "TIME_BASED", "CONDITIONING_CONTINUOUS", "CONDITIONING_INTERVALS", "MOBILITY_HOLD", "SKILL_PRACTICE",
+] as const;
+export type DoseProfileCode = (typeof DOSE_PROFILE_CODES)[number];
 
 export interface RuleSetRef {
   id: string;
@@ -370,6 +386,44 @@ export interface GenerationParameters {
   /** Métrica escolhida pelo profissional para um exercício (vence o atributo do catálogo). */
   metricOverrides: Array<{ exerciseId: string; metric: Metric }>;
   acceptedFlagDecisions: Array<{ flagCode: string; decision: FlagDecision }>;
+  /**
+   * Foco dominante por treino vindo de uma estratégia aceita (V4), já expandido pela tabela de papéis do conjunto de regras fixado.
+   * Só é emitido com regras que têm MICROCYCLE_BLUEPRINT (2026.11.5+): versões anteriores nunca o recebem nem o leem.
+   */
+  blueprintFocus?: BlueprintFocusFact[];
+  /**
+   * Perfil de dose pedido pela estratégia aceita por classe de exercício (só o que o profissional confirmou). Emitido apenas com
+   * regras que têm DOSE_PROFILES (2026.11.6+) e só com o que a política admite para a classe; o resto vira aviso no adaptador.
+   */
+  doseIntentByClass?: Array<{ exerciseClass: ExerciseClass; profileCode: DoseProfileCode; origin: "AI_SUGGESTED" | "RULES_HEURISTIC" }>;
+  /**
+   * Intenção de progressão por fase (só o que o profissional confirmou), já traduzida pelo modelo PROGRESSION_TEMPLATES das regras
+   * fixadas. NUNCA entra em `progressionByPhase`: vale só onde a fase não tem progressão do profissional nem gravada na estrutura.
+   */
+  progressionIntentByPhase?: Array<{
+    phaseIndex: number; intent: string; origin: "AI_SUGGESTED" | "RULES_HEURISTIC"; progression: WeeklyProgression; loadInstruction?: string;
+  }>;
+}
+
+/** Papel de um treino numa estratégia (mesma união do vocabulário do módulo de estratégia; um teste confere a igualdade, porque o motor não importa esse módulo). */
+export type BlueprintRole =
+  | "FULL_BODY" | "UPPER" | "LOWER" | "PUSH" | "PULL" | "LEGS" | "CHEST_TRICEPS" | "BACK_BICEPS" | "SHOULDERS_ARMS" | "CORE" | "CUSTOM"
+  | "CARDIO" | "MOBILITY" | "BALANCE" | "SKILL";
+export type BlueprintSource = "AI_SUGGESTED" | "RULES_HEURISTIC" | "PROFESSIONAL";
+
+/** Foco expandido de um treino: dominante (puxa só neste treino), apoio, padrões-alvo e padrões que podem aparecer sem penalidade. */
+export interface BlueprintFocusFact {
+  phaseIndex: number;
+  label: string;
+  role: BlueprintRole;
+  source: BlueprintSource;
+  strategyId: string;
+  dominantMuscles: string[];
+  supportingMuscles: string[];
+  targetPatterns: string[];
+  spilloverPatterns: string[];
+  /** Candidatos nomeados (bônus leve, nunca obrigação); ids reais da biblioteca. */
+  candidateExerciseIds: string[];
 }
 
 export type GenerationScope = { kind: "FULL" } | { kind: "PHASES"; phaseIndexes: number[] };
@@ -407,6 +461,8 @@ export interface TraceEntry {
   basis: Basis;
   ruleId?: string;
   detail: string;
+  /** De onde vem a decisão (só nos termos da estratégia, 2026.11.5+). */
+  origin?: BlueprintSource | "STUDENT_DATA";
 }
 
 export interface ParamTrace {
@@ -415,6 +471,13 @@ export interface ParamTrace {
   basis: Basis;
   ruleId?: string;
   refs?: string[];
+  /** Perfil de dose que definiu o valor (2026.11.6+; ausente nas versões anteriores). */
+  profileId?: string;
+  /** Códigos do porquê (ex.: COMPOUND, EXPERIENCE_BEGINNER, TIME_BUDGET_SHORT, METADATA_MISSING:compound). */
+  reasons?: string[];
+  /** O que mudaria este valor, em pt-BR. */
+  changeIf?: string;
+  origin?: "RULES_HEURISTIC" | "AI_SUGGESTED" | "PROFESSIONAL";
 }
 
 /** REVIEWED; INCLUDES_INFERRED = "Inferido (não revisado)"; PENDING = sem curadoria; NOT_APPLICABLE = linha sem exercício da biblioteca. */
@@ -521,7 +584,9 @@ export interface CoverageTargets {
   basis: Basis;
   ruleId?: string;
   /** WORKOUT_FOCUS: alvo do treino (vale nas sessões dele); PHASE_COVERAGE: alvo da fase (vale na fase inteira). */
-  origin?: "WORKOUT_FOCUS" | "PHASE_COVERAGE";
+  origin?: "WORKOUT_FOCUS" | "PHASE_COVERAGE" | "BLUEPRINT_FOCUS";
+  /** Só com origin BLUEPRINT_FOCUS: o papel do treino na estratégia e o que ele aceita sem penalidade. */
+  blueprint?: { role: BlueprintRole; source: BlueprintSource; strategyId: string; supporting: string[]; spillover: string[]; candidates: string[] };
   weeklySets?: Array<WeeklySetsTarget & { basis: "PROFESSIONAL" | "HEURISTIC_ACCEPTED"; ruleId?: string }>;
 }
 
@@ -617,10 +682,18 @@ export type AuditCode =
   | "AUDIT_PHASE_VOLUME_JUMP"
   | "AUDIT_UNIFORM_SET_STEP"
   | "AUDIT_DOSE_UNIFORM"
+  | "AUDIT_DOSE_PROFILE_FALLBACK"
+  | "AUDIT_DOSE_EXERCISE_JUMP"
   | "AUDIT_INTENSITY_MISSING"
   | "AUDIT_DURATION_UNDERUSED"
   | "AUDIT_PARTIAL_WEEK"
   | "AUDIT_PHASES_NOT_GENERATED"
+  | "AUDIT_STRATEGY_ADHERENCE_LOW"
+  | "AUDIT_STRATEGY_OFF_FOCUS_ITEMS"
+  | "AUDIT_STRATEGY_SUPPLY_LOW"
+  | "AUDIT_STRATEGY_OVERLAP"
+  | "AUDIT_STRATEGY_EXPOSURE"
+  | "AUDIT_STRATEGY_PHASE_TARGET_OUTSIDE"
   | "AUDIT_AGGREGATED";
 
 export interface AuditMeasure {
@@ -638,7 +711,7 @@ export interface AuditTarget {
   basis: Basis;
   ruleId?: string;
   /** AVAILABILITY: o tempo disponível (treino, parâmetros da geração ou perfil do aluno). */
-  origin: "WORKOUT_FOCUS" | "PHASE_COVERAGE" | "AVAILABILITY";
+  origin: "WORKOUT_FOCUS" | "PHASE_COVERAGE" | "AVAILABILITY" | "BLUEPRINT_FOCUS";
 }
 
 export interface AuditFinding {
@@ -737,6 +810,49 @@ export interface AuditPhase {
   workouts: AuditWorkoutRow[];
 }
 
+/** Como cada item de volume se situa frente ao foco do treino na estratégia aceita (auditoria 1.1.0). */
+export type FocusClass = "ON_FOCUS" | "SUPPORTING" | "SPILLOVER" | "OFF_FOCUS";
+/** Quem pôs o item, para a auditoria: travar não muda (um item travado do motor segue "ENGINE"), troca do profissional e linha preservada sim. */
+export type AuditItemOrigin = "ENGINE" | "PRESERVED" | "SUBSTITUTED";
+
+export interface StrategyWeek {
+  week: number;
+  items: number;
+  onFocus: number;
+  supporting: number;
+  spillover: number;
+  offFocus: number;
+  /** (no foco + apoio + transbordo) / itens; null sem itens. */
+  adherence: number | null;
+  /** Só dos itens fora do foco. */
+  offFocusByOrigin: Record<AuditItemOrigin, number>;
+}
+
+/**
+ * Aderência ao foco declarado, recalculada em toda operação (auditoria 1.1.0, só com treinos de estratégia). É descrição do que as
+ * sessões reais contêm: sobreposição entre treinos é diagnóstico, nunca objetivo; exposições vêm das ocorrências do calendário.
+ */
+export interface StrategyAdherence {
+  /** Estratégias citadas pelos treinos (um aceite por fase pode ter estratégias diferentes). */
+  strategyIds: string[];
+  sources: BlueprintSource[];
+  workouts: Array<{
+    phaseIndex: number;
+    label: string;
+    role: BlueprintRole;
+    source: BlueprintSource;
+    strategyId: string;
+    weeks: StrategyWeek[];
+    adherenceMin: number | null;
+    /** Weeks left out of `weeks` by the size bound of a very long plan (the ones with the highest adherence go first); absent when none. */
+    weeksOmitted?: number;
+  }>;
+  /** Por fase e par de treinos de papéis diferentes, a semana completa de maior sobreposição de músculos principais (Jaccard). */
+  overlaps: Array<{ phaseIndex: number; week: number; a: string; b: string; jaccard: number; byDesign: boolean }>;
+  /** Por fase e região listada como dominante por algum treino: sessões por semana com estímulo direto nas ocorrências reais. */
+  exposures: Array<{ phaseIndex: number; region: string; perWeek: AuditRange; weeksCounted: number }>;
+}
+
 export interface AuditReport {
   auditVersion: string;
   rules: RuleSetRef;
@@ -746,6 +862,8 @@ export interface AuditReport {
   datesMissing: number;
   phases: AuditPhase[];
   findings: AuditFinding[];
+  /** Só com treinos de estratégia aceita (regras com AUDIT_STRATEGY); ausente nas propostas sem estratégia. */
+  strategy?: StrategyAdherence;
 }
 
 /** Operações de revisão devolvem um resultado ou um motivo; nunca lançam exceção. */
@@ -773,4 +891,9 @@ export interface ProgressionSettings {
   incrementKg: number | null;
   /** Janela de histórico considerada, em dias antes de `today`. */
   windowDays: number;
+  /**
+   * Regras com política de dose (2026.11.6+): além do critério de sucesso, o esforço e as repetições REGISTRADOS contam. RIR abaixo
+   * do prescrito ou repetições abaixo da faixa em todas as séries das últimas execuções viram REVIEW, nunca aumento.
+   */
+  conditional?: boolean;
 }

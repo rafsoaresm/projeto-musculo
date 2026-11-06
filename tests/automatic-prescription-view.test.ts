@@ -426,7 +426,7 @@ describe("Motor V3 S2: the plan audit on the proposal screen", () => {
   it("an audit computed now is labelled with its rules and the engine, and never offers an acceptance", () => {
     const view = auditView({ ...stored, source: "VIEW" }, { engineVersion: "2.0.1", acceptSuggestions: true });
     expect(view.viewNotice).toBe(
-      "Auditoria calculada agora com as regras gymgital-base 2026.11.4, porque esta proposta foi gerada antes da auditoria (motor 2.0.1). Não foi gravada na proposta.",
+      "Auditoria calculada agora com as regras gymgital-base 2026.11.5, porque esta proposta foi gerada antes da auditoria (motor 2.0.1). Não foi gravada na proposta.",
     );
     expect([...view.attention, ...view.observations, ...view.descriptive].flatMap((g) => g.findings).every((f) => !f.offerSuggestion)).toBe(true);
     // A recorded audit under rules that can back it would offer it, on AUDIT_NO_TARGETS only (the card comes with those rules).
