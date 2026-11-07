@@ -114,7 +114,7 @@ export function ManagerPasswordForm() {
         aria-label="Redefinir a senha do gestor"
       >
         <label>
-          E-mail da conta de gestor
+          E-mail da conta (a que esqueceu a senha)
           <input
             name="email"
             type="email"
@@ -147,7 +147,7 @@ export function ManagerPasswordForm() {
           />
         </label>
         <label>
-          Código de ativação
+          Código do ambiente (PLATFORM_SETUP_TOKEN)
           <input
             name="token"
             type="password"
