@@ -26,7 +26,8 @@ export default async function Login({
         </p>
       )}
       <AccountForm
-        forgotHref={recovery ? "/esqueci-a-senha" : undefined}
+        // Without e-mail, the only manager who forgot the password uses the environment secret (slice 0.101.1).
+        forgotHref={recovery ? "/esqueci-a-senha" : intent ? "/gestor/recuperar" : undefined}
         redirectTo={intent?.redirectTo}
         switchTo={
           intent
